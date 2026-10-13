@@ -62,7 +62,7 @@ function realInside(base, target) {
 
 // The rules apply to where a file really is: a symlink such as
 // assets/logo.png -> ../../.env is followed and then refused.
-function projectFile(projectDir, rel) {
+export function projectFile(projectDir, rel) {
   if (!allowedName(rel)) return null;
   const file = safeJoin(projectDir, rel);
   if (!file || !fs.existsSync(file)) return null;

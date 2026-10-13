@@ -11,9 +11,32 @@ export function clipURL(kind, src, frame) {
   return `/__clip/${kind}?path=${encodeURIComponent(src)}${frame === undefined ? '' : '&frame=' + frame}`;
 }
 
-export async function loadClips(assets) {
+export async function loadClips(assets, state = null) {
   const clips = new Map();
   await Promise.all(assets.filter((a) => VIDEO_FILE.test(a)).map(async (src) => {
+    if (state) {
+      const video = document.createElement('video');
+      video.hidden = true;
+      video.muted = true;
+      video.playsInline = true;
+      video.preload = 'auto';
+      video.src = './project/' + src.split('/').map(encodeURIComponent).join('/');
+      document.body.append(video);
+      const loaded = () => new Promise((resolve, reject) => {
+        video.onloadeddata = resolve;
+        video.onerror = () => reject(new Error(`clip "${src}" could not be loaded. Use a browser-supported video format.`));
+      });
+      await loaded();
+      // Servers without byte ranges cannot seek a media URL in Chrome.
+      if (!video.seekable.length || video.seekable.end(video.seekable.length - 1) < video.duration - 0.1) {
+        const res = await fetch(video.src);
+        if (!res.ok) throw new Error(`clip "${src}" could not be loaded`);
+        video.src = URL.createObjectURL(await res.blob());
+        await loaded();
+      }
+      clips.set(src, { src, video, duration: video.duration, width: video.videoWidth, height: video.videoHeight, fps: state.config.fps, frames: Math.max(1, Math.ceil(video.duration * state.config.fps)) });
+      return;
+    }
     const res = await fetch(clipURL('info', src));
     if (!res.ok) throw new Error(`clip "${src}" could not be loaded. Put a video in the project's assets/ folder.`);
     clips.set(src, { src, ...await res.json() });

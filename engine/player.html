@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="explainroo web player">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; media-src 'self' blob:; object-src 'none'; base-uri 'none'">
+<title>explainroo player</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;background:#111;color:#fff;font:14px system-ui,sans-serif}
+#player{--accent:#c2e7ff;position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;background:#111;container-type:inline-size;outline-offset:-3px}
+#player:fullscreen{height:100%;display:grid;place-items:center}#player.quiet:fullscreen{cursor:none}
+canvas,#poster{display:block;width:100%;height:100%;object-fit:contain}canvas{position:absolute;inset:0}
+#poster{position:absolute;inset:0}#poster[hidden],#start[hidden],#controls[hidden]{display:none}
+button{display:grid;place-items:center;position:relative;flex:none;width:44px;height:44px;padding:0;color:inherit;background:transparent;border:0;border-radius:8px;cursor:pointer;transition:background .15s}
+button:hover{background:rgba(255,255,255,.12)}button:disabled{cursor:wait}
+button svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
+button[data-icon="play"] svg,button[data-icon="pause"] svg{fill:currentColor;stroke-width:1.2}
+button:focus-visible,input:focus-visible,#player:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+#player:focus-visible{outline-offset:-3px}
+#start{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:clamp(60px,16cqw,88px);height:clamp(60px,16cqw,88px);border-radius:50%;color:#101724;background:#f7f9fc;box-shadow:0 6px 32px rgba(0,0,0,.25);transition:background .15s,scale .15s}
+#start:focus-visible{box-shadow:0 0 0 6px rgba(0,0,0,.7),0 6px 32px rgba(0,0,0,.25)}
+#start:hover{background:#fff;scale:1.05}#start svg{width:42%;height:42%;fill:currentColor;stroke-width:1.2;translate:2px 0}
+#controls{position:absolute;bottom:0;left:0;z-index:2;isolation:isolate;width:100%;padding:0 12px 6px;opacity:1;transition:opacity .2s}
+#controls::before{content:"";position:absolute;inset:-40px 0 0;z-index:-1;pointer-events:none;background:linear-gradient(to bottom,transparent,rgba(5,7,12,.88) 45%,rgba(5,7,12,.98))}
+#player.quiet #controls{opacity:0;pointer-events:none}#player.quiet #controls:has(:focus-visible){opacity:1;pointer-events:auto}
+#buttons{display:flex;align-items:center;gap:4px}#cc{margin-left:auto}
+#cc[aria-pressed="true"]{color:var(--accent);background:rgba(194,231,255,.12)}#cc[aria-pressed="true"]::after{content:"";position:absolute;bottom:5px;left:calc(50% - 7px);width:14px;height:2px;border-radius:2px;background:var(--accent)}
+#seek{--played:0%;display:block;width:100%;height:40px;margin:0;padding:0;appearance:none;-webkit-appearance:none;background:transparent;cursor:pointer;touch-action:pan-y}
+#seek::-webkit-slider-runnable-track{height:3px;border-radius:3px;background:linear-gradient(to right,var(--accent) var(--played),rgba(255,255,255,.3) var(--played))}
+#seek::-moz-range-track{height:3px;border-radius:3px;background:rgba(255,255,255,.3)}#seek::-moz-range-progress{height:3px;border-radius:3px;background:var(--accent)}
+#seek::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;width:10px;height:10px;margin-top:-3.5px;border:0;border-radius:50%;background:var(--accent);transition:transform .15s}
+#seek::-moz-range-thumb{width:10px;height:10px;border:0;border-radius:50%;background:var(--accent);transition:transform .15s}
+#seek:hover::-webkit-slider-thumb,#seek:focus-visible::-webkit-slider-thumb{transform:scale(1.6)}#seek:hover::-moz-range-thumb,#seek:focus-visible::-moz-range-thumb{transform:scale(1.6)}
+#time{margin-left:6px;color:rgba(255,255,255,.9);font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap;letter-spacing:.015em}
+#captions{position:absolute;bottom:100px;left:7%;right:7%;z-index:3;text-align:center;white-space:pre-line;font-size:clamp(16px,2.2cqw,32px);line-height:1.4;pointer-events:none}
+#player.quiet #captions{bottom:20px}#captions span{background:rgba(0,0,0,.8);padding:3px 8px;border-radius:4px;box-decoration-break:clone;-webkit-box-decoration-break:clone}#captions:empty{display:none}
+#status{position:absolute;top:12px;left:12px;right:12px;text-align:center;background:rgba(0,0,0,.8)}#status:empty{display:none}
+@container(min-width:700px){#controls{padding:8px 20px 10px}#seek{height:20px}button{width:36px;height:36px}button svg{width:20px;height:20px}#buttons{gap:8px}#captions{bottom:84px}}
+@container(max-width:360px){button{width:40px;height:40px}button svg{width:20px;height:20px}#buttons{gap:2px}#controls{padding-inline:10px}#time{margin-left:4px}}
+@media(prefers-reduced-motion:reduce){#controls,button,#start{transition:none}#seek::-webkit-slider-thumb{transition:none}#seek::-moz-range-thumb{transition:none}}
+</style>
+</head>
+<body>
+<main id="player" tabindex="0" aria-label="Video player">
+<canvas id="c" aria-label="Video"></canvas>
+<img id="poster" src="./poster.jpg" alt="Video cover">
+<button id="start" aria-label="Play" title="Play" disabled>
+<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"/></svg>
+</button>
+<div id="captions" role="region" aria-label="Captions"></div>
+<div id="status" role="status"></div>
+<div id="controls" role="group" aria-label="Playback controls" hidden>
+<input id="seek" type="range" min="0" max="0" step="0.01" value="0" aria-label="Seek" disabled>
+<div id="buttons">
+<button id="play" aria-label="Play" title="Play" disabled></button>
+<button id="mute" aria-label="Mute" title="Mute" aria-pressed="false"></button>
+<span id="time">0:00 / 0:00</span>
+<button id="cc" aria-label="Show captions" title="Show captions" aria-pressed="false"></button>
+<button id="fullscreen" aria-label="Enter fullscreen" title="Enter fullscreen"></button>
+</div>
+</div>
+</main>
+<audio id="audio" src="./audio.m4a" preload="none"><track id="track" kind="subtitles" src="./subtitles.vtt" srclang="en" label="English"></audio>
+<script type="module" src="./engine/player.js"></script>
+</body>
+</html>

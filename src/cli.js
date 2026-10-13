@@ -6,6 +6,7 @@ import { layoutAreas } from '../engine/layout.js';
 import { ScriptError } from './script.js';
 import { prepare, makeState } from './pipeline.js';
 import { render } from './render.js';
+import { exportPlayer } from './export.js';
 import { check, stills, sheet, verify } from './qa.js';
 import { startServer, ROOT } from './server.js';
 import { VOICES, LANGUAGES, voiceLanguage, loadTTS, loadASR, cacheRoot, ttsDtype, TTS_SAMPLE_RATE, MULTILINGUAL_ASR_MODEL } from './models.js';
@@ -33,6 +34,7 @@ Make a video
   render [project]      write the video with subtitles, chapters and a cover (--format mp4|gif|webm|mov,
                         --transparent, --size, --draft, --from s, --to s, --workers n, --out file)
   verify [project]      check the video: loudness, black frames, narration (--file)
+  export [project]      write a web player folder (--out dir, default: out/player/)
 
 Product demos
   capture [project] <url>  save screenshots, wording, colors, fonts and logo of a live site (--mobile)
@@ -157,6 +159,12 @@ export async function main(argv) {
         const project = loadProject(pos[0], { size: textFlag(flags, 'size') });
         const r = await render(project, { log, draft: !!flags.draft, transparent: !!flags.transparent, from: num(flags.from, 'from'), to: num(flags.to, 'to'), workers: num(flags.workers, 'workers'), scale: num(flags.scale, 'scale'), out: textFlag(flags, 'out'), format: textFlag(flags, 'format') });
         print([r.out, r.subtitles?.srt, r.subtitles?.vtt, r.chapters, r.cover].filter(Boolean).map((f) => path.relative(process.cwd(), f) || f).join('\n'), r);
+        return 0;
+      }
+      case 'export': {
+        const project = loadProject(pos[0]);
+        const r = await exportPlayer(project, { log, out: textFlag(flags, 'out') });
+        print(`${r.out} (${r.duration.toFixed(1)}s)`, r);
         return 0;
       }
       case 'verify': {

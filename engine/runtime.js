@@ -1,6 +1,6 @@
 // Boots the engine in a page: loads the project state, fonts, icons, images
 // and scenes, then exposes frame rendering, checks and the soundtrack.
-import rough from '/vendor/rough.js';
+import rough from '../vendor/rough.js';
 import { Stage, SceneError } from './stage.js';
 import { getTheme, makeBackground, fontString, colorOf } from './themes.js';
 import { Pen } from './pen.js';
@@ -20,8 +20,8 @@ export async function fetchState() {
   return res.json();
 }
 
-async function loadFonts(theme, config) {
-  const manifest = await (await fetch('/fonts/fonts.json')).json();
+async function loadFonts(theme, config, root = '/') {
+  const manifest = await (await fetch(root + 'fonts/fonts.json')).json();
   const wanted = new Set(Object.values(theme.fonts).map((f) => f.family));
   // The UI kit (s.ui) draws app screens in Inter and headlines in Instrument Serif.
   wanted.add('Inter');
@@ -35,22 +35,22 @@ async function loadFonts(theme, config) {
       throw new Error(`font "${family}" from ${url} could not be loaded`);
     }));
   };
-  for (const f of manifest) if (wanted.has(f.family)) add(f.family, `/fonts/${f.file}`, f);
+  for (const f of manifest) if (root === './' || wanted.has(f.family)) add(f.family, `${root}fonts/${f.file}`, f);
   // A video's own fonts, from "fonts" in video.json.
-  for (const f of config.fonts || []) add(f.family, '/project/' + f.src.split('/').map(encodeURIComponent).join('/'), f);
+  for (const f of config.fonts || []) add(f.family, root + 'project/' + f.src.split('/').map(encodeURIComponent).join('/'), f);
   await Promise.all(faces);
   // Make sure every weight used by the theme is ready before the first frame.
   await Promise.all(Object.values(theme.fonts).map((f) => document.fonts.load(`${f.weight} 40px "${f.family}"`)));
 }
 
-async function loadImages(assets) {
+async function loadImages(assets, root = '/') {
   const images = new Map();
   await Promise.all(
     assets
       .filter((a) => /\.(png|jpe?g|webp|gif|svg)$/i.test(a))
       .map(async (a) => {
         const img = new Image();
-        img.src = '/project/' + a.split('/').map(encodeURIComponent).join('/');
+        img.src = root + 'project/' + a.split('/').map(encodeURIComponent).join('/');
         await img.decode().catch(() => {
           throw new Error(`image ${a} could not be decoded`);
         });
@@ -132,6 +132,12 @@ export class Engine {
 
   clipImage(clip, frame) {
     if (this.recorder) return null;
+    if (clip.video) {
+      const video = clip.video;
+      const time = Math.min(frame / clip.fps, Math.max(0, clip.duration - 0.04));
+      if (!video.seeking && Math.abs(video.currentTime - time) > 0.04) video.currentTime = time;
+      return video.readyState >= 2 ? video : null;
+    }
     const key = this.clipFrames.key(clip, frame);
     if (this.clipProbe) {
       this.clipProbe.set(key, { clip, frame });
@@ -162,6 +168,7 @@ export class Engine {
 
   mathData(tex, display, scene, t) {
     const key = JSON.stringify([tex, display]);
+    if (this.staticMath) return this.staticMath[key] || { error: 'formula missing from the player. Export the project again.' };
     if (this.collectingMath) {
       if (!this.mathCache.has(key)) this.mathCache.set(key, null);
       return null;
@@ -523,27 +530,29 @@ export class Engine {
 }
 
 // Boots the engine for render, check or studio pages.
-export async function boot({ canvas, scale = 1, transparent = false, version = '' }) {
-  const state = await fetchState();
+export async function boot({ canvas, scale = 1, transparent = false, version = '', player = false }) {
+  const root = player ? './' : '/';
+  const state = player ? await (await fetch('./state.json')).json() : await fetchState();
   const theme = getTheme(state.config.theme, state.config.look);
   const [icons, images, scenesMod, audio, iconTags, clips] = await Promise.all([
-    fetch('/engine/icons/lucide.json').then((r) => r.json()).then((j) => {
+    fetch(root + 'engine/icons/lucide.json').then((r) => r.json()).then((j) => {
       // Old Lucide names keep working.
       for (const [alias, target] of Object.entries(j.aliases || {})) if (!j.icons[alias]) j.icons[alias] = j.icons[target];
       return j.icons;
     }),
-    loadImages(state.assets),
-    import(`/project/scenes.js?v=${encodeURIComponent(version || state.version)}`),
-    import('/engine/audio/soundtrack.js').catch((e) => ({ SFX: {}, loadError: e })),
-    fetch('/engine/icons/lucide-tags.json').then((r) => r.json()),
-    loadClips(state.assets),
-    loadFonts(theme, state.config),
+    loadImages(state.assets, root),
+    import(player ? '../project/scenes.js' : `/project/scenes.js?v=${encodeURIComponent(version || state.version)}`),
+    player ? { SFX: {} } : import('./audio/soundtrack.js').catch((e) => ({ SFX: {}, loadError: e })),
+    player ? {} : fetch('/engine/icons/lucide-tags.json').then((r) => r.json()),
+    loadClips(state.assets, player ? state : null),
+    loadFonts(theme, state.config, root),
   ]);
   const scenes = scenesMod.default;
   if (!scenes || typeof scenes !== 'object') throw new Error('scenes.js must "export default { sceneId(s) { ... } }"');
   const engine = new Engine({ canvas, state, scenes, icons, images, clips, scale, transparent, sfxNames: Object.keys(audio.SFX) });
   engine.iconTags = iconTags;
-  await engine.loadMath();
+  if (player) engine.staticMath = await (await fetch('./math.json')).json();
+  else await engine.loadMath();
   return { engine, audio, state };
 }
 
