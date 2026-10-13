@@ -95,6 +95,8 @@ test('subtitle lines and caption phrases do not start with a Japanese or Chinese
   const phrases = buildPhrases({ language: 'ja', scenes: [{ start: 0, words: ja }] }, 46);
   assert.equal(phrases.length, 2);
   assert.ok(phrases.every(p => !/^[\u3041-\u3096]/.test(p.words[0].text)), phrases.map(p => p.words.map(w => w.text).join('')).join(' / '));
+  const [counter] = subtitleCues({ language: 'ja', scenes: [{ start: 0, words: timed(['そこで、', '基本', 'は', '4', '年', 'ごと', 'に', '1', '日', 'を', '足し', 'ます。']) }] });
+  assert.equal(counter.text, 'そこで、基本は4年ごとに\n1日を足します。');
   // Breaking before or after に balances the lines equally; に stays with the word before.
   const [even] = subtitleCues({ language: 'ja', scenes: [{ start: 0, words: timed(['アイウエオカキクケ', 'に', 'サシスセソタチツテ。']) }] });
   assert.equal(even.text, 'アイウエオカキクケに\nサシスセソタチツテ。');

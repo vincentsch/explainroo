@@ -18,7 +18,7 @@ function lines(words, language = 'en') {
     if (a.length > limit || b.length > limit) continue;
     // Break after punctuation, unless that leaves a word or two alone on a line.
     const atPunctuation = (cjk ? /[,;:.!?…।。！？、，；：]["'’”)\]」』）]*$/ : punctuation).test(words[i - 1].text) && Math.min(a.length, b.length) >= (cjk ? 5 : 12);
-    const glued = !atPunctuation && clings(words[i].text) ? 40 : 0;
+    const glued = !atPunctuation && clings(words[i].text, words[i - 1].text) ? 40 : 0;
     const score = (atPunctuation ? 30 : 0) - Math.abs(a.length - b.length) - glued;
     if (!best || score > best.score) best = { score, text: `${a}\n${b}` };
   }
@@ -46,7 +46,7 @@ export function subtitleCues(timeline, { from = 0, to = Infinity } = {}) {
           while (k > i && !atPunctuation.test(words[k - 1].text)) k--;
           if (k > i) j = k;
           // Without punctuation, start the next cue at a word of its own.
-          else while (j - 1 > i && clings(words[j].text)) j--;
+          else while (j - 1 > i && clings(words[j].text, words[j - 1].text)) j--;
           break;
         }
         j++;

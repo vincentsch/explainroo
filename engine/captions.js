@@ -3,12 +3,13 @@
 import { fontString } from './themes.js';
 import { clamp, ease } from './util.js';
 
-// Japanese particles and endings (written in hiragana) and Chinese particles
-// belong to the word before them, so a phrase or line should not start with
-// one.
+// Japanese particles and endings (written in hiragana), Chinese particles,
+// and counters after a number (4年, 365天) belong to the word before them,
+// so a phrase or line should not start with one.
 export function clingsToPrevious(language) {
-  if (language === 'ja') return text => /^[\u3041-\u3096\u30fc]/.test(text);
-  if (language === 'zh') return text => /^[的了吗呢吧啊着过得地们][，。！？、]*$/.test(text);
+  const counter = (text, before) => /\d$/.test(before) && /^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(text);
+  if (language === 'ja') return (text, before = '') => /^[\u3041-\u3096\u30fc]/.test(text) || counter(text, before);
+  if (language === 'zh') return (text, before = '') => /^[的了吗呢吧啊着过得地们][，。！？、]*$/.test(text) || counter(text, before);
   return () => false;
 }
 
@@ -57,7 +58,7 @@ export function balancePhrases(words, maxChars, separator = ' ', clings = () => 
       if (l > maxChars && b - a > 1) break;
       if (!best[a]) continue;
       const comma = b < n && punctuation.test(words[b - 1].text) ? 150 : 0;
-      const glued = b < n && !comma && clings(words[b].text) ? 250 : 0;
+      const glued = b < n && !comma && clings(words[b].text, words[b - 1].text) ? 250 : 0;
       const c = { parts: best[a].parts + 1, cost: best[a].cost + (maxChars - l) ** 2 - comma + glued, from: a };
       if (!best[b] || c.parts < best[b].parts || (c.parts === best[b].parts && c.cost < best[b].cost)) best[b] = c;
     }
