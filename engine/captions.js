@@ -3,6 +3,15 @@
 import { fontString } from './themes.js';
 import { clamp, ease } from './util.js';
 
+// Japanese particles and endings (written in hiragana) and Chinese particles
+// belong to the word before them, so a phrase or line should not start with
+// one.
+export function clingsToPrevious(language) {
+  if (language === 'ja') return text => /^[\u3041-\u3096\u30fc]/.test(text);
+  if (language === 'zh') return text => /^[的了吗呢吧啊着过得地们][，。！？、]*$/.test(text);
+  return () => false;
+}
+
 export function buildPhrases(timeline, maxChars) {
   const cjk = ['ja', 'zh'].includes(timeline.language);
   const sentenceEnd = cjk ? /[.!?;:।。！？]["'’)」』）]*$/ : /[.!?;:।]["'’)]*$/;
@@ -13,7 +22,7 @@ export function buildPhrases(timeline, maxChars) {
     // phrases as fit, balanced in length, so no phrase is one lonely word.
     let run = [];
     const flush = () => {
-      for (const words of balancePhrases(run, maxChars, cjk ? '' : ' ')) phrases.push({ words, ...(cjk ? { separator: '' } : {}), start: words[0].start, end: words[words.length - 1].end });
+      for (const words of balancePhrases(run, maxChars, cjk ? '' : ' ', clingsToPrevious(timeline.language))) phrases.push({ words, ...(cjk ? { separator: '' } : {}), start: words[0].start, end: words[words.length - 1].end });
       run = [];
     };
     for (const w of sc.words) {
@@ -32,8 +41,9 @@ export function buildPhrases(timeline, maxChars) {
 }
 
 // Splits words into the fewest phrases of at most maxChars characters, with
-// lengths as even as possible and breaks after commas where they fit.
-export function balancePhrases(words, maxChars, separator = ' ') {
+// lengths as even as possible and breaks after commas where they fit, never
+// before a word that clings to the one before it if that can be helped.
+export function balancePhrases(words, maxChars, separator = ' ', clings = () => false) {
   if (!words.length) return [];
   const len = (a, b) => words.slice(a, b).reduce((n, w) => n + w.text.length + separator.length, -separator.length);
   if (len(0, words.length) <= maxChars) return [words];
@@ -47,7 +57,8 @@ export function balancePhrases(words, maxChars, separator = ' ') {
       if (l > maxChars && b - a > 1) break;
       if (!best[a]) continue;
       const comma = b < n && punctuation.test(words[b - 1].text) ? 150 : 0;
-      const c = { parts: best[a].parts + 1, cost: best[a].cost + (maxChars - l) ** 2 - comma, from: a };
+      const glued = b < n && !comma && clings(words[b].text) ? 250 : 0;
+      const c = { parts: best[a].parts + 1, cost: best[a].cost + (maxChars - l) ** 2 - comma + glued, from: a };
       if (!best[b] || c.parts < best[b].parts || (c.parts === best[b].parts && c.cost < best[b].cost)) best[b] = c;
     }
   }

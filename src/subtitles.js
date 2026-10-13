@@ -1,9 +1,12 @@
 // Subtitle cues use the shown words and their times from the voice timeline.
+import { clingsToPrevious } from '../engine/captions.js';
+
 const sentenceEnd = /[.!?…।]["'’”)\]]*$/;
 const punctuation = /[,;:.!?…।]["'’”)\]]*$/;
 
 function lines(words, language = 'en') {
   const cjk = ['ja', 'zh'].includes(language);
+  const clings = clingsToPrevious(language);
   const limit = cjk ? 18 : 42;
   const separator = cjk ? '' : ' ';
   const text = words.map((w) => w.text).join(separator);
@@ -15,7 +18,8 @@ function lines(words, language = 'en') {
     if (a.length > limit || b.length > limit) continue;
     // Break after punctuation, unless that leaves a word or two alone on a line.
     const atPunctuation = (cjk ? /[,;:.!?…।。！？、，；：]["'’”)\]」』）]*$/ : punctuation).test(words[i - 1].text) && Math.min(a.length, b.length) >= (cjk ? 5 : 12);
-    const score = (atPunctuation ? 30 : 0) - Math.abs(a.length - b.length);
+    const glued = !atPunctuation && clings(words[i].text) ? 40 : 0;
+    const score = (atPunctuation ? 30 : 0) - Math.abs(a.length - b.length) - glued;
     if (!best || score > best.score) best = { score, text: `${a}\n${b}` };
   }
   return best?.text ?? null;
@@ -27,6 +31,7 @@ export function subtitleCues(timeline, { from = 0, to = Infinity } = {}) {
   const limit = cjk ? 18 : 42;
   const endSentence = cjk ? /[.!?…।。！？]["'’”)\]」』）]*$/ : sentenceEnd;
   const atPunctuation = cjk ? /[,;:.!?…।。！？、，；：]["'’”)\]」』）]*$/ : punctuation;
+  const clings = clingsToPrevious(language);
   const cues = [];
   for (const scene of timeline.scenes) {
     const words = scene.words || [];
@@ -37,9 +42,11 @@ export function subtitleCues(timeline, { from = 0, to = Infinity } = {}) {
       while (j < words.length) {
         if (endSentence.test(words[j - 1].text) || words[j].start - words[j - 1].end > 0.6 + 1e-9) break;
         if (words[j].end + 0.25 - words[i].start > 6 || lines(words.slice(i, j + 1), language) === null) {
-          for (let k = j - 1; k > i; k--) {
-            if (atPunctuation.test(words[k - 1].text)) { j = k; break; }
-          }
+          let k = j - 1;
+          while (k > i && !atPunctuation.test(words[k - 1].text)) k--;
+          if (k > i) j = k;
+          // Without punctuation, start the next cue at a word of its own.
+          else while (j - 1 > i && clings(words[j].text)) j--;
           break;
         }
         j++;

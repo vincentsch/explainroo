@@ -96,7 +96,14 @@ async function englishPhonemes(text) {
   return (await espeakWasm(text, 'en-us')).join(' ').replace(/ʲ/g, 'j').replace(/r/g, 'ɹ').replace(/x/g, 'k').replace(/ɬ/g, 'l').trim();
 }
 
+// misaki reads "365.2422" as 365, a pause and 2422. In Japanese the digits
+// after the point are read one by one: 365点二四二二.
+function japaneseDecimals(text) {
+  return text.replace(/(\d)\.(\d+)/g, (m, whole, digits) => whole + '点' + Array.from(digits, d => '〇一二三四五六七八九'[d]).join(''));
+}
+
 async function misakiPhonemes(texts, language) {
+  if (language === 'ja') texts = texts.map(japaneseDecimals);
   const parts = texts.map(text => {
     const list = [];
     let last = 0;
