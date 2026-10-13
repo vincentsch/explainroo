@@ -297,7 +297,7 @@ export function loadProject(arg, { size } = {}) {
   }
   const scriptPath = path.join(dir, 'script.md');
   if (!fs.existsSync(scriptPath)) fail(`${scriptPath} is missing`);
-  const script = parseScript(fs.readFileSync(scriptPath, 'utf8'));
+  const script = parseScript(fs.readFileSync(scriptPath, 'utf8'), { language: config.language });
   if (!config.title) config.title = script.title || path.basename(dir);
   const scenesPath = path.join(dir, 'scenes.js');
   if (!fs.existsSync(scenesPath)) fail(`${scenesPath} is missing`);

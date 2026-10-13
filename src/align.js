@@ -1,6 +1,15 @@
 // Aligns the words we asked the voice model to say with the words Whisper
 // heard, so every script word gets a start and end time.
+import { createRequire } from 'node:module';
 import { normWord } from './script.js';
+
+// Whisper often writes Mandarin in Traditional characters, even when the
+// script is Simplified. Both sides are compared in Simplified.
+let toSimplified;
+function simplified(text) {
+  toSimplified ??= createRequire(import.meta.url)('opencc-js/t2cn').Converter({ from: 'tw', to: 'cn' });
+  return toSimplified(text);
+}
 
 const NUMBER_WORDS = {
   zero: '0', one: '1', two: '2', three: '3', four: '4', five: '5', six: '6', seven: '7', eight: '8', nine: '9',
@@ -124,8 +133,10 @@ export function similar(a, b) {
 // A word also counts as heard when Whisper writes its shown form, so
 // {SQL|sequel} or {async|a sink} is confirmed by "SQL" or "async".
 export function alignWords(words, heard, duration, language = 'en') {
-  const partsOf = word => expand(word, language);
-  const matches = (a, b) => language !== 'en' && (/\p{N}/u.test(a) || /\p{N}/u.test(b)) ? a === b : similar(a, b);
+  const cjk = ['ja', 'zh'].includes(language);
+  const chars = word => normWord(word).normalize('NFC');
+  const partsOf = word => cjk ? Array.from(language === 'zh' ? simplified(chars(word)) : chars(word)) : expand(word, language);
+  const matches = (a, b) => cjk ? a === b : language !== 'en' && (/\p{N}/u.test(a) || /\p{N}/u.test(b)) ? a === b : similar(a, b);
   const tokens = [];
   words.forEach((w, wi) => {
     const parts = String(w.spoken).split(/\s+/).flatMap(partsOf);
@@ -168,6 +179,7 @@ export function alignWords(words, heard, duration, language = 'en') {
   const INF = 1e9;
   const cost = Array.from({ length: T + 1 }, () => new Float64Array(N + 1).fill(INF));
   const move = Array.from({ length: T + 1 }, () => new Int8Array(N + 1));
+  const shownLength = cjk ? Array.from({ length: T + 1 }, () => new Int32Array(N + 1)) : null;
   cost[0][0] = 0;
   const groupEnd = new Int32Array(T);
   for (let i = 0; i < T; i++) {
@@ -191,6 +203,15 @@ export function alignWords(words, heard, duration, language = 'en') {
         const joined = tokens.slice(i, e + 1).map((t) => t.norm).join('');
         const ok = (groupEnd[i] > i && matches(joined, H[j].norm)) || (tokens[i].shown && matches(tokens[i].shown, H[j].norm));
         if (ok && c < cost[e + 1][j + 1]) { cost[e + 1][j + 1] = c; move[e + 1][j + 1] = 5; }
+      }
+      if (cjk && i < T && tokens[i].first && tokens[i].shown) {
+        const length = Array.from(tokens[i].shown).length;
+        const e = groupEnd[i];
+        if (j + length <= N && tokens[i].shown === H.slice(j, j + length).map(h => h.norm).join('') && c < cost[e + 1][j + length]) {
+          cost[e + 1][j + length] = c;
+          move[e + 1][j + length] = 7;
+          shownLength[e + 1][j + length] = length;
+        }
       }
       if (i < T && j + 1 < N && matches(tokens[i].norm, H[j].norm + H[j + 1].norm) && c < cost[i + 1][j + 2]) {
         cost[i + 1][j + 2] = c;
@@ -224,6 +245,14 @@ export function alignWords(words, heard, duration, language = 'en') {
       matched += i - s;
       i = s;
       j--;
+    } else if (m === 7) {
+      const length = shownLength[i][j];
+      let s = i - 1;
+      while (s > 0 && tokens[s - 1].wi === tokens[i - 1].wi) s--;
+      add(tokens[i - 1].wi, H[j - length].start, H[j - 1].end, i - s);
+      matched += i - s;
+      i = s;
+      j -= length;
     } else if (m === 6) { add(tokens[i - 1].wi, H[j - 2].start, H[j - 1].end); matched++; i--; j -= 2; }
     else break;
   }

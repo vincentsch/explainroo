@@ -36,6 +36,10 @@ async function loadFonts(theme, config, root = '/') {
     }));
   };
   for (const f of manifest) if (root === './' || wanted.has(f.family)) add(f.family, `${root}fonts/${f.file}`, f);
+  if (root !== './' && ['ja', 'zh'].includes(config.language)) {
+    const family = config.language === 'ja' ? 'Noto Sans JP' : 'Noto Sans SC';
+    for (const weight of [400, 700]) add(family, `/language-fonts/${config.language}-${weight}.otf`, { weight });
+  }
   // A video's own fonts, from "fonts" in video.json.
   for (const f of config.fonts || []) add(f.family, root + 'project/' + f.src.split('/').map(encodeURIComponent).join('/'), f);
   await Promise.all(faces);

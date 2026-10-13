@@ -53,6 +53,17 @@ test('player copies only used assets, font families and local modules, with publ
   assert.ok(!html.includes('http:') && !html.includes('https:'));
 });
 
+test('player ships the Hindi fallback font only when the video draws Hindi', t => {
+  const { dir, project, timeline } = fixture(t);
+  const families = text => {
+    const out = path.join(dir, 'player-' + text.length);
+    copyPlayer(project, timeline, { assets: [], fonts: ['Inter', 'Noto Sans Devanagari'], math: {}, text }, out);
+    return [...new Set(JSON.parse(fs.readFileSync(path.join(out, 'fonts/fonts.json'), 'utf8')).map(f => f.family))];
+  };
+  assert.deepEqual(families('Hello'), ['Inter']);
+  assert.deepEqual(families('नमस्ते'), ['Inter', 'Noto Sans Devanagari']);
+});
+
 test('export follows local imports, refusing private files, outside symlinks and remote modules', t => {
   const { dir, project, timeline } = fixture(t);
   assert.deepEqual([...localModules(dir).keys()], ['scenes.js', 'lib/draw.mjs', 'helper.js']);

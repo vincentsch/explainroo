@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { speechChunks, resolveMarks } from './script.js';
+import { speechChunks, resolveMarks, normWord } from './script.js';
 import { alignWords } from './align.js';
 import { loadTTS, transcribeWords, TTS_MODEL, TTS_SAMPLE_RATE, ttsDtype, asrModel } from './models.js';
 import { phonemize, generateSpeech } from './phonemes.js';
@@ -59,7 +59,7 @@ export async function synthesize(project, { force = false, log = () => {}, only 
   const result = {};
   const todo = [];
   for (const scene of project.script.scenes) {
-    const chunks = speechChunks(scene.units, { sentenceGap: config.sentenceGap, paragraphGap: config.paragraphGap, pace: config.pace });
+    const chunks = speechChunks(scene.units, { sentenceGap: config.sentenceGap, paragraphGap: config.paragraphGap, pace: config.pace, language: config.language });
     const recording = recordings?.files[scene.id];
     const hash = sceneHash(scene, chunks, config, recording ? {
       content: recording.hash,
@@ -150,7 +150,7 @@ async function synthesizeScene(project, scene, chunks, hash, tts, log) {
       wordTimes[w.unitIndex] = { start: start + a.start, end: start + a.end, matched: a.matched };
       if (!a.matched) unmatched.push(w.display);
     });
-    const tokens = chunk.words.reduce((n, w) => n + w.spoken.split(/\s+/).length, 0);
+    const tokens = chunk.words.reduce((n, w) => n + (['ja', 'zh'].includes(config.language) ? Array.from(normWord(w.spoken).normalize('NFC')).length : w.spoken.split(/\s+/).length), 0);
     totalTokens += tokens;
     matchedTokens += aligned.matchRate * tokens;
     chunkInfo.push({ start, end: start + dur, text: chunk.text });

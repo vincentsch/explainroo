@@ -121,7 +121,7 @@ export class UI {
   }
 
   fontString(size, weight = 400, family = this.font, italic = false) {
-    return `${italic ? 'italic ' : ''}${weight} ${size}px "${family}", Inter, "Noto Sans Devanagari", sans-serif`;
+    return `${italic ? 'italic ' : ''}${weight} ${size}px "${family}", Inter, "Noto Sans Devanagari", "Noto Sans JP", "Noto Sans SC", sans-serif`;
   }
 
   _family(f) {

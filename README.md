@@ -53,8 +53,8 @@ explainroo does the rest:
 
 - **Voice.** [Kokoro](https://huggingface.co/hexgrad/Kokoro-82M), an open
   voice model, reads the script aloud in English, Spanish, French, Italian,
-  Brazilian Portuguese or Hindi. It has 41 voices and needs no account or API
-  key. You can also use an [ElevenLabs](https://elevenlabs.io) voice or
+  Brazilian Portuguese, Hindi, Japanese or Mandarin Chinese. It has 54 voices
+  and needs no account or API key. You can also use an [ElevenLabs](https://elevenlabs.io) voice or
   record the narration yourself.
 - **Timing.** [Whisper](https://github.com/openai/whisper) listens to the
   narration and notes when each word is spoken.
@@ -165,7 +165,9 @@ node bin/explainroo.js doctor --fetch
 
 For narration in Spanish, French, Italian, Portuguese or Hindi, also install
 [espeak-ng](https://github.com/espeak-ng/espeak-ng), for example with
-`sudo apt install espeak-ng` or `brew install espeak-ng`.
+`sudo apt install espeak-ng` or `brew install espeak-ng`. Japanese and
+Chinese need Python with [misaki](https://github.com/hexgrad/misaki) instead,
+as described in [AGENTS.md](AGENTS.md#japanese-and-chinese).
 
 Then start your agent in the `explainroo` folder and ask for a video, for
 example "Make a 60 second video about how HTTPS keeps a password secret." The
@@ -192,5 +194,9 @@ icons. [MathJax](https://www.mathjax.org) typesets the formulas.
 [ffmpeg](https://ffmpeg.org) makes the video file. For other languages,
 explainroo runs [espeak-ng](https://github.com/espeak-ng/espeak-ng) as a
 separate program, with phoneme rules from Kokoro's
-[misaki](https://github.com/hexgrad/misaki). The fonts are under the SIL Open
-Font License.
+[misaki](https://github.com/hexgrad/misaki), and misaki itself for Japanese
+and Chinese. [OpenCC](https://github.com/nk2028/opencc-js) matches
+Traditional and Simplified Chinese, and
+[HarfBuzz](https://github.com/harfbuzz/harfbuzzjs) keeps web player fonts
+small. The fonts, including Noto Sans CJK for Japanese and Chinese, are under
+the SIL Open Font License.

@@ -54,14 +54,16 @@ function parseAttrs(src, line) {
 
 // Splits one scene's narration into units. A unit is a word (or an override
 // group) with separate display and spoken text, a marker, or a pause.
-export function tokenizeNarration(text, line = 0) {
+export function tokenizeNarration(text, line = 0, language = 'en') {
   const units = [];
+  const segmenter = ['ja', 'zh'].includes(language) ? new Intl.Segmenter(language, { granularity: 'word' }) : null;
+  const punctuation = segmenter ? /^[.,;:!?।。！？、，；：）」』)\]"'’”…]+$/ : /^[.,;:!?।)\]"'’…]+$/;
   let i = 0;
   let pendingSpace = false;
   const n = text.length;
   const pushWord = (display, spoken) => {
     const prev = units[units.length - 1];
-    if (!pendingSpace && prev && prev.type === 'word' && /^[.,;:!?।)\]"'’…]+$/.test(display)) {
+    if (!pendingSpace && prev && prev.type === 'word' && punctuation.test(display)) {
       prev.display += display;
       prev.spoken += spoken;
       return;
@@ -98,7 +100,7 @@ export function tokenizeNarration(text, line = 0) {
         throw new ScriptError('pronunciation overrides look like {shown|spoken}, for example {SQL|sequel}', line);
       }
       let j = end + 1;
-      while (j < n && !/\s/.test(text[j]) && text[j] !== '[' && text[j] !== '{') j++;
+      while (j < n && !/\s/.test(text[j]) && text[j] !== '[' && text[j] !== '{' && (!segmenter || punctuation.test(text[j]))) j++;
       const trail = text.slice(end + 1, j);
       pushWord(inner.slice(0, bar).trim() + trail, inner.slice(bar + 1).trim() + trail);
       i = j;
@@ -107,13 +109,21 @@ export function tokenizeNarration(text, line = 0) {
     let j = i;
     while (j < n && !/\s/.test(text[j]) && !text.startsWith('[#', j) && !text.startsWith('[pause', j) && text[j] !== '{') j++;
     const word = text.slice(i, j);
-    pushWord(word, word);
+    if (segmenter) {
+      let prefix = '';
+      for (const part of segmenter.segment(word)) {
+        if (!part.isWordLike && (/[「『（“‘(]/u.test(part.segment) || !units.some(u => u.type === 'word'))) { prefix += part.segment; continue; }
+        pushWord(prefix + part.segment, prefix + part.segment);
+        prefix = '';
+      }
+      if (prefix) pushWord(prefix, prefix);
+    } else pushWord(word, word);
     i = j;
   }
   return units;
 }
 
-export function parseScript(source) {
+export function parseScript(source, { language = 'en' } = {}) {
   const lines = String(source).replace(/\r\n?/g, '\n').split('\n');
   let title = null;
   const scenes = [];
@@ -183,7 +193,7 @@ export function parseScript(source) {
       const units = [];
       s._paras.forEach((p, pi) => {
         if (pi > 0) units.push({ type: 'pause', sec: null, paragraph: true });
-        units.push(...tokenizeNarration(p.text, p.line));
+        units.push(...tokenizeNarration(p.text, p.line, language));
       });
       const words = units.filter((u) => u.type === 'word');
       return {
@@ -202,7 +212,9 @@ export function parseScript(source) {
 // the text between explicit pauses) and is sent to the TTS model on its own,
 // which keeps every request well under the model's context limit and gives
 // exact control over the silence between sentences.
-export function speechChunks(units, { sentenceGap = 0.3, paragraphGap = 0.55, pace = 1 } = {}) {
+export function speechChunks(units, { sentenceGap = 0.3, paragraphGap = 0.55, pace = 1, language = 'en' } = {}) {
+  const cjk = ['ja', 'zh'].includes(language);
+  const sentenceEnd = cjk ? /[.!?…।。！？]["'’)\]」』）]*$/ : /[.!?…।]["'’)\]]*$/;
   const chunks = [];
   let cur = null;
   let gapBefore = 0;
@@ -221,9 +233,9 @@ export function speechChunks(units, { sentenceGap = 0.3, paragraphGap = 0.55, pa
       cur = { gapBefore, words: [], text: '' };
       gapBefore = 0;
     }
-    cur.text += (cur.words.length ? ' ' : '') + u.spoken;
+    cur.text += (cur.words.length && !cjk ? ' ' : '') + u.spoken;
     cur.words.push({ unitIndex: index, display: u.display, spoken: u.spoken });
-    if (/[.!?…।]["'’)\]]*$/.test(u.spoken)) {
+    if (sentenceEnd.test(u.spoken)) {
       close();
       gapBefore = sentenceGap / pace;
     }

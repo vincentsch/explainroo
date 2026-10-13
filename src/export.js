@@ -2,6 +2,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { cacheRoot } from './models.js';
+import { languageFonts, subsetFont } from './fonts.js';
 import { prepare, makeState } from './pipeline.js';
 import { startServer, projectFile, ROOT } from './server.js';
 import { launch, openEngine } from './browser.js';
@@ -44,13 +46,22 @@ export function copyPlayer(project, timeline, used, out) {
     if (/\.svg$/i.test(rel) && /(?:href\s*=\s*['"]|url\(\s*['"]?)(?:\/|[a-z]+:)/i.test(fs.readFileSync(file, 'utf8'))) throw new Error(`image "${rel}" uses an outside file. Use a self-contained image.`);
     copy(file, `project/${rel}`);
   }
-  const fonts = JSON.parse(fs.readFileSync(path.join(ROOT, 'fonts/fonts.json'), 'utf8')).filter(f => used.fonts.includes(f.family));
+  const text = (used.text || '') + timeline.scenes.flatMap(s => s.words.map(w => w.text)).join('');
+  // Every font string names the Hindi fallback, but only Hindi text needs it.
+  const fonts = JSON.parse(fs.readFileSync(path.join(ROOT, 'fonts/fonts.json'), 'utf8'))
+    .filter(f => used.fonts.includes(f.family) && (f.family !== 'Noto Sans Devanagari' || /\p{Script=Devanagari}/u.test(text)));
   for (const f of fonts) copy(path.join(ROOT, 'fonts', f.file), `fonts/${f.file}`);
   for (const family of new Set(fonts.map(f => f.family))) {
     const name = family.replaceAll(' ', '') + '-OFL.txt';
     copy(path.join(ROOT, 'fonts/licenses', name), `fonts/licenses/${name}`);
   }
   fs.mkdirSync(path.join(out, 'fonts'), { recursive: true });
+  // Japanese and Chinese fonts keep only the characters the video draws.
+  for (const f of languageFonts(project.config.language)) {
+    fs.writeFileSync(path.join(out, 'fonts', f.file), subsetFont(fs.readFileSync(f.path), text));
+    fonts.push({ family: f.family, weight: f.weight, file: f.file });
+  }
+  if (languageFonts(project.config.language).length) copy(path.join(cacheRoot(), 'fonts', 'NotoSansCJK-OFL.txt'), 'fonts/licenses/NotoSansCJK-OFL.txt');
   fs.writeFileSync(path.join(out, 'fonts/fonts.json'), JSON.stringify(fonts));
   // Audio synthesis and upload code run during export, never during playback.
   const modules = ['runtime', 'stage', 'themes', 'pen', 'transitions', 'captions', 'util', 'layout', 'clips', 'ui', 'readability', 'pathdata', 'text', 'code'];
@@ -91,7 +102,7 @@ export async function exportPlayer(project, { out, log = () => {} } = {}) {
   fs.mkdirSync(path.dirname(out), { recursive: true });
   const temp = fs.mkdtempSync(path.join(path.dirname(out), '.player-'));
   try {
-    server = await startServer({ projectDir: project.dir, getState: () => state });
+    server = await startServer({ projectDir: project.dir, getState: () => state, log });
     browser = await launch();
     const context = await browser.newContext();
     let outside;
@@ -124,6 +135,12 @@ export async function exportPlayer(project, { out, log = () => {} } = {}) {
       }
       const proto = CanvasRenderingContext2D.prototype;
       const font = Object.getOwnPropertyDescriptor(proto, 'font');
+      const chars = new Set();
+      const drawing = ['fillText', 'strokeText', 'measureText'].map(name => [name, proto[name]]);
+      for (const [name, original] of drawing) proto[name] = function (text, ...rest) {
+        for (const c of String(text)) chars.add(c);
+        return original.call(this, text, ...rest);
+      };
       Object.defineProperty(proto, 'font', { ...font, set(value) {
         for (const m of value.matchAll(/["']([^"']+)["']/g)) fonts.add(m[1]);
         font.set.call(this, value);
@@ -143,8 +160,11 @@ export async function exportPlayer(project, { out, log = () => {} } = {}) {
         await upload('build/player-mix.wav', audio.encodeWav(sound.buffer));
         await upload('build/player-poster.jpg', await new Promise(resolve => engine.canvas.toBlob(resolve, 'image/jpeg', 0.9)));
         if ([...engine.mathCache.values()].some(m => m?.error)) throw new Error('a formula could not be typeset. Run check and fix it before exporting.');
-        return { assets: [...assets], fonts: [...fonts], math: Object.fromEntries(engine.mathCache) };
-      } finally { Object.defineProperty(proto, 'font', font); }
+        return { assets: [...assets], fonts: [...fonts], text: [...chars].join(''), math: Object.fromEntries(engine.mathCache) };
+      } finally {
+        Object.defineProperty(proto, 'font', font);
+        for (const [name, original] of drawing) proto[name] = original;
+      }
     }, cover);
     if (outside) throw new Error('the project uses an outside URL. Use local files before exporting.');
     used.modules = [...projectModules];

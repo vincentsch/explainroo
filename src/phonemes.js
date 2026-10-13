@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 const ESPEAK_LANGUAGES = { es: 'es', fr: 'fr-fr', it: 'it', 'pt-br': 'pt-br', hi: 'hi' };
 // Adapted from misaki's EspeakG2P (Apache-2.0, see licenses/).
@@ -27,6 +28,7 @@ export function espeakVersion() {
 }
 
 export async function phonemize(texts, language) {
+  if (['ja', 'zh'].includes(language)) return misakiPhonemes(texts, language);
   const lang = ESPEAK_LANGUAGES[language];
   if (!lang) throw new Error('espeak-ng supports es, fr, it, pt-br and hi here.');
   const input = [];
@@ -65,4 +67,82 @@ export function generateSpeech(tts, text, { language = 'en', voice, speed, phone
   if (language === 'en') return tts.generate(text, { voice, speed });
   const { input_ids } = tts.tokenizer(phonemes, { truncation: true });
   return tts.generate_from_ids(input_ids, { voice, speed });
+}
+
+function python() {
+  return process.env.EXPLAINROO_PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
+}
+
+function misakiInstall(language) {
+  return `Python with misaki is needed for ${language === 'ja' ? 'Japanese' : 'Chinese'}. Run: ${python()} -m pip install "misaki[${language}]".${language === 'ja' ? ` Then run: ${python()} -m unidic download.` : ''} Or set EXPLAINROO_PYTHON to a Python with these packages.`;
+}
+
+export function misakiAvailable(language) {
+  const r = spawnSync(python(), [fileURLToPath(new URL('./g2p.py', import.meta.url)), language], { input: JSON.stringify(language === 'ja' ? '日本語' : '中文') + '\n', encoding: 'utf8', timeout: 15000 });
+  if (r.error || r.status !== 0) return false;
+  try {
+    const phonemes = JSON.parse(r.stdout);
+    return typeof phonemes === 'string' && !!phonemes.trim();
+  } catch { return false; }
+}
+
+// misaki leaves Latin words like "API" or "JavaScript" as letters, which the
+// Japanese and Chinese voices garble. They are read as English instead, with
+// the espeak-ng build and fixes kokoro-js uses for English.
+const LATIN = /[A-Za-z]+(?:['’][A-Za-z]+)*(?:[\s-]+[A-Za-z]+(?:['’][A-Za-z]+)*)*/g;
+
+async function englishPhonemes(text) {
+  const { phonemize: espeakWasm } = await import('phonemizer');
+  return (await espeakWasm(text, 'en-us')).join(' ').replace(/ʲ/g, 'j').replace(/r/g, 'ɹ').replace(/x/g, 'k').replace(/ɬ/g, 'l').trim();
+}
+
+async function misakiPhonemes(texts, language) {
+  const parts = texts.map(text => {
+    const list = [];
+    let last = 0;
+    for (const m of text.matchAll(LATIN)) {
+      if (m.index > last) list.push({ text: text.slice(last, m.index) });
+      list.push({ text: m[0], latin: true });
+      last = m.index + m[0].length;
+    }
+    if (last < text.length) list.push({ text: text.slice(last) });
+    return list;
+  });
+  const native = parts.flat().filter(p => !p.latin && p.text.trim());
+  const phonemes = await runMisaki(native.map(p => p.text), language);
+  native.forEach((p, i) => { p.phonemes = phonemes[i]; });
+  for (const p of parts.flat()) if (p.latin) p.phonemes = await englishPhonemes(p.text);
+  return parts.map(list => {
+    const joined = list.map(p => p.phonemes?.trim()).filter(Boolean).join(' ');
+    if (!joined) throw new Error('misaki returned incomplete phonemes. Check its installation and EXPLAINROO_PYTHON.');
+    return joined;
+  });
+}
+
+async function runMisaki(texts, language) {
+  if (!texts.length) return [];
+  return new Promise((resolve, reject) => {
+    const child = spawn(python(), [fileURLToPath(new URL('./g2p.py', import.meta.url)), language], { stdio: ['pipe', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.setEncoding('utf8').on('data', data => { stdout += data; });
+    child.stderr.setEncoding('utf8').on('data', data => { stderr += data; });
+    child.stdin.on('error', () => {});
+    child.on('error', () => reject(new Error(misakiInstall(language))));
+    child.on('close', code => {
+      if (code !== 0) {
+        const said = stderr.trim().split(/\r?\n/).at(-1);
+        return reject(new Error(misakiInstall(language) + (said ? ` Python said: ${said}` : '')));
+      }
+      try {
+        // misaki drops punctuation in Japanese, so a piece may come back empty.
+        const lines = stdout.trimEnd().split(/\r?\n/).map(line => JSON.parse(line));
+        if (lines.length !== texts.length || lines.some(line => typeof line !== 'string')) throw new Error();
+        resolve(lines);
+      } catch {
+        reject(new Error('misaki returned incomplete phonemes. Check its installation and EXPLAINROO_PYTHON.'));
+      }
+    });
+    child.stdin.end(texts.map(text => JSON.stringify(text)).join('\n') + '\n');
+  });
 }

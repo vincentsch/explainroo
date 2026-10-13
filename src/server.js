@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { ensureFonts, languageFonts } from './fonts.js';
 import { extractClip, VIDEO_FILE } from './clips.js';
 import { typesetMath, mathHash, MAX_TEX_LENGTH } from './math.js';
 
@@ -149,7 +150,10 @@ function isSymlink(p) {
   }
 }
 
-export function startServer({ projectDir, getState, port = 0 }) {
+export async function startServer({ projectDir, getState, port = 0, log = () => {} }) {
+  const { config } = await getState();
+  await ensureFonts(config?.language, { log });
+  const fonts = new Map(['ja', 'zh'].flatMap(languageFonts).map(f => [`/language-fonts/${f.file}`, f.path]));
   const roughPath = resolveModule('roughjs/bundled/rough.esm.js');
   const clips = new Map();
   const server = http.createServer(async (req, res) => {
@@ -255,6 +259,7 @@ export function startServer({ projectDir, getState, port = 0 }) {
       let file = null;
       if (p === '/' || p === '/studio.html') file = path.join(ROOT, 'engine', 'studio.html');
       else if (p === '/frame.html') file = path.join(ROOT, 'engine', 'frame.html');
+      else if (fonts.has(p)) file = fonts.get(p);
       else if (p === '/vendor/rough.js') file = roughPath;
       else if (p.startsWith('/engine/')) file = safeJoin(path.join(ROOT, 'engine'), p.slice(8));
       else if (p.startsWith('/fonts/')) file = safeJoin(path.join(ROOT, 'fonts'), p.slice(7));

@@ -10,7 +10,7 @@ import { exportPlayer } from './export.js';
 import { check, stills, sheet, verify } from './qa.js';
 import { startServer, ROOT } from './server.js';
 import { VOICES, LANGUAGES, voiceLanguage, loadTTS, loadASR, cacheRoot, ttsDtype, TTS_SAMPLE_RATE, MULTILINGUAL_ASR_MODEL } from './models.js';
-import { espeakVersion, phonemize, generateSpeech } from './phonemes.js';
+import { espeakVersion, misakiAvailable, phonemize, generateSpeech } from './phonemes.js';
 import { writeWav } from './wav.js';
 import { ffmpegVersion } from './ffmpeg.js';
 import { findChrome } from './browser.js';
@@ -25,7 +25,7 @@ const HELP = `explainroo ${VERSION}: narrated explainer videos from code
 Usage: explainroo <command> [project] [options]
 
 Make a video
-  init <dir>            create a project (--theme, --size, --pace, --language es, --voice, --title)
+  init <dir>            create a project (--theme, --size, --pace, --language en|es|fr|it|pt-br|hi|ja|zh, --voice, --title)
   voice [project]       make the narration (Kokoro, ElevenLabs or a recording) and word timings
   preview [project]     live preview in your browser, reloads on save (--port, --size)
   still [project] [t…]  PNG stills: "12.5", "scene", "scene@2.4" (default: end of every scene; --size, --transparent)
@@ -50,7 +50,7 @@ Reference
   themes                list looks
   formats               list sizes for YouTube, Shorts, TikTok, Reels, Instagram, LinkedIn
   icons <word…>         search the 1,800+ built-in icons
-  doctor                check ffmpeg, Chrome, espeak-ng and models (--fetch downloads English models)
+  doctor                check ffmpeg, Chrome, espeak-ng, misaki and models (--fetch downloads English models)
 
 Options: --size <size> overrides video.json for preview, still, sheet, check and render.
          Size outputs get a suffix, like video-tiktok.mp4. --out still wins.
@@ -395,7 +395,10 @@ async function doctor(flags, log, print) {
   const ff = ffmpegVersion();
   add('ffmpeg', !!ff, ff || 'not found; install ffmpeg or set EXPLAINROO_FFMPEG');
   const espeak = espeakVersion();
-  add('espeak-ng', true, espeak || 'not found; only needed for other languages');
+  add('espeak-ng', true, espeak || 'not found; only needed for Spanish, French, Italian, Portuguese and Hindi');
+  for (const [language, name] of [['ja', 'Japanese'], ['zh', 'Chinese']]) {
+    add(`misaki ${language}`, true, misakiAvailable(language) ? `Python with misaki for ${name}` : `not found; only needed for ${name}`);
+  }
   try {
     add('chrome', true, findChrome());
   } catch (e) {
@@ -404,13 +407,14 @@ async function doctor(flags, log, print) {
   const models = path.join(cacheRoot(), 'models', 'onnx-community');
   const has = (n) => fs.existsSync(path.join(models, n));
   if (flags.fetch) {
-    log('downloading speech models (about 400 MB the first time)');
+    log('downloading English speech models (about 400 MB the first time)');
+    log('other languages fetch their speech check model on first use, and Japanese and Chinese their fonts');
     await loadTTS({ log });
     await loadASR({ log });
   }
   add('voice model', has('Kokoro-82M-v1.0-ONNX'), has('Kokoro-82M-v1.0-ONNX') ? `Kokoro 82M (${ttsDtype()}) in ${models}` : 'not downloaded yet; "explainroo doctor --fetch" or the first voice run fetches it');
   add('speech check model', has('whisper-base.en_timestamped'), has('whisper-base.en_timestamped') ? 'Whisper base.en' : 'not downloaded yet; fetched on first use');
-  add('language model', has(MULTILINGUAL_ASR_MODEL.split('/')[1]), 'Whisper small for es, fr, it, pt-br and hi; downloaded on first use, not by --fetch');
+  add('language model', has(MULTILINGUAL_ASR_MODEL.split('/')[1]), 'Whisper small for languages other than English; downloaded on first use, not by --fetch');
   const ok = rows.every((r) => r.ok || r.name.includes('model'));
   print(rows.map((r) => `${r.ok ? 'ok  ' : 'FAIL'} ${r.name.padEnd(20)} ${r.detail}`).join('\n'), { ok, checks: rows });
   return ok ? 0 : 1;

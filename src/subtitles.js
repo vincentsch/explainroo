@@ -2,16 +2,19 @@
 const sentenceEnd = /[.!?…।]["'’”)\]]*$/;
 const punctuation = /[,;:.!?…।]["'’”)\]]*$/;
 
-function lines(words) {
-  const text = words.map((w) => w.text).join(' ');
-  if (text.length <= 42) return text;
+function lines(words, language = 'en') {
+  const cjk = ['ja', 'zh'].includes(language);
+  const limit = cjk ? 18 : 42;
+  const separator = cjk ? '' : ' ';
+  const text = words.map((w) => w.text).join(separator);
+  if (text.length <= limit) return text;
   let best = null;
   for (let i = 1; i < words.length; i++) {
-    const a = words.slice(0, i).map((w) => w.text).join(' ');
-    const b = words.slice(i).map((w) => w.text).join(' ');
-    if (a.length > 42 || b.length > 42) continue;
+    const a = words.slice(0, i).map((w) => w.text).join(separator);
+    const b = words.slice(i).map((w) => w.text).join(separator);
+    if (a.length > limit || b.length > limit) continue;
     // Break after punctuation, unless that leaves a word or two alone on a line.
-    const atPunctuation = punctuation.test(words[i - 1].text) && Math.min(a.length, b.length) >= 12;
+    const atPunctuation = (cjk ? /[,;:.!?…।。！？、，；：]["'’”)\]」』）]*$/ : punctuation).test(words[i - 1].text) && Math.min(a.length, b.length) >= (cjk ? 5 : 12);
     const score = (atPunctuation ? 30 : 0) - Math.abs(a.length - b.length);
     if (!best || score > best.score) best = { score, text: `${a}\n${b}` };
   }
@@ -19,18 +22,23 @@ function lines(words) {
 }
 
 export function subtitleCues(timeline, { from = 0, to = Infinity } = {}) {
+  const language = timeline.language || 'en';
+  const cjk = ['ja', 'zh'].includes(language);
+  const limit = cjk ? 18 : 42;
+  const endSentence = cjk ? /[.!?…।。！？]["'’”)\]」』）]*$/ : sentenceEnd;
+  const atPunctuation = cjk ? /[,;:.!?…।。！？、，；：]["'’”)\]」』）]*$/ : punctuation;
   const cues = [];
   for (const scene of timeline.scenes) {
     const words = scene.words || [];
     let i = 0;
     while (i < words.length) {
-      if (words[i].text.length > 42) throw new Error(`subtitle word "${words[i].text}" is longer than 42 characters. Shorten its shown text in script.md.`);
+      if (words[i].text.length > limit) throw new Error(`subtitle word "${words[i].text}" is longer than ${limit} characters. Shorten its shown text in script.md.`);
       let j = i + 1;
       while (j < words.length) {
-        if (sentenceEnd.test(words[j - 1].text) || words[j].start - words[j - 1].end > 0.6 + 1e-9) break;
-        if (words[j].end + 0.25 - words[i].start > 6 || lines(words.slice(i, j + 1)) === null) {
+        if (endSentence.test(words[j - 1].text) || words[j].start - words[j - 1].end > 0.6 + 1e-9) break;
+        if (words[j].end + 0.25 - words[i].start > 6 || lines(words.slice(i, j + 1), language) === null) {
           for (let k = j - 1; k > i; k--) {
-            if (punctuation.test(words[k - 1].text)) { j = k; break; }
+            if (atPunctuation.test(words[k - 1].text)) { j = k; break; }
           }
           break;
         }
@@ -38,7 +46,7 @@ export function subtitleCues(timeline, { from = 0, to = Infinity } = {}) {
       }
       const start = scene.start + words[i].start;
       const end = Math.min(scene.start + words[j - 1].end + 0.25, start + 6, scene.start + (scene.dur ?? Infinity));
-      cues.push({ start, end, text: lines(words.slice(i, j)) });
+      cues.push({ start, end, text: lines(words.slice(i, j), language) });
       i = j;
     }
   }

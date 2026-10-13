@@ -81,7 +81,8 @@ export class Stage {
   }
 
   _cue(word, n) {
-    const want = String(word).split(/\s+/).map(normWord).filter(Boolean);
+    const cjk = ['ja', 'zh'].includes(this.engine.config.language);
+    const want = (cjk ? [String(word)] : String(word).split(/\s+/)).map(normWord).filter(Boolean);
     if (!want.length) throw new SceneError(`cue("${word}") is empty`);
     const ws = this.words;
     if (!ws.length) throw new SceneError(`cue("${word}"): scene "${this.id}" has no narration`);
@@ -90,8 +91,15 @@ export class Stage {
     let found = null;
     for (let i = 0; i + want.length <= norms.length; i++) {
       let ok = true;
-      for (let k = 0; k < want.length; k++) if (norms[i + k] !== want[k]) { ok = false; break; }
-      if (ok && ++seen === n && !found) found = { start: ws[i].start, end: ws[i + want.length - 1].end };
+      let end = i + want.length;
+      if (cjk) {
+        let phrase = norms[i];
+        while (phrase.length < want[0].length && end < norms.length) phrase += norms[end++];
+        ok = phrase === want[0];
+      } else {
+        for (let k = 0; k < want.length; k++) if (norms[i + k] !== want[k]) { ok = false; break; }
+      }
+      if (ok && ++seen === n && !found) found = { start: ws[i].start, end: ws[end - 1].end };
     }
     if (found) {
       // A word spoken more than once silently means its first time; tell the check.

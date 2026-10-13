@@ -71,7 +71,7 @@ test('failed and incomplete output gives a friendly error', posix, async t => {
   await assert.rejects(phonemize(['Hola'], 'es'), /could not read the text/);
   fs.writeFileSync(file, '#!/usr/bin/env node\nconsole.log("one");');
   await assert.rejects(phonemize(['Hola', 'Adiós'], 'es'), /incomplete phonemes/);
-  await assert.rejects(phonemize(['こんにちは'], 'ja'), /supports es, fr, it, pt-br and hi/);
+  await assert.rejects(phonemize(['안녕'], 'ko'), /supports es, fr, it, pt-br and hi/);
 });
 
 test('English keeps generate; other languages tokenize mapped phonemes and call generate_from_ids', async () => {

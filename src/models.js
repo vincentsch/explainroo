@@ -10,11 +10,11 @@ export const MULTILINGUAL_ASR_MODEL = 'onnx-community/whisper-small_timestamped'
 export const TTS_SAMPLE_RATE = 24000;
 
 export const LANGUAGES = {
-  en: 'af_heart', es: 'ef_dora', fr: 'ff_siwis', it: 'if_sara', 'pt-br': 'pf_dora', hi: 'hf_alpha',
+  en: 'af_heart', es: 'ef_dora', fr: 'ff_siwis', it: 'if_sara', 'pt-br': 'pf_dora', hi: 'hf_alpha', ja: 'jf_alpha', zh: 'zf_xiaobei',
 };
 
 export function voiceLanguage(id) {
-  return { a: 'en', b: 'en', e: 'es', f: 'fr', i: 'it', p: 'pt-br', h: 'hi' }[id[0]];
+  return { a: 'en', b: 'en', e: 'es', f: 'fr', i: 'it', p: 'pt-br', h: 'hi', j: 'ja', z: 'zh' }[id[0]];
 }
 
 export function asrModel(language = 'en') {
@@ -145,4 +145,17 @@ export const VOICES = {
   hf_beta: 'Hindi, female',
   hm_omega: 'Hindi, male',
   hm_psi: 'Hindi, male',
+  jf_alpha: 'Japanese, female (default)',
+  jf_gongitsune: 'Japanese, female',
+  jf_nezumi: 'Japanese, female',
+  jf_tebukuro: 'Japanese, female',
+  jm_kumo: 'Japanese, male',
+  zf_xiaobei: 'Mandarin Chinese, female (default)',
+  zf_xiaoni: 'Mandarin Chinese, female',
+  zf_xiaoxiao: 'Mandarin Chinese, female',
+  zf_xiaoyi: 'Mandarin Chinese, female',
+  zm_yunjian: 'Mandarin Chinese, male',
+  zm_yunxi: 'Mandarin Chinese, male',
+  zm_yunxia: 'Mandarin Chinese, male',
+  zm_yunyang: 'Mandarin Chinese, male',
 };

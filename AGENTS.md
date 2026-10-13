@@ -34,9 +34,10 @@ npm install
 node bin/explainroo.js doctor --fetch
 ```
 
-`doctor` checks Node, ffmpeg, Chrome and espeak-ng. It also downloads the
-English speech models, about 400 MB, the first time only. Other languages
-fetch their speech check model on first use. If the user ran `npm link`, you
+`doctor` checks Node, ffmpeg and Chrome, and the extra programs some
+languages need. It also downloads the English speech models, about 400 MB,
+the first time only. Other languages fetch their speech check model on first
+use. If the user ran `npm link`, you
 can write `explainroo` instead of `node bin/explainroo.js` in the commands
 below. Commands that work on a video take the project folder first, and every
 command accepts `--json`.
@@ -303,9 +304,10 @@ Run `voice`, `check` and `render` as usual with any of the three sources.
 
 ## Videos in other languages
 
-Set `language` in `video.json` to `en`, `es`, `fr`, `it`, `pt-br` or `hi`.
-English is the default. `pt-br` means Brazilian Portuguese. You can also
-start with `explainroo init videos/my-video --language es`.
+Set `language` in `video.json` to `en`, `es`, `fr`, `it`, `pt-br`, `hi`,
+`ja` or `zh`. English is the default. `pt-br` means Brazilian Portuguese and
+`zh` Mandarin Chinese. You can also start with
+`explainroo init videos/my-video --language es`.
 
 When `voice` is left out, the language picks its Kokoro voice:
 
@@ -317,6 +319,8 @@ When `voice` is left out, the language picks its Kokoro voice:
 | Italian (`it`) | `if_sara` |
 | Brazilian Portuguese (`pt-br`) | `pf_dora` |
 | Hindi (`hi`) | `hf_alpha` |
+| Japanese (`ja`) | `jf_alpha` |
+| Mandarin Chinese (`zh`) | `zf_xiaobei` |
 
 Run `explainroo voices --language es` to see voices for one language.
 A Kokoro voice must match the video's language. If a project already has
@@ -328,12 +332,51 @@ Cue words and `[#markers]` work the same. `at: 'qué'` matches "Qué".
 Hindi sentences can end with `।`. Captions and subtitle files keep the
 written text. The looks include a Hindi font, so no system font is needed.
 
-Kokoro needs espeak-ng once for these five languages. Install it on Linux
+Spanish, French, Italian, Portuguese and Hindi need the espeak-ng program.
+Install it on Linux
 with `sudo apt install espeak-ng`, or on macOS with `brew install espeak-ng`.
 On Windows, use the installer from the
 [espeak-ng releases page](https://github.com/espeak-ng/espeak-ng/releases).
 If the program is in another place, set `EXPLAINROO_ESPEAK` to its binary.
-English, ElevenLabs and recordings do not need it.
+English, Japanese, Chinese, ElevenLabs and recordings do not need it.
+
+### Japanese and Chinese
+
+Japanese and Chinese need Python 3 with misaki, the pronunciation library
+Kokoro's voices were trained with. Install what the language needs:
+
+```bash
+python3 -m pip install "misaki[ja]"   # Japanese
+python3 -m unidic download            # Japanese dictionary, about 526 MB
+python3 -m pip install "misaki[zh]"   # Chinese
+```
+
+On Windows, write `python` instead of `python3`. If misaki is in a virtual
+environment, set `EXPLAINROO_PYTHON` to that environment's Python.
+ElevenLabs and recordings need neither.
+
+Write the narration as usual, without spaces between words. explainroo
+finds the words itself, so cue words and markers work: `at: '解析'` matches
+the word 解析, and a phrase like `at: '名前の解析'` works too. A cue must
+match whole words. Put a `[#marker]` where you need a moment inside a word.
+Sentences end with `。`, `！` or `？`.
+
+Latin words such as API or JavaScript are read in English. For a Japanese
+reading, write it out: `{API|エーピーアイ}`.
+
+The speech check compares the narration character by character. For
+Chinese it treats Traditional and Simplified characters as the same, because
+Whisper often writes Traditional. Captions and subtitles join words without
+spaces, with up to 18 characters per subtitle line, and never break inside a
+word. Keep the shown text of an override short.
+
+The looks' fonts have no Japanese or Chinese characters. The first `voice`,
+`still` or `render` downloads Noto Sans JP or Noto Sans SC, regular and bold,
+about 33 MB, and checks the files. They are saved in
+`~/.cache/explainroo/fonts/` (or `$EXPLAINROO_CACHE/fonts/`) and used in
+every look, in captions and in app screens. After that first download,
+`EXPLAINROO_OFFLINE=1` works. A web player made with `export` keeps only
+the characters the video shows, so its fonts stay small.
 
 The first speech check in another language downloads multilingual Whisper
 small. `doctor --fetch` still fetches only the English models. `verify`
@@ -344,7 +387,6 @@ If a symbol, short form or word sounds wrong, use `{shown|spoken}` in
 language. The speech check accepts digits for numbers. It does not try to
 match spelled numbers to digits outside English. Write the digits, or use
 an override whose spoken text has digits when that helps the check.
-Japanese and Mandarin are not supported.
 
 In Hindi, the speech check confirms fewer words than in the other languages,
 because the speech model knows Hindi less well. A few unconfirmed words are
@@ -678,7 +720,7 @@ videos/<name>/
 | `theme` | `paper` | a built-in look, or a relative path to a `.json` look file (see Custom looks) |
 | `size` | `16:9` | a platform (`youtube`, `shorts`, `tiktok`, `reels`, `vertical`, `instagram`, `linkedin`, `square`), `16:9`, `9:16`, `1:1`, `4:5` or `WIDTHxHEIGHT` |
 | `fps` | 30 | 24, 25, 30, 50 or 60 |
-| `language` | `en` | narration language: `en`, `es`, `fr`, `it`, `pt-br` or `hi`; see Videos in other languages |
+| `language` | `en` | narration language: `en`, `es`, `fr`, `it`, `pt-br`, `hi`, `ja` or `zh`; see Videos in other languages |
 | `voice` | the language's voice | a Kokoro id or a provider object for Kokoro, ElevenLabs or a recording; English uses `af_heart`; see Voices |
 | `speed` | 0.9 for Kokoro, 1 otherwise | voice speed only, 0.6 to 1.6; ElevenLabs limits speed times pace to 0.7 through 1.2 |
 | `pace` | 1 | speed of the whole video (voice, pauses, animations), 0.7 to 1.6 |
@@ -768,10 +810,10 @@ when `ink` or `muted` has too little contrast against `bg`.
 | `capture [project] <url>` | saves screenshots, wording, colors, fonts and logos from a live site (`--mobile`, `--json`) |
 | `image [project] <name> "<prompt>"` | makes an illustration with OpenRouter |
 | `images [project]` | lists the images and what they cost |
-| `voices`, `say "text"` | lists Kokoro voices with their languages (`--language es` filters voices), or makes a sample in the chosen voice's language |
+| `voices`, `say "text"` | lists Kokoro voices with their languages (`--language es`, `ja` or `zh` filters voices), or makes a sample in the chosen voice's language |
 | `voices [project] --elevenlabs` | lists the names, ids and labels available to the key (`--json` also works) |
 | `themes`, `formats`, `icons <word>` | lists the looks and the sizes, searches the 1,854 icons |
-| `doctor` | checks Node, ffmpeg, Chrome, espeak-ng and models (`--fetch` downloads only English models); missing espeak-ng is allowed |
+| `doctor` | checks Node, ffmpeg, Chrome, the models, and espeak-ng and Python with misaki for other languages (`--fetch` downloads only English models) |
 
 The extra files share the video's name, also with `--out`: `video.srt`,
 `video.vtt`, `video.cover.jpg` and `video.chapters.txt`. A GIF has no sound,

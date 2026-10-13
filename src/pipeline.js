@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { ensureFonts } from './fonts.js';
 import { synthesize } from './voice.js';
 import { buildTimeline } from './timeline.js';
 import { listAssets, loadProject } from './project.js';
@@ -10,6 +11,7 @@ import { startServer } from './server.js';
 import { launch, openEngine } from './browser.js';
 
 export async function prepare(project, { log = () => {}, force = false } = {}) {
+  await ensureFonts(project.config.language, { log });
   const voices = await synthesize(project, { log, force });
   const timeline = buildTimeline(project, voices);
   fs.mkdirSync(project.paths.build, { recursive: true });
@@ -41,7 +43,7 @@ export function makeState(project, timeline) {
 // Runs fn(page, ctx) with the engine loaded at `scale`, then cleans up.
 export async function withEngine(project, timeline, { scale = 1, pages = 1, transparent = false, log = () => {} } = {}, fn) {
   const state = makeState(project, timeline);
-  const server = await startServer({ projectDir: project.dir, getState: () => state });
+  const server = await startServer({ projectDir: project.dir, getState: () => state, log });
   let browser = null;
   try {
     browser = await launch();
