@@ -1031,7 +1031,7 @@ font roles are `display`, `body`, `hand` and `mono`.
   only, not its label, so an arrow that leaves downward crosses the label.
 - Colored text in `paper` and `clean`. Green, orange and red are light enough
   for shapes but often too light for text. `check` warns about low contrast.
-  Use `ink`, `accent` or a darker hex color for text.
+  It suggests a readable color and shows its contrast ratio.
 - Long video clips fill `build/clips/` with frames. Trim footage to the part
   you show before you add it. Deleting `build/clips/` is safe.
 - Screen recordings often have a variable frame rate. explainroo converts

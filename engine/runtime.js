@@ -2,11 +2,11 @@
 // and scenes, then exposes frame rendering, checks and the soundtrack.
 import rough from '/vendor/rough.js';
 import { Stage, SceneError } from './stage.js';
-import { getTheme, makeBackground, fontString } from './themes.js';
+import { getTheme, makeBackground, fontString, colorOf } from './themes.js';
 import { Pen } from './pen.js';
 import { drawTransition } from './transitions.js';
 import { buildPhrases, drawCaptions } from './captions.js';
-import { hashStr, mulberry32, suggest, contrast, opaque, withAlpha } from './util.js';
+import { hashStr, mulberry32, suggest, suggestColor, contrast, opaque, withAlpha, parseColor, rgba } from './util.js';
 import { layoutAreas } from './layout.js';
 import { loadClips, ClipFrames } from './clips.js';
 import { UI } from './ui.js';
@@ -392,6 +392,22 @@ export class Engine {
     const margin = Math.round(Math.min(W, H) * 0.035);
     const minSize = Math.round(Math.min(W, H) * 0.022);
     const uiMinSize = Math.round(Math.min(W, H) * 0.015);
+    const colors = Object.fromEntries(['ink', 'accent', ...Object.keys(this.theme.colors)].map(name => [name, colorOf(this.theme, name)]));
+    let colorCtx;
+    const cssColor = color => {
+      if (parseColor(color)) return color;
+      if (!colorCtx) {
+        const canvas = document.createElement('canvas');
+        canvas.width = canvas.height = 1;
+        colorCtx = canvas.getContext('2d');
+      }
+      colorCtx.clearRect(0, 0, 1, 1);
+      colorCtx.fillStyle = '#000000';
+      colorCtx.fillStyle = color;
+      colorCtx.fillRect(0, 0, 1, 1);
+      const [r, g, b, a] = colorCtx.getImageData(0, 0, 1, 1).data;
+      return rgba({ r, g, b, a: a / 255 });
+    };
     const reported = new Set();
     const once = (key, fn) => {
       if (reported.has(key)) return;
@@ -440,7 +456,10 @@ export class Engine {
           const least = tx.ui ? uiMinSize : minSize;
           if (!tx.block && Math.round(tx.size) < least) once(`small:${sc.id}:${tx.text}`, () => add('warn', sc.id, t, `"${label}" is ${Math.round(tx.size)}px, hard to read (use at least ${least}px)`));
           const bg = opaque(tx.bg || this.theme.bg, this.theme.bg);
-          if (typeof tx.fg === 'string' && contrast(tx.fg, bg) < 3) once(`contrast:${sc.id}:${tx.text}`, () => add('warn', sc.id, t, `"${label}" has low contrast against its background`));
+          if (typeof tx.fg === 'string' && contrast(tx.fg, bg) < 3) once(`contrast:${sc.id}:${tx.text}`, () => {
+            const suggestion = suggestColor(cssColor(tx.fg), cssColor(bg), tx.size, Object.fromEntries(Object.entries(colors).map(([name, c]) => [name, cssColor(c)])));
+            add('warn', sc.id, t, `"${label}" has low contrast against its background (${contrast(tx.fg, bg).toFixed(1)}:1); use color: '${suggestion.color}' (${suggestion.ratio.toFixed(1)}:1)`);
+          });
         }
         // Overlaps only count when both are fully shown, not mid-fade.
         const solid = texts.filter((x) => x.alpha > 0.95);
