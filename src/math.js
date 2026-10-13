@@ -1,6 +1,8 @@
 // Typesets locally in Node. The page gets paths, not fonts or SVG references.
 import fs from 'node:fs';
 import crypto from 'node:crypto';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { absolutize, parsePath, serialize } from '../engine/pathdata.js';
 
 export const MAX_TEX_LENGTH = 4096;
@@ -15,7 +17,13 @@ export async function typesetMath(tex, display = true, cacheFile = null) {
   if (typeof display !== 'boolean') throw new Error('math: display must be true or false');
   if (cacheFile && fs.existsSync(cacheFile)) return JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
   ready ??= import('mathjax').then(({ default: mj }) => mj.init({
-    loader: { load: ['input/tex', 'output/svg'] },
+    // MathJax imports its parts by file path. On Windows a bare path like
+    // D:\\... is not a valid import specifier, so hand it a file URL.
+    loader: {
+      load: ['input/tex', 'output/svg'],
+      require: (file) => import(path.isAbsolute(file) ? pathToFileURL(file).href : file),
+      failed: (error) => { throw error; },
+    },
     tex: {
       packages: { '[-]': ['autoload', 'require', 'noundefined'] },
       formatError: (_jax, error) => { throw new Error(error.message); },
@@ -23,6 +31,7 @@ export async function typesetMath(tex, display = true, cacheFile = null) {
     svg: { fontCache: 'none' },
   }));
   const mj = await ready;
+  if (!mj?.startup) throw new Error('math: MathJax could not start. Run npm install in the explainroo folder.');
   // Each formula has its own macros and equation counters, whatever the order.
   const doc = mj.startup.mathjax.document('', { InputJax: mj.startup.getInputJax(), OutputJax: mj.startup.getOutputJax() });
   const node = await doc.convertPromise(tex, { display });
