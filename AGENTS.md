@@ -88,7 +88,9 @@ When you ask, put everything you need in one message. Typical reasons to ask:
    check confirmed. If a word is not confirmed, the voice probably said it
    wrong. Fix it with `{shown|spoken}` in the script and run the command
    again. For a recording, make script.md say what was actually said.
-   Only the scenes you changed are made again.
+   Only the scenes you changed are made again. `check`, `still`, `sheet`,
+   `render` and `preview` also make missing narration, so start them after
+   `voice` has finished, not at the same time.
 
 5. **Plan the pictures.** For each scene, decide what is on screen when each
    marker or important word is spoken. Decide where each thing sits and what
@@ -689,8 +691,9 @@ same. `render --out` still sets the file name you choose.
 
 ## Pace
 
-`pace` makes the whole video quicker or slower. At 1.3 the voice speaks 30%
-faster. The pauses, the time before and after each scene, the transitions and
+`pace` makes the whole video quicker or slower. At 1.3 the voice speaks about
+30% faster. The voice model does not speed up exactly, so check the length
+`voice` reports. The pauses, the time before and after each scene, the transitions and
 every animation also get 30% shorter. Word and marker cues follow the voice.
 So if you tie pictures to words, the rhythm stays right at any pace. Times in
 seconds are real seconds of the scene, like `s.t` and `s.cue()`. So
