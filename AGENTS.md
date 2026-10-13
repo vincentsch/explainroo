@@ -175,7 +175,8 @@ something to a friend at a table.
 Length and pace:
 
 - Aim for 45 to 120 seconds unless the user says otherwise. A finished video
-  has about 150 words a minute, pauses included.
+  has about 150 words a minute, pauses included. In Japanese it is about 270
+  characters a minute, and in Chinese about 200.
 - Start with the question or problem. Explain it in small steps. Give one
   concrete example, then sum up.
 - One idea per scene, usually 1 to 3 sentences (4 to 15 seconds).
@@ -362,7 +363,12 @@ match whole words. Put a `[#marker]` where you need a moment inside a word.
 Sentences end with `。`, `！` or `？`.
 
 Latin words such as API or JavaScript are read in English. For a Japanese
-reading, write it out: `{API|エーピーアイ}`.
+reading, write it out: `{API|エーピーアイ}`. Numbers can stay in digits,
+including decimals like 365.2422. The Japanese reader sometimes picks the
+wrong reading for a word, such as ついたち for 一日 (write `1日` for
+いちにち) or こよみ for 暦 in グレゴリオ暦 (write `{グレゴリオ暦|グレゴリオれき}`).
+When the speech check flags a word, compare what it heard with the script
+before you change anything.
 
 Whisper often writes a word with other characters that sound the same, so
 the speech check compares sounds. Japanese is compared by its kana reading,
