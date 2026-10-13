@@ -70,15 +70,15 @@ test('output paths keep existing names or add the explicit size to every output 
     ['stills', ''], ['sheet', '.jpg'], ['sheet-intro', '.jpg'],
   ];
   for (const [name, ext] of names) {
-    assert.equal(outputPath(project, name, ext), `/tmp/video/out/${name}${ext}`);
+    assert.equal(outputPath(project, name, ext), path.resolve(`/tmp/video/out/${name}${ext}`));
     for (const size of ['tiktok', 'youtube', '9:16', '1:1', '1080x1350']) {
-      assert.equal(outputPath({ ...project, sizeOverride: size }, name, ext), `/tmp/video/out/${name}-${size.replace(':', '-')}${ext}`);
+      assert.equal(outputPath({ ...project, sizeOverride: size }, name, ext), path.resolve(`/tmp/video/out/${name}-${size.replace(':', '-')}${ext}`));
     }
   }
   for (const sizeOverride of [undefined, 'tiktok']) {
     for (const name of ['video', 'draft']) {
       assert.equal(outputPath({ ...project, sizeOverride }, name, '.mp4', 'chosen.mp4'), path.resolve('chosen.mp4'));
-      assert.equal(outputPath({ ...project, sizeOverride }, name, '.gif', '/tmp/chosen.gif'), '/tmp/chosen.gif');
+      assert.equal(outputPath({ ...project, sizeOverride }, name, '.gif', '/tmp/chosen.gif'), path.resolve('/tmp/chosen.gif'));
     }
   }
 });
