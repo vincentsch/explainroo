@@ -25,7 +25,7 @@ function fixture(t) {
   return { dir, project, timeline: buildTimeline(project, {}) };
 }
 
-function files(dir) { return fs.readdirSync(dir, { recursive: true }).filter(f => fs.statSync(path.join(dir, f)).isFile()).sort(); }
+function files(dir) { return fs.readdirSync(dir, { recursive: true }).filter(f => fs.statSync(path.join(dir, f)).isFile()).map(f => f.split(path.sep).join('/')).sort(); }
 
 test('player copies only used assets, font families and local modules, with public state', t => {
   const { dir, project, timeline } = fixture(t);

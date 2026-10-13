@@ -25,7 +25,9 @@ test('maps every misaki v1.0 tie sequence and leaves language-specific IPA intac
   assert.equal(mapPhonemes('कˈʌcʰcʰi'), 'कˈʌcʰcʰi');
 });
 
-test('batches text through stdin, preserves punctuation and removes language flags', async t => {
+const posix = { skip: process.platform === 'win32' && 'the fake espeak-ng is a POSIX script' };
+
+test('batches text through stdin, preserves punctuation and removes language flags', posix, async t => {
   fake(t, `
     if (process.argv.includes('--version')) { console.log('eSpeak NG 1.51'); process.exit(0); }
     const assert = require('node:assert/strict');
@@ -49,7 +51,7 @@ test('punctuation-only text needs no program', async t => {
   assert.equal(espeakVersion(), null);
 });
 
-test('missing and non-executable programs give install instructions for every platform', async t => {
+test('missing and non-executable programs give install instructions for every platform', posix, async t => {
   const file = fake(t, '');
   for (const missing of [false, true]) {
     if (missing) fs.rmSync(file);
@@ -64,7 +66,7 @@ test('missing and non-executable programs give install instructions for every pl
   }
 });
 
-test('failed and incomplete output gives a friendly error', async t => {
+test('failed and incomplete output gives a friendly error', posix, async t => {
   const file = fake(t, 'process.stderr.write("failure"); process.exit(2);');
   await assert.rejects(phonemize(['Hola'], 'es'), /could not read the text/);
   fs.writeFileSync(file, '#!/usr/bin/env node\nconsole.log("one");');
