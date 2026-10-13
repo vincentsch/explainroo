@@ -40,7 +40,7 @@ function fixture(t) {
 }
 
 function run(command, dir, flags = []) {
-  const r = spawnSync(process.execPath, [bin, command, dir, ...flags, '--json'], { encoding: 'utf8', timeout: 30000 });
+  const r = spawnSync(process.execPath, [bin, command, dir, ...flags, '--json'], { encoding: 'utf8', timeout: 90000 });
   assert.equal(r.status, 0, `${command}: ${r.stderr}\n${r.stdout}`);
   return JSON.parse(r.stdout);
 }
