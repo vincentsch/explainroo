@@ -670,11 +670,11 @@ when `ink` or `muted` has too little contrast against `bg`.
 | `init <dir>` | creates a project (`--theme`, `--size`, `--pace`, `--voice`, `--title`) |
 | `voice [project]` | makes the narration and the word times, saved per scene so only changed scenes are made again |
 | `preview [project]` | a live preview in the browser that reloads when you save |
-| `still [project] [times]` | PNG pictures at `12.5`, `scene`, `scene@2.4` or `scene@end` |
+| `still [project] [times]` | PNG pictures at `12.5`, `scene`, `scene@2.4` or `scene@end` (`--transparent` keeps alpha) |
 | `sheet [project]` | one image with many frames of the video or of one scene (`--scene`, `--every`) |
 | `check [project]` | finds layout, timing and pronunciation problems |
-| `render [project]` | the MP4 plus subtitle files, chapters and a cover (`--format gif`, `--draft`, `--from`, `--to`, `--workers`, `--out`) |
-| `verify [project]` | checks the finished file: loudness, black frames, silence, clear voice |
+| `render [project]` | the video plus subtitle files, chapters and a cover (`--format mp4`, `gif`, `webm` or `mov`, `--transparent`, `--draft`, `--from`, `--to`, `--workers`, `--out`) |
+| `verify [project]` | checks the finished MP4, WebM or MOV: loudness, black frames, silence, clear voice (`--file` picks another file) |
 | `capture [project] <url>` | saves screenshots, wording, colors, fonts and logos from a live site (`--mobile`, `--json`) |
 | `image [project] <name> "<prompt>"` | makes an illustration with OpenRouter |
 | `images [project]` | lists the images and what they cost |
@@ -689,6 +689,24 @@ runs at 15 frames per second and is at most 960 pixels on its long side.
 With `--out`, the file ending must match the format. A render of part of the
 video (`--from`, `--to`) skips the chapters and the cover. A video without
 narration gets no subtitle files.
+
+### Transparent video for editors
+
+To put a diagram or a lower third over camera footage, render with an alpha
+channel: `render --transparent --format mov` for video editors (ProRes 4444)
+or `--format webm` for the web (VP9). The look's background texture is left
+out. Everything the scene paints stays, including `s.bg()` and
+`s.ui.backdrop()`, and cards, captions and the watermark keep their own
+backgrounds. Keep elements readable on footage: use cards or the `bg` option
+of text.
+
+The files are `out/video.mov` or `out/video.webm` (`draft.*` with
+`--draft`), and the cover stays an opaque JPEG. `slide`, `wipe` and `brush`
+transitions become `fade` in a transparent video. Check frames with
+`still --transparent`, which keeps the alpha, and the file with
+`verify --file out/video.mov`, which skips the black-frame check for
+transparent video. Without `--transparent`, WebM and MOV are ordinary opaque
+videos.
 
 ## Scene API
 

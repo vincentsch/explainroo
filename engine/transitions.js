@@ -4,7 +4,7 @@ import { ease, mulberry32, hashStr } from './util.js';
 
 export const TRANSITION_NAMES = ['fade', 'slide', 'wipe', 'zoom', 'brush', 'cut'];
 
-export function drawTransition(name, ctx, from, to, p, W, H, seed = 1) {
+export function drawTransition(name, ctx, from, to, p, W, H, seed = 1, transparent = false) {
   const e = ease.inOut(p);
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -12,7 +12,9 @@ export function drawTransition(name, ctx, from, to, p, W, H, seed = 1) {
   const ch = ctx.canvas.height;
   switch (name) {
     case 'fade':
+      if (transparent) ctx.globalAlpha = 1 - e;
       ctx.drawImage(from, 0, 0);
+      if (transparent) ctx.globalCompositeOperation = 'lighter';
       ctx.globalAlpha = e;
       ctx.drawImage(to, 0, 0);
       break;
@@ -50,6 +52,7 @@ export function drawTransition(name, ctx, from, to, p, W, H, seed = 1) {
       ctx.drawImage(from, -cw / 2, -ch / 2);
       ctx.restore();
       ctx.save();
+      if (transparent) ctx.globalCompositeOperation = 'lighter';
       ctx.globalAlpha = e;
       const s2 = 0.94 + 0.06 * e;
       ctx.translate(cw / 2, ch / 2);

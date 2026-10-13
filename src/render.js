@@ -1,4 +1,4 @@
-// Renders MP4 or GIF: frames in parallel pages, encode, mux and extra files.
+// Renders video or GIF: frames in parallel pages, encode, mux and extra files.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -8,10 +8,16 @@ import { subtitleCues, toSrt, toVtt } from './subtitles.js';
 import { buildChapters, toChaptersText, toChapterMetadata } from './chapters.js';
 import { resolveTimes } from './qa.js';
 
-export function renderFormat({ format = 'mp4', out } = {}) {
-  if (!['mp4', 'gif'].includes(format)) throw new Error('--format must be mp4 or gif');
+export function renderFormat({ format = 'mp4', out, transparent = false } = {}) {
+  if (!['mp4', 'gif', 'webm', 'mov'].includes(format)) throw new Error('--format must be mp4, gif, webm or mov');
+  if (transparent && !['webm', 'mov'].includes(format)) throw new Error('--transparent needs --format webm or --format mov');
   if (out && path.extname(out).toLowerCase() !== `.${format}`) throw new Error(`--out must end in .${format} for --format ${format}`);
   return format;
+}
+
+export function renderOutput(outDir, opts = {}) {
+  const format = renderFormat(opts);
+  return path.resolve(opts.out || path.join(outDir, `${opts.draft ? 'draft' : 'video'}.${format}`));
 }
 
 export async function render(project, opts = {}) {
@@ -20,6 +26,8 @@ export async function render(project, opts = {}) {
   const t0 = Date.now();
   const { timeline } = await prepare(project, { log });
   const draft = !!opts.draft;
+  const transparent = !!opts.transparent;
+  const segmentFormat = format === 'gif' ? 'mp4' : format;
   const scale = opts.scale ?? (draft ? 0.5 : 1);
   const fps = project.config.fps;
   const total = timeline.frames;
@@ -27,7 +35,7 @@ export async function render(project, opts = {}) {
   const to = Math.min(total, opts.to !== undefined ? Math.ceil(opts.to * fps) : total);
   if (to <= from) throw new Error('nothing to render: --from must be before --to');
   const partial = from > 0 || to < total;
-  const out = path.resolve(opts.out || path.join(project.paths.out, `${draft ? 'draft' : 'video'}.${format}`));
+  const out = renderOutput(project.paths.out, opts);
   const base = out.slice(0, -path.extname(out).length);
   const cues = subtitleCues(timeline, { from: from / fps, to: to / fps });
   const chapters = partial ? [] : buildChapters(timeline, project.script.title || project.config.title);
@@ -44,10 +52,10 @@ export async function render(project, opts = {}) {
   const mixNorm = path.join(project.paths.build, 'mix-norm.wav');
   const encoders = [];
   try {
-    await withEngine(project, timeline, { scale, pages: workers, log }, async (pages) => {
+    await withEngine(project, timeline, { scale, pages: workers, transparent, log }, async (pages) => {
       const list = Array.isArray(pages) ? pages : [pages];
       let norm;
-      if (format === 'mp4') {
+      if (format !== 'gif') {
         const ta = Date.now();
         const sound = await list[0].evaluate((p) => window.explainroo.soundtrack(p), 'build/mix.wav');
         log(`soundtrack: ${sound.cues} sound cues, mixed in ${((Date.now() - ta) / 1000).toFixed(1)}s`);
@@ -63,7 +71,7 @@ export async function render(project, opts = {}) {
         const a = from + k * per;
         const b = Math.min(to, a + per);
         if (a >= b) return;
-        const enc = frameEncoder({ fps, out: path.join(segDir, `seg-${String(k).padStart(2, '0')}.mp4`), draft });
+        const enc = frameEncoder({ fps, out: path.join(segDir, `seg-${String(k).padStart(2, '0')}.${segmentFormat}`), draft, format: segmentFormat, transparent });
         encoders.push(enc);
         const batch = 6;
         for (let f = a; f < b; f += batch) {
@@ -88,7 +96,7 @@ export async function render(project, opts = {}) {
     throw e;
   }
 
-  const segs = fs.readdirSync(segDir).filter((f) => f.endsWith('.mp4')).sort();
+  const segs = fs.readdirSync(segDir).filter((f) => f.endsWith(`.${segmentFormat}`)).sort();
   const listFile = path.join(segDir, 'list.txt');
   fs.writeFileSync(listFile, segs.map((s) => `file '${path.join(segDir, s).replace(/'/g, "'\\''")}'`).join('\n') + '\n');
   const audioArgs = partial ? ['-ss', String(from / fps), '-t', String((to - from) / fps), '-i', mixNorm] : ['-i', mixNorm];
@@ -113,7 +121,10 @@ export async function render(project, opts = {}) {
       fs.rmSync(palette, { force: true });
     }
   } else {
-    await ffmpeg(['-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', listFile, ...audioArgs, ...metadataArgs, '-map', '0:v', '-map', '1:a', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', '-shortest', out]);
+    const audioCodec = format === 'webm' ? ['-c:a', 'libopus', '-b:a', '192k']
+      : format === 'mov' ? ['-c:a', 'pcm_s16le'] : ['-c:a', 'aac', '-b:a', '192k'];
+    const containerArgs = format === 'webm' ? [] : ['-movflags', '+faststart'];
+    await ffmpeg(['-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', listFile, ...audioArgs, ...metadataArgs, '-map', '0:v', '-map', '1:a', '-c:v', 'copy', ...audioCodec, ...containerArgs, '-shortest', out]);
   }
   fs.rmSync(segDir, { recursive: true, force: true });
   const files = { subtitles: null, chapters: null, cover: null };

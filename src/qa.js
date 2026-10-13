@@ -1,5 +1,5 @@
 // Quality tools for the agent: layout checks, stills, contact sheets and a
-// verification pass over the rendered MP4.
+// verification pass over the rendered video.
 import fs from 'node:fs';
 import path from 'node:path';
 import { prepare, withEngine } from './pipeline.js';
@@ -51,10 +51,10 @@ export function resolveTimes(timeline, specs) {
   });
 }
 
-export async function stills(project, specs, { log = () => {}, scale = 1 } = {}) {
+export async function stills(project, specs, { log = () => {}, scale = 1, transparent = false } = {}) {
   const { timeline } = await prepare(project, { log });
   const list = resolveTimes(timeline, specs).map((x) => ({ ...x, path: `out/stills/${x.label.replace(/[^\w@.-]/g, '_')}.png` }));
-  await withEngine(project, timeline, { scale, log }, (page) => page.evaluate((l) => window.explainroo.stills(l), list));
+  await withEngine(project, timeline, { scale, transparent, log }, (page) => page.evaluate((l) => window.explainroo.stills(l), list));
   return list.map((x) => ({ time: Math.round(x.T * 100) / 100, label: x.label, file: path.join(project.dir, x.path) }));
 }
 
@@ -90,7 +90,7 @@ export async function sheet(project, { scene = null, every = null, cols = null, 
 
 export async function verify(project, { file = null, log = () => {} } = {}) {
   const video = path.resolve(file || path.join(project.paths.out, 'video.mp4'));
-  if (path.extname(video).toLowerCase() === '.gif') throw new Error('verify checks MP4 files. Pass an MP4 with --file.');
+  if (path.extname(video).toLowerCase() === '.gif') throw new Error('verify checks MP4, WebM and MOV files. Pass a video with --file.');
   if (!fs.existsSync(video)) throw new Error(`${video} does not exist. Run "explainroo render" first.`);
   const issues = [];
   const info = await probe(video);
@@ -105,8 +105,13 @@ export async function verify(project, { file = null, log = () => {} } = {}) {
   }
   if (loud && loud.truePeak !== null && loud.truePeak > -0.5) issues.push({ level: 'warn', message: `true peak ${loud.truePeak} dBFS is close to clipping` });
 
-  const { stderr: bd } = await ffmpeg(['-nostats', '-i', video, '-vf', 'blackdetect=d=0.4:pix_th=0.08', '-an', '-f', 'null', '-']);
-  const blacks = [...bd.matchAll(/black_start:([\d.]+) black_end:([\d.]+)/g)].map((m) => [Number(m[1]), Number(m[2])]);
+  const alpha = v && (String(v.tags?.alpha_mode ?? v.tags?.ALPHA_MODE) === '1' || /^(yuva|rgba|bgra|gbrap|argb|abgr)/.test(v.pix_fmt || ''));
+  let blacks = [];
+  if (alpha) issues.push({ level: 'hint', message: 'black-frame detection is skipped because the video has alpha' });
+  else if (v) {
+    const { stderr: bd } = await ffmpeg(['-nostats', '-i', video, '-vf', 'blackdetect=d=0.4:pix_th=0.08', '-an', '-f', 'null', '-']);
+    blacks = [...bd.matchAll(/black_start:([\d.]+) black_end:([\d.]+)/g)].map((m) => [Number(m[1]), Number(m[2])]);
+  }
   for (const [s, e] of blacks) issues.push({ level: 'warn', message: `black frames from ${s.toFixed(2)}s to ${e.toFixed(2)}s` });
 
   let silences = [];

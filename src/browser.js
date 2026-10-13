@@ -85,14 +85,14 @@ export async function launch() {
 
 // Opens the render page and waits until the engine has loaded fonts, icons,
 // images and the scenes module. Throws with the page's error if boot fails.
-export async function openEngine(browser, serverUrl, { scale = 1, onConsole } = {}) {
+export async function openEngine(browser, serverUrl, { scale = 1, transparent = false, onConsole } = {}) {
   const page = await browser.newPage({ viewport: { width: 800, height: 600 }, deviceScaleFactor: 1 });
   const errors = [];
   page.on('pageerror', (e) => errors.push(e));
   page.on('console', (m) => {
     if (onConsole) onConsole(m.type(), m.text());
   });
-  await page.goto(`${serverUrl}/frame.html?scale=${scale}`, { waitUntil: 'load' });
+  await page.goto(`${serverUrl}/frame.html?scale=${scale}${transparent ? '&transparent=1' : ''}`, { waitUntil: 'load' });
   const boot = await page.evaluate(async () => {
     try {
       await window.explainrooReady;

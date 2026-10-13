@@ -12,7 +12,9 @@ import { boot, renderAudio } from '/engine/runtime.js';
 import { upload } from '/engine/upload.js';
 
 const canvas = document.getElementById('c');
-const scale = Number(new URLSearchParams(location.search).get('scale') || 1);
+const params = new URLSearchParams(location.search);
+const scale = Number(params.get('scale') || 1);
+const transparent = params.get('transparent') === '1';
 
 function describe(e) {
   const where = e.scene ? ` (scene "${e.scene}" at ${Number(e.sceneTime).toFixed(2)}s)` : '';
@@ -20,7 +22,7 @@ function describe(e) {
 }
 
 window.explainrooReady = (async () => {
-  const { engine, audio, state } = await boot({ canvas, scale });
+  const { engine, audio, state } = await boot({ canvas, scale, transparent });
   const fps = state.config.fps;
   window.explainroo = {
     info() {
@@ -35,7 +37,7 @@ window.explainrooReady = (async () => {
         } catch (e) {
           throw new Error(describe(e));
         }
-        out.push(canvas.toDataURL('image/jpeg', quality).slice(23));
+        out.push(transparent ? canvas.toDataURL('image/png').slice(22) : canvas.toDataURL('image/jpeg', quality).slice(23));
       }
       return out;
     },

@@ -39,7 +39,7 @@ export function makeState(project, timeline) {
 }
 
 // Runs fn(page, ctx) with the engine loaded at `scale`, then cleans up.
-export async function withEngine(project, timeline, { scale = 1, pages = 1, log = () => {} } = {}, fn) {
+export async function withEngine(project, timeline, { scale = 1, pages = 1, transparent = false, log = () => {} } = {}, fn) {
   const state = makeState(project, timeline);
   const server = await startServer({ projectDir: project.dir, getState: () => state });
   let browser = null;
@@ -47,7 +47,7 @@ export async function withEngine(project, timeline, { scale = 1, pages = 1, log 
     browser = await launch();
     const list = [];
     for (let i = 0; i < pages; i++) {
-      list.push(await openEngine(browser, server.url, { scale, onConsole: (type, text) => { if (type === 'error') log(`page: ${text}`); } }));
+      list.push(await openEngine(browser, server.url, { scale, transparent, onConsole: (type, text) => { if (type === 'error') log(`page: ${text}`); } }));
     }
     return await fn(pages === 1 ? list[0] : list, { server, state });
   } finally {

@@ -36,13 +36,17 @@ export function ffmpeg(args, opts) {
   return run(ffmpegPath(), ['-hide_banner', '-y', ...args], opts);
 }
 
-// A long-running encoder fed with JPEG frames on stdin.
-export function frameEncoder({ fps, out, draft }) {
+// A long-running encoder fed with JPEG or PNG frames on stdin.
+export function frameEncoder({ fps, out, draft, format = 'mp4', transparent = false }) {
+  const codec = format === 'webm'
+    ? ['-c:v', 'libvpx-vp9', '-crf', draft ? '32' : '24', '-b:v', '0', '-deadline', 'good', '-cpu-used', draft ? '4' : '2', '-auto-alt-ref', '0', '-pix_fmt', transparent ? 'yuva420p' : 'yuv420p', '-r', String(fps), '-g', String(fps * 2)]
+    : format === 'mov'
+      ? ['-c:v', 'prores_ks', '-profile:v', '4', '-pix_fmt', transparent ? 'yuva444p10le' : 'yuv444p10le', '-r', String(fps)]
+      : ['-c:v', 'libx264', '-preset', draft ? 'veryfast' : 'medium', '-crf', draft ? '24' : '17', '-tune', 'animation', '-pix_fmt', 'yuv420p', '-r', String(fps), '-g', String(fps * 2)];
   const args = [
     '-hide_banner', '-y', '-loglevel', 'error',
-    '-f', 'image2pipe', '-framerate', String(fps), '-c:v', 'mjpeg', '-i', '-',
-    '-c:v', 'libx264', '-preset', draft ? 'veryfast' : 'medium', '-crf', draft ? '24' : '17',
-    '-tune', 'animation', '-pix_fmt', 'yuv420p', '-r', String(fps), '-g', String(fps * 2),
+    '-f', 'image2pipe', '-framerate', String(fps), '-c:v', transparent ? 'png' : 'mjpeg', '-i', '-',
+    ...codec,
     out,
   ];
   const p = spawn(ffmpegPath(), args, { stdio: ['pipe', 'ignore', 'pipe'] });

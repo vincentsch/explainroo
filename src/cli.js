@@ -26,12 +26,12 @@ Make a video
   init <dir>            create a project (--theme, --size, --pace, --voice, --title)
   voice [project]       make the narration (Kokoro, ElevenLabs or a recording) and word timings
   preview [project]     live preview in your browser, reloads on save (--port)
-  still [project] [t…]  PNG stills: "12.5", "scene", "scene@2.4" (default: end of every scene)
+  still [project] [t…]  PNG stills: "12.5", "scene", "scene@2.4" (--transparent, default: end of every scene)
   sheet [project]       contact sheet of the whole video (--scene id, --every s)
   check [project]       find layout, timing and pronunciation problems (--view-width pixels)
-  render [project]      write the MP4 with subtitles, chapters and a cover (--format gif,
-                        --draft, --from s, --to s, --workers n, --out file)
-  verify [project]      check an MP4: loudness, black frames, narration
+  render [project]      write the video with subtitles, chapters and a cover (--format mp4|gif|webm|mov,
+                        --transparent, --draft, --from s, --to s, --workers n, --out file)
+  verify [project]      check the video: loudness, black frames, narration (--file)
 
 Product demos
   capture [project] <url>  save screenshots, wording, colors, fonts and logo of a live site (--mobile)
@@ -67,7 +67,7 @@ function parseArgs(argv) {
   }
   return { pos, flags };
 }
-const BOOL = new Set(['json', 'draft', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'elevenlabs', 'mobile']);
+const BOOL = new Set(['json', 'draft', 'transparent', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'elevenlabs', 'mobile']);
 
 function num(v, name) {
   if (v === undefined) return undefined;
@@ -130,7 +130,7 @@ export async function main(argv) {
       case 'still': {
         const isProject = pos[0] && fs.existsSync(path.join(pos[0], 'video.json'));
         const project = loadProject(isProject ? pos.shift() : undefined);
-        const list = await stills(project, pos, { log, scale: num(flags.scale, 'scale') ?? 1 });
+        const list = await stills(project, pos, { log, scale: num(flags.scale, 'scale') ?? 1, transparent: !!flags.transparent });
         print(list.map((s) => `${s.label.padEnd(24)} ${s.file}`).join('\n'), { stills: list });
         return 0;
       }
@@ -152,7 +152,7 @@ export async function main(argv) {
       }
       case 'render': {
         const project = loadProject(pos[0]);
-        const r = await render(project, { log, draft: !!flags.draft, from: num(flags.from, 'from'), to: num(flags.to, 'to'), workers: num(flags.workers, 'workers'), scale: num(flags.scale, 'scale'), out: textFlag(flags, 'out'), format: textFlag(flags, 'format') });
+        const r = await render(project, { log, draft: !!flags.draft, transparent: !!flags.transparent, from: num(flags.from, 'from'), to: num(flags.to, 'to'), workers: num(flags.workers, 'workers'), scale: num(flags.scale, 'scale'), out: textFlag(flags, 'out'), format: textFlag(flags, 'format') });
         print([r.out, r.subtitles?.srt, r.subtitles?.vtt, r.chapters, r.cover].filter(Boolean).map((f) => path.relative(process.cwd(), f) || f).join('\n'), r);
         return 0;
       }

@@ -76,7 +76,11 @@ test('render rejects bad formats, mismatched extensions and missing text flags b
     fs.writeFileSync(path.join(dir, 'script.md'), '## intro\n');
     fs.writeFileSync(path.join(dir, 'scenes.js'), 'export default { intro(s) {} };');
     for (const [flags, message] of [
-      [['--format', 'webm'], /mp4 or gif/],
+      [['--format', 'avi'], /mp4, gif, webm or mov/],
+      [['--transparent'], /--format webm or --format mov/],
+      [['--transparent', '--format', 'gif'], /--format webm or --format mov/],
+      [['--format', 'webm', '--out', 'file.mp4'], /must end in .webm/],
+      [['--format', 'mov', '--out', 'file.webm'], /must end in .mov/],
       [['--out', 'file.gif'], /must end in .mp4/],
       [['--format', 'gif', '--out', 'file.mp4'], /must end in .gif/],
       [['--format'], /--format needs a value/],

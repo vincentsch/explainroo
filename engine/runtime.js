@@ -60,7 +60,7 @@ async function loadImages(assets) {
 }
 
 export class Engine {
-  constructor({ canvas, state, scenes, icons, images, clips = new Map(), scale = 1, sfxNames = [] }) {
+  constructor({ canvas, state, scenes, icons, images, clips = new Map(), scale = 1, transparent = false, sfxNames = [] }) {
     const { config, timeline } = state;
     this.state = state;
     this.config = config;
@@ -75,6 +75,7 @@ export class Engine {
     this.appArea = areas.app;
     this.fps = config.fps;
     this.scale = scale;
+    this.transparent = transparent;
     this.theme = getTheme(config.theme, config.look);
     this.pen = new Pen({ rough, theme: this.theme });
     this.icons = icons;
@@ -95,8 +96,8 @@ export class Engine {
     // H.264 needs even dimensions.
     canvas.width = 2 * Math.round((this.W * scale) / 2);
     canvas.height = 2 * Math.round((this.H * scale) / 2);
-    this.ctx = canvas.getContext('2d', { alpha: false });
-    this.background = makeBackground(this.theme, this.W, this.H, config.seed);
+    this.ctx = canvas.getContext('2d', { alpha: transparent });
+    this.background = transparent ? null : makeBackground(this.theme, this.W, this.H, config.seed);
     this.phrases = config.captions ? buildPhrases(timeline, this.H > this.W ? 28 : 46) : [];
     this.buffers = [0, 1].map(() => {
       const c = document.createElement('canvas');
@@ -212,15 +213,20 @@ export class Engine {
 
   transitionFor(sc) {
     const name = sc.transition === 'auto' ? this.theme.transition : sc.transition;
+    if (this.transparent && ['slide', 'wipe', 'brush'].includes(name)) return 'fade';
     return name || 'fade';
   }
 
   drawScene(ctx, index, t) {
     const sc = this.timeline.scenes[index];
+    if (this.transparent) {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    }
     ctx.setTransform(this.scale, 0, 0, this.scale, 0, 0);
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
-    ctx.drawImage(this.background, 0, 0, this.W, this.H);
+    if (this.background) ctx.drawImage(this.background, 0, 0, this.W, this.H);
     if (this.config.boil > 0) this.pen.seedOffset = Math.floor((sc.start + t) * this.config.boil) % 997;
     const saved = Math.random;
     Math.random = mulberry32(hashStr(`random:${sc.id}`));
@@ -249,9 +255,13 @@ export class Engine {
     if (i > 0 && sc.transition !== 'none' && trName !== 'cut' && t < trDur) {
       const prev = this.timeline.scenes[i - 1];
       const [a, b] = this.buffers;
-      this.drawScene(a.getContext('2d', { alpha: false }), i - 1, T - prev.start);
-      this.drawScene(b.getContext('2d', { alpha: false }), i, t);
-      drawTransition(trName, ctx, a, b, t / trDur, this.W, this.H, hashStr(sc.id));
+      if (this.transparent) {
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+      }
+      this.drawScene(a.getContext('2d', { alpha: this.transparent }), i - 1, T - prev.start);
+      this.drawScene(b.getContext('2d', { alpha: this.transparent }), i, t);
+      drawTransition(trName, ctx, a, b, t / trDur, this.W, this.H, hashStr(sc.id), this.transparent);
     } else {
       this.drawScene(ctx, i, t);
     }
@@ -512,7 +522,7 @@ export class Engine {
 }
 
 // Boots the engine for render, check or studio pages.
-export async function boot({ canvas, scale = 1, version = '' }) {
+export async function boot({ canvas, scale = 1, transparent = false, version = '' }) {
   const state = await fetchState();
   const theme = getTheme(state.config.theme, state.config.look);
   const [icons, images, scenesMod, audio, iconTags, clips] = await Promise.all([
@@ -530,7 +540,7 @@ export async function boot({ canvas, scale = 1, version = '' }) {
   ]);
   const scenes = scenesMod.default;
   if (!scenes || typeof scenes !== 'object') throw new Error('scenes.js must "export default { sceneId(s) { ... } }"');
-  const engine = new Engine({ canvas, state, scenes, icons, images, clips, scale, sfxNames: Object.keys(audio.SFX) });
+  const engine = new Engine({ canvas, state, scenes, icons, images, clips, scale, transparent, sfxNames: Object.keys(audio.SFX) });
   engine.iconTags = iconTags;
   await engine.loadMath();
   return { engine, audio, state };
