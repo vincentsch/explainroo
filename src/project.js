@@ -162,10 +162,31 @@ export function normalizeConfig(raw, dir = '.') {
   const unknown = Object.keys(raw).filter((k) => !(k in DEFAULTS) && !k.startsWith('_'));
   if (unknown.length) fail(`video.json has unknown setting(s): ${unknown.join(', ')}. Known: ${Object.keys(DEFAULTS).join(', ')}`);
   if (!THEMES.includes(cfg.theme) && !lookPath(cfg.theme)) fail(`theme must be one of ${THEMES.join(', ')} or a relative path to a .json look file, not "${cfg.theme}"`);
-  if (!VOICES[cfg.voice]) fail(`voice "${cfg.voice}" does not exist. Run "explainroo voices" for the list.`);
+  if (typeof cfg.voice === 'object') {
+    const v = cfg.voice;
+    if (!v || Array.isArray(v)) fail('voice must be a Kokoro id or an object with provider');
+    const keys = { kokoro: ['provider', 'id'], elevenlabs: ['provider', 'id', 'model'], recording: ['provider', 'src'] };
+    if (typeof v.provider !== 'string' || !Object.hasOwn(keys, v.provider)) fail('voice.provider must be kokoro, elevenlabs or recording');
+    const extra = Object.keys(v).filter((k) => !keys[v.provider].includes(k));
+    if (extra.length) fail(`voice has unknown setting(s): ${extra.join(', ')}. Known: ${keys[v.provider].join(', ')}`);
+    if (v.provider === 'recording') {
+      if (!(typeof v.src === 'string' && /^assets\/.+/.test(v.src) && !v.src.split('/').includes('..') && !v.src.includes('\\'))) {
+        fail('voice.src must be a file or folder inside assets/, with no ..');
+      }
+    } else if (!(typeof v.id === 'string' && v.id.trim())) fail('voice.id is required');
+    if (v.provider === 'kokoro') cfg.voice = v.id;
+    if (v.provider === 'elevenlabs') {
+      if (v.model !== undefined && !(typeof v.model === 'string' && v.model.trim())) fail('voice.model must be an ElevenLabs model id');
+      cfg.voice = { ...v, model: v.model ?? 'eleven_multilingual_v2' };
+    }
+  }
+  if (typeof cfg.voice === 'string') {
+    if (!Object.hasOwn(VOICES, cfg.voice)) fail(`voice "${cfg.voice}" does not exist. Run "explainroo voices" for the list.`);
+  } else if (!cfg.voice || typeof cfg.voice !== 'object') fail('voice must be a Kokoro id or an object with provider');
+  if (typeof cfg.voice !== 'string' && raw.speed === undefined) cfg.speed = 1;
   if (!(cfg.speed >= 0.6 && cfg.speed <= 1.6)) fail('speed must be between 0.6 and 1.6');
   if (!(cfg.pace >= 0.7 && cfg.pace <= 1.6)) fail('pace must be between 0.7 and 1.6 (1 is normal, 1.3 is 30% faster)');
-  if (cfg.speed * cfg.pace > 1.8) fail(`speed ${cfg.speed} times pace ${cfg.pace} makes the voice too fast; keep speed x pace at 1.8 or below`);
+  if (typeof cfg.voice === 'string' && cfg.speed * cfg.pace > 1.8) fail(`speed ${cfg.speed} times pace ${cfg.pace} makes the voice too fast; keep speed x pace at 1.8 or below`);
   if (![24, 25, 30, 50, 60].includes(cfg.fps)) fail('fps must be 24, 25, 30, 50 or 60');
   if (!TRANSITIONS.includes(cfg.transition)) fail(`transition must be one of ${TRANSITIONS.join(', ')}`);
   if (![true, false, 'minimal'].includes(cfg.sfx)) fail('sfx must be true, false or "minimal"');

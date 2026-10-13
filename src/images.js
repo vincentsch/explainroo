@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { ROOT } from './server.js';
+import { findEnv } from './env.js';
 import { ProjectError } from './project.js';
 
 export const IMAGE_MODELS = {
@@ -17,18 +17,8 @@ const ASPECTS = ['16:9', '9:16', '1:1', '4:3', '3:4', '3:2', '2:3'];
 export const DEFAULT_STYLE =
   'Flat illustration for a friendly how-to video, soft colors, simple shapes, clear subject in the middle, plain light background, no text, no letters, no numbers, no logos, no watermark.';
 
-function readEnvFile(file) {
-  if (!fs.existsSync(file)) return null;
-  for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
-    const m = /^\s*(?:export\s+)?OPENROUTER_API_KEY\s*=\s*(.*)\s*$/.exec(line);
-    if (m) return m[1].replace(/^["']|["']$/g, '').trim() || null;
-  }
-  return null;
-}
-
 export function findKey(projectDir) {
-  if (process.env.OPENROUTER_API_KEY) return process.env.OPENROUTER_API_KEY;
-  return readEnvFile(path.join(projectDir, '.env')) || readEnvFile(path.join(ROOT, '.env'));
+  return findEnv('OPENROUTER_API_KEY', projectDir);
 }
 
 export function resolveModel(name) {

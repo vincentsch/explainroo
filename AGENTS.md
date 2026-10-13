@@ -6,11 +6,13 @@ the words and the pictures. explainroo makes the video.
 
 explainroo turns two files into an MP4 video with narration. `script.md`
 holds what the voice says. `scenes.js` draws what the viewer sees. Every
-drawing can appear on a word the voice says. A voice model (Kokoro) reads the
-script on this computer. Whisper listens to the recording and writes down
-when each word is spoken. Chrome draws the frames in the background.
+drawing can appear on a word the voice says. A voice model (Kokoro) reads
+the script on this computer, or the narration comes from ElevenLabs or your
+own recording. Whisper listens to the narration and writes down when each
+word is spoken. Chrome draws the frames in the background.
 explainroo adds music and sound effects, and ffmpeg makes the MP4. You need
-no API key unless the user wants AI images.
+no API key for local voices or recordings. ElevenLabs and AI images need
+keys.
 
 The full documentation for people is at https://www.explainroo.com/docs/.
 
@@ -45,6 +47,7 @@ When you ask, put everything you need in one message. Typical reasons to ask:
 
 - The topic is unclear, or you need a fact you cannot check.
 - The user wants AI images and there is no OpenRouter key (see Images).
+- The user wants ElevenLabs and there is no ElevenLabs key (see Voices).
 - The user wants something explainroo cannot do, like video shot with a
   camera.
 
@@ -80,7 +83,8 @@ When you ask, put everything you need in one message. Typical reasons to ask:
    The command prints how long each scene is and how many words the speech
    check confirmed. If a word is not confirmed, the voice probably said it
    wrong. Fix it with `{shown|spoken}` in the script and run the command
-   again. Only the scenes you changed are made again.
+   again. For a recording, make script.md say what was actually said.
+   Only the scenes you changed are made again.
 
 5. **Plan the pictures.** For each scene, decide what is on screen when each
    marker or important word is spoken. Decide where each thing sits and what
@@ -223,6 +227,77 @@ Narration for this scene. [#marker] A marker names a moment you can animate on.
 - **Real examples.** A command you can run, a number with its source or a
   picture of the real screen is better than three boxes with general words.
 - **A clear last frame** that shows the main point.
+
+## Voices
+
+Kokoro runs on this computer and needs no key. Pick a voice with
+`explainroo voices`. A string in `video.json` keeps using Kokoro:
+
+```json
+"voice": "af_heart"
+```
+
+`{ "provider": "kokoro", "id": "af_heart" }` means the same thing.
+
+ElevenLabs offers premium and cloned voices. It costs money on the user's
+account and receives the script text. If the user wants it and there is no
+key, ask them for an API key from elevenlabs.io. Set `ELEVENLABS_API_KEY` in
+the environment, or save `ELEVENLABS_API_KEY=...` in a `.env` file in the
+project folder or the explainroo folder. The environment takes priority,
+then the project file. Never print the key, and never put it in a script,
+a commit or a log. Keep `.env` out of git.
+
+```bash
+node bin/explainroo.js voices videos/<name> --elevenlabs
+node bin/explainroo.js voices videos/<name> --elevenlabs --json
+```
+
+The list shows the names, ids and labels available to that key. Use an id
+in `video.json`:
+
+```json
+"voice": { "provider": "elevenlabs", "id": "JBFqnCBsd6RMkjVDRZzb", "model": "eleven_multilingual_v2" }
+```
+
+`model` is optional and defaults to `eleven_multilingual_v2`. The voice
+command reports the characters used. Each request is saved in
+`build/voice/elevenlabs-usage.jsonl`, without the key or script text.
+ElevenLabs uses `speed` times `pace`, limited to 0.7 through 1.2.
+The voice command tells you when it uses that limit.
+
+You can also record the narration yourself. Use a quiet room and read
+script.md as written. Put one take for the whole video in `assets/`:
+
+```json
+"voice": { "provider": "recording", "src": "assets/narration.m4a" }
+```
+
+Or put one file per scene in a folder:
+
+```json
+"voice": { "provider": "recording", "src": "assets/narration/" }
+```
+
+Each scene with narration needs `<scene-id>.<ext>`, for example `intro.wav`.
+Supported formats are wav, mp3, m4a, aac, flac, ogg and opus. Files must stay
+inside `assets/`, with no `..` in the path.
+
+One take is split into scenes using the words in script.md. Each cut keeps
+about 0.15 seconds around the speech. Pauses within a scene stay as recorded.
+The scene's `lead` and `hold` add the gaps between scenes. Recordings are
+made mono and their volume is brought close to Kokoro's. Their sample rate
+is kept up to 48 kHz. Changing `pace` or an explicit `speed` changes their
+tempo without changing pitch.
+
+`[pause]`, `sentenceGap` and `paragraphGap` do not add silence to recordings.
+Markers `[#name]`, captions, cues and `{shown|spoken}` still work. If the
+speech check reports a mismatch, make script.md say what was actually said.
+Replacing a scene recording makes that scene again. Replacing a whole take
+makes all its scenes again.
+
+ElevenLabs narration and recordings must be in English for now. The word
+timing model understands English only. Run `voice`, `check` and `render`
+as usual with any of the three sources.
 
 ## Images
 
@@ -457,7 +532,7 @@ seconds are real seconds of the scene, like `s.t` and `s.cue()`. So
 fixed time like `at: 4` does not move with the pace. That is one more reason
 to use cues. 1 is the normal pace. 1.15 to 1.3 suits social media and viewers
 who know the topic. Above 1.4 the video gets hard to follow. `speed` changes
-only the voice.
+only the voice. Its default is 0.9 for Kokoro and 1 for the other sources.
 
 ## The watermark
 
@@ -488,8 +563,8 @@ videos/<name>/
 | `theme` | `paper` | a built-in look, or a relative path to a `.json` look file (see Custom looks) |
 | `size` | `16:9` | a platform (`youtube`, `shorts`, `tiktok`, `reels`, `vertical`, `instagram`, `linkedin`, `square`), `16:9`, `9:16`, `1:1`, `4:5` or `WIDTHxHEIGHT` |
 | `fps` | 30 | 24, 25, 30, 50 or 60 |
-| `voice` | `af_heart` | see `explainroo voices` |
-| `speed` | 0.9 | voice speed only, 0.6 to 1.6 |
+| `voice` | `af_heart` | a Kokoro id or a provider object for Kokoro, ElevenLabs or a recording; see Voices |
+| `speed` | 0.9 for Kokoro, 1 otherwise | voice speed only, 0.6 to 1.6; ElevenLabs limits speed times pace to 0.7 through 1.2 |
 | `pace` | 1 | speed of the whole video (voice, pauses, animations), 0.7 to 1.6 |
 | `music` | `true` | `true` (the look's style), `warm`, `upbeat`, `calm`, `tech`, `playful`, `{ "style", "volume" }` or `false` |
 | `sfx` | `true` | sound effects: `true`, `"minimal"` or `false` |
@@ -497,7 +572,7 @@ videos/<name>/
 | `cover` | `"auto"` | full-size JPEG at the end of the first scene, or a still spec: `12.5`, `"intro"`, `"intro@2.4"`, `"intro@end"` |
 | `transition` | `"auto"` | the look's default, or `fade`, `slide`, `wipe`, `zoom`, `brush`, `cut` |
 | `lead`, `hold`, `end` | 0.35, 0.7, 1.4 | seconds before the voice, after it, and extra at the very end |
-| `sentenceGap`, `paragraphGap` | 0.3, 0.55 | pauses in the narration |
+| `sentenceGap`, `paragraphGap` | 0.3, 0.55 | pauses in generated narration; recordings keep their own pauses |
 | `loudness` | -14 | target loudness in LUFS |
 | `boil` | 0 | redraws per second of hand-drawn lines; 0 keeps them still |
 | `watermark` | `"explainroo.com"` | small text in a corner, or `false` |
@@ -574,7 +649,8 @@ when `ink` or `muted` has too little contrast against `bg`.
 | `verify [project]` | checks the finished file: loudness, black frames, silence, clear voice |
 | `image [project] <name> "<prompt>"` | makes an illustration with OpenRouter |
 | `images [project]` | lists the images and what they cost |
-| `voices`, `say "text"` | lists the 28 voices, or makes a sample |
+| `voices`, `say "text"` | lists the 28 Kokoro voices, or makes a sample |
+| `voices [project] --elevenlabs` | lists the names, ids and labels available to the key (`--json` also works) |
 | `themes`, `formats`, `icons <word>` | lists the looks and the sizes, searches the 1,854 icons |
 | `doctor` | checks the setup (`--fetch` downloads the speech models) |
 

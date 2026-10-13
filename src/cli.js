@@ -13,6 +13,7 @@ import { writeWav } from './wav.js';
 import { ffmpegVersion } from './ffmpeg.js';
 import { findChrome } from './browser.js';
 import { generateImage, imageLog, imageSpend, IMAGE_MODELS } from './images.js';
+import { elevenVoices, elevenUsage, elevenSpeed } from './elevenlabs.js';
 
 const VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
 
@@ -22,7 +23,7 @@ Usage: explainroo <command> [project] [options]
 
 Make a video
   init <dir>            create a project (--theme, --size, --pace, --voice, --title)
-  voice [project]       generate narration and word timings (cached)
+  voice [project]       make the narration (Kokoro, ElevenLabs or a recording) and word timings
   preview [project]     live preview in your browser, reloads on save (--port)
   still [project] [t…]  PNG stills: "12.5", "scene", "scene@2.4" (default: end of every scene)
   sheet [project]       contact sheet of the whole video (--scene id, --every s)
@@ -37,7 +38,8 @@ Images (optional, needs an OpenRouter API key)
   images [project]      list generated images and what they cost
 
 Reference
-  voices                list voices; "explainroo say 'text' --voice am_michael" to hear one
+  voices [project]      list Kokoro voices (--elevenlabs lists voices available to your key)
+  say "text"           hear a Kokoro sample (--voice am_michael, --speed 1, --out sample.wav)
   themes                list looks
   formats               list sizes for YouTube, Shorts, TikTok, Reels, Instagram, LinkedIn
   icons <word…>         search the 1,800+ built-in icons
@@ -61,7 +63,7 @@ function parseArgs(argv) {
   }
   return { pos, flags };
 }
-const BOOL = new Set(['json', 'draft', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style']);
+const BOOL = new Set(['json', 'draft', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'elevenlabs']);
 
 function num(v, name) {
   if (v === undefined) return undefined;
@@ -95,12 +97,22 @@ export async function main(argv) {
       case 'init': return init(pos[0], flags, print);
       case 'voice': {
         const project = loadProject(pos[0]);
+        const before = elevenUsage(project).length;
         const { voices, timeline } = await prepare(project, { log, force: !!flags.force });
+        const characters = elevenUsage(project).slice(before).reduce((n, e) => n + e.characters, 0);
         const rows = project.script.scenes.map((s) => {
           const v = voices[s.id];
-          return { scene: s.id, voice: v.duration, confirmed: v.matchRate, unconfirmed: v.unmatched, marks: v.marks };
+          return { scene: s.id, voice: v.duration, confirmed: v.matchRate, unconfirmed: v.unmatched, marks: v.marks,
+            ...(project.config.voice.provider === 'recording' && v.matchRate < 0.85 ? { message: 'The recording does not match script.md here. Make script.md say what was actually said.' } : {}) };
         });
-        print(rows.map((r) => `${r.scene.padEnd(18)} ${r.voice.toFixed(1).padStart(5)}s  ${Math.round(r.confirmed * 100)}% confirmed${r.unconfirmed.length ? '  unconfirmed: ' + r.unconfirmed.slice(0, 6).join(', ') : ''}`).join('\n') + `\ntotal ${timeline.duration.toFixed(1)}s`, { scenes: rows, duration: timeline.duration });
+        const mismatch = project.config.voice.provider === 'recording' && rows.some((r) => r.confirmed < 0.85)
+          ? '\nThe recording does not match script.md in those scenes. Make script.md say what was actually said.' : '';
+        const isEleven = project.config.voice.provider === 'elevenlabs';
+        const wanted = project.config.speed * project.config.pace;
+        const speed = elevenSpeed(wanted);
+        const speedNote = isEleven && speed !== wanted ? `\nElevenLabs speed ${wanted.toFixed(2)} is outside 0.7 to 1.2; using ${speed}.` : '';
+        const usage = isEleven ? `\nElevenLabs: ${characters} characters used` : '';
+        print(rows.map((r) => `${r.scene.padEnd(18)} ${r.voice.toFixed(1).padStart(5)}s  ${Math.round(r.confirmed * 100)}% confirmed${r.unconfirmed.length ? '  unconfirmed: ' + r.unconfirmed.slice(0, 6).join(', ') : ''}`).join('\n') + `\ntotal ${timeline.duration.toFixed(1)}s` + mismatch + usage + speedNote, { scenes: rows, duration: timeline.duration, ...(isEleven ? { characters, speed, ...(speed !== wanted ? { requested_speed: wanted } : {}) } : {}) });
         return 0;
       }
       case 'preview': return await preview(pos[0], flags, log);
@@ -168,7 +180,12 @@ export async function main(argv) {
         return 0;
       }
       case 'voices': {
-        print(Object.entries(VOICES).map(([k, v]) => `${k.padEnd(12)} ${v}`).join('\n'), { voices: VOICES });
+        if (flags.elevenlabs) {
+          const voices = await elevenVoices(path.resolve(pos[0] || '.'));
+          print(voices.map((v) => `${v.name}  ${v.id}  ${Object.entries(v.labels).map(([k, x]) => `${k}: ${x}`).join(', ')}`).join('\n'), { voices });
+        } else {
+          print(Object.entries(VOICES).map(([k, v]) => `${k.padEnd(12)} ${v}`).join('\n') + '\nUse voices --elevenlabs for ElevenLabs, or set voice to { "provider": "recording", "src": "assets/narration.wav" } in video.json.', { voices: VOICES });
+        }
         return 0;
       }
       case 'say': return await say(pos.join(' '), flags, log, print);

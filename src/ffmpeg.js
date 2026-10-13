@@ -69,13 +69,18 @@ export function frameEncoder({ fps, out, draft }) {
 }
 
 // Two-pass loudness normalization to `target` LUFS, peak-limited.
-export async function normalizeLoudness(input, output, target = -14) {
+export async function normalizeLoudness(input, output, target = -14, sampleRate = 48000) {
   const base = `I=${target}:TP=-1.5:LRA=11`;
   const pass1 = await ffmpeg(['-i', input, '-af', `loudnorm=${base}:print_format=json`, '-f', 'null', '-']);
   const json = pass1.stderr.slice(pass1.stderr.lastIndexOf('{'), pass1.stderr.lastIndexOf('}') + 1);
   const m = JSON.parse(json);
+  // Silence and very short clips have no measurable integrated loudness.
+  if (!Number.isFinite(Number(m.input_i))) {
+    await ffmpeg(['-i', input, '-ar', String(sampleRate), '-c:a', 'pcm_s16le', output]);
+    return { inputI: Number(m.input_i), inputTP: Number(m.input_tp) };
+  }
   const measured = `measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}:offset=${m.target_offset}`;
-  await ffmpeg(['-i', input, '-af', `loudnorm=${base}:${measured}:linear=true:print_format=summary`, '-ar', '48000', '-c:a', 'pcm_s16le', output]);
+  await ffmpeg(['-i', input, '-af', `loudnorm=${base}:${measured}:linear=true:print_format=summary`, '-ar', String(sampleRate), '-c:a', 'pcm_s16le', output]);
   return { inputI: Number(m.input_i), inputTP: Number(m.input_tp) };
 }
 
