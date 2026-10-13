@@ -6,30 +6,50 @@ import { clamp, ease } from './util.js';
 export function buildPhrases(timeline, maxChars) {
   const phrases = [];
   for (const sc of timeline.scenes) {
-    let cur = null;
+    // A sentence (or a run of words between long pauses) is split into as few
+    // phrases as fit, balanced in length, so no phrase is one lonely word.
+    let run = [];
     const flush = () => {
-      if (cur && cur.words.length) phrases.push(cur);
-      cur = null;
+      for (const words of balancePhrases(run, maxChars)) phrases.push({ words, start: words[0].start, end: words[words.length - 1].end });
+      run = [];
     };
-    sc.words.forEach((w, i) => {
+    for (const w of sc.words) {
       const g = { text: w.text, start: sc.start + w.start, end: sc.start + w.end };
-      if (cur) {
-        const len = cur.words.reduce((n, x) => n + x.text.length + 1, 0) + g.text.length;
-        const gapBefore = g.start - cur.words[cur.words.length - 1].end;
-        if (len > maxChars || gapBefore > 0.55) flush();
-      }
-      if (!cur) cur = { words: [], start: g.start };
-      cur.words.push(g);
-      cur.end = g.end;
-      if (/[.!?;:।]["'’)]*$/.test(g.text) || (/,$/.test(g.text) && cur.words.length >= 4)) flush();
-    });
-    flush();
+      if (run.length && g.start - run[run.length - 1].end > 0.55) flush();
+      run.push(g);
+      if (/[.!?;:।]["'’)]*$/.test(g.text)) flush();
+    }
+    if (run.length) flush();
   }
   phrases.forEach((p, i) => {
     const next = phrases[i + 1];
     p.until = next ? Math.min(next.start, p.end + 0.9) : p.end + 0.9;
   });
   return phrases;
+}
+
+// Splits words into the fewest phrases of at most maxChars characters, with
+// lengths as even as possible and breaks after commas where they fit.
+export function balancePhrases(words, maxChars) {
+  if (!words.length) return [];
+  const len = (a, b) => words.slice(a, b).reduce((n, w) => n + w.text.length + 1, -1);
+  if (len(0, words.length) <= maxChars) return [words];
+  const n = words.length;
+  const best = [{ parts: 0, cost: 0, from: -1 }];
+  for (let b = 1; b <= n; b++) {
+    best[b] = null;
+    for (let a = b - 1; a >= 0; a--) {
+      const l = len(a, b);
+      if (l > maxChars && b - a > 1) break;
+      if (!best[a]) continue;
+      const comma = b < n && /[,;:–—]["'’)]*$/.test(words[b - 1].text) ? 150 : 0;
+      const c = { parts: best[a].parts + 1, cost: best[a].cost + (maxChars - l) ** 2 - comma, from: a };
+      if (!best[b] || c.parts < best[b].parts || (c.parts === best[b].parts && c.cost < best[b].cost)) best[b] = c;
+    }
+  }
+  const out = [];
+  for (let b = n; b > 0; b = best[b].from) out.unshift(words.slice(best[b].from, b));
+  return out;
 }
 
 // `area` ({ cx, bottom, maxWidth }) places the captions inside a platform's
