@@ -6,6 +6,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { extractClip, VIDEO_FILE } from './clips.js';
+import { typesetMath, mathHash, MAX_TEX_LENGTH } from './math.js';
 
 export const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
@@ -163,6 +164,22 @@ export function startServer({ projectDir, getState, port = 0 }) {
       if (origin && !hosts.some((h) => origin === `http://${h}`)) return send(res, 403, 'forbidden origin');
       const url = new URL(req.url, 'http://x');
       const p = decodeURIComponent(url.pathname);
+      if (p === '/__math') {
+        if (req.method !== 'GET') return send(res, 405, 'math only accepts GET');
+        const tex = url.searchParams.get('tex');
+        const style = url.searchParams.get('display') ?? '1';
+        if (tex === null || tex.length > MAX_TEX_LENGTH) return send(res, 400, `use a TeX string of at most ${MAX_TEX_LENGTH} characters`);
+        if (!['0', '1'].includes(style)) return send(res, 400, 'display must be 0 or 1');
+        const display = style === '1';
+        const file = uploadFile(projectDir, `build/math/${mathHash(tex, display)}.json`);
+        if (!file) return send(res, 400, 'math cache must stay in build/math/');
+        try {
+          const result = await typesetMath(tex, display, file);
+          return send(res, 200, JSON.stringify(result), TYPES['.json']);
+        } catch (e) {
+          return send(res, 400, JSON.stringify({ error: e.message }), TYPES['.json']);
+        }
+      }
       if (req.method === 'PUT' && p === '/__upload') {
         const rel = url.searchParams.get('path') || '';
         const dest = uploadFile(projectDir, rel);

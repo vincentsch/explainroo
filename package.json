@@ -50,6 +50,7 @@
   "dependencies": {
     "@huggingface/transformers": "3.8.1",
     "kokoro-js": "1.2.1",
+    "mathjax": "4.1.3",
     "playwright-core": "1.63.0",
     "roughjs": "4.6.6"
   },

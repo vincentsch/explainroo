@@ -79,6 +79,9 @@ export class Engine {
     this.pen = new Pen({ rough, theme: this.theme });
     this.icons = icons;
     this.iconCache = new Map();
+    this.mathCache = new Map();
+    this.lateMath = new Map();
+    this.collectingMath = false;
     this.images = images;
     this.clips = clips;
     this.clipFrames = new ClipFrames();
@@ -153,6 +156,51 @@ export class Engine {
     finally { this.clipProbe = null; }
     await Promise.all([...needed.values()].map(({ clip, frame }) => this.clipFrames.load(clip, frame)));
     this.clipFrames.trim(new Set(needed.keys()));
+  }
+
+  mathData(tex, display, scene, t) {
+    const key = JSON.stringify([tex, display]);
+    if (this.collectingMath) {
+      if (!this.mathCache.has(key)) this.mathCache.set(key, null);
+      return null;
+    }
+    if (!this.mathCache.has(key)) {
+      this.lateMath.set(key, { scene, t, tex });
+      // Late formulas still draw synchronously, including the frame that finds them.
+      const req = new XMLHttpRequest();
+      req.open('GET', this.mathURL(tex, display), false);
+      req.send();
+      this.mathCache.set(key, this.mathResponse(req.status, req.responseText));
+    }
+    return this.mathCache.get(key);
+  }
+
+  mathURL(tex, display) {
+    return `/__math?tex=${encodeURIComponent(tex)}&display=${display ? '1' : '0'}`;
+  }
+
+  mathResponse(status, body) {
+    if (status !== 200) {
+      try { return { error: JSON.parse(body).error || body }; } catch { return { error: body }; }
+    }
+    return JSON.parse(body);
+  }
+
+  async loadMath() {
+    this.collectingMath = true;
+    try {
+      for (const sc of this.timeline.scenes) {
+        // Scene errors belong to check or render, as they do without formulas.
+        try { this.drawScene(this.ctx, sc.index, 0); } catch {}
+      }
+    } finally {
+      this.collectingMath = false;
+    }
+    await Promise.all([...this.mathCache.keys()].map(async key => {
+      const [tex, display] = JSON.parse(key);
+      const res = await fetch(this.mathURL(tex, display));
+      this.mathCache.set(key, this.mathResponse(res.status, await res.text()));
+    }));
   }
 
   sceneAt(T) {
@@ -439,6 +487,7 @@ export class Engine {
       add('hint', c.scene, null, `cue "${c.word}" means the first of the ${c.count} times it is spoken in this scene; if you meant a later one, use s.cue("${c.word}", 2) or a [#marker]`);
     }
     this.cueNotes = null;
+    for (const { scene, t, tex } of this.lateMath.values()) add('error', scene, t, `math "${tex}" was not collected at the start; keep TeX strings fixed and always call s.math with at and out for timing`);
     return issues;
   }
 }
@@ -464,6 +513,7 @@ export async function boot({ canvas, scale = 1, version = '' }) {
   if (!scenes || typeof scenes !== 'object') throw new Error('scenes.js must "export default { sceneId(s) { ... } }"');
   const engine = new Engine({ canvas, state, scenes, icons, images, clips, scale, sfxNames: Object.keys(audio.SFX) });
   engine.iconTags = iconTags;
+  await engine.loadMath();
   return { engine, audio, state };
 }
 

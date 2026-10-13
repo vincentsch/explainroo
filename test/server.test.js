@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import { startServer } from '../src/server.js';
+import { mathHash, MAX_TEX_LENGTH } from '../src/math.js';
 
 function request(port, { method = 'GET', path: p, host = `127.0.0.1:${port}`, origin, body }) {
   return new Promise((resolve, reject) => {
@@ -19,6 +20,38 @@ function request(port, { method = 'GET', path: p, host = `127.0.0.1:${port}`, or
     req.end(body);
   });
 }
+
+test('math only accepts bounded GET input and keeps the cache inside build/math', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-math-server-'));
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-math-outside-'));
+  t.after(() => { fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(outside, { recursive: true, force: true }); });
+  const server = await startServer({ projectDir: dir, getState: () => ({}) });
+  t.after(() => server.close());
+  const get = (tex, extra = {}) => request(server.port, { path: `/__math?tex=${encodeURIComponent(tex)}`, ...extra });
+  const result = await get(String.raw`\frac{1}{2}`);
+  assert.equal(result.status, 200);
+  assert.equal(JSON.parse(result.body).paths.length, 3);
+  const file = path.join(dir, 'build/math', `${mathHash(String.raw`\frac{1}{2}`)}.json`);
+  assert.equal(fs.readFileSync(file, 'utf8'), result.body);
+  assert.equal((await get('x'.repeat(MAX_TEX_LENGTH))).status, 200);
+  assert.equal((await get('x'.repeat(MAX_TEX_LENGTH + 1))).status, 400);
+  assert.equal((await request(server.port, { path: '/__math' })).status, 400);
+  assert.equal((await request(server.port, { path: '/__math?tex=x&display=false' })).status, 400);
+  for (const method of ['POST', 'PUT', 'DELETE', 'HEAD', 'OPTIONS']) assert.equal((await get('x', { method })).status, 405);
+  assert.equal((await get('x', { host: 'evil.example:80' })).status, 403);
+  assert.equal((await get('x', { origin: 'https://evil.example' })).status, 403);
+  const bad = await get(String.raw`\unknown`);
+  assert.equal(bad.status, 400);
+  assert.match(JSON.parse(bad.body).error, /Undefined control sequence/);
+  assert.equal((await request(server.port, { path: '/project/build/math/' + path.basename(file) })).status, 404);
+  fs.symlinkSync(path.join(outside, 'cache.json'), path.join(dir, 'build/math', `${mathHash('x')}.json`));
+  assert.equal((await get('x')).status, 400);
+  assert.deepEqual(fs.readdirSync(outside), []);
+  fs.rmSync(path.join(dir, 'build/math'), { recursive: true });
+  fs.symlinkSync(outside, path.join(dir, 'build/math'));
+  assert.equal((await get('x')).status, 400);
+  assert.deepEqual(fs.readdirSync(outside), []);
+});
 
 test('chunked uploads are assembled in order and appear only when complete', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-chunks-'));

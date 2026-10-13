@@ -791,6 +791,26 @@ with `write`, `type` (with `cps`), `words` and `sync`. `sync` shows each word
 as the voice says it. Words in `*stars*` get the accent color. `\n` starts a
 new line.
 
+### Math
+
+```js
+s.math('E = mc^2', { y: 420, size: 96, at: 'energy' });
+s.math(String.raw`\int_0^1 x^2\,dx = \tfrac{1}{3}`, { x: 960, y: 700, size: 72, color: 'accent', at: '#integral', id: 'area' });
+```
+
+`s.math(tex, options)` draws a TeX formula. Options: `x`, `y` (the center),
+`size` (72), `color` (ink), `align` (`center` or `left`, where x is the left
+edge), `display` (true for display style), and the common element options.
+It returns a box like text. Its `id` works with arrows and `s.annotate`.
+In `paper`, `chalk` and `blueprint`, the outlines draw first, then fill in.
+Other looks use their text entrance. You can also use `fade`, `pop` or `rise`.
+
+Double each backslash in a regular JS string, for example `'\\frac{1}{2}'`.
+`String.raw` keeps backslashes as written, as in the second example above.
+Only fixed TeX strings work. Always call `s.math`, and use `at` and `out` for
+timing. `check` reports formulas that change with `s.t` or appear only later.
+Formulas are typeset on this computer and cached in `build/math/`.
+
 ### Shapes and arrows
 
 ```js
@@ -977,6 +997,8 @@ font roles are `display`, `body`, `hand` and `mono`.
 - Calling an element only sometimes, like `if (s.t > 3) s.box(...)`. Always
   call it, and use `at` and `out` for the timing. The sound effects and the
   checks depend on this.
+- Changing the TeX in `s.math` over time. Use fixed strings for each formula,
+  and give each one its own `at` and `out`.
 - An arrow or annotation that points to an `id` drawn later in the function.
 - `s.camera()` after other elements. It has to come first.
 - An `at` later than the end of the scene. Make the scene longer with
@@ -1016,11 +1038,11 @@ font roles are `display`, `body`, `hand` and `mono`.
   them to the project's fps, so a frame can repeat or drop. Record at a fixed
   frame rate when the motion matters.
 
-`check` looks at text only. It finds text off the frame, too close to the
-edge (3.5%), too small, with low contrast (against the page, or against the
-text's own `bg`), on top of other text, or under the captions. It does not
-see shapes, arrows and icons, or drawings made with `s.draw`. Look at the
-stills for those.
+`check` looks at text and math formulas. It finds text off the frame, too
+close to the edge (3.5%), too small, with low contrast (against the page, or
+against the text's own `bg`), on top of other text, or under the captions.
+It does not see shapes, arrows and icons, or drawings made with `s.draw`.
+Look at the stills for those.
 
 ## Working on explainroo itself
 

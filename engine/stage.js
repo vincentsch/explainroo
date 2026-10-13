@@ -608,6 +608,39 @@ export class Stage {
     });
   }
 
+  math(tex, o = {}) {
+    if (typeof tex !== 'string') throw new SceneError('math: use a fixed TeX string');
+    if (o.display !== undefined && typeof o.display !== 'boolean') throw new SceneError('math: display must be true or false');
+    if (o.align !== undefined && !['center', 'left'].includes(o.align)) throw new SceneError('math: align must be center or left');
+    const data = this.engine.mathData(tex, o.display ?? true, this.id, this.t);
+    if (data?.error) throw new SceneError(`math "${tex}": ${data.error}`);
+    const size = o.size ?? 72;
+    const unit = size / (data?.unitsPerEm ?? 1000);
+    const [vx, vy, vw, vh] = data?.viewBox ?? [0, -1000, 0, 1000];
+    const w = vw * unit;
+    const h = vh * unit;
+    const x = (o.x ?? this.cx) + (o.align === 'left' ? w / 2 : 0);
+    const y = o.y ?? this.cy;
+    this._register(o.id, x, y, w, h);
+    const g = geom(x, y, w, h);
+    const th = this.theme;
+    const life = this._life(o, 'text', { enter: th.enter.shape === 'draw' ? 'draw' : th.enter.text, label: tex });
+    if (!life || !data) return g;
+    const ctx = this.ctx;
+    const color = colorOf(th, o.color, 'ink');
+    this._push(x, y, life, o);
+    const draw = life.enter === 'draw' || life.enter === 'write';
+    const stroke = draw ? ease.inOut(clamp(life.p / 0.78)) : 1;
+    const fill = draw ? clamp((life.p - 0.78) / 0.22) : 1;
+    for (const d of data.paths) {
+      const path = scalePath(d, unit, -w / 2 - vx * unit, -h / 2 - vy * unit);
+      this.pen.draw(ctx, { kind: 'path', d: path }, { stroke: draw && life.p < 1 ? color : 'none', width: Math.max(0.7, size / 72), fill: color, rough: false }, { stroke, fill });
+    }
+    this._logText({ text: tex, x0: -w / 2, y0: -h / 2, x1: w / 2, y1: h / 2, size, fg: color, bg: null });
+    ctx.restore();
+    return g;
+  }
+
   // ---------- shapes ----------
 
   box(label, o = {}) {
