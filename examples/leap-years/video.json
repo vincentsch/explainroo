@@ -1,0 +1,16 @@
+{
+  "title": "Why we have leap years",
+  "theme": "editorial",
+  "size": "youtube",
+  "voice": "af_heart",
+  "music": {
+    "style": "calm",
+    "volume": 0.1
+  },
+  "captions": false,
+  "speed": 1.0,
+  "sfx": "minimal",
+  "cover": "hook@end",
+  "transition": "fade",
+  "end": 1.0
+}

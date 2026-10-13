@@ -126,5 +126,5 @@ test('editing a look changes the state version and reloads its values', t => {
   const next = makeState(loadProject(dir), {});
   assert.notEqual(first.version, next.version);
   assert.equal(next.config.look.bg, '#eeeeee');
-  assert.deepEqual(THEMES, ['paper', 'clean', 'chalk', 'blueprint', 'midnight']);
+  assert.deepEqual(THEMES, ['paper', 'clean', 'chalk', 'blueprint', 'midnight', 'editorial']);
 });

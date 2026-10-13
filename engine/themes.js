@@ -1,4 +1,4 @@
-// The five looks. A theme decides colors, fonts, how strokes are drawn, how
+// The six looks. A theme decides colors, fonts, how strokes are drawn, how
 // elements enter, the default transition, the sound palette and the music.
 import { mulberry32, mixColor, withAlpha, parseColor, rgba, clamp } from './util.js';
 
@@ -162,7 +162,39 @@ const MIDNIGHT = {
   caption: { bg: 'rgba(7,11,22,0.82)', fg: '#e8eef8', active: '#22d3ee' },
 };
 
-export const THEMES = { paper: PAPER, clean: CLEAN, chalk: CHALK, blueprint: BLUEPRINT, midnight: MIDNIGHT };
+const EDITORIAL = {
+  name: 'editorial',
+  background: 'paper',
+  music: 'calm',
+  dark: false,
+  bg: '#f5f1ea',
+  ink: '#1c1a17',
+  muted: '#76706a',
+  surface: '#fffdf9',
+  accent: 'red',
+  colors: {
+    red: '#c2462b', orange: '#c7782a', yellow: '#b8932a', green: '#3d7a57', teal: '#2c7a74',
+    blue: '#2f5b88', purple: '#6a4e8c', pink: '#b04870', gray: '#8a847b', ink: '#1c1a17',
+  },
+  fonts: {
+    display: { family: 'Instrument Serif', weight: 400 },
+    body: { family: 'Inter', weight: 400 },
+    hand: { family: 'Instrument Serif', weight: 400 },
+    mono: { family: 'JetBrains Mono', weight: 400 },
+  },
+  stroke: { rough: false, width: 2.5 },
+  radius: 8,
+  tintStrength: 0.1,
+  shadow: { color: 'rgba(40,32,20,0.10)', blur: 24, y: 8 },
+  enter: { shape: 'fade', text: 'rise', title: 'rise', icon: 'fade', image: 'fade', list: 'rise', code: 'fade', chart: 'grow', number: 'rise', arrow: 'draw', line: 'draw' },
+  transition: 'fade',
+  sfx: { shape: 'pop', arrow: 'whoosh', line: 'whoosh', icon: 'pop', image: 'pop', text: null, title: null, list: 'blip', number: 'tick', annotate: 'whoosh', chart: 'whoosh', code: 'type', terminal: 'type', burst: 'sparkle', transition: 'swipe' },
+  code: { bg: '#1c1a17', fg: '#f3eee6', comment: '#8a847b', keyword: '#e0896f', string: '#a9c49a', number: '#e3b866', fn: '#9cc3dd', punct: '#bdb6aa', lineNo: '#6b655d', highlight: 'rgba(227,184,102,0.16)', border: '#1c1a17' },
+  terminal: { bg: '#1c1a17', fg: '#f3eee6', prompt: '#e3b866', muted: '#a49d92', bar: '#2c2925' },
+  caption: { bg: 'rgba(28,26,23,0.86)', fg: '#fffdf9', active: '#e3b866' },
+};
+
+export const THEMES = { paper: PAPER, clean: CLEAN, chalk: CHALK, blueprint: BLUEPRINT, midnight: MIDNIGHT, editorial: EDITORIAL };
 
 export function getTheme(name, look = null) {
   const t = THEMES[look ? look.extends : name];

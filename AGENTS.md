@@ -67,8 +67,9 @@ When you ask, put everything you need in one message. Typical reasons to ask:
 
    Projects go in `videos/`. Git ignores that folder. Pick the look that fits
    the audience: `paper` (friendly, hand drawn, the default), `clean`
-   (products and business), `chalk` (teaching), `blueprint` (engineering) or
-   `midnight` (developer tools). Pick the size for the place the video goes,
+   (products and business), `chalk` (teaching), `blueprint` (engineering),
+   `midnight` (developer tools) or `editorial` (essays, history, money and
+   other thoughtful topics). Pick the size for the place the video goes,
    for example `--size tiktok` or `--size linkedin`. The sizes are listed in
    "Sizes for each platform" below. Add `--pace 1.2` when the user wants a
    quicker video.
@@ -704,6 +705,7 @@ The looks:
 | `chalk` | chalk on a green board | brush | calm |
 | `blueprint` | white drawings on blueprint blue | wipe | tech |
 | `midnight` | dark background with glowing colors | zoom | tech |
+| `editorial` | serif headlines and fine lines on warm paper, like a magazine | fade | calm |
 
 ### Custom looks
 
@@ -920,7 +922,8 @@ one `exit: 'none'` and the new one the same time as its `at`.
 | `sfx` | the sound on entrance, or `false` |
 
 In `paper`, `chalk` and `blueprint`, shapes are drawn line by line and text
-is written out. In `clean` and `midnight`, shapes pop and text rises. Use
+is written out. In `clean` and `midnight`, shapes pop and text rises. In
+`editorial`, shapes fade in and text rises. Use
 `at: -1` for things that were already on screen in the previous scene. They
 are there from the start and make no sound.
 

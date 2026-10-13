@@ -81,15 +81,15 @@ for each image.
 
 ## Looks
 
-There are five looks: paper, clean, chalk, blueprint and midnight. You change
-a video's look with one setting in `video.json`. A project can also bring its
-own look, a small JSON file with its colors, fonts and background. Here is one
-frame in each built-in look, from the example videos.
+There are six looks: paper, clean, chalk, blueprint, midnight and editorial.
+You change a video's look with one setting in `video.json`. A project can also
+bring its own look, a small JSON file with its colors, fonts and background.
+Here is one frame in each built-in look, from the example videos.
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/media/looks-dark.webp">
-    <img src="docs/media/looks-light.webp" alt="Frames from five example videos, one in each look: paper, clean, chalk, blueprint and midnight" width="820">
+    <img src="docs/media/looks-light.webp" alt="Frames from six example videos, one in each look: paper, clean, chalk, blueprint, midnight and editorial" width="820">
   </picture>
 </p>
 
