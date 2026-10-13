@@ -14,6 +14,7 @@ import { ffmpegVersion } from './ffmpeg.js';
 import { findChrome } from './browser.js';
 import { generateImage, imageLog, imageSpend, IMAGE_MODELS } from './images.js';
 import { elevenVoices, elevenUsage, elevenSpeed } from './elevenlabs.js';
+import { capture } from './capture.js';
 
 const VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
 
@@ -28,9 +29,12 @@ Make a video
   still [project] [t…]  PNG stills: "12.5", "scene", "scene@2.4" (default: end of every scene)
   sheet [project]       contact sheet of the whole video (--scene id, --every s)
   check [project]       find layout, timing and pronunciation problems (--view-width pixels)
-  render [project]      write MP4, subtitles, chapters and a cover (--format gif for GIF)
-                       (--draft, --from s, --to s, --workers n, --out file)
+  render [project]      write the MP4 with subtitles, chapters and a cover (--format gif,
+                        --draft, --from s, --to s, --workers n, --out file)
   verify [project]      check an MP4: loudness, black frames, narration
+
+Product demos
+  capture [project] <url>  save screenshots, wording, colors, fonts and logo of a live site (--mobile)
 
 Images (optional, needs an OpenRouter API key)
   image [project] <name> "<what to draw>"   save an illustration as assets/<name>.png
@@ -38,8 +42,8 @@ Images (optional, needs an OpenRouter API key)
   images [project]      list generated images and what they cost
 
 Reference
-  voices [project]      list Kokoro voices (--elevenlabs lists voices available to your key)
-  say "text"           hear a Kokoro sample (--voice am_michael, --speed 1, --out sample.wav)
+  voices [project]      list Kokoro voices (--elevenlabs lists the voices of your ElevenLabs key)
+  say "text"            hear a Kokoro voice (--voice am_michael, --speed 1, --out sample.wav)
   themes                list looks
   formats               list sizes for YouTube, Shorts, TikTok, Reels, Instagram, LinkedIn
   icons <word…>         search the 1,800+ built-in icons
@@ -63,7 +67,7 @@ function parseArgs(argv) {
   }
   return { pos, flags };
 }
-const BOOL = new Set(['json', 'draft', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'elevenlabs']);
+const BOOL = new Set(['json', 'draft', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'elevenlabs', 'mobile']);
 
 function num(v, name) {
   if (v === undefined) return undefined;
@@ -95,6 +99,13 @@ export async function main(argv) {
   try {
     switch (cmd) {
       case 'init': return init(pos[0], flags, print);
+      case 'capture': {
+        if (pos.length < 1 || pos.length > 2) throw new ProjectError('usage: explainroo capture [project] <url> [--mobile] [--json]');
+        const r = await capture(pos.length === 2 ? pos[0] : undefined, pos.at(-1), { mobile: !!flags.mobile });
+        const families = r.fonts.families.map((f) => f.family).join(', ') || 'none found';
+        print(`saved:\n${r.files.map((f) => '  ' + f).join('\n')}\naccent: ${r.colors.accent || 'none found'}\nfonts: ${families}\nlogo: ${r.logo.picked || 'none found'}\n${r.notes.join('\n')}\nPaste into video.json:\n${JSON.stringify(r.suggestion, null, 2)}\nOpen the screenshots and check them before you use them.`, r);
+        return 0;
+      }
       case 'voice': {
         const project = loadProject(pos[0]);
         const before = elevenUsage(project).length;

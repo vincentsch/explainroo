@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fixture Studio</title>
+  <meta name="description" content="A local page for capture tests.">
+  <meta name="theme-color" content="#245cff">
+  <meta property="og:site_name" content="Fixture">
+  <meta property="og:image" content="/social.png">
+  <link rel="icon" type="image/svg+xml" href="/icon.svg">
+  <link rel="apple-touch-icon" href="/touch.png">
+  <link rel="stylesheet" href="__FONT_CSS__">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f8f6f1; color: #202020; font-family: 'Fixture Sans', sans-serif; font-weight: 400; }
+    header { display: flex; align-items: center; justify-content: space-between; padding: 28px 6%; border-bottom: 1px solid #dedcd6; }
+    .logo { display: flex; align-items: center; gap: 12px; color: #245cff; text-decoration: none; font-size: 24px; }
+    nav { display: flex; gap: 24px; }
+    a { color: #245cff; }
+    main { padding: 55px 8%; }
+    h1, h2 { color: #163469; font-weight: 400; }
+    h1 { font-size: 54px; max-width: 680px; margin: 12px 0; }
+    h2 { font-size: 32px; }
+    p { font-size: 22px; line-height: 1.5; }
+    button, .button { font: 400 18px 'Fixture Sans', sans-serif; color: white; background: #245cff; border: none; border-radius: 8px; padding: 16px 24px; display: inline-block; text-decoration: none; }
+    form { display: grid; max-width: 460px; gap: 14px; margin: 34px 0; }
+    label { font-size: 18px; }
+    input { font: inherit; font-size: 18px; padding: 16px; background: white; border: 1px solid #ccc; border-radius: 8px; }
+    .hidden { display: none; }
+    .footer { margin-top: 40px; height: 8100px; background: #e9eef8; padding: 24px; }
+    @media (max-width: 600px) { header { align-items: flex-start; flex-direction: column; gap: 20px; } h1 { font-size: 36px; } main { padding: 32px 6%; } }
+  </style>
+</head>
+<body>
+  <header>
+    <a class="logo" href="/" aria-label="Fixture home">
+      <svg class="logo" aria-label="Fixture logo" width="42" height="42" viewBox="0 0 42 42"><rect x="2" y="2" width="38" height="38" rx="10" fill="currentColor"/><path d="M12 14h19M12 21h15M12 28h10" stroke="white" stroke-width="3"/></svg>
+      Fixture Studio
+    </a>
+    <nav aria-label="Main navigation"><a href="#features">Features</a><a href="#plans">Plans</a><a href="#features">Features</a></nav>
+  </header>
+  <main>
+    <h1>Build a clear product demo</h1>
+    <p>Keep your colors, fonts and wording together.</p>
+    <button>Start a project</button>
+    <a class="button" href="#features">See examples</a>
+    <h2 id="features">Your brand on every screen</h2>
+    <form><label for="name">Project name</label><input id="name" placeholder="My first demo"><button type="submit">Create project</button></form>
+    <button class="hidden">Hidden action</button><input class="hidden" placeholder="Hidden placeholder">
+    <h2 id="plans">Capture once, use the files</h2>
+    <div class="footer">A long page checks the screenshot height limit.</div>
+  </main>
+</body>
+</html>

@@ -347,6 +347,31 @@ A mouse pointer clicks through the screens and types into the fields, and the
 camera zooms in on what the voice talks about. `examples/unspar-demo` is a
 complete one.
 
+**Capture the live site first.**
+
+```bash
+node bin/explainroo.js capture videos/<name> https://example.com --mobile
+```
+
+`capture` opens the page in a fresh browser, without cookies or logins, and
+saves what a demo needs in `assets/capture/<hostname>/`:
+
+- `page.png` (the first screen) and `full.png` (the whole page, up to 8000
+  pixels tall), at twice the pixel density, so they stay sharp when the
+  camera zooms in. `--mobile` adds `mobile.png` and `mobile-full.png`.
+- `capture.json` with the colors, fonts, logo candidates and the page's
+  wording: headings, navigation, buttons and form labels. Copy the wording
+  exactly. The live site is the source of truth for claims and wording.
+- Up to three logo files, and the font files that come from Google Fonts, in
+  the weights the page uses.
+
+It prints a `brand` and `fonts` block to paste into `video.json`. Check it
+against the screenshots. Fonts built into explainroo need no files. For other
+fonts, get the files, check the license and copy the license file next to
+them. Cookie banners and chat widgets can appear in the screenshots, as they
+do for any visitor. Use a screenshot, or a part of one, without them.
+Capturing the same site again replaces its folder.
+
 You can also show a real screen recording with `s.clip` in a `browser`
 frame. Use `s.camera` to zoom in on the detail the voice mentions.
 
@@ -650,6 +675,7 @@ when `ink` or `muted` has too little contrast against `bg`.
 | `check [project]` | finds layout, timing and pronunciation problems |
 | `render [project]` | the MP4 plus subtitle files, chapters and a cover (`--format gif`, `--draft`, `--from`, `--to`, `--workers`, `--out`) |
 | `verify [project]` | checks the finished file: loudness, black frames, silence, clear voice |
+| `capture [project] <url>` | saves screenshots, wording, colors, fonts and logos from a live site (`--mobile`, `--json`) |
 | `image [project] <name> "<prompt>"` | makes an illustration with OpenRouter |
 | `images [project]` | lists the images and what they cost |
 | `voices`, `say "text"` | lists the 28 Kokoro voices, or makes a sample |
