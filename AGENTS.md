@@ -867,6 +867,10 @@ place the next thing below or beside them.
 | `exit` | `fade`, `pop`, `rise`, `drop`, `slide-left`, `slide-right`, `none` |
 | `dur` | length of the entrance in seconds (shortened by the pace) |
 | `outDur` | length of the exit in seconds (0.45) |
+
+`out` is when the exit starts, so an element is still fading while the next
+one comes in. To swap one label for another in the same place, give the old
+one `exit: 'none'` and the new one the same time as its `at`.
 | `id` | a name for arrows, `annotate` and `s.get` |
 | `color` | a color name (`blue`, `accent`, `ink`, `muted`, ...) or any CSS color |
 | `opacity`, `scale`, `rotate` | extra changes, `rotate` in degrees |
@@ -1029,7 +1033,8 @@ s.code("const res = await fetch(url);", { lang: 'js', title: 'app.js', at: 0.5 }
 s.terminal(['$ npm install', 'added 42 packages in 3s'], { at: 1 });
 ```
 
-`s.code(source, options)` shows code. Options: `lang` (`js`, `ts`, `py`,
+`s.code(source, options)` shows code. Options: `x` and `y` (the center of
+the window), `lang` (`js`, `ts`, `py`,
 `go`, `rust`, `php`, `sh`, `sql`, `json`, `md`), `size` (32), `w`, `title`
 (or `false`), `lineNumbers: false`, `reveal` (`type`, `lines`, `none`),
 `cps`, `lineDelay`, `highlight` (line numbers) and `highlightAt`. `check`
@@ -1142,6 +1147,12 @@ font roles are `display`, `body`, `hand` and `mono`.
 - Screen recordings often have a variable frame rate. explainroo converts
   them to the project's fps, so a frame can repeat or drop. Record at a fixed
   frame rate when the motion matters.
+- Exact geometry in `paper`, `chalk` and `blueprint`. Their outlines are
+  hand drawn, so a circle's edge wanders a little from its radius. When a
+  line has to meet an outline exactly, like a radius that ends on the
+  circle, draw both with `s.draw`.
+- A render that stops with a closed browser or `EPIPE` on a busy computer.
+  Run it again with fewer pages, for example `render --workers 2`.
 
 `check` looks at text and math formulas. It finds text off the frame, too
 close to the edge (3.5%), too small, with low contrast (against the page, or
