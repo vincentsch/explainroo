@@ -31,6 +31,28 @@ export function intWords(n) {
   return [String(n)];
 }
 
+// Kokoro reads a lone four-digit number like a year: 1582 "fifteen eighty
+// two", 1900 "nineteen hundred", 1905 "nineteen oh five". Numbers below 1100
+// or with fewer than ten in the last three digits (2000, 2005) stay cardinal.
+export function yearWords(n) {
+  if (n < 1100 || n > 9999 || n % 1000 < 10) return null;
+  const hi = Math.floor(n / 100);
+  const lo = n % 100;
+  if (n % 1000 >= 100 && lo === 0) return [...intWords(hi), 'hundred'];
+  if (n % 1000 >= 100 && lo < 10) return [...intWords(hi), 'oh', ...intWords(lo)];
+  return [...intWords(hi), ...intWords(lo)];
+}
+
+const ORDINALS = { one: 'first', two: 'second', three: 'third', five: 'fifth', eight: 'eighth', nine: 'ninth', twelve: 'twelfth' };
+
+// 29th -> twenty ninth, 101st -> one hundred first.
+function ordinalWords(n) {
+  const words = intWords(n);
+  const last = words.pop();
+  const ord = ORDINALS[last] ?? (last.endsWith('y') ? last.slice(0, -1) + 'ieth' : last + 'th');
+  return [...words.map(canon), ord];
+}
+
 // Turns one written word into the tokens a voice would say, in canonical form.
 // Whisper writes "$1,050" and "5%" where the voice said "one thousand and
 // fifty dollars" and "five percent", and "example.com" or "1.1.1.1" where it
@@ -45,9 +67,13 @@ export function expand(word, language = 'en') {
   // Whisper splits "1.1.1.1" into "1", ".1", ".1", ".1": a leading dot is a spoken "dot".
   const lead = /^\.[a-z0-9]/i.test(raw) ? ['dot'] : [];
   const n = canon(word);
+  const ordinal = /^(\d+)(st|nd|rd|th)$/.exec(n);
+  if (ordinal && !/\d,\d/.test(raw)) return [...lead, ...ordinalWords(Number(ordinal[1]))];
   const money = /^([$€£])?(\d+)(?:\.(\d+))?(%)?$/.exec(n);
   if (money && /\d/.test(raw) && !/^\d+\.\d+\.\d+/.test(n)) {
     const [, cur, int, dec, pct] = money;
+    const year = !cur && dec === undefined && !pct && /^\d{4}$/.test(int) && !/\d,\d/.test(raw) ? yearWords(Number(int)) : null;
+    if (year) return [...lead, ...year].map(canon);
     const out = [...lead, ...intWords(Number(int))];
     if (dec !== undefined) {
       if (cur) out.push(CURRENCY[cur], ...intWords(Number(dec)), 'cents');

@@ -78,3 +78,31 @@ test('a word counts as heard when Whisper writes its shown form', () => {
   const wrong = alignWords([{ spoken: 'sequel', display: 'SQL' }], heard([['table', 0, 0.5]]), 0.6);
   assert.ok(!wrong.words[0].matched);
 });
+
+test('four-digit numbers are read like years, the way the voice reads them', async () => {
+  const { yearWords, expand } = await import('../src/align.js');
+  assert.deepEqual(yearWords(1582), ['fifteen', 'eighty', 'two']);
+  assert.deepEqual(yearWords(1900), ['nineteen', 'hundred']);
+  assert.deepEqual(yearWords(1905), ['nineteen', 'oh', 'five']);
+  assert.deepEqual(yearWords(2015), ['twenty', 'fifteen']);
+  assert.equal(yearWords(2000), null);
+  assert.equal(yearWords(2005), null);
+  assert.equal(yearWords(1066), null);
+  // A comma makes it an ordinary number again: one thousand five hundred eighty two.
+  assert.equal(expand('1,582').length, 6);
+  const year = alignWords([{ spoken: 'In' }, { spoken: 'fifteen eighty two', display: '1582' }, { spoken: 'it' }, { spoken: 'changed.' }], heard([['In', 0, 0.2], ['1582', 0.2, 0.9], ['it', 0.9, 1], ['changed.', 1, 1.4]]), 1.5);
+  assert.equal(year.matchRate, 1);
+  const plain = alignWords([{ spoken: '1900' }, { spoken: 'was' }, { spoken: 'not.' }], heard([['1900', 0, 0.6], ['was', 0.6, 0.8], ['not.', 0.8, 1]]), 1.1);
+  assert.equal(plain.matchRate, 1);
+  const hundred = alignWords([{ spoken: 'nineteen hundred,', display: '1900,' }], heard([['1900,', 0, 0.6]]), 0.7);
+  assert.equal(hundred.matchRate, 1);
+  const cardinal = alignWords([{ spoken: 'two thousand', display: '2000' }], heard([['2000', 0, 0.6]]), 0.7);
+  assert.equal(cardinal.matchRate, 1);
+});
+
+test('ordinals match the words the voice says', () => {
+  const r = alignWords([{ spoken: 'February' }, { spoken: 'twenty ninth', display: '29' }], heard([['February', 0, 0.5], ['29th', 0.5, 1]]), 1.1);
+  assert.equal(r.matchRate, 1);
+  const first = alignWords([{ spoken: 'the' }, { spoken: '1st' }], heard([['the', 0, 0.2], ['first', 0.2, 0.5]]), 0.6);
+  assert.equal(first.matchRate, 1);
+});
