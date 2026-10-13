@@ -12,6 +12,7 @@ jobs:
   test:
     name: ${{ matrix.os }}, Node ${{ matrix.node }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -39,4 +40,6 @@ jobs:
       - name: Check the setup
         run: node bin/explainroo.js doctor
         continue-on-error: true
-      - run: npm test
+      # A test that hangs fails after three minutes with its name, and
+      # leftover browser processes do not keep the run open.
+      - run: node --test --test-timeout=180000 --test-force-exit test/*.test.js
