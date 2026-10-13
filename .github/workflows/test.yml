@@ -41,5 +41,7 @@ jobs:
         run: node bin/explainroo.js doctor
         continue-on-error: true
       # A test that hangs fails after three minutes with its name, and
-      # leftover browser processes do not keep the run open.
-      - run: node --test --test-timeout=180000 --test-force-exit test/*.test.js
+      # leftover browser processes do not keep the run open. The macOS
+      # runners have three cores, and two test files rendering at once
+      # starve Chrome and ffmpeg there, so they run one file at a time.
+      - run: node --test --test-timeout=180000 --test-force-exit ${{ runner.os == 'macOS' && '--test-concurrency=1' || '' }} test/*.test.js
