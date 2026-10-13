@@ -9,16 +9,46 @@ sys.stderr.reconfigure(encoding='utf-8')
 mode = sys.argv[1]
 
 
+DIGITS = ['ゼロ', 'イチ', 'ニ', 'サン', 'ヨン', 'ゴ', 'ロク', 'ナナ', 'ハチ', 'キュー']
+
+
+def below_10000(n):
+    th, h, t, o = n // 1000, n // 100 % 10, n // 10 % 10, n % 10
+    out = {1: 'セン', 3: 'サンゼン', 8: 'ハッセン'}.get(th, DIGITS[th] + 'セン') if th else ''
+    out += {1: 'ヒャク', 3: 'サンビャク', 6: 'ロッピャク', 8: 'ハッピャク'}.get(h, DIGITS[h] + 'ヒャク') if h else ''
+    out += ('' if t == 1 else DIGITS[t]) + 'ジュー' if t else ''
+    return out + (DIGITS[o] if o else '')
+
+
+def number(digits):
+    # UniDic leaves digits unread. Whisper may write a number in digits or
+    # kana, so both sides get the same reading.
+    n = int(digits)
+    if n == 0 or n >= 10 ** 8 or digits[0] == '0':
+        return ''.join(DIGITS[int(d)] for d in digits)
+    man, rest = divmod(n, 10000)
+    return (below_10000(man) + 'マン' if man else '') + below_10000(rest)
+
+
 def readings(tagger, text):
     # [start, end, katakana reading] for each word, in characters.
-    out, pos = [], 0
+    out, pos, decimal = [], 0, False
     for word in tagger(text):
         start = text.find(word.surface, pos)
         if start < 0:
             continue
         pos = start + len(word.surface)
         pron = getattr(word.feature, 'pron', None)
-        out.append([start, pos, pron if pron and pron != '*' else word.surface])
+        surface = word.surface
+        if surface.isascii() and surface.isdigit():
+            # After a decimal point, digits are read one by one.
+            reading = ''.join(DIGITS[int(d)] for d in surface) if decimal else number(surface)
+        elif surface == '.' and out and text[start - 1:start].isdigit() and text[pos:pos + 1].isdigit():
+            reading = 'テン'
+        else:
+            reading = pron if pron and pron != '*' else surface
+        decimal = reading == 'テン' or (decimal and surface.isdigit())
+        out.append([start, pos, reading])
     return out
 
 
