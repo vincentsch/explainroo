@@ -38,7 +38,8 @@ node bin/explainroo.js doctor --fetch
 English speech models, about 400 MB, the first time only. Other languages
 fetch their speech check model on first use. If the user ran `npm link`, you
 can write `explainroo` instead of `node bin/explainroo.js` in the commands
-below. Every command takes the project folder first and accepts `--json`.
+below. Commands that work on a video take the project folder first, and every
+command accepts `--json`.
 
 ### When to ask the user
 
@@ -979,6 +980,10 @@ s.path('M0 0 C 200 -150 400 150 600 0', { x: 660, y: 540, at: 3 });
 (hand-drawn looks: `solid`, `hachure`, `cross-hatch`, `zigzag`, `dots`).
 `s.circle({ r, label })` takes the same options.
 
+`s.line(points, options)` and `s.path(d, options)` take `color`, `width`,
+`dashed`, `fill` and `glow`. `s.path` also takes `fillStyle`, and
+`single: true` draws a hand-drawn path with one stroke instead of two.
+
 `s.arrow(from, to, options)` draws an arrow. `from` and `to` are `[x, y]`,
 `{ x, y }` or the `id` of an element drawn earlier. With an `id`, the arrow
 stops at the edge of that element. Options: `bend` (about -1 to 1), `head`
@@ -1027,6 +1032,10 @@ Frames are extracted once at the project's fps and saved in `build/clips/`.
 They are at most 1920 pixels wide. Renders, stills and sheets use these
 frames. The preview may show a nearby frame while the right one loads.
 `s.video` still holds the whole video's duration, frames, fps and size.
+Playback starts at `at`, so `at: -1` starts a clip one second into it. To
+show a clip from its first frame when the scene starts, use
+`at: 0, enter: 'none'`. `check` cannot read text inside a clip, so look at
+stills of those moments.
 
 ### Pointing things out
 
@@ -1112,7 +1121,8 @@ or `{ out, at, color }`. Options: `w`, `size`, `rows`, `title`, `prompt`,
   set of elements together. Inside the group, positions count from `x`, `y`.
 - `s.draw({ x, y, at, out }, (ctx, life) => { ... })` gives you the canvas 2D
   context, so you can draw anything the other methods cannot. `life.p` is the
-  entrance progress from 0 to 1. `s.ctx` is also available.
+  entrance progress from 0 to 1, and `life.local` the seconds since `at`, for
+  motion that keeps going. `s.ctx` is also available.
 - `s.burst({ x, y, at, count, colors })` fires confetti.
 - `s.bg(color)` paints over the background.
 - `s.rand(i)`, `s.noise(x)` and `s.wiggle(amount, speed)` give random values
