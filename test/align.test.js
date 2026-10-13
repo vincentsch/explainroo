@@ -63,3 +63,18 @@ test('number pieces from Whisper are joined', () => {
   const r = alignWords([{ spoken: 'one thousand dollars' }, { spoken: 'five percent' }], heard([['$1', 0, 0.4], [',000', 0.4, 0.8], ['5', 0.8, 1], ['%', 1, 1.2]]), 1.2);
   assert.equal(r.matchRate, 1);
 });
+
+test('a word counts as heard when Whisper writes its shown form', () => {
+  const one = alignWords([{ spoken: 'The' }, { spoken: 'sequel', display: 'SQL' }, { spoken: 'query.' }], heard([['The', 0, 0.2], ['SQL', 0.2, 0.7], ['query.', 0.7, 1.1]]), 1.2);
+  assert.equal(one.matchRate, 1);
+  assert.ok(one.words[1].matched);
+  const two = alignWords([{ spoken: 'The' }, { spoken: 'a sink', display: 'async' }, { spoken: 'keyword.' }], heard([['The', 0, 0.2], ['async', 0.2, 0.7], ['keyword.', 0.7, 1.1]]), 1.2);
+  assert.equal(two.matchRate, 1);
+  assert.equal(two.words[1].start, 0.2);
+  // The spoken form still matches as before.
+  const spoken = alignWords([{ spoken: 'a sink', display: 'async' }], heard([['a', 0, 0.2], ['sink', 0.2, 0.5]]), 0.6);
+  assert.equal(spoken.matchRate, 1);
+  // A different word is still not confirmed.
+  const wrong = alignWords([{ spoken: 'sequel', display: 'SQL' }], heard([['table', 0, 0.5]]), 0.6);
+  assert.ok(!wrong.words[0].matched);
+});

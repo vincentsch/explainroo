@@ -93,8 +93,10 @@ export function similar(a, b) {
   return editDistance(a, b) / len <= 0.34;
 }
 
-// words: [{ spoken }] in order. heard: [{ text, start, end }] from Whisper.
+// words: [{ spoken, display? }] in order. heard: [{ text, start, end }] from Whisper.
 // Returns per-word { start, end, matched } and the share of spoken tokens matched.
+// A word also counts as heard when Whisper writes its shown form, so
+// {SQL|sequel} or {async|a sink} is confirmed by "SQL" or "async".
 export function alignWords(words, heard, duration, language = 'en') {
   const partsOf = word => expand(word, language);
   const matches = (a, b) => language !== 'en' && (/\p{N}/u.test(a) || /\p{N}/u.test(b)) ? a === b : similar(a, b);
@@ -107,6 +109,9 @@ export function alignWords(words, heard, duration, language = 'en') {
       const optional = language === 'en' && p === 'and' && prev && isNumberToken(prev.norm);
       tokens.push({ wi, norm: p, first: k === 0, last: k === parts.length - 1 || !parts.length, optional });
     });
+    const shown = w.display === undefined ? '' : String(w.display).split(/\s+/).flatMap(partsOf).join('');
+    const first = tokens.findIndex((t) => t.wi === wi);
+    if (shown && shown !== parts.join('')) tokens[first].shown = shown;
   });
   // Whisper splits numbers into pieces ("$1", ",000" and "5", "%" and "1",
   // ".1"). Join them back before comparing.
@@ -155,10 +160,11 @@ export function alignWords(words, heard, duration, language = 'en') {
         const v = c + (ok ? 0 : 1.6);
         if (v < cost[i + 1][j + 1]) { cost[i + 1][j + 1] = v; move[i + 1][j + 1] = ok ? 1 : 4; }
       }
-      if (i < T && j < N && tokens[i].first && groupEnd[i] > i) {
+      if (i < T && j < N && tokens[i].first && (groupEnd[i] > i || tokens[i].shown)) {
         const e = groupEnd[i];
         const joined = tokens.slice(i, e + 1).map((t) => t.norm).join('');
-        if (matches(joined, H[j].norm) && c < cost[e + 1][j + 1]) { cost[e + 1][j + 1] = c; move[e + 1][j + 1] = 5; }
+        const ok = (groupEnd[i] > i && matches(joined, H[j].norm)) || (tokens[i].shown && matches(tokens[i].shown, H[j].norm));
+        if (ok && c < cost[e + 1][j + 1]) { cost[e + 1][j + 1] = c; move[e + 1][j + 1] = 5; }
       }
       if (i < T && j + 1 < N && matches(tokens[i].norm, H[j].norm + H[j + 1].norm) && c < cost[i + 1][j + 2]) {
         cost[i + 1][j + 2] = c;

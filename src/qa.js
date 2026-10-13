@@ -136,7 +136,7 @@ export async function verify(project, { file = null, log = () => {} } = {}) {
     log('checking that the narration is understandable in the final mix');
     const tlFile = path.join(project.paths.build, 'timeline.json');
     const timeline = fs.existsSync(tlFile) ? JSON.parse(fs.readFileSync(tlFile, 'utf8')) : null;
-    const spokenWords = (sc) => sc.units.filter((u) => u.type === 'word').map((u) => ({ spoken: u.spoken }));
+    const spokenWords = (sc) => sc.units.filter((u) => u.type === 'word').map((u) => ({ spoken: u.spoken, display: u.display }));
     const byId = new Map(project.script.scenes.map((sc) => [sc.id, sc]));
     const sameScenes = timeline && timeline.scenes.length === project.script.scenes.length && timeline.scenes.every((t) => byId.has(t.id)) && Math.abs(timeline.duration - duration) < 1;
     if (sameScenes) {
