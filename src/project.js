@@ -6,7 +6,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseScript } from './script.js';
-import { VOICES } from './models.js';
+import { VOICES, LANGUAGES, voiceLanguage } from './models.js';
 import { THEMES as LOOKS } from '../engine/themes.js';
 import { parseColor } from '../engine/util.js';
 
@@ -36,6 +36,7 @@ export const DEFAULTS = {
   theme: 'paper',
   size: '16:9',
   fps: 30,
+  language: 'en',
   voice: 'af_heart',
   speed: 0.9,
   pace: 1,
@@ -159,6 +160,8 @@ export function resolveSize(size) {
 
 export function normalizeConfig(raw, dir = '.') {
   const cfg = { ...DEFAULTS, ...raw };
+  if (typeof cfg.language !== 'string' || !Object.hasOwn(LANGUAGES, cfg.language)) fail(`language must be one of ${Object.keys(LANGUAGES).join(', ')}`);
+  if (raw.voice === undefined) cfg.voice = LANGUAGES[cfg.language];
   const unknown = Object.keys(raw).filter((k) => !(k in DEFAULTS) && !k.startsWith('_'));
   if (unknown.length) fail(`video.json has unknown setting(s): ${unknown.join(', ')}. Known: ${Object.keys(DEFAULTS).join(', ')}`);
   if (!THEMES.includes(cfg.theme) && !lookPath(cfg.theme)) fail(`theme must be one of ${THEMES.join(', ')} or a relative path to a .json look file, not "${cfg.theme}"`);
@@ -182,6 +185,7 @@ export function normalizeConfig(raw, dir = '.') {
   }
   if (typeof cfg.voice === 'string') {
     if (!Object.hasOwn(VOICES, cfg.voice)) fail(`voice "${cfg.voice}" does not exist. Run "explainroo voices" for the list.`);
+    if (voiceLanguage(cfg.voice) !== cfg.language) fail(`voice "${cfg.voice}" does not speak ${cfg.language}. Use ${Object.keys(VOICES).filter(id => voiceLanguage(id) === cfg.language).join(', ')}.`);
   } else if (!cfg.voice || typeof cfg.voice !== 'object') fail('voice must be a Kokoro id or an object with provider');
   if (typeof cfg.voice !== 'string' && raw.speed === undefined) cfg.speed = 1;
   if (!(cfg.speed >= 0.6 && cfg.speed <= 1.6)) fail('speed must be between 0.6 and 1.6');

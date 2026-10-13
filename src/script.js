@@ -22,7 +22,7 @@ export function normWord(w) {
     .normalize('NFKD')
     .replace(/[̀-ͯ]/g, '')
     .replace(/['’]/g, '')
-    .replace(/[^a-z0-9%$€£+#@.]/g, '')
+    .replace(/[^\p{L}\p{M}\p{N}%$€£+#@.]/gu, '')
     .replace(/^\.+|\.+$/g, '');
 }
 
@@ -61,7 +61,7 @@ export function tokenizeNarration(text, line = 0) {
   const n = text.length;
   const pushWord = (display, spoken) => {
     const prev = units[units.length - 1];
-    if (!pendingSpace && prev && prev.type === 'word' && /^[.,;:!?)\]"'’…]+$/.test(display)) {
+    if (!pendingSpace && prev && prev.type === 'word' && /^[.,;:!?।)\]"'’…]+$/.test(display)) {
       prev.display += display;
       prev.spoken += spoken;
       return;
@@ -223,7 +223,7 @@ export function speechChunks(units, { sentenceGap = 0.3, paragraphGap = 0.55, pa
     }
     cur.text += (cur.words.length ? ' ' : '') + u.spoken;
     cur.words.push({ unitIndex: index, display: u.display, spoken: u.spoken });
-    if (/[.!?…]["'’)\]]*$/.test(u.spoken)) {
+    if (/[.!?…।]["'’)\]]*$/.test(u.spoken)) {
       close();
       gapBefore = sentenceGap / pace;
     }

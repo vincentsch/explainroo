@@ -197,6 +197,6 @@ export function normWord(w) {
     .normalize('NFKD')
     .replace(/[̀-ͯ]/g, '')
     .replace(/['’]/g, '')
-    .replace(/[^a-z0-9%$€£+#@.]/g, '')
+    .replace(/[^\p{L}\p{M}\p{N}%$€£+#@.]/gu, '')
     .replace(/^\.+|\.+$/g, '');
 }

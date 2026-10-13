@@ -34,10 +34,11 @@ npm install
 node bin/explainroo.js doctor --fetch
 ```
 
-`doctor` checks Node, ffmpeg and Chrome. It also downloads the speech models,
-about 400 MB, the first time only. If the user ran `npm link`, you can write
-`explainroo` instead of `node bin/explainroo.js` in the commands below. Every
-command takes the project folder first and accepts `--json`.
+`doctor` checks Node, ffmpeg, Chrome and espeak-ng. It also downloads the
+English speech models, about 400 MB, the first time only. Other languages
+fetch their speech check model on first use. If the user ran `npm link`, you
+can write `explainroo` instead of `node bin/explainroo.js` in the commands
+below. Every command takes the project folder first and accepts `--json`.
 
 ### When to ask the user
 
@@ -295,9 +296,58 @@ speech check reports a mismatch, make script.md say what was actually said.
 Replacing a scene recording makes that scene again. Replacing a whole take
 makes all its scenes again.
 
-ElevenLabs narration and recordings must be in English for now. The word
-timing model understands English only. Run `voice`, `check` and `render`
-as usual with any of the three sources.
+ElevenLabs narration and recordings work in every supported language.
+Run `voice`, `check` and `render` as usual with any of the three sources.
+
+## Videos in other languages
+
+Set `language` in `video.json` to `en`, `es`, `fr`, `it`, `pt-br` or `hi`.
+English is the default. `pt-br` means Brazilian Portuguese. You can also
+start with `explainroo init videos/my-video --language es`.
+
+When `voice` is left out, the language picks its Kokoro voice:
+
+| Language | Default voice |
+|---|---|
+| English (`en`) | `af_heart` |
+| Spanish (`es`) | `ef_dora` |
+| French (`fr`) | `ff_siwis` |
+| Italian (`it`) | `if_sara` |
+| Brazilian Portuguese (`pt-br`) | `pf_dora` |
+| Hindi (`hi`) | `hf_alpha` |
+
+Run `explainroo voices --language es` to see voices for one language.
+A Kokoro voice must match the video's language. If a project already has
+`voice` set, change it too, or remove it to use the default.
+
+Write the narration in that language as a person would say it. Do not
+translate English word for word. The writing rules above apply in spirit.
+Cue words and `[#markers]` work the same. `at: 'qué'` matches "Qué".
+Hindi sentences can end with `।`. Captions and subtitle files keep the
+written text. The looks include a Hindi font, so no system font is needed.
+
+Kokoro needs espeak-ng once for these five languages. Install it on Linux
+with `sudo apt install espeak-ng`, or on macOS with `brew install espeak-ng`.
+On Windows, use the installer from the
+[espeak-ng releases page](https://github.com/espeak-ng/espeak-ng/releases).
+If the program is in another place, set `EXPLAINROO_ESPEAK` to its binary.
+English, ElevenLabs and recordings do not need it.
+
+The first speech check in another language downloads multilingual Whisper
+small. `doctor --fetch` still fetches only the English models. `verify`
+uses the video's language to check the finished sound too.
+
+If a symbol, short form or word sounds wrong, use `{shown|spoken}` in
+`script.md` and run `voice` again. Put the pronunciation in the same
+language. The speech check accepts digits for numbers. It does not try to
+match spelled numbers to digits outside English. Write the digits, or use
+an override whose spoken text has digits when that helps the check.
+Japanese and Mandarin are not supported.
+
+In Hindi, the speech check confirms fewer words than in the other languages,
+because the speech model knows Hindi less well. A few unconfirmed words are
+normal there. Fix a word when it stays unconfirmed in several scenes, or
+when the user hears it wrong.
 
 ## Images
 
@@ -575,7 +625,7 @@ project.
 
 ```
 videos/<name>/
-  video.json    look, size, voice, music, captions, watermark
+  video.json    look, size, language, voice, music, captions, watermark
   script.md     the narration, one "## scene-id" per scene
   scenes.js     one drawing function per scene
   assets/       images: screenshots, logos, generated illustrations
@@ -591,7 +641,8 @@ videos/<name>/
 | `theme` | `paper` | a built-in look, or a relative path to a `.json` look file (see Custom looks) |
 | `size` | `16:9` | a platform (`youtube`, `shorts`, `tiktok`, `reels`, `vertical`, `instagram`, `linkedin`, `square`), `16:9`, `9:16`, `1:1`, `4:5` or `WIDTHxHEIGHT` |
 | `fps` | 30 | 24, 25, 30, 50 or 60 |
-| `voice` | `af_heart` | a Kokoro id or a provider object for Kokoro, ElevenLabs or a recording; see Voices |
+| `language` | `en` | narration language: `en`, `es`, `fr`, `it`, `pt-br` or `hi`; see Videos in other languages |
+| `voice` | the language's voice | a Kokoro id or a provider object for Kokoro, ElevenLabs or a recording; English uses `af_heart`; see Voices |
 | `speed` | 0.9 for Kokoro, 1 otherwise | voice speed only, 0.6 to 1.6; ElevenLabs limits speed times pace to 0.7 through 1.2 |
 | `pace` | 1 | speed of the whole video (voice, pauses, animations), 0.7 to 1.6 |
 | `music` | `true` | `true` (the look's style), `warm`, `upbeat`, `calm`, `tech`, `playful`, `{ "style", "volume" }` or `false` |
@@ -667,7 +718,7 @@ when `ink` or `muted` has too little contrast against `bg`.
 
 | Command | What it does |
 |---|---|
-| `init <dir>` | creates a project (`--theme`, `--size`, `--pace`, `--voice`, `--title`) |
+| `init <dir>` | creates a project (`--theme`, `--size`, `--pace`, `--language`, `--voice`, `--title`) |
 | `voice [project]` | makes the narration and the word times, saved per scene so only changed scenes are made again |
 | `preview [project]` | a live preview in the browser that reloads when you save |
 | `still [project] [times]` | PNG pictures at `12.5`, `scene`, `scene@2.4` or `scene@end` (`--transparent` keeps alpha) |
@@ -678,10 +729,10 @@ when `ink` or `muted` has too little contrast against `bg`.
 | `capture [project] <url>` | saves screenshots, wording, colors, fonts and logos from a live site (`--mobile`, `--json`) |
 | `image [project] <name> "<prompt>"` | makes an illustration with OpenRouter |
 | `images [project]` | lists the images and what they cost |
-| `voices`, `say "text"` | lists the 28 Kokoro voices, or makes a sample |
+| `voices`, `say "text"` | lists Kokoro voices with their languages (`--language es` filters voices), or makes a sample in the chosen voice's language |
 | `voices [project] --elevenlabs` | lists the names, ids and labels available to the key (`--json` also works) |
 | `themes`, `formats`, `icons <word>` | lists the looks and the sizes, searches the 1,854 icons |
-| `doctor` | checks the setup (`--fetch` downloads the speech models) |
+| `doctor` | checks Node, ffmpeg, Chrome, espeak-ng and models (`--fetch` downloads only English models); missing espeak-ng is allowed |
 
 The extra files share the video's name, also with `--out`: `video.srt`,
 `video.vtt`, `video.cover.jpg` and `video.chapters.txt`. A GIF has no sound,

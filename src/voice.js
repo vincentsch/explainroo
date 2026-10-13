@@ -6,7 +6,8 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { speechChunks, resolveMarks } from './script.js';
 import { alignWords } from './align.js';
-import { loadTTS, transcribeWords, TTS_MODEL, ASR_MODEL, TTS_SAMPLE_RATE, ttsDtype } from './models.js';
+import { loadTTS, transcribeWords, TTS_MODEL, TTS_SAMPLE_RATE, ttsDtype, asrModel } from './models.js';
+import { phonemize, generateSpeech } from './phonemes.js';
 import { writeWav, readWav, resample, trimSilence } from './wav.js';
 import { elevenSpeech } from './elevenlabs.js';
 import { recordingFiles, decodeRecording, saveRecording, recordingCuts } from './recordings.js';
@@ -19,7 +20,7 @@ export function sceneHash(scene, chunks, config, recording = null) {
     .update(JSON.stringify({
       PIPELINE,
       TTS_MODEL,
-      ASR_MODEL,
+      ASR_MODEL: asrModel(config.language),
       dtype: ttsDtype(),
       voice: config.voice,
       speed: config.speed * config.pace,
@@ -29,6 +30,7 @@ export function sceneHash(scene, chunks, config, recording = null) {
       layout: (recording ? scene.units.filter((u) => u.type !== 'pause') : scene.units).map((u) => (u.type === 'mark' ? `#${u.name}` : u.type === 'word' ? u.display : '')).join('|'),
       // Added last and only for recordings, so Kokoro scenes keep their cache.
       ...(recording ? { recording } : {}),
+      ...(config.language && config.language !== 'en' ? { language: config.language } : {}),
     }))
     .digest('hex')
     .slice(0, 16);
@@ -84,8 +86,8 @@ export async function synthesize(project, { force = false, log = () => {}, only 
   if (needsSpeech && recordings && !recordings.folder) {
     log('transcribing the recording and finding scene boundaries');
     take = await decodeRecording(Object.values(recordings.files)[0].file, project.paths.build, wanted);
-    heardTake = await transcribeWords(resample(take.samples, take.sampleRate, 16000), { log });
-    cuts = recordingCuts(project.script.scenes, heardTake.words, take.samples.length / take.sampleRate);
+    heardTake = await transcribeWords(resample(take.samples, take.sampleRate, 16000), { log, language: config.language });
+    cuts = recordingCuts(project.script.scenes, heardTake.words, take.samples.length / take.sampleRate, config.language);
   }
   for (const { scene, chunks, hash } of todo) {
     const t0 = Date.now();
@@ -122,6 +124,8 @@ async function synthesizeScene(project, scene, chunks, hash, tts, log) {
   let matchedTokens = 0;
   let totalTokens = 0;
 
+  const phonemes = config.voice.provider !== 'elevenlabs' && config.language !== 'en'
+    ? await phonemize(chunks.map(c => c.text), config.language) : null;
   for (let ci = 0; ci < chunks.length; ci++) {
     const chunk = chunks[ci];
     const gap = ci === 0 ? 0 : chunk.gapBefore;
@@ -131,16 +135,16 @@ async function synthesizeScene(project, scene, chunks, hash, tts, log) {
     }
     const audio = config.voice.provider === 'elevenlabs'
       ? await elevenSpeech(project, scene.id, chunk.text, { previous: chunks[ci - 1]?.text, next: chunks[ci + 1]?.text })
-      : await tts.generate(chunk.text, { voice: config.voice, speed: config.speed * config.pace });
+      : await generateSpeech(tts, chunk.text, { language: config.language, voice: config.voice, speed: config.speed * config.pace, phonemes: phonemes?.[ci] });
     const samples = trimSilence(audio.audio, audio.sampling_rate || sr);
     const start = cursor / sr;
     const dur = samples.length / sr;
     pieces.push(samples);
     cursor += samples.length;
 
-    const heard = await transcribeWords(resample(samples, sr, 16000), { log });
+    const heard = await transcribeWords(resample(samples, sr, 16000), { log, language: config.language });
     transcripts.push(heard.text);
-    const aligned = alignWords(chunk.words, heard.words, dur);
+    const aligned = alignWords(chunk.words, heard.words, dur, config.language);
     chunk.words.forEach((w, k) => {
       const a = aligned.words[k];
       wordTimes[w.unitIndex] = { start: start + a.start, end: start + a.end, matched: a.matched };
@@ -181,6 +185,7 @@ async function synthesizeScene(project, scene, chunks, hash, tts, log) {
 }
 
 async function recordingScene(project, scene, hash, source, take, cut, heardTake, log) {
+  const { config } = project;
   const audio = take || await decodeRecording(source.file, project.paths.build, project.config.speed * project.config.pace);
   const sr = audio.sampleRate;
   let from = cut ? Math.floor(cut.start * sr) : 0;
@@ -202,9 +207,9 @@ async function recordingScene(project, scene, hash, source, take, cut, heardTake
   };
   const heard = heardTake ? {
     words: heardTake.words.filter((w) => w.start >= cut.start && w.start < cut.end).map(local),
-  } : await transcribeWords(resample(samples, sr, 16000), { log });
+  } : await transcribeWords(resample(samples, sr, 16000), { log, language: config.language });
   const units = scene.units.filter((u) => u.type === 'word');
-  const aligned = alignWords(units, heard.words, duration);
+  const aligned = alignWords(units, heard.words, duration, config.language);
   const times = cut ? cut.words.map(local) : aligned.words;
   const wordTimes = [];
   let wi = 0;

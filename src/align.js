@@ -35,7 +35,12 @@ export function intWords(n) {
 // Whisper writes "$1,050" and "5%" where the voice said "one thousand and
 // fifty dollars" and "five percent", and "example.com" or "1.1.1.1" where it
 // said words joined by "dot". Both sides are expanded the same way.
-export function expand(word) {
+export function expand(word, language = 'en') {
+  if (language !== 'en') {
+    const n = normWord(word).replace(/[०-९]/g, d => String(d.charCodeAt(0) - 0x0966));
+    const digits = /^[\p{N}%$€£+.]+$/u.test(n) ? n.replace(/[^\p{N}]/gu, '') : '';
+    return n ? [digits || n] : [];
+  }
   const raw = String(word).trim().toLowerCase();
   // Whisper splits "1.1.1.1" into "1", ".1", ".1", ".1": a leading dot is a spoken "dot".
   const lead = /^\.[a-z0-9]/i.test(raw) ? ['dot'] : [];
@@ -90,14 +95,16 @@ export function similar(a, b) {
 
 // words: [{ spoken }] in order. heard: [{ text, start, end }] from Whisper.
 // Returns per-word { start, end, matched } and the share of spoken tokens matched.
-export function alignWords(words, heard, duration) {
+export function alignWords(words, heard, duration, language = 'en') {
+  const partsOf = word => expand(word, language);
+  const matches = (a, b) => language !== 'en' && (/\p{N}/u.test(a) || /\p{N}/u.test(b)) ? a === b : similar(a, b);
   const tokens = [];
   words.forEach((w, wi) => {
-    const parts = String(w.spoken).split(/\s+/).flatMap(expand);
+    const parts = String(w.spoken).split(/\s+/).flatMap(partsOf);
     (parts.length ? parts : ['']).forEach((p, k) => {
       // "and" inside a spoken number ("one thousand and fifty") is optional.
       const prev = tokens[tokens.length - 1];
-      const optional = p === 'and' && prev && isNumberToken(prev.norm);
+      const optional = language === 'en' && p === 'and' && prev && isNumberToken(prev.norm);
       tokens.push({ wi, norm: p, first: k === 0, last: k === parts.length - 1 || !parts.length, optional });
     });
   });
@@ -117,7 +124,7 @@ export function alignWords(words, heard, duration) {
   }
   const H = [];
   for (const h of joined) {
-    const parts = expand(h.text);
+    const parts = partsOf(h.text);
     const step = (h.end - h.start) / Math.max(1, parts.length);
     parts.forEach((p, k) => H.push({ text: p, norm: p, start: h.start + k * step, end: h.start + (k + 1) * step }));
   }
@@ -144,16 +151,16 @@ export function alignWords(words, heard, duration) {
       if (i < T && c + (tokens[i].optional ? 0 : 1) < cost[i + 1][j]) { cost[i + 1][j] = c + (tokens[i].optional ? 0 : 1); move[i + 1][j] = 2; }
       if (j < N && c + 1 < cost[i][j + 1]) { cost[i][j + 1] = c + 1; move[i][j + 1] = 3; }
       if (i < T && j < N) {
-        const ok = similar(tokens[i].norm, H[j].norm);
+        const ok = matches(tokens[i].norm, H[j].norm);
         const v = c + (ok ? 0 : 1.6);
         if (v < cost[i + 1][j + 1]) { cost[i + 1][j + 1] = v; move[i + 1][j + 1] = ok ? 1 : 4; }
       }
       if (i < T && j < N && tokens[i].first && groupEnd[i] > i) {
         const e = groupEnd[i];
         const joined = tokens.slice(i, e + 1).map((t) => t.norm).join('');
-        if (similar(joined, H[j].norm) && c < cost[e + 1][j + 1]) { cost[e + 1][j + 1] = c; move[e + 1][j + 1] = 5; }
+        if (matches(joined, H[j].norm) && c < cost[e + 1][j + 1]) { cost[e + 1][j + 1] = c; move[e + 1][j + 1] = 5; }
       }
-      if (i < T && j + 1 < N && similar(tokens[i].norm, H[j].norm + H[j + 1].norm) && c < cost[i + 1][j + 2]) {
+      if (i < T && j + 1 < N && matches(tokens[i].norm, H[j].norm + H[j + 1].norm) && c < cost[i + 1][j + 2]) {
         cost[i + 1][j + 2] = c;
         move[i + 1][j + 2] = 6;
       }

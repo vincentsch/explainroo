@@ -199,7 +199,7 @@ export function fontString(theme, role = 'body', size = 48, weight) {
   const f = theme.fonts[role] || theme.fonts.body;
   const w = weight ?? f.weight;
   const fallback = role === 'mono' ? 'monospace' : 'sans-serif';
-  return `${w} ${Math.round(size * 100) / 100}px "${f.family}", ${fallback}`;
+  return `${w} ${Math.round(size * 100) / 100}px "${f.family}", "Noto Sans Devanagari", ${fallback}`;
 }
 
 // Background textures are rendered once and reused on every frame.

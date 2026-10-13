@@ -21,7 +21,7 @@ export function buildPhrases(timeline, maxChars) {
       if (!cur) cur = { words: [], start: g.start };
       cur.words.push(g);
       cur.end = g.end;
-      if (/[.!?;:]["'’)]*$/.test(g.text) || (/,$/.test(g.text) && cur.words.length >= 4)) flush();
+      if (/[.!?;:।]["'’)]*$/.test(g.text) || (/,$/.test(g.text) && cur.words.length >= 4)) flush();
     });
     flush();
   }

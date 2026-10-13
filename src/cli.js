@@ -8,7 +8,8 @@ import { prepare, makeState } from './pipeline.js';
 import { render } from './render.js';
 import { check, stills, sheet, verify } from './qa.js';
 import { startServer, ROOT } from './server.js';
-import { VOICES, loadTTS, loadASR, cacheRoot, ttsDtype, TTS_SAMPLE_RATE } from './models.js';
+import { VOICES, LANGUAGES, voiceLanguage, loadTTS, loadASR, cacheRoot, ttsDtype, TTS_SAMPLE_RATE, MULTILINGUAL_ASR_MODEL } from './models.js';
+import { espeakVersion, phonemize, generateSpeech } from './phonemes.js';
 import { writeWav } from './wav.js';
 import { ffmpegVersion } from './ffmpeg.js';
 import { findChrome } from './browser.js';
@@ -23,7 +24,7 @@ const HELP = `explainroo ${VERSION}: narrated explainer videos from code
 Usage: explainroo <command> [project] [options]
 
 Make a video
-  init <dir>            create a project (--theme, --size, --pace, --voice, --title)
+  init <dir>            create a project (--theme, --size, --pace, --language es, --voice, --title)
   voice [project]       make the narration (Kokoro, ElevenLabs or a recording) and word timings
   preview [project]     live preview in your browser, reloads on save (--port)
   still [project] [t…]  PNG stills: "12.5", "scene", "scene@2.4" (--transparent, default: end of every scene)
@@ -42,12 +43,12 @@ Images (optional, needs an OpenRouter API key)
   images [project]      list generated images and what they cost
 
 Reference
-  voices [project]      list Kokoro voices (--elevenlabs lists the voices of your ElevenLabs key)
+  voices [project]      list Kokoro voices (--language es for one language, --elevenlabs for your ElevenLabs key)
   say "text"            hear a Kokoro voice (--voice am_michael, --speed 1, --out sample.wav)
   themes                list looks
   formats               list sizes for YouTube, Shorts, TikTok, Reels, Instagram, LinkedIn
   icons <word…>         search the 1,800+ built-in icons
-  doctor                check ffmpeg, Chrome and the speech models (--fetch downloads them)
+  doctor                check ffmpeg, Chrome, espeak-ng and models (--fetch downloads English models)
 
 Options: --json for machine-readable output. The project defaults to the current folder.
 Docs: AGENTS.md (for coding agents) and https://www.explainroo.com/docs/`;
@@ -191,11 +192,14 @@ export async function main(argv) {
         return 0;
       }
       case 'voices': {
+        const language = textFlag(flags, 'language');
+        if (language !== undefined) normalizeConfig({ language });
         if (flags.elevenlabs) {
           const voices = await elevenVoices(path.resolve(pos[0] || '.'));
           print(voices.map((v) => `${v.name}  ${v.id}  ${Object.entries(v.labels).map(([k, x]) => `${k}: ${x}`).join(', ')}`).join('\n'), { voices });
         } else {
-          print(Object.entries(VOICES).map(([k, v]) => `${k.padEnd(12)} ${v}`).join('\n') + '\nUse voices --elevenlabs for ElevenLabs, or set voice to { "provider": "recording", "src": "assets/narration.wav" } in video.json.', { voices: VOICES });
+          const voices = Object.fromEntries(Object.entries(VOICES).filter(([id]) => language === undefined || voiceLanguage(id) === language));
+          print(Object.entries(voices).map(([k, v]) => `${k.padEnd(12)} ${voiceLanguage(k).padEnd(6)} ${v}`).join('\n') + '\nUse voices --elevenlabs for ElevenLabs, or set voice to { "provider": "recording", "src": "assets/narration.wav" } in video.json.', { voices, languages: Object.fromEntries(Object.keys(voices).map(id => [id, voiceLanguage(id)])) });
         }
         return 0;
       }
@@ -250,18 +254,21 @@ function textFlag(flags, name) {
 }
 
 function init(dir, flags, print) {
-  if (!dir) throw new ProjectError('usage: explainroo init <dir> [--theme paper] [--size youtube|tiktok|linkedin|...] [--pace 1.2] [--voice af_heart] [--title "..."]');
+  if (!dir) throw new ProjectError('usage: explainroo init <dir> [--theme paper] [--size youtube|tiktok|linkedin|...] [--pace 1.2] [--language es] [--voice af_heart] [--title "..."]');
   const target = path.resolve(dir);
   if (fs.existsSync(path.join(target, 'video.json'))) throw new ProjectError(`${target} already has a video.json`);
   const theme = textFlag(flags, 'theme') || 'paper';
   if (!THEMES.includes(theme)) throw new ProjectError(`theme must be one of ${THEMES.join(', ')}`);
-  const voice = textFlag(flags, 'voice') || 'af_heart';
+  const language = textFlag(flags, 'language') ?? 'en';
+  normalizeConfig({ language });
+  const voice = textFlag(flags, 'voice') || LANGUAGES[language];
   if (!VOICES[voice]) throw new ProjectError(`voice "${voice}" does not exist. Run "explainroo voices".`);
   const title = textFlag(flags, 'title') || path.basename(target).replace(/[-_]+/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
   const tpl = path.join(ROOT, 'templates', 'starter');
   const size = textFlag(flags, 'size') || '16:9';
   resolveSize(size);
   const config = { title, theme, size, voice, music: true, captions: 'auto' };
+  if (flags.language !== undefined) config.language = language;
   if (flags.pace !== undefined) config.pace = num(flags.pace, 'pace');
   normalizeConfig(config);
   // Create the folder only after every setting checks out, so a bad flag
@@ -329,7 +336,9 @@ async function say(text, flags, log, print) {
   const voice = textFlag(flags, 'voice') || 'af_heart';
   if (!VOICES[voice]) throw new ProjectError(`voice "${voice}" does not exist. Run "explainroo voices".`);
   const tts = await loadTTS({ log });
-  const audio = await tts.generate(text, { voice, speed: num(flags.speed, 'speed') ?? 1 });
+  const language = voiceLanguage(voice);
+  const phonemes = language === 'en' ? undefined : (await phonemize([text], language))[0];
+  const audio = await generateSpeech(tts, text, { language, voice, speed: num(flags.speed, 'speed') ?? 1, phonemes });
   const out = path.resolve(textFlag(flags, 'out') || `${voice}.wav`);
   writeWav(out, audio.audio, audio.sampling_rate || TTS_SAMPLE_RATE);
   print(out, { file: out, voice });
@@ -373,6 +382,8 @@ async function doctor(flags, log, print) {
   add('node', nodeOk, `v${process.versions.node}${nodeOk ? '' : ' (need 20.11 or newer)'}`);
   const ff = ffmpegVersion();
   add('ffmpeg', !!ff, ff || 'not found; install ffmpeg or set EXPLAINROO_FFMPEG');
+  const espeak = espeakVersion();
+  add('espeak-ng', true, espeak || 'not found; only needed for other languages');
   try {
     add('chrome', true, findChrome());
   } catch (e) {
@@ -387,6 +398,7 @@ async function doctor(flags, log, print) {
   }
   add('voice model', has('Kokoro-82M-v1.0-ONNX'), has('Kokoro-82M-v1.0-ONNX') ? `Kokoro 82M (${ttsDtype()}) in ${models}` : 'not downloaded yet; "explainroo doctor --fetch" or the first voice run fetches it');
   add('speech check model', has('whisper-base.en_timestamped'), has('whisper-base.en_timestamped') ? 'Whisper base.en' : 'not downloaded yet; fetched on first use');
+  add('language model', has(MULTILINGUAL_ASR_MODEL.split('/')[1]), 'Whisper small for es, fr, it, pt-br and hi; downloaded on first use, not by --fetch');
   const ok = rows.every((r) => r.ok || r.name.includes('model'));
   print(rows.map((r) => `${r.ok ? 'ok  ' : 'FAIL'} ${r.name.padEnd(20)} ${r.detail}`).join('\n'), { ok, checks: rows });
   return ok ? 0 : 1;

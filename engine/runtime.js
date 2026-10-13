@@ -26,6 +26,7 @@ async function loadFonts(theme, config) {
   // The UI kit (s.ui) draws app screens in Inter and headlines in Instrument Serif.
   wanted.add('Inter');
   wanted.add('Instrument Serif');
+  wanted.add('Noto Sans Devanagari');
   const faces = [];
   const add = (family, url, o) => {
     const face = new FontFace(family, `url(${url})`, { weight: String(o.weight ?? 400), style: o.style ?? 'normal', unicodeRange: o.unicodeRange, display: 'block' });

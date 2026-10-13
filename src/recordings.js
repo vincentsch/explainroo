@@ -72,9 +72,9 @@ export async function saveRecording(file, samples, sampleRate) {
   }
 }
 
-export function recordingCuts(scenes, heard, duration) {
+export function recordingCuts(scenes, heard, duration, language = 'en') {
   const spoken = scenes.map((scene) => ({ scene, words: scene.units.filter((u) => u.type === 'word') })).filter((s) => s.words.length);
-  const aligned = alignWords(spoken.flatMap((s) => s.words), heard, duration).words;
+  const aligned = alignWords(spoken.flatMap((s) => s.words), heard, duration, language).words;
   let offset = 0;
   const spans = spoken.map(({ scene, words }) => {
     const times = aligned.slice(offset, offset + words.length);

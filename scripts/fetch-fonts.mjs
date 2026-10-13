@@ -48,11 +48,18 @@ for (const [family, weights] of FAMILIES) {
     console.log(`${file}  ${(buf.length / 1024).toFixed(1)} KB`);
   }
 }
+for (const [weight, style] of [[400, 'Regular'], [700, 'Bold']]) {
+  const file = `NotoSansDevanagari-${weight}.ttf`;
+  const res = await fetch(`https://raw.githubusercontent.com/notofonts/noto-fonts/main/hinted/ttf/NotoSansDevanagari/NotoSansDevanagari-${style}.ttf`);
+  if (!res.ok) throw new Error(`no ${file} (${res.status})`);
+  fs.writeFileSync(path.join(dir, file), Buffer.from(await res.arrayBuffer()));
+  manifest.push({ family: 'Noto Sans Devanagari', weight, subset: 'devanagari', file, unicodeRange: 'U+0900-097F,U+1CD0-1CFF,U+200C-200D,U+20B9,U+25CC,U+A8E0-A8FF' });
+}
 fs.writeFileSync(path.join(dir, 'fonts.json'), JSON.stringify(manifest, null, 2) + '\n');
 
 // SIL Open Font License texts, one per family.
 fs.mkdirSync(path.join(dir, 'licenses'), { recursive: true });
-for (const [family] of FAMILIES) {
+for (const [family] of [...FAMILIES, ['Noto Sans Devanagari']]) {
   const slug = family.toLowerCase().replace(/\s+/g, '');
   const res = await fetch(`https://raw.githubusercontent.com/google/fonts/main/ofl/${slug}/OFL.txt`);
   if (!res.ok) throw new Error(`no OFL.txt for ${family} (${res.status})`);

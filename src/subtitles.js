@@ -1,6 +1,6 @@
 // Subtitle cues use the shown words and their times from the voice timeline.
-const sentenceEnd = /[.!?…]["'’”)\]]*$/;
-const punctuation = /[,;:.!?…]["'’”)\]]*$/;
+const sentenceEnd = /[.!?…।]["'’”)\]]*$/;
+const punctuation = /[,;:.!?…।]["'’”)\]]*$/;
 
 function lines(words) {
   const text = words.map((w) => w.text).join(' ');

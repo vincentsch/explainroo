@@ -15,7 +15,7 @@ export async function check(project, { log = () => {}, step = 0.25, viewWidth = 
   const issues = chapterHints(buildChapters(timeline, project.script.title || project.config.title));
   for (const sc of project.script.scenes) {
     const v = voices[sc.id];
-    const suspicious = v ? v.unmatched.filter((w) => w.replace(/[^\p{L}\p{N}]/gu, '').length > 3) : [];
+    const suspicious = v ? v.unmatched.filter((w) => w.replace(/[^\p{L}\p{M}\p{N}]/gu, '').length > 3) : [];
     if (v && v.duration && (v.matchRate < 0.9 || suspicious.length)) {
       issues.push({ level: 'warn', scene: sc.id, t: null, message: `the voice check could not confirm ${suspicious.length ? suspicious.slice(0, 8).map((w) => `"${w}"`).join(', ') : `${Math.round((1 - v.matchRate) * 100)}% of the words`}. It heard: "${v.transcript.slice(0, 200)}". ${project.config.voice.provider === 'recording' ? 'The recording does not match script.md here. Make script.md say what was actually said.' : 'If a word is mispronounced, write it as {shown|spoken} in script.md.'}` });
     }
@@ -148,9 +148,9 @@ export async function verify(project, { file = null, log = () => {} } = {}) {
         if (!words.length) continue;
         const from = Math.max(0, Math.floor(t.start * 16000));
         const to = Math.min(samples.length, Math.ceil((t.start + t.dur) * 16000));
-        const heard = await transcribeWords(samples.subarray(from, to), { log });
+        const heard = await transcribeWords(samples.subarray(from, to), { log, language: project.config.language });
         texts.push(heard.text);
-        const rate = alignWords(words, heard.words, t.dur).matchRate;
+        const rate = alignWords(words, heard.words, t.dur, project.config.language).matchRate;
         scenes.push({ id: t.id, matchRate: Math.round(rate * 1000) / 1000 });
         total += words.length;
         matched += rate * words.length;
@@ -159,9 +159,9 @@ export async function verify(project, { file = null, log = () => {} } = {}) {
       const rate = total ? matched / total : 1;
       speech = { matchRate: Math.round(rate * 1000) / 1000, transcript: texts.join(' '), scenes };
     } else {
-      const heard = await transcribeWords(samples, { log });
+      const heard = await transcribeWords(samples, { log, language: project.config.language });
       const script = project.script.scenes.flatMap(spokenWords);
-      speech = { matchRate: Math.round(alignWords(script, heard.words, duration).matchRate * 1000) / 1000, transcript: heard.text };
+      speech = { matchRate: Math.round(alignWords(script, heard.words, duration, project.config.language).matchRate * 1000) / 1000, transcript: heard.text };
     }
     if (speech.matchRate < 0.85) issues.push({ level: 'warn', message: `only ${Math.round(speech.matchRate * 100)}% of the script was understood in the final mix; lower music.volume or check pronunciation` });
     fs.rmSync(wav, { force: true });

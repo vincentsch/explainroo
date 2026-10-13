@@ -6,7 +6,20 @@ import path from 'node:path';
 
 export const TTS_MODEL = 'onnx-community/Kokoro-82M-v1.0-ONNX';
 export const ASR_MODEL = 'onnx-community/whisper-base.en_timestamped';
+export const MULTILINGUAL_ASR_MODEL = 'onnx-community/whisper-small_timestamped';
 export const TTS_SAMPLE_RATE = 24000;
+
+export const LANGUAGES = {
+  en: 'af_heart', es: 'ef_dora', fr: 'ff_siwis', it: 'if_sara', 'pt-br': 'pf_dora', hi: 'hf_alpha',
+};
+
+export function voiceLanguage(id) {
+  return { a: 'en', b: 'en', e: 'es', f: 'fr', i: 'it', p: 'pt-br', h: 'hi' }[id[0]];
+}
+
+export function asrModel(language = 'en') {
+  return language === 'en' ? ASR_MODEL : MULTILINGUAL_ASR_MODEL;
+}
 
 export function cacheRoot() {
   return process.env.EXPLAINROO_CACHE || path.join(os.homedir(), '.cache', 'explainroo');
@@ -62,31 +75,34 @@ export function loadTTS({ log } = {}) {
   return ttsPromise;
 }
 
-let asrPromise = null;
-export function loadASR({ log } = {}) {
-  if (!asrPromise) {
-    asrPromise = (async () => {
+const asrPromises = new Map();
+export function loadASR({ log, language = 'en' } = {}) {
+  const model = asrModel(language);
+  if (!asrPromises.has(model)) {
+    asrPromises.set(model, (async () => {
       const { pipeline } = await lib();
-      return pipeline('automatic-speech-recognition', ASR_MODEL, {
+      return pipeline('automatic-speech-recognition', model, {
         dtype: 'q8',
         progress_callback: progressLogger('speech check model', log),
       });
-    })();
+    })());
   }
-  return asrPromise;
+  return asrPromises.get(model);
 }
 
 // samples: Float32Array at 16 kHz. Returns [{ text, start, end }].
-export async function transcribeWords(samples, { log } = {}) {
-  const asr = await loadASR({ log });
-  const r = await asr(samples, { return_timestamps: 'word', chunk_length_s: 30, stride_length_s: 5 });
+export async function transcribeWords(samples, { log, language = 'en' } = {}) {
+  const asr = await loadASR({ log, language });
+  const r = await asr(samples, { return_timestamps: 'word', chunk_length_s: 30, stride_length_s: 5,
+    ...(language === 'en' ? {} : { language: language === 'pt-br' ? 'pt' : language, task: 'transcribe' }),
+  });
   return {
     text: (r.text || '').trim(),
     words: (r.chunks || []).map((c) => ({ text: c.text.trim(), start: c.timestamp[0] ?? 0, end: c.timestamp[1] ?? c.timestamp[0] ?? 0 })),
   };
 }
 
-// Kokoro v1.0 English voices.
+// Kokoro v1.0 voices for the supported languages.
 export const VOICES = {
   af_heart: 'American English, female (default)',
   af_bella: 'American English, female',
@@ -116,4 +132,17 @@ export const VOICES = {
   bm_fable: 'British English, male',
   bm_lewis: 'British English, male',
   bm_daniel: 'British English, male',
+  ef_dora: 'Spanish, female (default)',
+  em_alex: 'Spanish, male',
+  em_santa: 'Spanish, male',
+  ff_siwis: 'French, female (default)',
+  if_sara: 'Italian, female (default)',
+  im_nicola: 'Italian, male',
+  pf_dora: 'Brazilian Portuguese, female (default)',
+  pm_alex: 'Brazilian Portuguese, male',
+  pm_santa: 'Brazilian Portuguese, male',
+  hf_alpha: 'Hindi, female (default)',
+  hf_beta: 'Hindi, female',
+  hm_omega: 'Hindi, male',
+  hm_psi: 'Hindi, male',
 };
