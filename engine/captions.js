@@ -3,12 +3,22 @@
 import { fontString } from './themes.js';
 import { clamp, ease } from './util.js';
 
-// Japanese particles and endings (written in hiragana), Chinese particles,
-// and counters after a number (4年, 365天) belong to the word before them,
-// so a phrase or line should not start with one.
+// Some words belong to the word before them, so a phrase or line should not
+// start with one: Japanese particles and verb endings (short hiragana pieces
+// such as は, ごと, せん, or ones starting like ません), a one-kanji suffix
+// such as the 暦 of グレゴリオ暦, Chinese particles such as 的, and counters
+// after a number (4年, 365天).
+const JAPANESE_ENDINGS = /^(ませ|まし|でし|です|ます|しょう|られ|させ|され|なかっ|ながら|ような|ように|という|として|について|によって|くらい|ぐらい)/;
 export function clingsToPrevious(language) {
   const counter = (text, before) => /\d$/.test(before) && /^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(text);
-  if (language === 'ja') return (text, before = '') => /^[\u3041-\u3096\u30fc]/.test(text) || counter(text, before);
+  if (language === 'ja') {
+    return (text, before = '') => {
+      const word = text.replace(/[、。！？「」『』（）]+$/, '');
+      const ending = /^[\u3041-\u3096]+$/.test(word) && (word.length <= 2 || JAPANESE_ENDINGS.test(word));
+      const suffix = /^\p{Script=Han}$/u.test(word) && /[\p{Script=Han}\p{Script=Katakana}]$/u.test(before);
+      return ending || suffix || counter(text, before);
+    };
+  }
   if (language === 'zh') return (text, before = '') => /^[的了吗呢吧啊着过得地们][，。！？、]*$/.test(text) || counter(text, before);
   return () => false;
 }

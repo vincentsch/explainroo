@@ -6,7 +6,7 @@ import path from 'node:path';
 import { tokenizeNarration, parseScript, speechChunks, normWord, resolveMarks } from '../src/script.js';
 import { alignWords, readAlike, spreadReadings } from '../src/align.js';
 import { subtitleCues, toSrt, toVtt } from '../src/subtitles.js';
-import { buildPhrases, drawCaptions } from '../engine/captions.js';
+import { buildPhrases, drawCaptions, clingsToPrevious } from '../engine/captions.js';
 import { getTheme } from '../engine/themes.js';
 import { phonemize, misakiAvailable } from '../src/phonemes.js';
 import { languageFonts, ensureFonts } from '../src/fonts.js';
@@ -97,6 +97,9 @@ test('subtitle lines and caption phrases do not start with a Japanese or Chinese
   assert.ok(phrases.every(p => !/^[\u3041-\u3096]/.test(p.words[0].text)), phrases.map(p => p.words.map(w => w.text).join('')).join(' / '));
   const [counter] = subtitleCues({ language: 'ja', scenes: [{ start: 0, words: timed(['そこで、', '基本', 'は', '4', '年', 'ごと', 'に', '1', '日', 'を', '足し', 'ます。']) }] });
   assert.equal(counter.text, 'そこで、基本は4年ごとに\n1日を足します。');
+  const clings = clingsToPrevious('ja');
+  for (const [text, before] of [['は', '基本'], ['せん', 'ありま'], ['ませんでした。', 'あり'], ['暦', 'グレゴリオ'], ['年', '4'], ['しょう', 'ので']]) assert.equal(clings(text, before), true, text);
+  for (const [text, before] of [['うるう年', 'は'], ['ありま', 'では'], ['足', 'を'], ['地球', 'の'], ['カレンダー', 'の'], ['1', 'に']]) assert.equal(clings(text, before), false, text);
   // Breaking before or after に balances the lines equally; に stays with the word before.
   const [even] = subtitleCues({ language: 'ja', scenes: [{ start: 0, words: timed(['アイウエオカキクケ', 'に', 'サシスセソタチツテ。']) }] });
   assert.equal(even.text, 'アイウエオカキクケに\nサシスセソタチツテ。');
