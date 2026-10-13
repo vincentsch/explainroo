@@ -68,3 +68,24 @@ test('init with valid settings writes video.json and the starter files', async (
   assert.ok(fs.existsSync(path.join(target, 'assets')));
   assert.ok(fs.existsSync(path.join(target, 'script.md')));
 });
+
+test('render rejects bad formats, mismatched extensions and missing text flags before building', async () => {
+  const dir = tempDir();
+  try {
+    fs.writeFileSync(path.join(dir, 'video.json'), '{}');
+    fs.writeFileSync(path.join(dir, 'script.md'), '## intro\n');
+    fs.writeFileSync(path.join(dir, 'scenes.js'), 'export default { intro(s) {} };');
+    for (const [flags, message] of [
+      [['--format', 'webm'], /mp4 or gif/],
+      [['--out', 'file.gif'], /must end in .mp4/],
+      [['--format', 'gif', '--out', 'file.mp4'], /must end in .gif/],
+      [['--format'], /--format needs a value/],
+      [['--out'], /--out needs a value/],
+    ]) {
+      const r = await run(['render', dir, ...flags]);
+      assert.equal(r.code, 1);
+      assert.match(r.err, message);
+      assert.equal(fs.existsSync(path.join(dir, 'build')), false);
+    }
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

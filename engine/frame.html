@@ -38,14 +38,14 @@ window.explainrooReady = (async () => {
       }
       return out;
     },
-    async stills(list) {
+    async stills(list, { type = 'image/png', quality } = {}) {
       for (const { T, path } of list) {
         try {
           engine.renderFrame(T);
         } catch (e) {
           throw new Error(describe(e));
         }
-        const blob = await new Promise((r) => canvas.toBlob(r, 'image/png'));
+        const blob = await new Promise((r) => canvas.toBlob(r, type, quality));
         await upload(path, blob);
       }
       return list.length;

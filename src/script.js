@@ -29,11 +29,18 @@ export function normWord(w) {
 function parseAttrs(src, line) {
   const attrs = {};
   if (!src) return attrs;
-  for (const part of src.trim().split(/[\s,]+/).filter(Boolean)) {
+  const token = /[^\s,=:]+[=:](?:"[^"]*"|'[^']*'|[^\s,]+)|[^\s,]+/y;
+  let i = 0;
+  while (i < src.length) {
+    if (/[\s,]/.test(src[i])) { i++; continue; }
+    token.lastIndex = i;
+    const part = token.exec(src)?.[0];
+    i = token.lastIndex;
     const m = /^([a-zA-Z][\w-]*)\s*[=:]\s*(.+)$/.exec(part);
     if (!m) throw new ScriptError(`cannot read scene attribute "${part}" (use key=value)`, line);
     const [, key, raw] = m;
     const value = raw.replace(/^["']|["']$/g, '');
+    if (key === 'chapter' && (!value.trim() || value.length > 60)) throw new ScriptError('chapter title must be 1 to 60 characters', line);
     if (ATTR_NUMBERS.has(key)) {
       const n = Number(value);
       if (!Number.isFinite(n) || n < 0) throw new ScriptError(`attribute ${key} must be a number >= 0`, line);

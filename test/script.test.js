@@ -10,6 +10,19 @@ test('parses title, scenes, attributes and narration', () => {
   assert.equal(r.scenes[0].text, 'Hello there.');
 });
 
+test('quoted attributes keep spaces and commas with either kind of quote', () => {
+  const r = parseScript('## a {hold="1.5", chapter="How the resolver finds it" transition=cut}\nHi.\n## b {chapter=\'More, with spaces\' min:3}\nBye.');
+  assert.deepEqual(r.scenes[0].attrs, { hold: 1.5, chapter: 'How the resolver finds it', transition: 'cut' });
+  assert.deepEqual(r.scenes[1].attrs, { chapter: 'More, with spaces', min: 3 });
+  assert.deepEqual(parseScript('## old {hold=1.5,min:3 lead=0 transition=fade}\nHi.').scenes[0].attrs, { hold: 1.5, min: 3, lead: 0, transition: 'fade' });
+  assert.equal(parseScript("## old {note=don't}\nHi.").scenes[0].attrs.note, "don't");
+});
+
+test('chapter titles must have 1 to 60 characters', () => {
+  for (const title of ['', '   ', 'x'.repeat(61)]) assert.throws(() => parseScript(`## a {chapter="${title}"}\nHi.`), /chapter title must be 1 to 60 characters/);
+  assert.equal(parseScript(`## a {chapter="${'x'.repeat(60)}"}\nHi.`).scenes[0].attrs.chapter.length, 60);
+});
+
 test('markers, pauses and pronunciation overrides', () => {
   const units = tokenizeNarration('The {DNS|D N S} lookup, [pause 0.4] takes [#fast] {20ms|twenty milliseconds}.');
   const words = units.filter((u) => u.type === 'word');

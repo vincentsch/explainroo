@@ -133,12 +133,17 @@ When you ask, put everything you need in one message. Typical reasons to ask:
     node bin/explainroo.js verify videos/<name>
     ```
 
-    `render` makes the video. `verify` measures the loudness and looks for
+    `render` also writes subtitle files (`.srt` and `.vtt`) and a cover
+    image (`.cover.jpg`) next to the video. When scenes name chapters, it
+    writes `.chapters.txt` for the YouTube description and adds the chapters
+    to the MP4. `--format gif` makes a silent GIF instead, for a README or a
+    post. `verify` checks the MP4. It measures the loudness and looks for
     black frames and silence. It also runs the speech check on the finished
     sound to make sure the voice is still clear over the music.
 
-11. **Tell the user** where `out/video.mp4` is, how long it is, what verify
-    said, and what you could not check.
+11. **Tell the user** where the video and its subtitle files, chapters and
+    cover are, how long the video is, what verify said, and what you could
+    not check.
 
 ## How to write the narration
 
@@ -192,6 +197,11 @@ Narration for this scene. [#marker] A marker names a moment you can animate on.
   be, in seconds), `lead` (seconds before the voice, default 0.35) and
   `transition` (`fade`, `slide`, `wipe`, `zoom`, `brush`, `cut`).
 - A scene without narration lasts `min` seconds (default 3).
+- `chapter="How the resolver finds it"` in a scene's braces starts a
+  chapter at that scene. It lasts until the next chapter. Titles have 1 to
+  60 characters. If the first scene names no chapter, the first chapter is
+  the video title. YouTube shows chapters only when there are at least 3
+  and each lasts 10 seconds or more.
 
 ## What makes the pictures good
 
@@ -405,6 +415,9 @@ Set `size` to the place the video goes. `explainroo formats` lists the sizes.
 
 `9:16`, `4:5` and `WIDTHxHEIGHT` also work.
 
+YouTube and LinkedIn take the `.srt` file as captions when you upload the
+video.
+
 Shorts, TikTok and Reels put their own buttons, the account name and the post
 text on top of the video. With `shorts`, `tiktok`, `reels` and `vertical`,
 explainroo keeps your content away from those spots. `s.safe` is the part the
@@ -481,6 +494,7 @@ videos/<name>/
 | `music` | `true` | `true` (the look's style), `warm`, `upbeat`, `calm`, `tech`, `playful`, `{ "style", "volume" }` or `false` |
 | `sfx` | `true` | sound effects: `true`, `"minimal"` or `false` |
 | `captions` | `"auto"` | text of the narration at the bottom; auto turns it on for vertical and square videos |
+| `cover` | `"auto"` | full-size JPEG at the end of the first scene, or a still spec: `12.5`, `"intro"`, `"intro@2.4"`, `"intro@end"` |
 | `transition` | `"auto"` | the look's default, or `fade`, `slide`, `wipe`, `zoom`, `brush`, `cut` |
 | `lead`, `hold`, `end` | 0.35, 0.7, 1.4 | seconds before the voice, after it, and extra at the very end |
 | `sentenceGap`, `paragraphGap` | 0.3, 0.55 | pauses in the narration |
@@ -556,13 +570,20 @@ when `ink` or `muted` has too little contrast against `bg`.
 | `still [project] [times]` | PNG pictures at `12.5`, `scene`, `scene@2.4` or `scene@end` |
 | `sheet [project]` | one image with many frames of the video or of one scene (`--scene`, `--every`) |
 | `check [project]` | finds layout, timing and pronunciation problems |
-| `render [project]` | the MP4 (`--draft`, `--from`, `--to`, `--workers`, `--out`) |
+| `render [project]` | the MP4 plus subtitle files, chapters and a cover (`--format gif`, `--draft`, `--from`, `--to`, `--workers`, `--out`) |
 | `verify [project]` | checks the finished file: loudness, black frames, silence, clear voice |
 | `image [project] <name> "<prompt>"` | makes an illustration with OpenRouter |
 | `images [project]` | lists the images and what they cost |
 | `voices`, `say "text"` | lists the 28 voices, or makes a sample |
 | `themes`, `formats`, `icons <word>` | lists the looks and the sizes, searches the 1,854 icons |
 | `doctor` | checks the setup (`--fetch` downloads the speech models) |
+
+The extra files share the video's name, also with `--out`: `video.srt`,
+`video.vtt`, `video.cover.jpg` and `video.chapters.txt`. A GIF has no sound,
+runs at 15 frames per second and is at most 960 pixels on its long side.
+With `--out`, the file ending must match the format. A render of part of the
+video (`--from`, `--to`) skips the chapters and the cover. A video without
+narration gets no subtitle files.
 
 ## Scene API
 

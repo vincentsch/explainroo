@@ -27,8 +27,9 @@ Make a video
   still [project] [t…]  PNG stills: "12.5", "scene", "scene@2.4" (default: end of every scene)
   sheet [project]       contact sheet of the whole video (--scene id, --every s)
   check [project]       find layout, timing and pronunciation problems (--view-width pixels)
-  render [project]      write out/video.mp4 (--draft, --from s, --to s, --workers n, --out file)
-  verify [project]      check the rendered file: loudness, black frames, narration
+  render [project]      write MP4, subtitles, chapters and a cover (--format gif for GIF)
+                       (--draft, --from s, --to s, --workers n, --out file)
+  verify [project]      check an MP4: loudness, black frames, narration
 
 Images (optional, needs an OpenRouter API key)
   image [project] <name> "<what to draw>"   save an illustration as assets/<name>.png
@@ -128,8 +129,8 @@ export async function main(argv) {
       }
       case 'render': {
         const project = loadProject(pos[0]);
-        const r = await render(project, { log, draft: !!flags.draft, from: num(flags.from, 'from'), to: num(flags.to, 'to'), workers: num(flags.workers, 'workers'), scale: num(flags.scale, 'scale'), out: flags.out });
-        print(r.out, r);
+        const r = await render(project, { log, draft: !!flags.draft, from: num(flags.from, 'from'), to: num(flags.to, 'to'), workers: num(flags.workers, 'workers'), scale: num(flags.scale, 'scale'), out: textFlag(flags, 'out'), format: textFlag(flags, 'format') });
+        print([r.out, r.subtitles?.srt, r.subtitles?.vtt, r.chapters, r.cover].filter(Boolean).map((f) => path.relative(process.cwd(), f) || f).join('\n'), r);
         return 0;
       }
       case 'verify': {

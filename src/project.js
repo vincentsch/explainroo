@@ -42,6 +42,7 @@ export const DEFAULTS = {
   music: true,
   sfx: true,
   captions: 'auto',
+  cover: 'auto',
   transition: 'auto',
   lead: 0.35,
   hold: 0.7,
@@ -169,6 +170,14 @@ export function normalizeConfig(raw, dir = '.') {
   if (!TRANSITIONS.includes(cfg.transition)) fail(`transition must be one of ${TRANSITIONS.join(', ')}`);
   if (![true, false, 'minimal'].includes(cfg.sfx)) fail('sfx must be true, false or "minimal"');
   if (![true, false, 'auto'].includes(cfg.captions)) fail('captions must be true, false or "auto"');
+  const cover = cfg.cover;
+  const [scene, at, extra] = typeof cover === 'string' ? cover.split('@') : [];
+  const coverTime = typeof cover === 'number' && Number.isFinite(cover) && cover >= 0;
+  const coverSpec = typeof cover === 'string' && (/^\d+(\.\d+)?$/.test(cover) || (
+    /^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(scene) && extra === undefined &&
+    (at === undefined || at === '' || at === 'end' || at === 'start' || Number.isFinite(Number(at)))
+  ));
+  if (!coverTime && !coverSpec) fail('cover must be "auto", seconds like 12.5, or a still spec like "intro@end"');
   for (const k of ['lead', 'hold', 'end', 'sentenceGap', 'paragraphGap']) {
     if (!(typeof cfg[k] === 'number' && cfg[k] >= 0 && cfg[k] <= 10)) fail(`${k} must be a number of seconds between 0 and 10`);
   }

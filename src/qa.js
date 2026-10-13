@@ -7,11 +7,12 @@ import { probe, loudness, ffmpeg } from './ffmpeg.js';
 import { transcribeWords } from './models.js';
 import { readWav } from './wav.js';
 import { alignWords } from './align.js';
+import { buildChapters, chapterHints } from './chapters.js';
 
 export async function check(project, { log = () => {}, step = 0.25, viewWidth = null } = {}) {
   if (viewWidth !== null && (!Number.isFinite(viewWidth) || viewWidth <= 0)) throw new Error("--view-width must be a positive number");
   const { voices, timeline } = await prepare(project, { log });
-  const issues = [];
+  const issues = chapterHints(buildChapters(timeline, project.script.title || project.config.title));
   for (const sc of project.script.scenes) {
     const v = voices[sc.id];
     const suspicious = v ? v.unmatched.filter((w) => w.replace(/[^\p{L}\p{N}]/gu, '').length > 3) : [];
@@ -34,7 +35,7 @@ export function resolveTimes(timeline, specs) {
   const endOf = (sc) => sc.start + Math.max(0, sc.dur - 0.3);
   if (!specs.length) return timeline.scenes.map((sc) => ({ T: endOf(sc), label: `${sc.id}@end` }));
   return specs.map((spec) => {
-    if (/^\d+(\.\d+)?$/.test(spec)) {
+    if (typeof spec === 'number' || /^\d+(\.\d+)?$/.test(spec)) {
       const T = Math.min(Number(spec), timeline.duration - 1 / timeline.fps);
       return { T, label: `t${T.toFixed(2)}` };
     }
@@ -89,6 +90,7 @@ export async function sheet(project, { scene = null, every = null, cols = null, 
 
 export async function verify(project, { file = null, log = () => {} } = {}) {
   const video = path.resolve(file || path.join(project.paths.out, 'video.mp4'));
+  if (path.extname(video).toLowerCase() === '.gif') throw new Error('verify checks MP4 files. Pass an MP4 with --file.');
   if (!fs.existsSync(video)) throw new Error(`${video} does not exist. Run "explainroo render" first.`);
   const issues = [];
   const info = await probe(video);
