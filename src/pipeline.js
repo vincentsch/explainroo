@@ -30,6 +30,7 @@ export function makeState(project, timeline) {
   const assets = listAssets(project.dir);
   const stamp = [
     fileStamp(project.paths.scenes),
+    ...(project.paths.look ? [fileStamp(project.paths.look)] : []),
     ...assets.map((a) => a + '@' + fileStamp(path.join(project.dir, a))),
     ...fs.readdirSync(project.dir).filter((f) => f.endsWith('.js') || f.endsWith('.mjs')).map((f) => f + '@' + fileStamp(path.join(project.dir, f))),
   ].join('|');

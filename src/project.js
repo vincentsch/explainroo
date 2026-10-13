@@ -7,11 +7,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { parseScript } from './script.js';
 import { VOICES } from './models.js';
+import { THEMES as LOOKS } from '../engine/themes.js';
+import { parseColor } from '../engine/util.js';
 
-export const THEMES = ['paper', 'clean', 'chalk', 'blueprint', 'midnight'];
+export const THEMES = Object.keys(LOOKS);
 export const MUSIC_STYLES = ['warm', 'upbeat', 'calm', 'tech', 'playful'];
 export const TRANSITIONS = ['auto', 'fade', 'slide', 'wipe', 'zoom', 'brush', 'cut'];
-export const THEME_MUSIC = { paper: 'warm', clean: 'upbeat', chalk: 'calm', blueprint: 'tech', midnight: 'tech' };
+export const THEME_MUSIC = Object.fromEntries(THEMES.map((name) => [name, LOOKS[name].music]));
 const ASPECTS = { '16:9': [1920, 1080], '9:16': [1080, 1920], '1:1': [1080, 1080], '4:5': [1080, 1350] };
 
 // Named formats for the usual places a video goes. Vertical apps draw their
@@ -68,6 +70,81 @@ function fail(msg) {
   throw new ProjectError(msg);
 }
 
+const LOOK_KEYS = ['extends', 'name', 'dark', 'bg', 'ink', 'muted', 'surface', 'accent', 'colors', 'fonts', 'background', 'stroke', 'radius', 'transition', 'music', 'code', 'terminal', 'caption'];
+const TEXTURES = ['paper', 'dots', 'chalk', 'grid', 'glow', 'plain'];
+const BUILTIN_FONTS = [...new Set(JSON.parse(fs.readFileSync(new URL('../fonts/fonts.json', import.meta.url), 'utf8')).map((f) => f.family))];
+
+function lookPath(theme) {
+  return typeof theme === 'string' && theme.endsWith('.json') && !path.isAbsolute(theme) && !path.win32.isAbsolute(theme);
+}
+
+export function loadLook(dir, file, fonts = []) {
+  const bad = (key, message) => fail(`${file}: ${key} ${message}`);
+  let raw;
+  try {
+    raw = JSON.parse(fs.readFileSync(path.resolve(dir, file), 'utf8'));
+  } catch (e) {
+    if (e.code === 'ENOENT') bad('theme', 'file is missing. Check the path in video.json.');
+    bad('theme', `file could not be read as JSON: ${e.message}`);
+  }
+  const object = (value, key, keys) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) bad(key, 'must be an object');
+    for (const k of Object.keys(value)) if (!keys.includes(k)) bad(`${key}.${k}`, `is unknown. Known: ${keys.join(', ')}`);
+  };
+  const oneOf = (value, key, values) => {
+    if (!values.includes(value)) bad(key, `must be one of ${values.join(', ')}`);
+  };
+  const number = (value, key, min, max) => {
+    if (!(typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max)) bad(key, `must be a number between ${min} and ${max}`);
+  };
+  const color = (value, key, alpha = false) => {
+    const p = typeof value === 'string' && /^rgba\(\s*\d+(?:\.\d+)?\s*,\s*\d+(?:\.\d+)?\s*,\s*\d+(?:\.\d+)?\s*,\s*(?:\d+(?:\.\d+)?|\.\d+)\s*\)$/.test(value) ? parseColor(value) : null;
+    if (!(typeof value === 'string' && HEX.test(value)) && !(alpha && p && [p.r, p.g, p.b].every((v) => v <= 255) && p.a <= 1)) {
+      bad(key, `must be a color like "#2563eb"${alpha ? ' or "rgba(17,24,39,0.82)"' : ''}`);
+    }
+  };
+  object(raw, 'look', LOOK_KEYS);
+  oneOf(raw.extends, 'extends', THEMES);
+  const name = raw.name === undefined ? path.basename(file, '.json') : raw.name;
+  if (!(typeof name === 'string' && name.trim()) || THEMES.includes(name)) bad('name', 'must be a non-empty name that is not a built-in look');
+  if (raw.dark !== undefined && typeof raw.dark !== 'boolean') bad('dark', 'must be true or false');
+  for (const k of ['bg', 'ink', 'muted', 'surface']) if (raw[k] !== undefined) color(raw[k], k);
+  if (raw.accent !== undefined) oneOf(raw.accent, 'accent', Object.keys(LOOKS.paper.colors));
+  if (raw.background !== undefined) oneOf(raw.background, 'background', TEXTURES);
+  if (raw.transition !== undefined) oneOf(raw.transition, 'transition', TRANSITIONS.filter((v) => v !== 'auto'));
+  if (raw.music !== undefined) oneOf(raw.music, 'music', MUSIC_STYLES);
+  if (raw.radius !== undefined) number(raw.radius, 'radius', 0, 200);
+  for (const group of ['colors', 'code', 'terminal', 'caption']) {
+    if (raw[group] === undefined) continue;
+    const base = LOOKS[raw.extends][group];
+    object(raw[group], group, Object.keys(base));
+    for (const [k, v] of Object.entries(raw[group])) color(v, `${group}.${k}`, String(base[k]).startsWith('rgba('));
+  }
+  if (raw.fonts !== undefined) {
+    object(raw.fonts, 'fonts', Object.keys(LOOKS.paper.fonts));
+    for (const [role, f] of Object.entries(raw.fonts)) {
+      const key = `fonts.${role}`;
+      object(f, key, ['family', 'weight']);
+      if (f.family !== undefined && ![...BUILTIN_FONTS, ...fonts.map((v) => v.family)].includes(f.family)) bad(`${key}.family`, `must be listed in video.json fonts or be built in. Built-in families: ${BUILTIN_FONTS.join(', ')}`);
+      if (f.weight !== undefined) {
+        number(f.weight, `${key}.weight`, 1, 1000);
+        if (!Number.isInteger(f.weight)) bad(`${key}.weight`, 'must be a whole number');
+      }
+    }
+  }
+  if (raw.stroke !== undefined) {
+    const ranges = { width: [0, 20], roughness: [0, 5], bowing: [0, 5], hachureGap: [1, 100], fillWeight: [0, 20], glow: [0, 100] };
+    object(raw.stroke, 'stroke', ['rough', ...Object.keys(ranges), 'fillStyle', 'texture']);
+    for (const [k, v] of Object.entries(raw.stroke)) {
+      if (ranges[k]) number(v, `stroke.${k}`, ...ranges[k]);
+      else if (k === 'rough' && typeof v !== 'boolean') bad('stroke.rough', 'must be true or false');
+      else if (k === 'fillStyle') oneOf(v, 'stroke.fillStyle', ['solid', 'hachure', 'cross-hatch', 'zigzag', 'dots']);
+      else if (k === 'texture') oneOf(v, 'stroke.texture', ['chalk']);
+    }
+  }
+  return { ...raw, name };
+}
+
 export function resolveSize(size) {
   if (FORMATS[size]) return { width: FORMATS[size].size[0], height: FORMATS[size].size[1], safe: FORMATS[size].safe || null };
   if (ASPECTS[size]) return { width: ASPECTS[size][0], height: ASPECTS[size][1] };
@@ -79,11 +156,11 @@ export function resolveSize(size) {
   return { width, height };
 }
 
-export function normalizeConfig(raw) {
+export function normalizeConfig(raw, dir = '.') {
   const cfg = { ...DEFAULTS, ...raw };
   const unknown = Object.keys(raw).filter((k) => !(k in DEFAULTS) && !k.startsWith('_'));
   if (unknown.length) fail(`video.json has unknown setting(s): ${unknown.join(', ')}. Known: ${Object.keys(DEFAULTS).join(', ')}`);
-  if (!THEMES.includes(cfg.theme)) fail(`theme must be one of ${THEMES.join(', ')}, not "${cfg.theme}"`);
+  if (!THEMES.includes(cfg.theme) && !lookPath(cfg.theme)) fail(`theme must be one of ${THEMES.join(', ')} or a relative path to a .json look file, not "${cfg.theme}"`);
   if (!VOICES[cfg.voice]) fail(`voice "${cfg.voice}" does not exist. Run "explainroo voices" for the list.`);
   if (!(cfg.speed >= 0.6 && cfg.speed <= 1.6)) fail('speed must be between 0.6 and 1.6');
   if (!(cfg.pace >= 0.7 && cfg.pace <= 1.6)) fail('pace must be between 0.7 and 1.6 (1 is normal, 1.3 is 30% faster)');
@@ -144,8 +221,9 @@ export function normalizeConfig(raw) {
     if (f.style !== undefined && !['normal', 'italic'].includes(f.style)) fail(`${where}.style must be "normal" or "italic"`);
   });
 
+  if (lookPath(cfg.theme)) cfg.look = loadLook(dir, cfg.theme, cfg.fonts);
   let music = cfg.music;
-  if (music === true) music = { style: THEME_MUSIC[cfg.theme] };
+  if (music === true) music = { style: cfg.look ? (cfg.look.music ?? THEME_MUSIC[cfg.look.extends]) : THEME_MUSIC[cfg.theme] };
   else if (typeof music === 'string') music = { style: music };
   if (music) {
     // A faster pace plays the music a little faster too.
@@ -179,7 +257,7 @@ export function loadProject(arg) {
   } catch (e) {
     fail(`video.json is not valid JSON: ${e.message}`);
   }
-  const config = normalizeConfig(raw);
+  const config = normalizeConfig(raw, dir);
   for (const f of [...config.fonts.map((x) => x.src), ...(config.brand?.logo ? [config.brand.logo] : [])]) {
     if (!fs.existsSync(path.join(dir, f))) fail(`${f} is listed in video.json but the file is missing`);
   }
@@ -191,7 +269,7 @@ export function loadProject(arg) {
   if (!fs.existsSync(scenesPath)) fail(`${scenesPath} is missing`);
   const build = path.join(dir, 'build');
   const out = path.join(dir, 'out');
-  return { dir, config, script, paths: { build, out, voice: path.join(build, 'voice'), scenes: scenesPath, script: scriptPath } };
+  return { dir, config, script, paths: { build, out, voice: path.join(build, 'voice'), scenes: scenesPath, script: scriptPath, look: config.look ? path.resolve(dir, config.theme) : null } };
 }
 
 export function listAssets(dir) {

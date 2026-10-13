@@ -179,7 +179,7 @@ export async function main(argv) {
           blueprint: 'white technical drafting on blueprint blue with a grid; wipe transitions; tech music',
           midnight: 'dark developer look with glowing accents; zoom transitions; tech music',
         };
-        print(THEMES.map((t) => `${t.padEnd(10)} ${desc[t]}`).join('\n') + `\n\nmusic styles: ${MUSIC_STYLES.join(', ')}`, { themes: desc, music: MUSIC_STYLES });
+        print(THEMES.map((t) => `${t.padEnd(10)} ${desc[t]}`).join('\n') + `\n\nCustom looks: set theme in video.json to a relative .json file that extends a built-in look.\nmusic styles: ${MUSIC_STYLES.join(', ')}`, { themes: desc, music: MUSIC_STYLES });
         return 0;
       }
       case 'formats': {
@@ -254,7 +254,15 @@ async function preview(dir, flags, log) {
   const server = await startServer({ projectDir: project.dir, getState: () => (lastError ? { ...state, error: lastError } : state), port: num(flags.port, 'port') ?? 4400 });
   log(`preview: ${server.url}  (Ctrl+C to stop)`);
   const watched = ['video.json', 'script.md'];
-  const stamp = () => watched.map((f) => { try { return fs.statSync(path.join(project.dir, f)).mtimeMs; } catch { return 0; } }).join(':');
+  const stamp = () => {
+    const files = watched.map((f) => path.join(project.dir, f));
+    // Read the current path too, so creating a missing look file clears its error.
+    try {
+      const { theme } = JSON.parse(fs.readFileSync(files[0], 'utf8'));
+      if (typeof theme === 'string' && theme.endsWith('.json')) files.push(path.resolve(project.dir, theme));
+    } catch {}
+    return files.map((f) => { try { const st = fs.statSync(f); return `${f}:${st.mtimeMs}:${st.size}`; } catch { return `${f}:missing`; } }).join('|');
+  };
   let last = stamp();
   let busy = false;
   const timer = setInterval(async () => {
@@ -264,7 +272,7 @@ async function preview(dir, flags, log) {
     try {
       if (now !== last) {
         last = now;
-        log('script or settings changed, updating narration');
+        log('script, settings or look changed, updating project');
         project = loadProject(project.dir);
         ({ timeline } = await prepare(project, { log }));
         lastError = null;

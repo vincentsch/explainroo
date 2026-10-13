@@ -13,8 +13,6 @@ import { playbackTextIssue } from './readability.js';
 
 Stage.UI = UI;
 
-const AUTO_TRANSITION = { paper: 'brush', clean: 'slide', chalk: 'brush', blueprint: 'wipe', midnight: 'zoom' };
-
 export async function fetchState() {
   const res = await fetch('/__state.json', { cache: 'no-store' });
   if (!res.ok) throw new Error(`could not load project state: ${res.status} ${await res.text()}`);
@@ -76,7 +74,7 @@ export class Engine {
     this.appArea = areas.app;
     this.fps = config.fps;
     this.scale = scale;
-    this.theme = getTheme(config.theme);
+    this.theme = getTheme(config.theme, config.look);
     this.pen = new Pen({ rough, theme: this.theme });
     this.icons = icons;
     this.iconCache = new Map();
@@ -124,7 +122,7 @@ export class Engine {
   }
 
   transitionFor(sc) {
-    const name = sc.transition === 'auto' ? AUTO_TRANSITION[this.theme.name] : sc.transition;
+    const name = sc.transition === 'auto' ? this.theme.transition : sc.transition;
     return name || 'fade';
   }
 
@@ -289,6 +287,11 @@ export class Engine {
   check(step = 0.25, viewWidth = null) {
     const issues = [];
     const add = (level, scene, t, message) => issues.push({ level, scene, t: t === null ? null : Math.round(t * 100) / 100, message });
+    if (this.config.look) {
+      for (const [key, min] of [['ink', 4.5], ['muted', 3]]) {
+        if (contrast(this.theme[key], this.theme.bg) < min) add('warn', null, null, `${this.config.theme}: ${key} has low contrast against bg; use colors with a contrast of at least ${min}`);
+      }
+    }
     for (const id of this.extraScenes) add('warn', id, null, `scenes.js has a function "${id}" but script.md has no scene with that id, so it is never shown`);
     const scratch = document.createElement('canvas');
     scratch.width = this.canvas.width;
@@ -396,7 +399,7 @@ export class Engine {
 // Boots the engine for render, check or studio pages.
 export async function boot({ canvas, scale = 1, version = '' }) {
   const state = await fetchState();
-  const theme = getTheme(state.config.theme);
+  const theme = getTheme(state.config.theme, state.config.look);
   const [icons, images, scenesMod, audio, iconTags] = await Promise.all([
     fetch('/engine/icons/lucide.json').then((r) => r.json()).then((j) => {
       // Old Lucide names keep working.

@@ -472,7 +472,7 @@ videos/<name>/
 | Setting | Default | What it does |
 |---|---|---|
 | `title` | from the script | shown in the preview |
-| `theme` | `paper` | `paper`, `clean`, `chalk`, `blueprint`, `midnight` |
+| `theme` | `paper` | a built-in look, or a relative path to a `.json` look file (see Custom looks) |
 | `size` | `16:9` | a platform (`youtube`, `shorts`, `tiktok`, `reels`, `vertical`, `instagram`, `linkedin`, `square`), `16:9`, `9:16`, `1:1`, `4:5` or `WIDTHxHEIGHT` |
 | `fps` | 30 | 24, 25, 30, 50 or 60 |
 | `voice` | `af_heart` | see `explainroo voices` |
@@ -500,6 +500,51 @@ The looks:
 | `chalk` | chalk on a green board | brush | calm |
 | `blueprint` | white drawings on blueprint blue | wipe | tech |
 | `midnight` | dark background with glowing colors | zoom | tech |
+
+### Custom looks
+
+A look file gives a project its own colors, fonts and texture without
+changing explainroo. Set `"theme": "../brand/acme-look.json"` in `video.json`.
+The path is relative to the video folder, so a file outside it can give
+several videos the same look.
+
+```json
+{
+  "extends": "clean",
+  "name": "acme",
+  "bg": "#fbfaf7",
+  "ink": "#1d1b16",
+  "accent": "orange",
+  "colors": { "orange": "#e8590c" },
+  "background": "dots",
+  "transition": "fade",
+  "music": "calm"
+}
+```
+
+`extends` names the built-in look to start from. Every other key is
+optional and changes only what it lists: `name`, `dark`, `bg`, `ink`, `muted`,
+`surface`, `accent`, `colors`, `fonts`, `background`, `stroke`, `radius`,
+`transition`, `music`, `code`, `terminal` and `caption`. In the nested ones,
+like `colors` or `caption`, list only the values you change. `name` defaults
+to the file name and cannot be a built-in name. Set `"dark": true` when you
+give a light look a dark `bg`, so fills and shadows suit it.
+
+Use colors like `"#e8590c"`. `caption.bg` and `code.highlight` also accept
+`rgba(...)`. `accent` names one of the ten colors: red, orange, yellow,
+green, teal, blue, purple, pink, gray or ink.
+
+`fonts` sets the `display`, `body`, `hand` and `mono` roles. Each takes a
+`family` and a numeric `weight`, for example
+`"body": { "family": "Inter", "weight": 500 }`. Families must be built in
+or listed in `video.json` under `fonts`. The look file does not load fonts.
+
+`background` picks a texture: `paper` (paper grain), `dots` (a dot grid),
+`chalk` (board smudges), `grid` (drafting lines), `glow` (two glows) or
+`plain` (one flat color). Each uses your `bg`. Leave it out to keep the base
+texture. `transition` and `music` set the look's defaults. Settings in
+`video.json` still win. `preview` picks up look edits, and `check` warns
+when `ink` or `muted` has too little contrast against `bg`.
 
 ## Commands
 
