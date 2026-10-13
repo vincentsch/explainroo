@@ -247,7 +247,7 @@ export class Engine {
     return s;
   }
 
-  renderFrame(T, ctx = this.ctx) {
+  renderFrame(T, ctx = this.ctx, { captions = true } = {}) {
     const i = this.sceneAt(T);
     const sc = this.timeline.scenes[i];
     const t = T - sc.start;
@@ -266,7 +266,7 @@ export class Engine {
     } else {
       this.drawScene(ctx, i, t);
     }
-    if (this.phrases.length) {
+    if (captions && this.phrases.length) {
       ctx.setTransform(this.scale, 0, 0, this.scale, 0, 0);
       drawCaptions(ctx, this.phrases, T, this.theme, this.W, this.H, this.captionArea);
     }

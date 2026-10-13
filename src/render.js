@@ -143,7 +143,7 @@ export async function render(project, opts = {}) {
   if (coverTime) {
     const temp = path.join(project.paths.build, 'cover.jpg');
     try {
-      await withEngine(project, timeline, { scale: 1, log }, (page) => page.evaluate((T) => window.explainroo.stills([{ T, path: 'build/cover.jpg' }], { type: 'image/jpeg', quality: 0.9 }), coverTime.T));
+      await withEngine(project, timeline, { scale: 1, log }, (page) => page.evaluate((T) => window.explainroo.stills([{ T, path: 'build/cover.jpg' }], { type: 'image/jpeg', quality: 0.9, captions: false }), coverTime.T));
       files.cover = `${base}.cover.jpg`;
       fs.copyFileSync(temp, files.cover);
     } finally { fs.rmSync(temp, { force: true }); }

@@ -33,3 +33,38 @@ test('stills preserve PNG by default and support JPEG covers', { skip: !chrome }
     assert.deepEqual([...fs.readFileSync(path.join(dir, 'build/cover.jpg')).subarray(0, 3)], [0xff, 0xd8, 0xff]);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('covers leave out the burned-in captions', { skip: !chrome }, async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-cover-captions-'));
+  try {
+    fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ theme: 'clean', size: '640x360', captions: true, watermark: false }));
+    fs.writeFileSync(path.join(dir, 'script.md'), '## intro\nHello there.\n');
+    fs.writeFileSync(path.join(dir, 'scenes.js'), 'export default { intro(s) { s.bg("#ffffff"); } };');
+    const project = loadProject(dir);
+    const timeline = { duration: 2, frames: 60, fps: 30, width: 640, height: 360, transitionSeconds: 0,
+      scenes: [{ id: 'intro', index: 0, start: 0, dur: 2, marks: {}, voice: null, transition: 'none',
+        words: [{ text: 'Hello', start: 0.2, end: 0.6 }, { text: 'there.', start: 0.7, end: 1.1 }] }] };
+    await withEngine(project, timeline, {}, async (page) => {
+      const dark = await page.evaluate(async () => {
+        const count = async (options) => {
+          await window.explainroo.stills([{ T: 0.9, path: 'out/c.png' }], options);
+          const img = new Image();
+          img.src = '/project/out/c.png?' + Math.random();
+          await img.decode();
+          const c = document.createElement('canvas');
+          c.width = img.naturalWidth;
+          c.height = img.naturalHeight;
+          const g = c.getContext('2d');
+          g.drawImage(img, 0, 0);
+          const d = g.getImageData(0, 0, c.width, c.height).data;
+          let n = 0;
+          for (let i = 0; i < d.length; i += 4) if (d[i] < 128) n++;
+          return n;
+        };
+        return { with: await count({}), without: await count({ captions: false }) };
+      });
+      assert.ok(dark.with > 100, `captions should draw dark pixels, got ${dark.with}`);
+      assert.equal(dark.without, 0);
+    });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

@@ -41,11 +41,11 @@ window.explainrooReady = (async () => {
       }
       return out;
     },
-    async stills(list, { type = 'image/png', quality } = {}) {
+    async stills(list, { type = 'image/png', quality, captions = true } = {}) {
       for (const { T, path } of list) {
         try {
           if (engine.clips.size) await engine.prepareFrame(T);
-          engine.renderFrame(T);
+          engine.renderFrame(T, undefined, { captions });
         } catch (e) {
           throw new Error(describe(e));
         }
