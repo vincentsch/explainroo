@@ -8,6 +8,7 @@ import { drawTransition } from './transitions.js';
 import { buildPhrases, drawCaptions } from './captions.js';
 import { hashStr, mulberry32, suggest, contrast, opaque, withAlpha } from './util.js';
 import { layoutAreas } from './layout.js';
+import { loadClips, ClipFrames } from './clips.js';
 import { UI } from './ui.js';
 import { playbackTextIssue } from './readability.js';
 
@@ -59,7 +60,7 @@ async function loadImages(assets) {
 }
 
 export class Engine {
-  constructor({ canvas, state, scenes, icons, images, scale = 1, sfxNames = [] }) {
+  constructor({ canvas, state, scenes, icons, images, clips = new Map(), scale = 1, sfxNames = [] }) {
     const { config, timeline } = state;
     this.state = state;
     this.config = config;
@@ -79,6 +80,9 @@ export class Engine {
     this.icons = icons;
     this.iconCache = new Map();
     this.images = images;
+    this.clips = clips;
+    this.clipFrames = new ClipFrames();
+    this.clipProbe = null;
     this.sfxNames = sfxNames;
     this.sfxMode = config.sfx;
     this.recorder = null;
@@ -112,6 +116,43 @@ export class Engine {
     const img = this.images.get(key) || this.images.get('assets/' + key);
     if (!img) throw new SceneError(`image "${src}" not found. Put it in the project's assets/ folder. Available: ${[...this.images.keys()].join(', ') || 'none'}`);
     return img;
+  }
+
+  clip(src) {
+    const key = src.replace(/^\.?\//, '');
+    const clip = this.clips.get(key) || this.clips.get('assets/' + key);
+    if (!clip) throw new SceneError(`clip "${src}" not found. Put an MP4, MOV, WebM or M4V in the project's assets/ folder. Available: ${[...this.clips.keys()].join(', ') || 'none'}`);
+    return clip;
+  }
+
+  clipImage(clip, frame) {
+    if (this.recorder) return null;
+    const key = this.clipFrames.key(clip, frame);
+    if (this.clipProbe) {
+      this.clipProbe.set(key, { clip, frame });
+      return null;
+    }
+    const img = this.clipFrames.get(clip, frame);
+    if (img) return img;
+    if (this.clipFrames.errors.has(key)) throw this.clipFrames.errors.get(key);
+    this.clipFrames.load(clip, frame).then(() => {
+      this.clipFrames.trim();
+      this.onClipFrame?.();
+    }).catch((e) => {
+      this.clipFrames.errors.set(key, e);
+      this.onClipFrame?.();
+    });
+    return this.clipFrames.nearest(clip, frame);
+  }
+
+  async prepareFrame(T) {
+    if (!this.clips.size) return;
+    const needed = new Map();
+    this.clipProbe = needed;
+    try { this.renderFrame(T); }
+    finally { this.clipProbe = null; }
+    await Promise.all([...needed.values()].map(({ clip, frame }) => this.clipFrames.load(clip, frame)));
+    this.clipFrames.trim(new Set(needed.keys()));
   }
 
   sceneAt(T) {
@@ -245,8 +286,10 @@ export class Engine {
   // Sound cues for the soundtrack: element entrances, explicit s.sfx() calls
   // and scene transitions, thinned so effects never pile up.
   sfxCues() {
-    if (this.config.sfx === false) return { cues: [], errors: [] };
+    if (this.config.sfx === false && !this.clips.size) return { cues: [], clips: [], errors: [] };
     const { events, errors } = this.collectEvents();
+    const clips = events.filter((e) => e.kind === 'clip' && e.volume > 0 && e.speed === 1 && e.hasAudio).map((e) => ({ ...e, start: e.T, end: e.T + e.end - e.at }));
+    if (this.config.sfx === false) return { cues: [], clips, errors };
     const cues = [];
     for (const e of events) {
       if (!e.sfx) continue;
@@ -280,7 +323,7 @@ export class Engine {
       last.set(c.name, c.t);
       out.push(c);
     }
-    return { cues: out, errors };
+    return { cues: out, clips, errors };
   }
 
   // Samples every scene and reports layout problems.
@@ -374,6 +417,10 @@ export class Engine {
       this.textLog = null;
       const times = [...new Set(entrances.map((e) => Math.round(e.at * 100) / 100))].sort((a, b) => a - b);
       for (const e of entrances) {
+        if (e.kind === 'clip') {
+          if (e.volume > 0 && e.speed !== 1) once(`clip-sound:${sc.id}:${e.key}`, () => add('warn', sc.id, e.at, `clip "${e.src}" stays silent at speed ${e.speed}; use speed: 1 for its sound`));
+          if (!e.loop && e.out - e.end > 1) once(`clip-freeze:${sc.id}:${e.key}`, () => add('hint', sc.id, e.end, `clip "${e.src}" freezes on its last frame from ${e.end.toFixed(2)}s until ${e.out.toFixed(2)}s; use loop: true or an earlier out`));
+        }
         if (e.at > sc.dur) once(`late:${sc.id}:${e.key}`, () => add('error', sc.id, e.at, `a ${e.kind} is set to appear at ${e.at.toFixed(2)}s but the scene ends at ${sc.dur.toFixed(2)}s`));
       }
       if (!times.length) {
@@ -400,7 +447,7 @@ export class Engine {
 export async function boot({ canvas, scale = 1, version = '' }) {
   const state = await fetchState();
   const theme = getTheme(state.config.theme, state.config.look);
-  const [icons, images, scenesMod, audio, iconTags] = await Promise.all([
+  const [icons, images, scenesMod, audio, iconTags, clips] = await Promise.all([
     fetch('/engine/icons/lucide.json').then((r) => r.json()).then((j) => {
       // Old Lucide names keep working.
       for (const [alias, target] of Object.entries(j.aliases || {})) if (!j.icons[alias]) j.icons[alias] = j.icons[target];
@@ -410,11 +457,12 @@ export async function boot({ canvas, scale = 1, version = '' }) {
     import(`/project/scenes.js?v=${encodeURIComponent(version || state.version)}`),
     import('/engine/audio/soundtrack.js').catch((e) => ({ SFX: {}, loadError: e })),
     fetch('/engine/icons/lucide-tags.json').then((r) => r.json()),
+    loadClips(state.assets),
     loadFonts(theme, state.config),
   ]);
   const scenes = scenesMod.default;
   if (!scenes || typeof scenes !== 'object') throw new Error('scenes.js must "export default { sceneId(s) { ... } }"');
-  const engine = new Engine({ canvas, state, scenes, icons, images, scale, sfxNames: Object.keys(audio.SFX) });
+  const engine = new Engine({ canvas, state, scenes, icons, images, clips, scale, sfxNames: Object.keys(audio.SFX) });
   engine.iconTags = iconTags;
   return { engine, audio, state };
 }
@@ -423,7 +471,7 @@ export async function boot({ canvas, scale = 1, version = '' }) {
 export async function renderAudio(engine, audio, { sampleRate = 48000 } = {}) {
   if (audio.loadError) throw new Error(`audio engine failed to load: ${audio.loadError.message}`);
   const { timeline, config } = engine.state;
-  const { cues, errors } = engine.sfxCues();
+  const { cues, clips, errors } = engine.sfxCues();
   const buffer = await audio.renderSoundtrack({
     duration: timeline.duration,
     sampleRate,
@@ -431,6 +479,7 @@ export async function renderAudio(engine, audio, { sampleRate = 48000 } = {}) {
     voiceSpans: timeline.voiceSpans,
     music: config.music,
     sfx: cues,
+    clips,
     scenes: timeline.scenes.map((s) => ({ start: s.start, dur: s.dur })),
   });
   return { buffer, cues, errors };

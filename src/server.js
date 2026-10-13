@@ -3,7 +3,9 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { extractClip, VIDEO_FILE } from './clips.js';
 
 export const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
@@ -26,6 +28,9 @@ const TYPES = {
   '.gif': 'image/gif',
   '.svg': 'image/svg+xml',
   '.mp4': 'video/mp4',
+  '.mov': 'video/quicktime',
+  '.webm': 'video/webm',
+  '.m4v': 'video/mp4',
   '.txt': 'text/plain; charset=utf-8',
 };
 
@@ -42,7 +47,7 @@ function safeJoin(base, rel) {
 // Project files the engine page may read: scenes.js and the modules it
 // imports, images, fonts, audio and video. Never dotfiles such as .env, and
 // no JSON, Markdown or text files, which can hold keys or private notes.
-const PROJECT_FILES = /\.(m?js|png|jpe?g|webp|gif|svg|wav|mp3|mp4|woff2?|ttf|otf)$/i;
+const PROJECT_FILES = /\.(m?js|png|jpe?g|webp|gif|svg|wav|mp3|mp4|mov|webm|m4v|woff2?|ttf|otf)$/i;
 
 function allowedName(rel) {
   const parts = rel.split(/[\\/]+/);
@@ -64,6 +69,53 @@ function projectFile(projectDir, rel) {
   if (!realInside(projectDir, real)) return null;
   const realRel = path.relative(fs.realpathSync(projectDir), real);
   return allowedName(realRel) ? real : null;
+}
+
+function clipFile(projectDir, rel) {
+  if (!rel.startsWith('assets/') || !VIDEO_FILE.test(rel)) return null;
+  const file = projectFile(projectDir, rel);
+  const assets = path.join(fs.realpathSync(projectDir), 'assets');
+  if (!file || !VIDEO_FILE.test(file) || !file.startsWith(assets + path.sep) || !fs.statSync(file).isFile()) return null;
+  return file;
+}
+
+function clipCacheFile(projectDir, rel) {
+  const file = uploadFile(projectDir, rel);
+  if (!file) return null;
+  const realRel = path.relative(fs.realpathSync(projectDir), fs.realpathSync(path.dirname(file)));
+  return realRel.split(path.sep).some((p) => p.startsWith('.')) ? null : file;
+}
+
+const clipJobs = new Map();
+
+async function cachedClip(projectDir, file, fps) {
+  const hash = crypto.createHash('sha256').update(JSON.stringify({ fps, width: 1920, version: 1 }));
+  for await (const chunk of fs.createReadStream(file)) hash.update(chunk);
+  const rel = `build/clips/${hash.digest('hex')}`;
+  const infoFile = clipCacheFile(projectDir, `${rel}/info.json`);
+  if (!infoFile) throw new Error('clip cache must stay in build/. Remove symlinks from build/clips/.');
+  const key = infoFile;
+  if (!clipJobs.has(key)) {
+    const job = (async () => {
+      if (fs.existsSync(infoFile)) return { rel, info: JSON.parse(fs.readFileSync(infoFile, 'utf8')) };
+      const temp = fs.mkdtempSync(path.join(path.dirname(infoFile), 'extract-'));
+      try {
+        const info = await extractClip(file, temp, fps);
+        for (const name of fs.readdirSync(temp)) {
+          const dest = clipCacheFile(projectDir, `${rel}/${name}`);
+          if (!dest) throw new Error('clip cache must stay in build/. Remove symlinks from build/clips/.');
+          fs.renameSync(path.join(temp, name), dest);
+        }
+        fs.writeFileSync(infoFile, JSON.stringify(info));
+        return { rel, info };
+      } finally {
+        fs.rmSync(temp, { recursive: true, force: true });
+      }
+    })();
+    clipJobs.set(key, job);
+    job.finally(() => clipJobs.delete(key)).catch(() => {});
+  }
+  return clipJobs.get(key);
 }
 
 // Uploads from the page may only land in build/ or out/: checked after the
@@ -98,6 +150,7 @@ function isSymlink(p) {
 
 export function startServer({ projectDir, getState, port = 0 }) {
   const roughPath = resolveModule('roughjs/bundled/rough.esm.js');
+  const clips = new Map();
   const server = http.createServer(async (req, res) => {
     try {
       // Only answer requests addressed to this machine. A web page on another
@@ -155,6 +208,32 @@ export function startServer({ projectDir, getState, port = 0 }) {
       if (p === '/__state.json') {
         const state = await getState();
         return send(res, 200, JSON.stringify(state), TYPES['.json']);
+      }
+      if (['/__clip/info', '/__clip/frame', '/__clip/audio'].includes(p)) {
+        const file = clipFile(projectDir, url.searchParams.get('path') || '');
+        if (!file) return send(res, 404, 'clip not found. Put a video in assets/.');
+        const state = await getState();
+        const stat = fs.statSync(file);
+        const stamp = `${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}:${state.config.fps}`;
+        if (clips.get(file)?.stamp !== stamp) {
+          const job = cachedClip(projectDir, file, state.config.fps);
+          clips.set(file, { stamp, job });
+          job.catch(() => { if (clips.get(file)?.job === job) clips.delete(file); });
+        }
+        const { rel, info } = await clips.get(file).job;
+        if (p === '/__clip/info') return send(res, 200, JSON.stringify(info), TYPES['.json']);
+        let name = 'audio.wav';
+        if (p === '/__clip/frame') {
+          const raw = url.searchParams.get('frame') || '0';
+          if (!/^\d+$/.test(raw) || !Number.isSafeInteger(Number(raw))) return send(res, 400, 'frame must be a non-negative integer');
+          name = `${String(Math.min(Number(raw), info.frames - 1)).padStart(8, '0')}.jpg`;
+        } else if (!info.hasAudio) return send(res, 404, 'this clip has no sound');
+        const cached = clipCacheFile(projectDir, `${rel}/${name}`);
+        if (!cached || !fs.existsSync(cached) || !fs.statSync(cached).isFile()) return send(res, 404, 'clip frame or sound not found');
+        res.writeHead(200, { 'Content-Type': TYPES[path.extname(name)], 'Cache-Control': 'no-store' });
+        if (req.method === 'HEAD') return res.end();
+        fs.createReadStream(cached).pipe(res);
+        return;
       }
       let file = null;
       if (p === '/' || p === '/studio.html') file = path.join(ROOT, 'engine', 'studio.html');

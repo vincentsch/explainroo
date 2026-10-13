@@ -6,6 +6,7 @@ import { clamp, lerp, ease, easeFn, rand01, noise1, hashStr, mulberry32, suggest
 import { colorOf, tintOf, fontString } from './themes.js';
 import { scalePath, quadD, polyD, pathLength, pointAt } from './pathdata.js';
 import { layoutText, lineStartX } from './text.js';
+import { clipFrame, clipURL } from './clips.js';
 import { highlightLine } from './code.js';
 
 const DEFAULT_DUR = { draw: 0.9, write: 0.8, pop: 0.45, rise: 0.55, fade: 0.5, zoom: 0.6, drop: 0.55, grow: 1.0, none: 0.001, 'slide-left': 0.55, 'slide-right': 0.55, 'slide-up': 0.55, 'slide-down': 0.55 };
@@ -852,13 +853,34 @@ export class Stage {
   }
 
   image(src, o = {}) {
-    const th = this.theme;
     const img = this.engine.image(src);
-    const ratio = img.naturalWidth / img.naturalHeight;
+    return this._picture(src, img, img.naturalWidth, img.naturalHeight, o);
+  }
+
+  clip(src, o = {}) {
+    const clip = this.engine.clip(src);
+    const from = o.from ?? 0;
+    const speed = o.speed ?? 1;
+    const volume = o.volume ?? 0;
+    for (const [name, value, lo, hi] of [['from', from, 0, Infinity], ['speed', speed, 0.25, 4], ['volume', volume, 0, 1]]) {
+      if (!Number.isFinite(value) || value < lo || value > hi) throw new SceneError(`clip ${name} must be ${name === 'from' ? 'a non-negative number' : `from ${lo} to ${hi}`}`);
+    }
+    const at = this.time(o.at ?? 0);
+    const out = o.out === undefined ? this.dur : Math.min(this.dur, this.time(o.out));
+    const end = o.loop ? out : Math.min(out, at + Math.max(0, clip.duration - from) / speed);
+    const n = this._clipSeq = (this._clipSeq || 0) + 1;
+    if (this.engine.recorder) this.engine.recorder.push({ kind: 'clip', key: `clip|${at}|${o.id ?? n}|${src}`, at, end, out, from, speed, loop: !!o.loop, volume, hasAudio: clip.hasAudio, duration: clip.duration, src: clip.src, url: clipURL('audio', clip.src) });
+    const frame = clipFrame(clip, this.t, { at, from, speed, loop: o.loop });
+    return this._picture(src, () => frame === null ? null : this.engine.clipImage(clip, frame), clip.width, clip.height, o);
+  }
+
+  _picture(src, source, naturalWidth, naturalHeight, o) {
+    const th = this.theme;
+    const ratio = naturalWidth / naturalHeight;
     let w = o.w;
     let h = o.h;
     if (!w && !h) {
-      w = Math.min(this._w(0.6), img.naturalWidth);
+      w = Math.min(this._w(0.6), naturalWidth);
       h = w / ratio;
     } else if (!h) h = w / ratio;
     else if (!w) w = h * ratio;
@@ -924,7 +946,12 @@ export class Stage {
     }
     dw *= kb;
     dh *= kb;
-    ctx.drawImage(img, -dw / 2, iy - dh / 2, dw, dh);
+    const img = typeof source === 'function' ? source() : source;
+    if (img) ctx.drawImage(img, -dw / 2, iy - dh / 2, dw, dh);
+    else {
+      ctx.fillStyle = th.surface;
+      ctx.fillRect(-w / 2, iy - h / 2, w, h);
+    }
     ctx.restore();
     if (o.border) {
       this.pen.draw(ctx, { kind: 'rect', w, h, r }, { stroke: colorOf(th, o.border === true ? 'ink' : o.border), width: th.stroke.width, seed: this._seed('imgborder', o, src) }, { stroke: 1, fill: 1 });

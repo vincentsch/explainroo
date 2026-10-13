@@ -108,7 +108,12 @@ function buildUi() {
 async function load(version) {
   const scale = Math.min(1, 1280 / (await fetchState()).config.width);
   const r = await boot({ canvas, scale, version });
+  if (engine) {
+    engine.onClipFrame = null;
+    engine.clipFrames.close();
+  }
   engine = r.engine;
+  engine.onClipFrame = draw;
   audioMod = r.audio;
   state = r.state;
   buildUi();

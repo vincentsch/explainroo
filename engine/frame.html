@@ -26,10 +26,11 @@ window.explainrooReady = (async () => {
     info() {
       return { duration: state.timeline.duration, frames: state.timeline.frames, fps, width: canvas.width, height: canvas.height, scenes: state.timeline.scenes.map((s) => ({ id: s.id, start: s.start, dur: s.dur })) };
     },
-    frames(list, quality) {
+    async frames(list, quality) {
       const out = [];
       for (const f of list) {
         try {
+          if (engine.clips.size) await engine.prepareFrame(f / fps);
           engine.renderFrame(f / fps);
         } catch (e) {
           throw new Error(describe(e));
@@ -41,6 +42,7 @@ window.explainrooReady = (async () => {
     async stills(list, { type = 'image/png', quality } = {}) {
       for (const { T, path } of list) {
         try {
+          if (engine.clips.size) await engine.prepareFrame(T);
           engine.renderFrame(T);
         } catch (e) {
           throw new Error(describe(e));
@@ -65,6 +67,7 @@ window.explainrooReady = (async () => {
       g.textBaseline = 'middle';
       for (let i = 0; i < times.length; i++) {
         try {
+          if (engine.clips.size) await engine.prepareFrame(times[i]);
           engine.renderFrame(times[i]);
         } catch (e) {
           throw new Error(describe(e));

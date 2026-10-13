@@ -347,6 +347,9 @@ A mouse pointer clicks through the screens and types into the fields, and the
 camera zooms in on what the voice talks about. `examples/unspar-demo` is a
 complete one.
 
+You can also show a real screen recording with `s.clip` in a `browser`
+frame. Use `s.camera` to zoom in on the detail the voice mentions.
+
 **Keep it true.** A demo is advertising, so everything in it has to be right.
 
 - Take the wording from the app itself: its templates and language files
@@ -788,7 +791,7 @@ stops at the edge of that element. Options: `bend` (about -1 to 1), `head`
 `labelOffset`, `gap`, `dashed`, `width`, `headSize`. `s.connect` does the
 same.
 
-### Icons and images
+### Icons, images and video clips
 
 ```js
 s.icon('database', { x: 1500, y: 540, size: 140, color: 'purple', at: 'database' });
@@ -806,6 +809,28 @@ Old Lucide names work too. Icon options: `size` (120), `color`, `weight` (2),
 (the image keeps its shape), `fit` (`cover` or `contain`), `radius`, `frame`
 (`none`, `card`, `browser`, `window`, `phone`), `url` (for the browser frame),
 `border`, `shadow: false`, `kenburns: true` for a slow zoom.
+
+`s.clip(src, options)` draws a video from `assets/`. It takes the same
+layout, frame and timing options as `s.image` and returns the same box.
+Use `.mp4`, `.mov`, `.webm` or `.m4v` files.
+
+```js
+s.clip('assets/signup.mp4', { w: 1200, frame: 'browser', url: 'app.example.com', at: 'signup' });
+s.clip('assets/demo.mov', { x: 1400, y: 540, h: 600, from: 12.5, speed: 1.5, at: '#demo', out: 9 });
+```
+
+- `from` (0) is the second in the clip where playback starts.
+- `speed` (1) goes from 0.25 to 4. Playback starts at `at`.
+- `loop` (false) repeats the whole clip. Otherwise it holds the last frame.
+  `check` gives a hint when that freeze lasts more than a second.
+- `volume` (0) goes from 0 to 1. Sound plays only at `speed: 1`.
+  It stops at `out`, the clip's end or the scene's end. Loops repeat the
+  sound too. Music ducks under clip sound as it does under the voice.
+
+Frames are extracted once at the project's fps and saved in `build/clips/`.
+They are at most 1920 pixels wide. Renders, stills and sheets use these
+frames. The preview may show a nearby frame while the right one loads.
+`s.video` still holds the whole video's duration, frames, fps and size.
 
 ### Pointing things out
 
@@ -941,6 +966,11 @@ font roles are `display`, `body`, `hand` and `mono`.
 - Colored text in `paper` and `clean`. Green, orange and red are light enough
   for shapes but often too light for text. `check` warns about low contrast.
   Use `ink`, `accent` or a darker hex color for text.
+- Long video clips fill `build/clips/` with frames. Trim footage to the part
+  you show before you add it. Deleting `build/clips/` is safe.
+- Screen recordings often have a variable frame rate. explainroo converts
+  them to the project's fps, so a frame can repeat or drop. Record at a fixed
+  frame rate when the motion matters.
 
 `check` looks at text only. It finds text off the frame, too close to the
 edge (3.5%), too small, with low contrast (against the page, or against the

@@ -147,3 +147,77 @@ test('the preview server keeps secrets and sources safe', async () => {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('clip endpoints only read video assets and keep the cache inside build', async () => {
+  const { ffmpeg } = await import('../src/ffmpeg.js');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-clip-server-'));
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-clip-outside-'));
+  fs.mkdirSync(path.join(dir, 'assets'));
+  const video = path.join(dir, 'assets/ok.mp4');
+  await ffmpeg(['-loglevel', 'error', '-f', 'lavfi', '-i', 'color=red:s=80x60:r=30:d=0.2', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=0.2', '-shortest', '-c:v', 'libx264', '-threads', '1', '-c:a', 'aac', video]);
+  fs.copyFileSync(video, path.join(outside, 'away.mp4'));
+  fs.copyFileSync(video, path.join(dir, 'root.mp4'));
+  fs.copyFileSync(video, path.join(dir, 'assets/.private.mp4'));
+  fs.mkdirSync(path.join(dir, 'assets/.hidden'));
+  fs.copyFileSync(video, path.join(dir, 'assets/.hidden/ok.mp4'));
+  fs.writeFileSync(path.join(dir, 'assets/notes.md'), 'secret');
+  fs.symlinkSync(path.join(outside, 'away.mp4'), path.join(dir, 'assets/away.mp4'));
+  fs.symlinkSync(path.join(dir, 'root.mp4'), path.join(dir, 'assets/root-link.mp4'));
+  fs.symlinkSync(path.join(dir, 'assets/.private.mp4'), path.join(dir, 'assets/hidden-link.mp4'));
+  fs.symlinkSync(path.join(dir, 'assets/notes.md'), path.join(dir, 'assets/notes.mp4'));
+  const server = await startServer({ projectDir: dir, getState: () => ({ config: { fps: 30 } }) });
+  try {
+    for (const endpoint of ['info', 'frame', 'audio']) {
+      const url = (p) => `/__clip/${endpoint}?path=${encodeURIComponent(p)}`;
+      for (const p of ['root.mp4', 'assets/../root.mp4', 'assets/missing.mp4', 'assets/notes.md', 'assets/ok.avi', 'assets/.private.mp4', 'assets/.hidden/ok.mp4', 'assets/away.mp4', 'assets/root-link.mp4', 'assets/hidden-link.mp4', 'assets/notes.mp4', '../away.mp4', video]) {
+        assert.equal((await request(server.port, { path: url(p) })).status, 404, `${endpoint}: ${p}`);
+      }
+      assert.equal((await request(server.port, { path: url('assets/ok.mp4'), host: 'evil.example' })).status, 403);
+      assert.equal((await request(server.port, { path: url('assets/ok.mp4'), origin: 'http://evil.example' })).status, 403);
+      assert.equal((await request(server.port, { path: url('assets/ok.mp4'), method: 'POST' })).status, 405);
+    }
+    for (const [ext, mime] of [['mp4', 'video/mp4'], ['mov', 'video/quicktime'], ['webm', 'video/webm'], ['m4v', 'video/mp4']]) {
+      fs.copyFileSync(video, path.join(dir, `assets/type.${ext}`));
+      const response = await fetch(`${server.url}/project/assets/type.${ext}`);
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get('content-type'), mime);
+      await response.arrayBuffer();
+    }
+    const responses = await Promise.all(Array.from({ length: 4 }, () => request(server.port, { path: '/__clip/info?path=assets/ok.mp4' })));
+    assert.ok(responses.every((r) => r.status === 200));
+    const info = JSON.parse(responses[0].body);
+    assert.deepEqual(info, { frames: 6, fps: 30, width: 80, height: 60, duration: 0.2, hasAudio: true });
+    assert.equal(fs.readdirSync(path.join(dir, 'build/clips')).length, 1);
+    const frame = await fetch(`${server.url}/__clip/frame?path=assets/ok.mp4&frame=999`);
+    assert.equal(frame.headers.get('content-type'), 'image/jpeg');
+    const last = await fetch(`${server.url}/__clip/frame?path=assets/ok.mp4&frame=5`);
+    assert.deepEqual(Buffer.from(await frame.arrayBuffer()), Buffer.from(await last.arrayBuffer()));
+    const audio = await fetch(`${server.url}/__clip/audio?path=assets/ok.mp4`);
+    assert.equal(audio.headers.get('content-type'), 'audio/wav');
+    assert.equal(Buffer.from(await audio.arrayBuffer()).toString('ascii', 0, 4), 'RIFF');
+    for (const frame of ['-1', '1.2', 'foo', '9007199254740992']) {
+      assert.equal((await request(server.port, { path: `/__clip/frame?path=assets/ok.mp4&frame=${frame}` })).status, 400);
+    }
+    const silent = path.join(dir, 'assets/silent.mp4');
+    await ffmpeg(['-loglevel', 'error', '-i', video, '-an', '-c:v', 'copy', silent]);
+    const silentInfo = await request(server.port, { path: '/__clip/info?path=assets/silent.mp4' });
+    assert.equal(JSON.parse(silentInfo.body).hasAudio, false);
+    assert.equal((await request(server.port, { path: '/__clip/audio?path=assets/silent.mp4' })).status, 404);
+    const hash = fs.readdirSync(path.join(dir, 'build/clips')).find((hash) => fs.existsSync(path.join(dir, 'build/clips', hash, 'audio.wav')));
+    const cached = path.join(dir, 'build/clips', hash, '00000000.jpg');
+    fs.unlinkSync(cached);
+    fs.symlinkSync(path.join(outside, 'away.mp4'), cached);
+    assert.equal((await request(server.port, { path: '/__clip/frame?path=assets/ok.mp4' })).status, 404);
+    fs.rmSync(path.join(dir, 'build/clips'), { recursive: true });
+    fs.symlinkSync(outside, path.join(dir, 'build/clips'));
+    const other = await startServer({ projectDir: dir, getState: () => ({ config: { fps: 30 } }) });
+    try {
+      assert.equal((await request(other.port, { path: '/__clip/info?path=assets/ok.mp4' })).status, 500);
+      assert.deepEqual(fs.readdirSync(outside), ['away.mp4']);
+    } finally { await other.close(); }
+  } finally {
+    await server.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(outside, { recursive: true, force: true });
+  }
+});

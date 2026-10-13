@@ -126,6 +126,7 @@ export async function renderSoundtrack(opts = {}) {
     sampleRate = 48000,
     voice = [],
     voiceSpans = [],
+    clips = [],
     music = null,
     sfx = [],
     scenes = [],
@@ -157,13 +158,32 @@ export async function renderSoundtrack(opts = {}) {
     }
   }
 
+  const clipSpans = [];
+  for (const clip of clips) {
+    if (clip.speed !== 1 || clip.volume <= 0) continue;
+    const data = await loadVoice(clip, sr, cache);
+    const clipLength = Math.max(1, Math.round(clip.duration * sr));
+    const start = Math.round(clip.start * sr);
+    const end = Math.min(length, Math.round(clip.end * sr));
+    const offset = Math.round(clip.from * sr);
+    for (let i = Math.max(0, start); i < end; i++) {
+      let source = offset + i - start;
+      if (clip.loop) source %= clipLength;
+      if (source >= clipLength) break;
+      const sample = (data[source] || 0) * clip.volume;
+      L[i] += sample;
+      R[i] += sample;
+    }
+    if (end > Math.max(0, start)) clipSpans.push({ start: Math.max(0, clip.start), end: end / sr });
+  }
+
   // music: glue compressor, level with fades, ducked under narration
   if (plan) {
     const { synth } = createMusic({ ...music, style: plan.style, seed: plan.seed, bpm: plan.bpm, key: plan.keyRoot, duration, scenes, sampleRate: sr });
     const volume = Math.max(0, Math.min(2, music.volume == null ? 0.5 : Number(music.volume)));
     renderInto(synth, L, R, {
       compressor: new Compressor(sr, { threshold: -18, ratio: 2, knee: 10, attack: 0.02, release: 0.3 }),
-      gains: [levelEnv(dbToGain(MUSIC_BASE_DB + plan.mixDb) * (volume / 0.5), duration), duckEnv(voiceSpans)],
+      gains: [levelEnv(dbToGain(MUSIC_BASE_DB + plan.mixDb) * (volume / 0.5), duration), duckEnv([...voiceSpans, ...clipSpans])],
     });
   }
 
