@@ -85,14 +85,26 @@ export async function launch() {
 
 // Opens the render page and waits until the engine has loaded fonts, icons,
 // images and the scenes module. Throws with the page's error if boot fails.
-export async function openEngine(browser, serverUrl, { scale = 1, transparent = false, onConsole } = {}) {
-  const page = await browser.newPage({ viewport: { width: 800, height: 600 }, deviceScaleFactor: 1 });
-  const errors = [];
-  page.on('pageerror', (e) => errors.push(e));
-  page.on('console', (m) => {
-    if (onConsole) onConsole(m.type(), m.text());
-  });
-  await page.goto(`${serverUrl}/frame.html?scale=${scale}${transparent ? '&transparent=1' : ''}`, { waitUntil: 'load' });
+export async function openEngine(browser, serverUrl, { scale = 1, transparent = false, onConsole, timeout = 30000 } = {}) {
+  let page;
+  let errors;
+  // A busy machine sometimes leaves the first page load hanging. A fresh
+  // page almost always loads, so a load that times out is tried once more.
+  for (let attempt = 1; ; attempt++) {
+    page = await browser.newPage({ viewport: { width: 800, height: 600 }, deviceScaleFactor: 1 });
+    errors = [];
+    page.on('pageerror', (e) => errors.push(e));
+    page.on('console', (m) => {
+      if (onConsole) onConsole(m.type(), m.text());
+    });
+    try {
+      await page.goto(`${serverUrl}/frame.html?scale=${scale}${transparent ? '&transparent=1' : ''}`, { waitUntil: 'load', timeout });
+      break;
+    } catch (e) {
+      await page.close().catch(() => {});
+      if (attempt === 2 || e.name !== 'TimeoutError') throw e;
+    }
+  }
   const boot = await page.evaluate(async () => {
     try {
       await window.explainrooReady;
