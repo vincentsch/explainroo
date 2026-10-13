@@ -283,7 +283,7 @@ export function findProjectDir(arg) {
   fail('no video.json here. Run the command in a video folder or pass the project folder, for example "explainroo <command> videos/my-video".');
 }
 
-export function loadProject(arg) {
+export function loadProject(arg, { size } = {}) {
   const dir = findProjectDir(arg);
   let raw;
   try {
@@ -291,7 +291,7 @@ export function loadProject(arg) {
   } catch (e) {
     fail(`video.json is not valid JSON: ${e.message}`);
   }
-  const config = normalizeConfig(raw, dir);
+  const config = normalizeConfig(size === undefined ? raw : { ...raw, size }, dir);
   for (const f of [...config.fonts.map((x) => x.src), ...(config.brand?.logo ? [config.brand.logo] : [])]) {
     if (!fs.existsSync(path.join(dir, f))) fail(`${f} is listed in video.json but the file is missing`);
   }
@@ -303,7 +303,12 @@ export function loadProject(arg) {
   if (!fs.existsSync(scenesPath)) fail(`${scenesPath} is missing`);
   const build = path.join(dir, 'build');
   const out = path.join(dir, 'out');
-  return { dir, config, script, paths: { build, out, voice: path.join(build, 'voice'), scenes: scenesPath, script: scriptPath, look: config.look ? path.resolve(dir, config.theme) : null } };
+  return { dir, config, script, sizeOverride: size, paths: { build, out, voice: path.join(build, 'voice'), scenes: scenesPath, script: scriptPath, look: config.look ? path.resolve(dir, config.theme) : null } };
+}
+
+export function outputPath(project, name, ext = '', out = null) {
+  const suffix = project.sizeOverride === undefined ? '' : `-${project.sizeOverride.replace(':', '-')}`;
+  return path.resolve(out || path.join(project.paths.out, `${name}${suffix}${ext}`));
 }
 
 export function listAssets(dir) {

@@ -29,11 +29,11 @@ test('transparent export needs an alpha format', () => {
 
 test('render output names follow format, draft and --out', () => {
   for (const format of ['mp4', 'gif', 'webm', 'mov']) {
-    assert.equal(renderOutput('/tmp/out', { format }), path.resolve(`/tmp/out/video.${format}`));
-    assert.equal(renderOutput('/tmp/out', { format, draft: true }), path.resolve(`/tmp/out/draft.${format}`));
-    assert.equal(renderOutput('/tmp/out', { format, draft: true, out: `/tmp/custom.${format}` }), path.resolve(`/tmp/custom.${format}`));
+    assert.equal(renderOutput({ paths: { out: '/tmp/out' } }, { format }), path.resolve(`/tmp/out/video.${format}`));
+    assert.equal(renderOutput({ paths: { out: '/tmp/out' } }, { format, draft: true }), path.resolve(`/tmp/out/draft.${format}`));
+    assert.equal(renderOutput({ paths: { out: '/tmp/out' } }, { format, draft: true, out: `/tmp/custom.${format}` }), path.resolve(`/tmp/custom.${format}`));
   }
-  assert.equal(renderOutput('/tmp/out'), path.resolve('/tmp/out/video.mp4'));
+  assert.equal(renderOutput({ paths: { out: '/tmp/out' } }), path.resolve('/tmp/out/video.mp4'));
 });
 
 test('cover validates its type and syntax while allowing still specs', () => {

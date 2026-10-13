@@ -26,12 +26,12 @@ Usage: explainroo <command> [project] [options]
 Make a video
   init <dir>            create a project (--theme, --size, --pace, --language es, --voice, --title)
   voice [project]       make the narration (Kokoro, ElevenLabs or a recording) and word timings
-  preview [project]     live preview in your browser, reloads on save (--port)
-  still [project] [t…]  PNG stills: "12.5", "scene", "scene@2.4" (--transparent, default: end of every scene)
-  sheet [project]       contact sheet of the whole video (--scene id, --every s)
-  check [project]       find layout, timing and pronunciation problems (--view-width pixels)
+  preview [project]     live preview in your browser, reloads on save (--port, --size)
+  still [project] [t…]  PNG stills: "12.5", "scene", "scene@2.4" (default: end of every scene; --size, --transparent)
+  sheet [project]       contact sheet of the whole video (--scene id, --every s, --size)
+  check [project]       find layout, timing and pronunciation problems (--view-width pixels, --size)
   render [project]      write the video with subtitles, chapters and a cover (--format mp4|gif|webm|mov,
-                        --transparent, --draft, --from s, --to s, --workers n, --out file)
+                        --transparent, --size, --draft, --from s, --to s, --workers n, --out file)
   verify [project]      check the video: loudness, black frames, narration (--file)
 
 Product demos
@@ -50,7 +50,9 @@ Reference
   icons <word…>         search the 1,800+ built-in icons
   doctor                check ffmpeg, Chrome, espeak-ng and models (--fetch downloads English models)
 
-Options: --json for machine-readable output. The project defaults to the current folder.
+Options: --size <size> overrides video.json for preview, still, sheet, check and render.
+         Size outputs get a suffix, like video-tiktok.mp4. --out still wins.
+         --json for machine-readable output. The project defaults to the current folder.
 Docs: AGENTS.md (for coding agents) and https://www.explainroo.com/docs/`;
 
 function parseArgs(argv) {
@@ -130,19 +132,19 @@ export async function main(argv) {
       case 'preview': return await preview(pos[0], flags, log);
       case 'still': {
         const isProject = pos[0] && fs.existsSync(path.join(pos[0], 'video.json'));
-        const project = loadProject(isProject ? pos.shift() : undefined);
+        const project = loadProject(isProject ? pos.shift() : undefined, { size: textFlag(flags, 'size') });
         const list = await stills(project, pos, { log, scale: num(flags.scale, 'scale') ?? 1, transparent: !!flags.transparent });
         print(list.map((s) => `${s.label.padEnd(24)} ${s.file}`).join('\n'), { stills: list });
         return 0;
       }
       case 'sheet': {
-        const project = loadProject(pos[0]);
+        const project = loadProject(pos[0], { size: textFlag(flags, 'size') });
         const r = await sheet(project, { scene: flags.scene, every: num(flags.every, 'every'), cols: num(flags.cols, 'cols'), log });
         print(`${r.file} (${r.frames} frames)`, r);
         return 0;
       }
       case 'check': {
-        const project = loadProject(pos[0]);
+        const project = loadProject(pos[0], { size: textFlag(flags, 'size') });
         const r = await check(project, { log, step: num(flags.step, 'step') ?? 0.25, viewWidth: num(flags['view-width'], 'view-width') ?? null });
         const errors = r.issues.filter((i) => i.level === 'error').length;
         const human = r.issues.length
@@ -152,7 +154,7 @@ export async function main(argv) {
         return errors ? 1 : 0;
       }
       case 'render': {
-        const project = loadProject(pos[0]);
+        const project = loadProject(pos[0], { size: textFlag(flags, 'size') });
         const r = await render(project, { log, draft: !!flags.draft, transparent: !!flags.transparent, from: num(flags.from, 'from'), to: num(flags.to, 'to'), workers: num(flags.workers, 'workers'), scale: num(flags.scale, 'scale'), out: textFlag(flags, 'out'), format: textFlag(flags, 'format') });
         print([r.out, r.subtitles?.srt, r.subtitles?.vtt, r.chapters, r.cover].filter(Boolean).map((f) => path.relative(process.cwd(), f) || f).join('\n'), r);
         return 0;
@@ -224,7 +226,7 @@ export async function main(argv) {
           return { name, width: f.size[0], height: f.size[1], use: f.use, captions: cfg.captions, content: { x: safe.x, y: safe.y, w: safe.w, h: safe.h } };
         });
         const rows = info.map((r) => `${r.name.padEnd(10)} ${`${r.width}x${r.height}`.padEnd(10)} ${r.use}\n${''.padEnd(22)}content area ${r.content.w}x${r.content.h} at ${r.content.x},${r.content.y}${r.captions ? ', captions below it' : ''}`);
-        print(rows.join('\n') + '\n\nAlso: 16:9, 9:16, 1:1, 4:5 or WIDTHxHEIGHT. Set it with "size" in video.json or init --size.', { formats: info });
+        print(rows.join('\n') + '\n\nAlso: 16:9, 9:16, 1:1, 4:5 or WIDTHxHEIGHT. Set it with "size" in video.json or --size on init, preview, still, sheet, check or render.', { formats: info });
         return 0;
       }
       case 'icons': return icons(pos, print);
@@ -283,7 +285,8 @@ function init(dir, flags, print) {
 }
 
 async function preview(dir, flags, log) {
-  let project = loadProject(dir);
+  const size = textFlag(flags, 'size');
+  let project = loadProject(dir, { size });
   let { timeline } = await prepare(project, { log });
   let state = makeState(project, timeline);
   let lastError = null;
@@ -309,7 +312,7 @@ async function preview(dir, flags, log) {
       if (now !== last) {
         last = now;
         log('script, settings or look changed, updating project');
-        project = loadProject(project.dir);
+        project = loadProject(project.dir, { size });
         ({ timeline } = await prepare(project, { log }));
         lastError = null;
       }

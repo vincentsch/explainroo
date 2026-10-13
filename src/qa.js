@@ -8,6 +8,7 @@ import { transcribeWords } from './models.js';
 import { readWav } from './wav.js';
 import { alignWords } from './align.js';
 import { buildChapters, chapterHints } from './chapters.js';
+import { outputPath } from './project.js';
 
 export async function check(project, { log = () => {}, step = 0.25, viewWidth = null } = {}) {
   if (viewWidth !== null && (!Number.isFinite(viewWidth) || viewWidth <= 0)) throw new Error("--view-width must be a positive number");
@@ -53,7 +54,8 @@ export function resolveTimes(timeline, specs) {
 
 export async function stills(project, specs, { log = () => {}, scale = 1, transparent = false } = {}) {
   const { timeline } = await prepare(project, { log });
-  const list = resolveTimes(timeline, specs).map((x) => ({ ...x, path: `out/stills/${x.label.replace(/[^\w@.-]/g, '_')}.png` }));
+  const dir = path.relative(project.dir, outputPath(project, 'stills')).split(path.sep).join('/');
+  const list = resolveTimes(timeline, specs).map((x) => ({ ...x, path: `${dir}/${x.label.replace(/[^\w@.-]/g, '_')}.png` }));
   await withEngine(project, timeline, { scale, transparent, log }, (page) => page.evaluate((l) => window.explainroo.stills(l), list));
   return list.map((x) => ({ time: Math.round(x.T * 100) / 100, label: x.label, file: path.join(project.dir, x.path) }));
 }
@@ -62,7 +64,7 @@ export async function sheet(project, { scene = null, every = null, cols = null, 
   const { timeline } = await prepare(project, { log });
   let times = [];
   let labels = [];
-  let file = 'out/sheet.jpg';
+  const file = path.relative(project.dir, outputPath(project, scene ? `sheet-${scene}` : 'sheet', '.jpg')).split(path.sep).join('/');
   if (scene) {
     const sc = timeline.scenes.find((s) => s.id === scene);
     if (!sc) throw new Error(`no scene "${scene}". Scenes: ${timeline.scenes.map((s) => s.id).join(', ')}`);
@@ -73,7 +75,6 @@ export async function sheet(project, { scene = null, every = null, cols = null, 
     }
     times.push(sc.start + sc.dur - 0.05);
     labels.push(`${sc.id} end`);
-    file = `out/sheet-${scene}.jpg`;
   } else {
     const step = every ?? Math.max(0.5, Math.min(3, timeline.duration / 30));
     for (let T = 0; T < timeline.duration; T += step) {

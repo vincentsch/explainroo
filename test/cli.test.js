@@ -93,3 +93,24 @@ test('render rejects bad formats, mismatched extensions and missing text flags b
     }
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('size overrides reject missing values and invalid sizes before building for all five commands', async () => {
+  const dir = tempDir();
+  try {
+    fs.writeFileSync(path.join(dir, 'video.json'), '{}');
+    fs.writeFileSync(path.join(dir, 'script.md'), '## intro\n');
+    fs.writeFileSync(path.join(dir, 'scenes.js'), 'export default { intro(s) {} };');
+    for (const command of ['render', 'still', 'sheet', 'check', 'preview']) {
+      for (const [flags, message] of [
+        [['--size'], /--size needs a value/],
+        [['--size', 'bad'], /size must be/],
+        [['--size', '1081x1350'], /even numbers/],
+      ]) {
+        const r = await run([command, dir, ...flags]);
+        assert.equal(r.code, 1, command);
+        assert.match(r.err, message);
+        assert.equal(fs.existsSync(path.join(dir, 'build')), false);
+      }
+    }
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

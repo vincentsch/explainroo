@@ -7,6 +7,7 @@ import { frameEncoder, ffmpeg, normalizeLoudness } from './ffmpeg.js';
 import { subtitleCues, toSrt, toVtt } from './subtitles.js';
 import { buildChapters, toChaptersText, toChapterMetadata } from './chapters.js';
 import { resolveTimes } from './qa.js';
+import { outputPath } from './project.js';
 
 export function renderFormat({ format = 'mp4', out, transparent = false } = {}) {
   if (!['mp4', 'gif', 'webm', 'mov'].includes(format)) throw new Error('--format must be mp4, gif, webm or mov');
@@ -15,9 +16,9 @@ export function renderFormat({ format = 'mp4', out, transparent = false } = {}) 
   return format;
 }
 
-export function renderOutput(outDir, opts = {}) {
+export function renderOutput(project, opts = {}) {
   const format = renderFormat(opts);
-  return path.resolve(opts.out || path.join(outDir, `${opts.draft ? 'draft' : 'video'}.${format}`));
+  return outputPath(project, opts.draft ? 'draft' : 'video', `.${format}`, opts.out);
 }
 
 export async function render(project, opts = {}) {
@@ -35,7 +36,7 @@ export async function render(project, opts = {}) {
   const to = Math.min(total, opts.to !== undefined ? Math.ceil(opts.to * fps) : total);
   if (to <= from) throw new Error('nothing to render: --from must be before --to');
   const partial = from > 0 || to < total;
-  const out = renderOutput(project.paths.out, opts);
+  const out = renderOutput(project, opts);
   const base = out.slice(0, -path.extname(out).length);
   const cues = subtitleCues(timeline, { from: from / fps, to: to / fps });
   const chapters = partial ? [] : buildChapters(timeline, project.script.title || project.config.title);

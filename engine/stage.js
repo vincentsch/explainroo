@@ -25,6 +25,7 @@ export class Stage {
     this.pen = engine.pen;
     this.W = engine.W;
     this.H = engine.H;
+    this.portrait = this.H > this.W;
     // Platform formats (tiktok, reels, shorts...) keep content inside the part
     // of the frame the app leaves free, so the center moves with it.
     this.safe = engine.safeArea;

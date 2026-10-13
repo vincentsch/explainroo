@@ -599,6 +599,41 @@ elements draw themselves in, frame one is empty. Give the title
 `enter: 'none'` so it is there from the first frame, or pick another cover
 frame in the app.
 
+## One project, several sizes
+
+Use `--size <size>` on `preview`, `still`, `sheet`, `check` and `render`
+to use another size for one run. It leaves `video.json` alone. The narration
+and word times are shared between sizes. Captions set to `"auto"` follow
+the size you choose.
+
+Place things from `s.safe`, `s.cx`, `s.cy`, `s.row`, `s.col` and `s.grid`
+instead of fixed pixel positions. Use `s.portrait` to stack things in tall
+frames. Keep text sizes relative to the frame, for example `s.W * 0.05`.
+`examples/merge-vs-rebase` works in `9:16` and in `youtube`; its scenes.js
+shows one way to do it.
+
+```js
+intro(s) {
+  const cells = s.grid(s.portrait ? 1 : 2, s.portrait ? 2 : 1);
+  ['Question', 'Answer'].forEach((label, i) => {
+    const { x, y, w, h } = cells[i];
+    s.box(label, { x, y, w: w * 0.8, h: h * 0.6,
+      size: s.W * 0.05, at: i ? '#answer' : 0 });
+  });
+}
+```
+
+For every size, run `check --size <size>` and look at
+`sheet --size <size>`. Fix cut-off text and overlaps. Then run
+`render --size <size>` for each size.
+
+`render --size tiktok` writes `out/video-tiktok.mp4` and matching subtitle,
+cover and chapter files. With `--draft`, it writes `draft-tiktok.mp4`.
+Stills go in `out/stills-tiktok/`. A sheet is `out/sheet-tiktok.jpg`, or
+`out/sheet-intro-tiktok.jpg` with `--scene intro`. Ratios use a hyphen in
+file names, for example `video-9-16.mp4`. Without `--size`, names stay the
+same. `render --out` still sets the file name you choose.
+
 ## Pace
 
 `pace` makes the whole video quicker or slower. At 1.3 the voice speaks 30%
@@ -720,11 +755,11 @@ when `ink` or `muted` has too little contrast against `bg`.
 |---|---|
 | `init <dir>` | creates a project (`--theme`, `--size`, `--pace`, `--language`, `--voice`, `--title`) |
 | `voice [project]` | makes the narration and the word times, saved per scene so only changed scenes are made again |
-| `preview [project]` | a live preview in the browser that reloads when you save |
-| `still [project] [times]` | PNG pictures at `12.5`, `scene`, `scene@2.4` or `scene@end` (`--transparent` keeps alpha) |
-| `sheet [project]` | one image with many frames of the video or of one scene (`--scene`, `--every`) |
-| `check [project]` | finds layout, timing and pronunciation problems |
-| `render [project]` | the video plus subtitle files, chapters and a cover (`--format mp4`, `gif`, `webm` or `mov`, `--transparent`, `--draft`, `--from`, `--to`, `--workers`, `--out`) |
+| `preview [project]` | a live preview in the browser that reloads when you save (`--size`) |
+| `still [project] [times]` | PNG pictures at `12.5`, `scene`, `scene@2.4` or `scene@end` (`--size`, `--transparent` keeps alpha) |
+| `sheet [project]` | one image with many frames of the video or of one scene (`--scene`, `--every`, `--size`) |
+| `check [project]` | finds layout, timing and pronunciation problems (`--size`) |
+| `render [project]` | the video plus subtitle files, chapters and a cover (`--format mp4`, `gif`, `webm` or `mov`, `--transparent`, `--size`, `--draft`, `--from`, `--to`, `--workers`, `--out`) |
 | `verify [project]` | checks the finished MP4, WebM or MOV: loudness, black frames, silence, clear voice (`--file` picks another file) |
 | `capture [project] <url>` | saves screenshots, wording, colors, fonts and logos from a live site (`--mobile`, `--json`) |
 | `image [project] <name> "<prompt>"` | makes an illustration with OpenRouter |
@@ -813,6 +848,7 @@ there for your own math.
 | Member | Meaning |
 |---|---|
 | `s.W`, `s.H`, `s.cx`, `s.cy` | canvas size and its center (on Shorts, TikTok and Reels the center of `s.safe`) |
+| `s.portrait` | true when the frame is taller than wide |
 | `s.safe` | `{ x, y, w, h, left, top, right, bottom }`: the area for content (a 7% margin, or the part a platform leaves free) |
 | `s.row(n, { width, x })` | n x positions spread over a width |
 | `s.col(n, { height, y })` | n y positions spread over a height, centered in `s.safe` |
