@@ -1,6 +1,7 @@
 // A small syntax highlighter for code on screen. It colors comments, strings,
 // numbers, keywords and function calls for the common languages; anything it
 // does not know stays plain.
+import { clamp, ease, lerp } from './util.js';
 
 const KEYWORDS = {
   js: 'async await break case catch class const continue default delete do else export extends false finally for from function if import in instanceof let new null of return static super switch this throw true try typeof undefined var void while yield',
@@ -109,4 +110,70 @@ export function highlightLine(line, lang) {
     i++;
   }
   return out;
+}
+
+export function codeTokens(lines, lang) {
+  const tokens = [];
+  lines.forEach((line, row) => {
+    let column = 0;
+    for (const tok of highlightLine(line, lang)) {
+      // The highlighter merges adjacent plain text and punctuation. Separate
+      // identifiers so a rename does not replace the rest of the line, and keep
+      // operators like => whole so the font draws them the same while moving.
+      const parts = ['plain', 'punct'].includes(tok.type)
+        ? tok.text.match(/\s+|[A-Za-z_$][\w$]*|===|!==|=>|==|!=|<=|>=|&&|\|\||\?\?|\.\.\.|->|::|[^\s]/g) || [] : [tok.text];
+      for (const text of parts) {
+        if (/\S/.test(text)) tokens.push({ text, type: tok.type, row, column });
+        column += text.length;
+      }
+    }
+  });
+  return tokens;
+}
+
+// Indices into the original sequences, with whitespace left out of the LCS.
+export function matchTokens(before, after) {
+  const a = before.map((t, i) => i).filter((i) => /\S/.test(before[i].text));
+  const b = after.map((t, i) => i).filter((i) => /\S/.test(after[i].text));
+  const same = (i, j) => before[a[i]].text === after[b[j]].text && before[a[i]].type === after[b[j]].type;
+  const cols = b.length + 1;
+  const lengths = new Uint32Array((a.length + 1) * cols);
+  for (let i = a.length - 1; i >= 0; i--) {
+    for (let j = b.length - 1; j >= 0; j--) {
+      lengths[i * cols + j] = same(i, j) ? 1 + lengths[(i + 1) * cols + j + 1]
+        : Math.max(lengths[(i + 1) * cols + j], lengths[i * cols + j + 1]);
+    }
+  }
+  const pairs = [];
+  let i = 0;
+  let j = 0;
+  while (i < a.length && j < b.length) {
+    if (same(i, j)) { pairs.push([a[i++], b[j++]]); }
+    else if (lengths[(i + 1) * cols + j] >= lengths[i * cols + j + 1]) i++;
+    else j++;
+  }
+  return pairs;
+}
+
+export function resolveCodeSteps(steps, o, time) {
+  if (!steps.length) throw new Error('code needs at least one step');
+  let highlight = o.highlight;
+  return steps.map((step, i) => {
+    if (!step || typeof step.code !== 'string') throw new Error(`code step ${i + 1} needs a code string`);
+    if (i && step.at === undefined) throw new Error(`code step ${i + 1} needs an at time`);
+    const at = time(step.at ?? o.at ?? 0);
+    if (!Number.isFinite(at)) throw new Error(`code step ${i + 1} needs a finite at time`);
+    if (step.highlight !== undefined) highlight = step.highlight;
+    return { at, lines: step.code.replace(/\t/g, '  ').split('\n'), highlight };
+  });
+}
+
+export function codeMorphState(steps, t, dur = 0.8, pace = 1) {
+  let to = 0;
+  for (let i = 1; i < steps.length; i++) if (t >= steps[i].at) to = i;
+  const from = Math.max(0, to - 1);
+  const raw = to ? (dur > 0 ? clamp((t - steps[to].at) / (dur / pace)) : 1) : 1;
+  const p = ease.inOut(raw);
+  return { from, to, p, removed: 1 - ease.inOut(clamp(raw * 2)), added: ease.inOut(clamp(raw * 2 - 1)),
+    lines: lerp(steps[from].lines.length, steps[to].lines.length, p) };
 }

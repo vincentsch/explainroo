@@ -7,7 +7,7 @@ import { colorOf, tintOf, fontString } from './themes.js';
 import { scalePath, quadD, polyD, pathLength, pointAt } from './pathdata.js';
 import { layoutText, lineStartX } from './text.js';
 import { clipFrame, clipURL } from './clips.js';
-import { highlightLine } from './code.js';
+import { highlightLine, codeTokens, matchTokens, resolveCodeSteps, codeMorphState } from './code.js';
 
 const DEFAULT_DUR = { draw: 0.9, write: 0.8, pop: 0.45, rise: 0.55, fade: 0.5, zoom: 0.6, drop: 0.55, grow: 1.0, none: 0.001, 'slide-left': 0.55, 'slide-right': 0.55, 'slide-up': 0.55, 'slide-down': 0.55 };
 const ENTERS = ['draw', 'write', 'type', 'words', 'sync', 'pop', 'rise', 'fade', 'zoom', 'drop', 'grow', 'none', 'slide-left', 'slide-right', 'slide-up', 'slide-down'];
@@ -1291,7 +1291,11 @@ export class Stage {
     const ctx = this.ctx;
     const C = th.code;
     const size = o.size ?? 32;
-    const lines = String(src).replace(/\t/g, '  ').split('\n');
+    const steps = Array.isArray(src) ? resolveCodeSteps(src, o, (v) => this.time(v)) : null;
+    if (steps) o = { ...o, at: o.at ?? steps[0].at };
+    const morph = steps ? codeMorphState(steps, this.t, o.morphDur ?? 0.8, this.pace) : null;
+    const lines = steps ? steps[morph.to].lines : String(src).replace(/\t/g, '  ').split('\n');
+    const firstLines = steps ? steps[0].lines : lines;
     const lh = size * 1.5;
     const pad = size * 0.9;
     const barH = o.title === false ? 0 : size * 1.6;
@@ -1300,20 +1304,25 @@ export class Stage {
     ctx.font = font;
     const charW = ctx.measureText('M').width;
     ctx.restore();
-    const numW = o.lineNumbers === false ? 0 : charW * (String(lines.length).length + 2);
-    const w = o.w ?? Math.min(this._w(0.86), Math.max(...lines.map((l) => l.length)) * charW + numW + pad * 2);
-    const h = o.h ?? lines.length * lh + pad * 1.6 + barH;
+    const maxLines = steps ? Math.max(...steps.map((step) => step.lines.length)) : lines.length;
+    const numW = o.lineNumbers === false ? 0 : charW * (String(maxLines).length + 2);
+    const allLines = steps ? steps.flatMap((step) => step.lines) : lines;
+    const naturalW = Math.max(...allLines.map((l) => l.length)) * charW + numW + pad * 2;
+    const w = o.w ?? Math.min(this._w(0.86), naturalW);
+    const h = o.h ?? (morph ? morph.lines : lines.length) * lh + pad * 1.6 + barH;
     const x = o.x ?? this.cx;
     const y = o.y ?? this.cy;
     this._register(o.id, x, y, w, h);
     const at = this.time(o.at ?? 0);
     const reveal = o.reveal ?? 'type';
     const cps = (o.cps ?? 40) * this.pace;
-    const chars = lines.reduce((a, l) => a + l.length + 1, 0);
+    const chars = firstLines.reduce((a, l) => a + l.length + 1, 0);
     const typeDur = chars / cps;
     const lineDelay = (o.lineDelay ?? 0.3) / this.pace;
     const startText = at + 0.35 / this.pace;
     if (reveal === 'type') this._record('code', startText, typeDur, { sfx: o.sfx }, { label: 'typing', sustain: true });
+    if (steps) steps.slice(1).forEach((step, i) => this._record('code', step.at, (o.morphDur ?? 0.8) / this.pace,
+      { sfx: o.sfx === false || o.sfx === null ? false : undefined, sfxGain: 0.2 }, { sfx: 'whoosh', label: `morph${i + 2}` }));
     const life = this._life({ ...o, sfx: null }, 'code', { dur: 0.5 });
     if (!life) return geom(x, y, w, h);
     this._push(x, y, life, o);
@@ -1335,8 +1344,20 @@ export class Stage {
         ctx.fillText(String(o.title), 0, -h / 2 + barH / 2 + 4);
       }
     }
-    if (o.highlight) {
-      const hl = Array.isArray(o.highlight) ? o.highlight : [o.highlight];
+    if (steps && morph.to) {
+      const drawHighlight = (step, alpha) => {
+        const hl = Array.isArray(step.highlight) ? step.highlight : step.highlight ? [step.highlight] : [];
+        ctx.save();
+        ctx.globalAlpha *= alpha;
+        ctx.fillStyle = C.highlight;
+        for (const n of hl) ctx.fillRect(-w / 2 + 6, top + (n - 1) * lh - lh * 0.22, w - 12, lh);
+        ctx.restore();
+      };
+      drawHighlight(steps[morph.from], 1 - morph.p);
+      drawHighlight(steps[morph.to], morph.p);
+    } else if (steps ? steps[0].highlight : o.highlight) {
+      const highlight = steps ? steps[0].highlight : o.highlight;
+      const hl = Array.isArray(highlight) ? highlight : [highlight];
       const ha = clamp((this.t - this.time(o.highlightAt ?? at + 0.4 / this.pace)) / (0.4 / this.pace));
       if (ha > 0) {
         ctx.save();
@@ -1350,38 +1371,75 @@ export class Stage {
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
     const room = w / 2 - pad * 0.5 - (left + numW);
-    lines.forEach((line, i) => {
-      if (ctx.measureText(line).width > room) this._overflow(`code line ${i + 1} ("${line.trim().slice(0, 40)}") is wider than its window; shorten it, lower size or raise w`);
-    });
+    (steps || [{ lines }]).forEach((step, n) => step.lines.forEach((line, i) => {
+      if (ctx.measureText(line).width > room) this._overflow(`code ${steps ? `step ${n + 1} ` : ''}line ${i + 1} ("${line.trim().slice(0, 40)}") is wider than its window; shorten it, lower size or raise w`);
+    }));
     ctx.save();
     ctx.beginPath();
     ctx.rect(-w / 2, -h / 2, w, h);
     ctx.clip();
-    let budget = reveal === 'type' ? Math.floor((this.t - startText) * cps) : Infinity;
-    lines.forEach((line, i) => {
-      if (reveal === 'lines' && this.t < startText + i * lineDelay) return;
-      if (budget <= 0 && reveal === 'type') return;
-      const ly = top + i * lh;
+    if (steps && morph.to && morph.p < 1) {
+      const position = (tok, step) => ({ x: left + numW + ctx.measureText(step.lines[tok.row].slice(0, tok.column)).width, y: top + tok.row * lh });
+      const drawToken = (tok, pos, alpha) => {
+        if (alpha <= 0) return;
+        ctx.save();
+        ctx.globalAlpha *= alpha;
+        ctx.fillStyle = C[tok.type] ?? C.fg;
+        ctx.fillText(tok.text, pos.x, pos.y);
+        ctx.restore();
+      };
+      const before = codeTokens(steps[morph.from].lines, o.lang ?? 'js');
+      const after = codeTokens(lines, o.lang ?? 'js');
+      const pairs = matchTokens(before, after);
+      const keptBefore = new Set(pairs.map(([a]) => a));
+      const keptAfter = new Set(pairs.map(([, b]) => b));
+      for (const [a, b] of pairs) {
+        const start = position(before[a], steps[morph.from]);
+        const end = position(after[b], steps[morph.to]);
+        drawToken(after[b], { x: lerp(start.x, end.x, morph.p), y: lerp(start.y, end.y, morph.p) }, 1);
+      }
+      before.forEach((tok, i) => { if (!keptBefore.has(i)) drawToken(tok, position(tok, steps[morph.from]), morph.removed); });
+      after.forEach((tok, i) => { if (!keptAfter.has(i)) drawToken(tok, position(tok, steps[morph.to]), morph.added); });
       if (numW) {
         ctx.fillStyle = C.lineNo;
         ctx.textAlign = 'right';
-        ctx.fillText(String(i + 1), left + numW - charW * 1.4, ly);
+        const oldCount = steps[morph.from].lines.length;
+        for (let i = 0; i < Math.max(oldCount, lines.length); i++) {
+          ctx.save();
+          ctx.globalAlpha *= i < Math.min(oldCount, lines.length) ? 1 : i < oldCount ? morph.removed : morph.added;
+          ctx.fillText(String(i + 1), left + numW - charW * 1.4, top + i * lh);
+          ctx.restore();
+        }
         ctx.textAlign = 'left';
       }
-      let cx = left + numW;
-      for (const tok of highlightLine(line, o.lang ?? 'js')) {
-        let txt = tok.text;
-        if (reveal === 'type') {
-          if (budget <= 0) break;
-          txt = txt.slice(0, budget);
-          budget -= txt.length;
+    } else {
+      const activeReveal = morph?.to ? 'none' : reveal;
+      let budget = activeReveal === 'type' ? Math.floor((this.t - startText) * cps) : Infinity;
+      lines.forEach((line, i) => {
+        if (activeReveal === 'lines' && this.t < startText + i * lineDelay) return;
+        if (budget <= 0 && activeReveal === 'type') return;
+        const ly = top + i * lh;
+        if (numW) {
+          ctx.fillStyle = C.lineNo;
+          ctx.textAlign = 'right';
+          ctx.fillText(String(i + 1), left + numW - charW * 1.4, ly);
+          ctx.textAlign = 'left';
         }
-        ctx.fillStyle = C[tok.type] ?? C.fg;
-        ctx.fillText(txt, cx, ly);
-        cx += ctx.measureText(txt).width;
-      }
-      if (reveal === 'type') budget -= 1;
-    });
+        let cx = left + numW;
+        for (const tok of highlightLine(line, o.lang ?? 'js')) {
+          let txt = tok.text;
+          if (activeReveal === 'type') {
+            if (budget <= 0) break;
+            txt = txt.slice(0, budget);
+            budget -= txt.length;
+          }
+          ctx.fillStyle = C[tok.type] ?? C.fg;
+          ctx.fillText(txt, cx, ly);
+          cx += ctx.measureText(txt).width;
+        }
+        if (activeReveal === 'type') budget -= 1;
+      });
+    }
     ctx.restore();
     this._logText({ text: 'code', x0: -w / 2, y0: -h / 2, x1: w / 2, y1: h / 2, size, fg: C.fg, bg: C.bg, block: true });
     ctx.restore();

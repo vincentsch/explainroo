@@ -910,6 +910,24 @@ s.terminal(['$ npm install', 'added 42 packages in 3s'], { at: 1 });
 `cps`, `lineDelay`, `highlight` (line numbers) and `highlightAt`. `check`
 reports lines that are wider than the window.
 
+Use steps to show a change, a refactor or a fix:
+
+```js
+s.code([
+  { code: 'const total = items.length;', at: 0.5 },
+  { code: 'const total = items\n  .filter((i) => i.active)\n  .length;', at: 'filter', highlight: [2] },
+  { code: 'const activeCount = items\n  .filter((i) => i.active)\n  .length;', at: '#rename' },
+], { lang: 'js', title: 'stats.js' });
+```
+
+Parts that stay slide to their new place, removed parts fade out and new
+parts fade in. Each later step starts at its own `at`, and the change takes
+`morphDur` seconds (0.8, shortened by `pace`). The element's `at` defaults to
+the first step's. `reveal` applies to the first step only. A step's
+`highlight` replaces the earlier one. The window is as wide as the widest
+step, up to 86% of the frame, unless you set `w`, and its height follows the
+line count. `check` checks the lines of every step.
+
 `s.terminal(lines, options)` shows a terminal. Lines that start with `$ ` are
 typed as commands. Other lines are output. A line can also be `{ cmd, at }`
 or `{ out, at, color }`. Options: `w`, `size`, `rows`, `title`, `prompt`,
