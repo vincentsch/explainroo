@@ -109,7 +109,7 @@ async function misakiPhonemes(texts, language) {
     return list;
   });
   const native = parts.flat().filter(p => !p.latin && p.text.trim());
-  const phonemes = await runMisaki(native.map(p => p.text), language);
+  const phonemes = await runMisaki(native.map(p => p.text), language, line => typeof line === 'string');
   native.forEach((p, i) => { p.phonemes = phonemes[i]; });
   for (const p of parts.flat()) if (p.latin) p.phonemes = await englishPhonemes(p.text);
   return parts.map(list => {
@@ -119,10 +119,17 @@ async function misakiPhonemes(texts, language) {
   });
 }
 
-async function runMisaki(texts, language) {
+// Katakana readings of Japanese text, from the dictionary misaki installs:
+// [start, end, reading] for each word, counted in characters.
+export function japaneseReadings(texts) {
+  return runMisaki(texts, 'ja-readings', line => Array.isArray(line) && line.every(t => Array.isArray(t) && t.length === 3));
+}
+
+async function runMisaki(texts, mode, valid) {
+  const language = mode.slice(0, 2);
   if (!texts.length) return [];
   return new Promise((resolve, reject) => {
-    const child = spawn(python(), [fileURLToPath(new URL('./g2p.py', import.meta.url)), language], { stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn(python(), [fileURLToPath(new URL('./g2p.py', import.meta.url)), mode], { stdio: ['pipe', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
     child.stdout.setEncoding('utf8').on('data', data => { stdout += data; });
@@ -137,7 +144,7 @@ async function runMisaki(texts, language) {
       try {
         // misaki drops punctuation in Japanese, so a piece may come back empty.
         const lines = stdout.trimEnd().split(/\r?\n/).map(line => JSON.parse(line));
-        if (lines.length !== texts.length || lines.some(line => typeof line !== 'string')) throw new Error();
+        if (lines.length !== texts.length || !lines.every(valid)) throw new Error();
         resolve(lines);
       } catch {
         reject(new Error('misaki returned incomplete phonemes. Check its installation and EXPLAINROO_PYTHON.'));

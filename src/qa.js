@@ -6,7 +6,7 @@ import { prepare, withEngine } from './pipeline.js';
 import { probe, loudness, ffmpeg } from './ffmpeg.js';
 import { transcribeWords } from './models.js';
 import { readWav } from './wav.js';
-import { alignWords } from './align.js';
+import { alignWords, readAlike } from './align.js';
 import { buildChapters, chapterHints } from './chapters.js';
 import { outputPath } from './project.js';
 
@@ -151,7 +151,8 @@ export async function verify(project, { file = null, log = () => {} } = {}) {
         const to = Math.min(samples.length, Math.ceil((t.start + t.dur) * 16000));
         const heard = await transcribeWords(samples.subarray(from, to), { log, language: project.config.language });
         texts.push(heard.text);
-        const rate = alignWords(words, heard.words, t.dur, project.config.language).matchRate;
+        const alike = await readAlike(words, heard.words, project.config.language);
+        const rate = alignWords(alike.words, alike.heard, t.dur, project.config.language).matchRate;
         scenes.push({ id: t.id, matchRate: Math.round(rate * 1000) / 1000 });
         total += words.length;
         matched += rate * words.length;
@@ -162,7 +163,8 @@ export async function verify(project, { file = null, log = () => {} } = {}) {
     } else {
       const heard = await transcribeWords(samples, { log, language: project.config.language });
       const script = project.script.scenes.flatMap(spokenWords);
-      speech = { matchRate: Math.round(alignWords(script, heard.words, duration, project.config.language).matchRate * 1000) / 1000, transcript: heard.text };
+      const alike = await readAlike(script, heard.words, project.config.language);
+      speech = { matchRate: Math.round(alignWords(alike.words, alike.heard, duration, project.config.language).matchRate * 1000) / 1000, transcript: heard.text };
     }
     if (speech.matchRate < 0.85) issues.push({ level: 'warn', message: `only ${Math.round(speech.matchRate * 100)}% of the script was understood in the final mix; lower music.volume or check pronunciation` });
     fs.rmSync(wav, { force: true });

@@ -195,8 +195,8 @@ icons. [MathJax](https://www.mathjax.org) typesets the formulas.
 explainroo runs [espeak-ng](https://github.com/espeak-ng/espeak-ng) as a
 separate program, with phoneme rules from Kokoro's
 [misaki](https://github.com/hexgrad/misaki), and misaki itself for Japanese
-and Chinese. [OpenCC](https://github.com/nk2028/opencc-js) matches
-Traditional and Simplified Chinese, and
-[HarfBuzz](https://github.com/harfbuzz/harfbuzzjs) keeps web player fonts
-small. The fonts, including Noto Sans CJK for Japanese and Chinese, are under
-the SIL Open Font License.
+and Chinese. [OpenCC](https://github.com/nk2028/opencc-js) and
+[pinyin-pro](https://github.com/zh-lx/pinyin-pro) help the speech check
+compare Chinese, and [HarfBuzz](https://github.com/harfbuzz/harfbuzzjs) keeps
+web player fonts small. The fonts, including Noto Sans CJK for Japanese and
+Chinese, are under the SIL Open Font License.

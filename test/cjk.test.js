@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { tokenizeNarration, parseScript, speechChunks, normWord, resolveMarks } from '../src/script.js';
-import { alignWords } from '../src/align.js';
+import { alignWords, readAlike, spreadReadings } from '../src/align.js';
 import { subtitleCues, toSrt, toVtt } from '../src/subtitles.js';
 import { buildPhrases, drawCaptions } from '../engine/captions.js';
 import { getTheme } from '../engine/themes.js';
@@ -91,6 +91,61 @@ test('Mandarin alignment reads Traditional characters as Simplified, Japanese ke
   const rate = language => alignWords([{ spoken: '浏览器' }, { spoken: '会询问网址。' }], [{ text: '瀏覽器會詢問網址', start: 0, end: 1.6 }], 1.6, language).matchRate;
   assert.equal(rate('zh'), 1);
   assert.equal(rate('ja'), 0.25);
+});
+
+test('Mandarin alignment accepts a character with the same sound, not a different one', () => {
+  const words = [{ spoken: '哈希值' }, { spoken: '和' }, { spoken: '盐。' }];
+  const heard = text => [{ text, start: 0, end: 1 }];
+  // Whisper writes 直 for 值 and 研 for 盐; all are read zhi and yan.
+  assert.equal(alignWords(words, heard('哈希直和研'), 1, 'zh').matchRate, 1);
+  assert.equal(alignWords(words, heard('哈希職和研'), 1, 'zh').matchRate, 1);
+  const wrong = alignWords(words, heard('哈希值和鸡'), 1, 'zh');
+  assert.equal(wrong.matchRate, 0.8);
+  assert.equal(wrong.words[2].matched, false);
+  assert.equal(alignWords(words, heard('哈希直和研'), 1, 'ja').matchRate, 0.6);
+  const shown = alignWords([{ spoken: '哈希', display: '哈希值' }], heard('哈希直'), 1, 'zh');
+  assert.equal(shown.matchRate, 1);
+});
+
+test('Japanese readings are shared out over the characters they cover', () => {
+  assert.deepEqual(spreadReadings(['うるう', '年', 'には'], [[0, 4, 'ウルードシ'], [4, 5, 'ニ'], [5, 6, 'ワ']]), ['ウルード', 'シ', 'ニワ']);
+  assert.deepEqual(spreadReadings(['ウルードシ', '、'], [[0, 5, 'うるーどし'], [5, 6, '、']]), ['ウルードシ', '、']);
+  assert.deepEqual(spreadReadings(['今日', 'は'], [[0, 2, 'キョー']]), ['キョー', '']);
+});
+
+test('the Japanese speech check compares readings, and falls back to characters without Python', { skip: process.platform === 'win32' }, async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-readings-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const file = path.join(dir, 'python');
+  env(t, 'EXPLAINROO_PYTHON', file);
+  // A tiny dictionary: 世紀 and 正規 are both read セーキ.
+  fs.writeFileSync(file, `#!/usr/bin/env node
+    const assert = require('node:assert/strict');
+    assert.equal(process.argv[3], 'ja-readings');
+    const words = { 世紀: 'セーキ', 正規: 'セーキ', の: 'ノ', 年: 'トシ', とし: 'トシ' };
+    let input = '';
+    process.stdin.on('data', d => input += d);
+    process.stdin.on('end', () => {
+      for (const text of input.trimEnd().split('\\n').map(JSON.parse)) {
+        const out = [];
+        for (let i = 0; i < text.length;) {
+          const w = Object.keys(words).find(w => text.startsWith(w, i));
+          if (w) { out.push([i, i + w.length, words[w]]); i += w.length; } else i++;
+        }
+        console.log(JSON.stringify(out));
+      }
+    });
+  `, { mode: 0o755 });
+  const words = [{ spoken: '世紀', display: '世紀' }, { spoken: 'の', display: 'の' }, { spoken: '年。', display: '年。' }];
+  const heard = [{ text: '正規の', start: 0, end: 0.6 }, { text: 'とし', start: 0.6, end: 1 }];
+  const alike = await readAlike(words, heard, 'ja');
+  assert.deepEqual(alike.words.map(w => w.spoken), ['セーキ', 'ノ', 'トシ']);
+  assert.deepEqual(alike.heard.map(h => h.text), ['セーキノ', 'トシ']);
+  assert.equal(alignWords(alike.words, alike.heard, 1, 'ja').matchRate, 1);
+  assert.deepEqual(await readAlike(words, heard, 'zh'), { words, heard });
+  fs.rmSync(file);
+  assert.deepEqual(await readAlike(words, heard, 'ja'), { words, heard });
+  assert.ok(alignWords(words, heard, 1, 'ja').matchRate < 0.7);
 });
 
 test('Python batches JSON lines without shell expansion and accepts misaki phonemes unchanged', { skip: process.platform === 'win32' }, async t => {

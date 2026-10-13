@@ -364,11 +364,14 @@ Sentences end with `。`, `！` or `？`.
 Latin words such as API or JavaScript are read in English. For a Japanese
 reading, write it out: `{API|エーピーアイ}`.
 
-The speech check compares the narration character by character. For
-Chinese it treats Traditional and Simplified characters as the same, because
-Whisper often writes Traditional. Captions and subtitles join words without
-spaces, with up to 18 characters per subtitle line, and never break inside a
-word. Keep the shown text of an override short.
+Whisper often writes a word with other characters that sound the same, so
+the speech check compares sounds. Japanese is compared by its kana reading,
+so 世紀 heard as 正規 still counts. Chinese is compared by pinyin without
+tones, and Traditional and Simplified characters count as the same. So do
+not reword a sentence only because Whisper chose other characters. Captions
+and subtitles join words without spaces, with up to 18 characters per
+subtitle line, and never break inside a word. Keep the shown text of an
+override short.
 
 The looks' fonts have no Japanese or Chinese characters. The first `voice`,
 `still` or `render` downloads Noto Sans JP or Noto Sans SC, regular and bold,

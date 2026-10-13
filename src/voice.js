@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { speechChunks, resolveMarks, normWord } from './script.js';
-import { alignWords } from './align.js';
+import { alignWords, readAlike } from './align.js';
 import { loadTTS, transcribeWords, TTS_MODEL, TTS_SAMPLE_RATE, ttsDtype, asrModel } from './models.js';
 import { phonemize, generateSpeech } from './phonemes.js';
 import { writeWav, readWav, resample, trimSilence } from './wav.js';
@@ -144,7 +144,8 @@ async function synthesizeScene(project, scene, chunks, hash, tts, log) {
 
     const heard = await transcribeWords(resample(samples, sr, 16000), { log, language: config.language });
     transcripts.push(heard.text);
-    const aligned = alignWords(chunk.words, heard.words, dur, config.language);
+    const alike = await readAlike(chunk.words, heard.words, config.language);
+    const aligned = alignWords(alike.words, alike.heard, dur, config.language);
     chunk.words.forEach((w, k) => {
       const a = aligned.words[k];
       wordTimes[w.unitIndex] = { start: start + a.start, end: start + a.end, matched: a.matched };
@@ -209,7 +210,8 @@ async function recordingScene(project, scene, hash, source, take, cut, heardTake
     words: heardTake.words.filter((w) => w.start >= cut.start && w.start < cut.end).map(local),
   } : await transcribeWords(resample(samples, sr, 16000), { log, language: config.language });
   const units = scene.units.filter((u) => u.type === 'word');
-  const aligned = alignWords(units, heard.words, duration, config.language);
+  const alike = await readAlike(units, heard.words, config.language);
+  const aligned = alignWords(alike.words, alike.heard, duration, config.language);
   const times = cut ? cut.words.map(local) : aligned.words;
   const wordTimes = [];
   let wi = 0;
