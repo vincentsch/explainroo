@@ -153,8 +153,8 @@ unofficial demos of [Gmail, ChatGPT and Claude](https://www.explainroo.com/video
 
 You need Node.js 20.11 or newer, ffmpeg, and Chrome or Chromium. The first
 setup downloads the voice and timing models once, about 400 MB together. You
-don't need a graphics card. I develop and test explainroo on Linux. It should
-work on macOS and Windows, but I have tested it less there.
+don't need a graphics card. I develop explainroo on Linux, and its tests run
+on Linux, macOS and Windows for every change.
 
 ```bash
 git clone https://github.com/vincentsch/explainroo.git
