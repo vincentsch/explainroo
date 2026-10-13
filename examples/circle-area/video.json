@@ -1,0 +1,14 @@
+{
+  "title": "Why a circle has area pi r squared",
+  "theme": "chalk",
+  "size": "youtube",
+  "fps": 30,
+  "voice": "af_heart",
+  "speed": 0.96,
+  "music": { "style": "calm", "volume": 0.12 },
+  "sfx": "minimal",
+  "captions": false,
+  "cover": "intro@end",
+  "transition": "fade",
+  "end": 1.4
+}

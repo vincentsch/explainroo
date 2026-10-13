@@ -1,0 +1,15 @@
+{
+  "title": "¿Por qué el cielo es azul?",
+  "theme": "paper",
+  "size": "youtube",
+  "voice": "ef_dora",
+  "music": {
+    "style": "warm",
+    "volume": 0.1
+  },
+  "captions": true,
+  "language": "es",
+  "sfx": "minimal",
+  "transition": "fade",
+  "cover": "pregunta@end"
+}

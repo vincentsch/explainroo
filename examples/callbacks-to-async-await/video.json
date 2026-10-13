@@ -1,0 +1,16 @@
+{
+  "title": "JavaScript: callbacks to async/await",
+  "theme": "midnight",
+  "size": "youtube",
+  "voice": "af_heart",
+  "music": {
+    "style": "tech",
+    "volume": 0.12
+  },
+  "captions": false,
+  "speed": 0.95,
+  "sfx": "minimal",
+  "transition": "fade",
+  "cover": "intro@end",
+  "end": 1.0
+}
