@@ -162,6 +162,8 @@ test('exported player runs at a sub-path with matching frames, clips and accessi
   await page.locator('#player').focus();
   await page.keyboard.press('f');
   await page.waitForFunction(() => !!document.fullscreenElement);
+  // The label follows the fullscreenchange event, a moment after the element changes.
+  await page.waitForFunction(() => document.querySelector('#fullscreen').getAttribute('aria-label') === 'Exit fullscreen');
   assert.equal(await page.getByRole('button', { name: 'Exit fullscreen' }).count(), 1);
   assert.equal(await page.locator('#fullscreen').getAttribute('title'), 'Exit fullscreen');
   assert.equal(await page.locator('#fullscreen').getAttribute('data-icon'), 'minimize');
