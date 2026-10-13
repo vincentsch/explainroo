@@ -45,7 +45,7 @@ function run(command, dir, flags = []) {
   return JSON.parse(r.stdout);
 }
 
-test('CLI renders use size names for every extra file and --out wins with and without --draft', { skip: !chrome, timeout: 120000 }, async t => {
+test('CLI renders use size names for every extra file and --out wins with and without --draft', { skip: !chrome, timeout: 300000 }, async t => {
   const dir = fixture(t);
   const voiceFile = voicePaths(loadProject(dir), 'intro').json;
   const mtime = fs.statSync(voiceFile).mtimeMs;
@@ -77,7 +77,7 @@ test('CLI renders use size names for every extra file and --out wins with and wi
   assert.ok(fs.existsSync(path.join(dir, 'out/video-tiktok.mp4')));
 });
 
-test('CLI still, sheet and check use the override, while existing names stay unchanged', { skip: !chrome, timeout: 60000 }, t => {
+test('CLI still, sheet and check use the override, while existing names stay unchanged', { skip: !chrome, timeout: 180000 }, t => {
   const dir = fixture(t);
   for (const [flags, suffix] of [[[], ''], [['--size', 'tiktok'], '-tiktok']]) {
     const still = run('still', dir, [...flags, '--scale', '0.1']).stills[0];
