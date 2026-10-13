@@ -1,0 +1,19 @@
+{
+  "title": "网站怎么安全保存密码？",
+  "theme": "midnight",
+  "size": "youtube",
+  "voice": "zf_xiaobei",
+  "music": {
+    "style": "tech",
+    "volume": 0.1
+  },
+  "captions": true,
+  "language": "zh",
+  "transition": "fade",
+  "sfx": "minimal",
+  "cover": "question@end",
+  "end": 0.9,
+  "pace": 1.2,
+  "lead": 0.25,
+  "hold": 0.4
+}

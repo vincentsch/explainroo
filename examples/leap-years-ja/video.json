@@ -1,0 +1,17 @@
+{
+  "title": "うるう年は、なぜあるの？",
+  "theme": "chalk",
+  "size": "youtube",
+  "voice": "jf_alpha",
+  "music": {
+    "style": "calm",
+    "volume": 0.055
+  },
+  "captions": true,
+  "language": "ja",
+  "speed": 1.0,
+  "sfx": "minimal",
+  "transition": "fade",
+  "cover": "hook@end",
+  "end": 1.0
+}
