@@ -25,6 +25,14 @@ https://github.com/user-attachments/assets/6dd5dc32-c975-4e0e-8cd4-2ef3ccc11e61
   <sub>A coding agent made this video with explainroo. You can also watch it on <a href="https://www.explainroo.com/videos/how-explainroo-makes-a-video/">explainroo.com</a>.</sub>
 </p>
 
+## News
+
+- **Oct 13, 2026**: [explainroo 0.3](https://www.explainroo.com/news/explainroo-0-3/) narrates in Japanese and Mandarin Chinese, and adds the editorial look.
+- **Oct 13, 2026**: [explainroo 0.2](https://www.explainroo.com/news/explainroo-0-2/) adds five more languages, other voices and video clips.
+- **Oct 4, 2026**: [A check for small video players](https://www.explainroo.com/news/small-player-check/) warns when text gets too small in a feed.
+
+All news is on [explainroo.com/news](https://www.explainroo.com/news/).
+
 ## Make a video
 
 > [!TIP]
