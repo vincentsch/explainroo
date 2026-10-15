@@ -24,16 +24,50 @@ function describe(e) {
 window.explainrooReady = (async () => {
   const { engine, audio, state } = await boot({ canvas, scale, transparent });
   const fps = state.config.fps;
+  const sub = document.createElement('canvas');
+  sub.width = canvas.width;
+  sub.height = canvas.height;
+  const subCtx = sub.getContext('2d', { alpha: false });
+  // Draws the frame `samples` times over half a frame's time around T and
+  // averages them, like a film camera's shutter. The samples stay inside
+  // the frame's scene, so a cut never blends with the scene before it. Each
+  // sample loads its own clip frames, so the result does not depend on what
+  // was drawn before.
+  const blurFrame = async (T, samples) => {
+    const ctx = canvas.getContext('2d');
+    const sc = state.timeline.scenes[engine.sceneAt(T)];
+    const lo = sc.start;
+    const hi = Math.min(sc.start + sc.dur, state.timeline.duration) - 1e-4;
+    for (let k = 0; k < samples; k++) {
+      const t = Math.min(hi, Math.max(lo, T + ((k + 0.5) / samples - 0.5) * (0.5 / fps)));
+      if (engine.clips.size) await engine.prepareFrame(t, subCtx);
+      engine.renderFrame(t, subCtx);
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalAlpha = k === 0 ? 1 : 1 / (k + 1);
+      ctx.drawImage(sub, 0, 0);
+      ctx.restore();
+    }
+  };
   window.explainroo = {
     info() {
       return { duration: state.timeline.duration, frames: state.timeline.frames, fps, width: canvas.width, height: canvas.height, scenes: state.timeline.scenes.map((s) => ({ id: s.id, start: s.start, dur: s.dur })) };
     },
-    async frames(list, quality) {
+    // The automatic camera's plan for each scene it films.
+    cameras() {
+      return Object.fromEntries([...engine.cameraPlans].map(([i, p]) => [state.timeline.scenes[i].id, { start: p.start, moves: p.moves.map(({ start, dur, from, to }) => ({ start, dur, from, to })), elements: p.elements, view: p.view }]));
+    },
+    // samples > 1 adds motion blur: a frame in which something moves is
+    // drawn that many times across half a frame's time and averaged, like a
+    // film camera's shutter. Still frames are drawn once.
+    async frames(list, quality, samples = 1) {
       const out = [];
       for (const f of list) {
         try {
           if (engine.clips.size) await engine.prepareFrame(f / fps);
+          engine.moving = false;
           engine.renderFrame(f / fps);
+          if (samples > 1 && engine.moving && !transparent) await blurFrame(f / fps, samples);
         } catch (e) {
           throw new Error(describe(e));
         }

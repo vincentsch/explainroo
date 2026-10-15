@@ -45,6 +45,8 @@ export const DEFAULTS = {
   captions: 'auto',
   cover: 'auto',
   transition: 'auto',
+  camera: 'auto',
+  motionBlur: true,
   lead: 0.35,
   hold: 0.7,
   end: 1.4,
@@ -193,6 +195,8 @@ export function normalizeConfig(raw, dir = '.') {
   if (typeof cfg.voice === 'string' && cfg.speed * cfg.pace > 1.8) fail(`speed ${cfg.speed} times pace ${cfg.pace} makes the voice too fast; keep speed x pace at 1.8 or below`);
   if (![24, 25, 30, 50, 60].includes(cfg.fps)) fail('fps must be 24, 25, 30, 50 or 60');
   if (!TRANSITIONS.includes(cfg.transition)) fail(`transition must be one of ${TRANSITIONS.join(', ')}`);
+  if (!['auto', 'still'].includes(cfg.camera)) fail('camera must be "auto" (the camera follows the narration) or "still"');
+  if (typeof cfg.motionBlur !== 'boolean') fail('motionBlur must be true or false');
   if (![true, false, 'minimal'].includes(cfg.sfx)) fail('sfx must be true, false or "minimal"');
   if (![true, false, 'auto'].includes(cfg.captions)) fail('captions must be true, false or "auto"');
   const cover = cfg.cover;

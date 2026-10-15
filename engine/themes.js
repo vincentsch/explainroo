@@ -49,7 +49,7 @@ const CLEAN = {
     blue: '#3b6cf6', purple: '#7c5cff', pink: '#ec4899', gray: '#98a2b3', ink: '#111827',
   },
   fonts: {
-    display: { family: 'Plus Jakarta Sans', weight: 800 },
+    display: { family: 'Plus Jakarta Sans', weight: 800, tracking: -0.025 },
     body: { family: 'Inter', weight: 400 },
     hand: { family: 'Kalam', weight: 400 },
     mono: { family: 'JetBrains Mono', weight: 400 },
@@ -145,7 +145,7 @@ const MIDNIGHT = {
     blue: '#60a5fa', purple: '#a78bfa', pink: '#f472b6', gray: '#64748b', ink: '#e8eef8',
   },
   fonts: {
-    display: { family: 'Space Grotesk', weight: 700 },
+    display: { family: 'Space Grotesk', weight: 700, tracking: -0.02 },
     body: { family: 'Inter', weight: 400 },
     hand: { family: 'Kalam', weight: 400 },
     mono: { family: 'JetBrains Mono', weight: 400 },
@@ -177,7 +177,7 @@ const EDITORIAL = {
     blue: '#2f5b88', purple: '#6a4e8c', pink: '#b04870', gray: '#8a847b', ink: '#1c1a17',
   },
   fonts: {
-    display: { family: 'Instrument Serif', weight: 400 },
+    display: { family: 'Instrument Serif', weight: 400, tracking: -0.01 },
     body: { family: 'Inter', weight: 400 },
     hand: { family: 'Instrument Serif', weight: 400 },
     mono: { family: 'JetBrains Mono', weight: 400 },

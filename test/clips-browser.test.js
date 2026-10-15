@@ -93,3 +93,33 @@ test('stills use exact clip frames in any order and reuse extracted frames', { s
     });
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('motion blur keeps a clip frame that does not change during the shutter', { skip: !chrome }, async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-clip-blur-'));
+  try {
+    fs.mkdirSync(path.join(dir, 'assets'));
+    await ffmpeg(['-loglevel', 'error', '-f', 'lavfi', '-i', 'color=red:s=160x90:r=30:d=1', '-f', 'lavfi', '-i', 'color=lime:s=160x90:r=30:d=1', '-filter_complex', '[0:v][1:v]concat=n=2:v=1:a=0[v]', '-map', '[v]', '-c:v', 'libx264', '-threads', '1', path.join(dir, 'assets/clip.mp4')]);
+    fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ theme: 'clean', camera: 'still', captions: false, watermark: false, music: false, sfx: false }));
+    fs.writeFileSync(path.join(dir, 'script.md'), '## demo\n');
+    // The card keeps the frame moving, so it is drawn with motion blur.
+    fs.writeFileSync(path.join(dir, 'scenes.js'), `export default { demo(s) {
+      s.clip('assets/clip.mp4', { w: 700, at: 0, enter: 'none', radius: 0, shadow: false });
+      s.box('Moving', { x: 300, y: 200, w: 200, h: 100, at: 0.9, dur: 2, enter: 'rise' });
+    } };`);
+    const project = loadProject(dir);
+    const timeline = { pace: 1, duration: 3, frames: 90, fps: 30, width: 1920, height: 1080, transitionSeconds: 0,
+      scenes: [{ id: 'demo', index: 0, start: 0, dur: 3, words: [], marks: {}, voice: null, lead: 0, transition: 'none' }] };
+    await withEngine(project, timeline, { scale: 0.25 }, async (page) => {
+      const [sharp, blurred] = await page.evaluate(async () => {
+        const c = document.querySelector('#c');
+        const pixel = () => [...c.getContext('2d').getImageData(c.width / 2, c.height / 2, 1, 1).data].slice(0, 3);
+        await window.explainroo.frames([45], 0.9, 1);
+        const a = pixel();
+        await window.explainroo.frames([45], 0.9, 6);
+        return [a, pixel()];
+      });
+      assert.ok(sharp[1] > 240 && sharp[0] < 15, JSON.stringify(sharp));
+      assert.deepEqual(blurred, sharp);
+    });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

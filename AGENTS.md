@@ -218,9 +218,9 @@ Narration for this scene. [#marker] A marker names a moment you can animate on.
 
 - **Show it when it is said.** A picture appears as the voice mentions it.
   Use word cues.
-- **Something changes every 2 to 4 seconds.** A new element, an arrow, a
-  highlight or a camera move. `check` points out long stretches where nothing
-  moves.
+- **Something changes every 2 to 4 seconds.** A new element, an arrow or a
+  highlight. The camera adds its own moves. `check` points out long stretches
+  where nothing new appears.
 - **Short screen text.** Labels, numbers and key phrases of a few words. The
   whole narration never goes on screen. When the narration should be readable,
   turn on captions (`"captions": true`). Then do not also show the sentence
@@ -234,6 +234,54 @@ Narration for this scene. [#marker] A marker names a moment you can animate on.
 - **Real examples.** A command you can run, a number with its source or a
   picture of the real screen is better than three boxes with general words.
 - **A clear last frame** that shows the main point.
+
+### The camera
+
+explainroo films each scene with a camera that follows the narration. It
+opens on the picture. When a scene starts small, the camera starts close and
+widens as new things need room. Something new that already fits the shot
+needs no move. Now and then the camera moves in on what the voice talks
+about, for example a new card and the one it relates to, when the viewer has
+time to look. Then it follows new things at that distance. Near the end of
+the scene it pulls back, so the last frame shows the whole idea. During each
+scene it also pushes in very slowly.
+
+While a shot holds, every card and label is either fully in the shot or out
+of it. Arrows and lines may run off the edge. While the camera moves from
+one shot to the next, things may pass the edge of the frame for a moment.
+Shots stay clear of the captions and of the parts the app covers on Shorts,
+TikTok and Reels.
+
+Lay out each scene as one picture on the full frame, the way it should look
+at the end, and let the camera find the close-ups:
+
+- Put the next element near the one it follows, so one shot shows both.
+- A scene that starts with one thing and grows gets the most camera moves.
+  The camera starts close and widens with the picture.
+- Keep a box with its label, or an icon with its caption, together as one
+  unit. Things far apart get their own shots.
+- Lines, arrows and things added inside an element already on screen, like
+  a line in a chart, get no close-up of their own. Use `s.focus` when one
+  should.
+- When a scene goes on with the same picture, draw the carried elements with
+  `at: -1` in the same places. The camera then goes on from where it
+  stopped, and the two scenes fade into each other.
+
+The camera measures every element, including what `s.draw` draws, and
+follows the `at` and `out` times. Anything drawn straight on `s.ctx` counts
+as one block that is there for the whole scene, so the camera keeps it whole
+and cannot film it on its own. Use `s.draw` for a drawing that appears on a
+cue. Highlighted code lines and terminal commands get close-ups of their own
+when they are small in the shot. `s.focus` points the camera at any part of
+the picture.
+
+`s.camera([...])` in a scene takes over that scene's camera, and
+`s.camera([])` keeps the scene still. `"camera": "still"` in `video.json`
+turns the camera off for the whole video. `check` checks the layout as you
+wrote it, without the camera. Stills, sheets and renders show the camera.
+
+The final render adds motion blur to frames where something moves, like a
+film camera. Drafts skip it. `"motionBlur": false` turns it off.
 
 ## Voices
 
@@ -741,6 +789,8 @@ videos/<name>/
 | `captions` | `"auto"` | text of the narration at the bottom; auto turns it on for vertical and square videos |
 | `cover` | `"auto"` | full-size JPEG, without captions, at the end of the first scene, or a still spec: `12.5`, `"intro"`, `"intro@2.4"`, `"intro@end"` |
 | `transition` | `"auto"` | the look's default, or `fade`, `slide`, `wipe`, `zoom`, `brush`, `cut` |
+| `camera` | `"auto"` | `"auto"` films each scene with a camera that follows the narration; `"still"` keeps every frame as written |
+| `motionBlur` | `true` | motion blur on moving frames in the final render |
 | `lead`, `hold`, `end` | 0.35, 0.7, 1.4 | seconds before the voice, after it, and extra at the very end |
 | `sentenceGap`, `paragraphGap` | 0.3, 0.55 | pauses in generated narration; recordings keep their own pauses |
 | `loudness` | -14 | target loudness in LUFS |
@@ -1172,8 +1222,14 @@ or `{ out, at, color }`. Options: `w`, `size`, `rows`, `title`, `prompt`,
 
 ### Camera, groups and your own drawing
 
-- `s.camera([{ at, x, y, zoom, dur, rotate }])` moves the view. Call it first
-  in the scene function.
+- `s.camera([{ at, x, y, zoom, dur, rotate }])` moves the view by hand
+  instead of the automatic camera (see The camera). Call it first in the
+  scene function. `s.camera([])` keeps the scene still.
+- `s.focus(target, { at, out })` points the automatic camera at an element
+  or a region on a cue, for example one row of a table. `target` is an `id`
+  drawn earlier, `{ x, y, w, h }` (center and size) or `[x, y, w, h]`. It
+  draws nothing. Highlighted code lines and terminal commands get a
+  close-up on their own when they are small in the shot.
 - `s.group({ x, y, scale, rotate, at, out, enter }, () => { ... })` moves a
   set of elements together. Inside the group, positions count from `x`, `y`.
 - `s.draw({ x, y, at, out }, (ctx, life) => { ... })` gives you the canvas 2D

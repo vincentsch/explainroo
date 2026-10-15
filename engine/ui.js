@@ -133,6 +133,8 @@ export class UI {
   // An entrance, so `check` knows something new appears and a sound can play.
   _enter(at, dur, sfx) {
     this.s._record('ui', at, dur, { sfx: sfx ?? null });
+    // Arriving parts get motion blur in the final render.
+    if (this.s.t >= at && this.s.t < at + dur / this.s.pace) this.s.engine.moving = true;
   }
 
   // ---------- surfaces ----------
@@ -148,7 +150,19 @@ export class UI {
 
   // Faint app cards drifting around the edges, out of focus. Each card is
   // blurred once and reused, because a blur filter on every frame is slow.
+  // The floating cards are decoration. The camera does not count them as
+  // part of the picture.
   floaters(o = {}) {
+    const pause = this.c.__inkPause;
+    pause?.(true);
+    try {
+      return this._floaters(o);
+    } finally {
+      pause?.(false);
+    }
+  }
+
+  _floaters(o = {}) {
     const s = this.s;
     const c = this.c;
     const tint = o.tint ?? 'card';
@@ -249,20 +263,29 @@ export class UI {
     const a = this.at(o.at ?? 0);
     const dur = o.dur ?? 0.6;
     this._enter(a, dur, o.sfx);
+    s._logLayout('panel', a, o.out === undefined ? Infinity : this.at(o.out), x + w / 2, y + h / 2, w, h);
     if (s.t < a) return 0;
     const p = clamp((s.t - a) / (dur / s.pace));
     const q = o.out !== undefined ? this._p(o.out, o.outDur ?? 0.35, 'in') : 0;
     if (q >= 1) return p;
     const c = this.c;
     const sc = lerp(o.from ?? 0.94, 1, outBack(p)) * (1 - 0.03 * q);
+    // A panel tells the camera its own place and time, so what it holds is
+    // not measured again as a loose drawing.
+    const pause = c.__inkPause;
+    pause?.(true);
     c.save();
     c.globalAlpha *= clamp(p * 2.5) * (1 - q);
     c.translate(x + w / 2, y + h / 2 + (1 - outCubic(p)) * (o.rise ?? 30));
     c.scale(sc, sc);
     c.translate(-(x + w / 2), -(y + h / 2));
-    this.card(x, y, w, h, o);
-    if (fn) fn(x, y, w, h);
-    c.restore();
+    try {
+      this.card(x, y, w, h, o);
+      if (fn) fn(x, y, w, h);
+    } finally {
+      c.restore();
+      pause?.(false);
+    }
     return p;
   }
 
@@ -448,7 +471,18 @@ export class UI {
   // A headline that blurs in word by word, in the headline font. Wrap words
   // in *stars* to set them in the accent color, in italic unless
   // italic: false (for a brand font without an italic).
+  // A headline reports its own place and time to the camera.
   headline(str, x, y, o = {}) {
+    const pause = this.c.__inkPause;
+    pause?.(true);
+    try {
+      return this._headline(str, x, y, o);
+    } finally {
+      pause?.(false);
+    }
+  }
+
+  _headline(str, x, y, o = {}) {
     const s = this.s;
     const c = this.c;
     const size = o.size ?? 96;
@@ -472,6 +506,7 @@ export class UI {
     const total = widths.reduce((a, b) => a + b, 0) + space * (tokens.length - 1);
     let cx = o.align === 'left' ? x : o.align === 'right' ? x - total : x - total / 2;
     const a = this.at(o.at ?? 0);
+    s._logLayout('headline', a, o.out === undefined ? Infinity : this.at(o.out), cx + total / 2, y - size * 0.35, total, size * 1.1);
     const stagger = (o.stagger ?? 0.07) / s.pace;
     const dur = (o.dur ?? 0.7) / s.pace;
     this._enter(a, dur + stagger * tokens.length, o.sfx);
@@ -936,6 +971,7 @@ export class UI {
       if (s.t < a) continue;
       if (k.x !== undefined) {
         const p = inOutCubic(clamp((s.t - a) / ((k.dur ?? 0.7) / s.pace)));
+        if (p > 0 && p < 1) s.engine.moving = true;
         // A slight arc looks like a hand moved it.
         const dx = k.x - x;
         const dy = k.y - y;

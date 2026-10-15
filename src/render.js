@@ -43,6 +43,8 @@ export async function render(project, opts = {}) {
   const coverTime = partial ? null : resolveTimes(timeline, [project.config.cover === 'auto' ? `${timeline.scenes[0].id}@end` : project.config.cover])[0];
   const workers = Math.max(1, Math.min(opts.workers ?? Math.min(8, Math.max(1, Math.floor(os.cpus().length / 2))), to - from));
   const quality = draft ? 0.82 : 0.93;
+  // Final renders get motion blur. Drafts, GIFs and transparent videos skip it.
+  const samples = draft || format === 'gif' || transparent || project.config.motionBlur === false ? 1 : 6;
   const segDir = path.join(project.paths.build, 'segments');
   fs.rmSync(segDir, { recursive: true, force: true });
   fs.mkdirSync(segDir, { recursive: true });
@@ -78,7 +80,7 @@ export async function render(project, opts = {}) {
         for (let f = a; f < b; f += batch) {
           const frames = [];
           for (let i = f; i < Math.min(b, f + batch); i++) frames.push(i);
-          const jpegs = await page.evaluate(([l, q]) => window.explainroo.frames(l, q), [frames, quality]);
+          const jpegs = await page.evaluate(([l, q, n]) => window.explainroo.frames(l, q, n), [frames, quality, samples]);
           for (const j of jpegs) await enc.write(Buffer.from(j, 'base64'));
           done += frames.length;
           if (Date.now() - lastLog > 3000) {

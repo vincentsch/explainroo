@@ -16,6 +16,8 @@ export const ease = {
   outElastic: (p) => (p === 0 || p === 1 ? p : Math.pow(2, -10 * p) * Math.sin((p * 10 - 0.75) * ((2 * Math.PI) / 3)) + 1),
   outQuart: (p) => 1 - Math.pow(1 - p, 4),
   inOutSine: (p) => -(Math.cos(Math.PI * p) - 1) / 2,
+  // A lightly damped spring: quick, about 4% past the end, then settled.
+  spring: (p) => (p >= 1 ? 1 : 1 - Math.exp(-7.2 * p) * Math.cos(7.2 * p)),
 };
 
 export function easeFn(name) {

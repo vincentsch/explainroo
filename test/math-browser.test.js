@@ -108,7 +108,7 @@ test('math boxes, transformations, text checks and late-formula errors work in t
     assert.match(result.error.message, /\\frac\{1\}.*Missing argument/);
     for (const r of result.entrances) {
       assert.equal(r.changing, 3, r.theme);
-      assert.equal(r.dur, ['clean', 'midnight'].includes(r.theme) ? 0.55 : 0.9, r.theme);
+      assert.equal(r.dur, ['clean', 'midnight'].includes(r.theme) ? 0.75 : 0.9, r.theme);
     }
   });
 });

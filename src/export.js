@@ -64,7 +64,7 @@ export function copyPlayer(project, timeline, used, out) {
   if (languageFonts(project.config.language).length) copy(path.join(cacheRoot(), 'fonts', 'NotoSansCJK-OFL.txt'), 'fonts/licenses/NotoSansCJK-OFL.txt');
   fs.writeFileSync(path.join(out, 'fonts/fonts.json'), JSON.stringify(fonts));
   // Audio synthesis and upload code run during export, never during playback.
-  const modules = ['runtime', 'stage', 'themes', 'pen', 'transitions', 'captions', 'util', 'layout', 'clips', 'ui', 'readability', 'pathdata', 'text', 'code'];
+  const modules = ['runtime', 'stage', 'themes', 'pen', 'transitions', 'captions', 'util', 'layout', 'clips', 'ui', 'readability', 'pathdata', 'text', 'code', 'director'];
   for (const name of modules) copy(path.join(ROOT, 'engine', `${name}.js`), `engine/${name}.js`);
   copy(path.join(ROOT, 'engine/icons/lucide.json'), 'engine/icons/lucide.json');
   copy(path.join(ROOT, 'engine/icons/LICENSE-lucide.txt'), 'engine/icons/LICENSE-lucide.txt');

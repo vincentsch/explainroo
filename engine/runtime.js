@@ -1,7 +1,7 @@
 // Boots the engine in a page: loads the project state, fonts, icons, images
 // and scenes, then exposes frame rendering, checks and the soundtrack.
 import rough from '../vendor/rough.js';
-import { Stage, SceneError } from './stage.js';
+import { Stage, SceneError, boundsRecorder } from './stage.js';
 import { getTheme, makeBackground, fontString, colorOf } from './themes.js';
 import { Pen } from './pen.js';
 import { drawTransition } from './transitions.js';
@@ -11,6 +11,7 @@ import { layoutAreas } from './layout.js';
 import { loadClips, ClipFrames } from './clips.js';
 import { UI } from './ui.js';
 import { playbackTextIssue } from './readability.js';
+import { planCamera, cameraAt, cameraMoving, continues, frameRect, backgroundShot } from './director.js';
 
 Stage.UI = UI;
 
@@ -160,11 +161,14 @@ export class Engine {
     return this.clipFrames.nearest(clip, frame);
   }
 
-  async prepareFrame(T) {
+  // Loads the clip frames that time T shows. It finds them by drawing the
+  // frame on `ctx`. Motion blur passes a spare canvas here, so the picture it
+  // is adding up on the main canvas stays as it is.
+  async prepareFrame(T, ctx = this.ctx) {
     if (!this.clips.size) return;
     const needed = new Map();
     this.clipProbe = needed;
-    try { this.renderFrame(T); }
+    try { this.renderFrame(T, ctx); }
     finally { this.clipProbe = null; }
     await Promise.all([...needed.values()].map(({ clip, frame }) => this.clipFrames.load(clip, frame)));
     this.clipFrames.trim(new Set(needed.keys()));
@@ -224,6 +228,9 @@ export class Engine {
   }
 
   transitionFor(sc) {
+    // A scene that goes on with the picture before it fades into it. A wipe
+    // or a slide would break that picture apart.
+    if (sc.transition === 'auto' && this.continued?.has(sc.index)) return 'fade';
     const name = sc.transition === 'auto' ? this.theme.transition : sc.transition;
     if (this.transparent && ['slide', 'wipe', 'brush'].includes(name)) return 'fade';
     return name || 'fade';
@@ -238,14 +245,59 @@ export class Engine {
     ctx.setTransform(this.scale, 0, 0, this.scale, 0, 0);
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
-    if (this.background) ctx.drawImage(this.background, 0, 0, this.W, this.H);
+    const plan = !this.planning && !this.cameraOff ? this.cameraPlans?.get(index) : null;
+    // A scene drawn past its end, while the next one comes in, keeps the
+    // camera where it stopped, so a continued picture stays on top of itself.
+    const cam = plan ? cameraAt(plan, Math.min(t, plan.dur)) : null;
+    if (this.background) {
+      if (plan) {
+        // The background moves a third as much as the camera, so it looks
+        // further away.
+        const bg = backgroundShot(plan, cam);
+        const v = plan.view;
+        ctx.save();
+        ctx.translate(v.x + v.w / 2, v.y + v.h / 2);
+        ctx.scale(bg.z, bg.z);
+        ctx.translate(-bg.x, -bg.y);
+        ctx.drawImage(this.background, 0, 0, this.W, this.H);
+        ctx.restore();
+      } else ctx.drawImage(this.background, 0, 0, this.W, this.H);
+    }
     if (this.config.boil > 0) this.pen.seedOffset = Math.floor((sc.start + t) * this.config.boil) % 997;
     const saved = Math.random;
     Math.random = mulberry32(hashStr(`random:${sc.id}`));
-    const s = new Stage(this, ctx, sc, t);
     ctx.save();
+    // The automatic camera films the scene unless the scene moves its own.
+    if (plan) {
+      const v = plan.view;
+      ctx.translate(v.x + v.w / 2, v.y + v.h / 2);
+      ctx.scale(cam.z, cam.z);
+      ctx.translate(-cam.x, -cam.y);
+      if (cameraMoving(plan, t)) this.moving = true;
+    }
+    const s = new Stage(this, ctx, sc, t);
+    // While the camera is planned, anything a scene draws straight on s.ctx
+    // is measured as one block that the camera must not cut.
+    let raw = null;
+    let api = s;
+    if (this.planning && this.layoutLog) {
+      raw = boundsRecorder(ctx, this.scale, { W: this.W, H: this.H });
+      // The UI kit draws on the same recorder; its panels and headlines
+      // still report their own times.
+      let ui = null;
+      api = new Proxy(s, {
+        get: (target, prop) => {
+          if (prop === 'ctx') return raw.proxy;
+          if (prop === 'ui') return (ui ??= new Stage.UI(api));
+          const v = target[prop];
+          return typeof v === 'function' ? v.bind(target) : v;
+        },
+      });
+    }
     try {
-      this.scenesModule[sc.id](s);
+      this.scenesModule[sc.id](api);
+      const ink = raw?.box();
+      if (ink) this.layoutLog.push({ kind: 'ink', at: 0, out: Infinity, box: ink });
     } catch (e) {
       const err = e instanceof Error ? e : new Error(String(e));
       err.scene = sc.id;
@@ -256,6 +308,51 @@ export class Engine {
       ctx.restore();
     }
     return s;
+  }
+
+  // Measures every scene once and plans its camera. A scene that continues
+  // the picture of the scene before it starts where that camera stopped,
+  // and the two dissolve into each other. Scene errors are left to check
+  // and render, which report them with their time.
+  planCameras() {
+    this.cameraPlans = new Map();
+    this.continued = new Set();
+    if (this.config.camera === 'still') return;
+    const scratch = document.createElement('canvas');
+    scratch.width = 16;
+    scratch.height = 16;
+    const ctx = scratch.getContext('2d');
+    const view = this.safeArea;
+    const frame = { W: this.W, H: this.H };
+    // The part of the frame that captions and app overlays leave free.
+    const usable = { x0: 0, y0: 0, x1: this.W, y1: this.H };
+    if (this.appArea) Object.assign(usable, { x0: this.appArea.left, y0: this.appArea.top, x1: this.appArea.right, y1: this.appArea.bottom });
+    if (this.captionBand) usable.y1 = Math.min(usable.y1, this.captionBand.top);
+    const layouts = this.timeline.scenes.map((sc) => {
+      this.layoutLog = [];
+      this.planning = true;
+      this.manualCamera = false;
+      try {
+        this.drawScene(ctx, sc.index, Math.max(0, sc.dur - 0.01));
+        return this.manualCamera ? null : this.layoutLog.map((e) => ({ ...e, out: e.out ?? Infinity }));
+      } catch {
+        return null;
+      } finally {
+        this.layoutLog = null;
+        this.planning = false;
+      }
+    });
+    this.timeline.scenes.forEach((sc, i) => {
+      if (!layouts[i]) return;
+      const prev = i > 0 ? this.cameraPlans.get(i - 1) : null;
+      const linked = prev && layouts[i - 1] && sc.transition !== 'none' && continues(layouts[i - 1], layouts[i], frameRect(cameraAt(prev, prev.dur), view, frame));
+      const voiceEnd = sc.voice ? sc.lead + sc.voice.dur : null;
+      const still = linked ? Math.min(this.timeline.transitionSeconds, sc.dur * 0.5) : 0;
+      const plan = planCamera(layouts[i], { dur: sc.dur, view, frame, pace: this.timeline.pace || 1, voiceEnd, from: linked ? cameraAt(prev, prev.dur) : null, still, usable });
+      if (!plan) return;
+      this.cameraPlans.set(i, plan);
+      if (linked) this.continued.add(i);
+    });
   }
 
   renderFrame(T, ctx = this.ctx, { captions = true } = {}) {
@@ -271,6 +368,7 @@ export class Engine {
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
       }
+      this.moving = true;
       this.drawScene(a.getContext('2d', { alpha: this.transparent }), i - 1, T - prev.start);
       this.drawScene(b.getContext('2d', { alpha: this.transparent }), i, t);
       drawTransition(trName, ctx, a, b, t / trDur, this.W, this.H, hashStr(sc.id), this.transparent);
@@ -398,6 +496,18 @@ export class Engine {
 
   // Samples every scene and reports layout problems.
   check(step = 0.25, viewWidth = null) {
+    // check looks at the layout as written. The automatic camera only ever
+    // moves in, which makes text larger, and it may leave the edges out of
+    // a close-up on purpose.
+    this.cameraOff = true;
+    try {
+      return this._check(step, viewWidth);
+    } finally {
+      this.cameraOff = false;
+    }
+  }
+
+  _check(step, viewWidth) {
     const issues = [];
     const add = (level, scene, t, message) => issues.push({ level, scene, t: t === null ? null : Math.round(t * 100) / 100, message });
     if (this.config.look) {
@@ -557,6 +667,7 @@ export async function boot({ canvas, scale = 1, transparent = false, version = '
   engine.iconTags = iconTags;
   if (player) engine.staticMath = await (await fetch('./math.json')).json();
   else await engine.loadMath();
+  engine.planCameras();
   return { engine, audio, state };
 }
 

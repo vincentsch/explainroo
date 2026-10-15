@@ -63,6 +63,11 @@ explainroo does the rest:
   icons from [Lucide](https://lucide.dev). A scene can also show charts, math
   formulas, code that changes step by step, your own screenshots and video
   clips such as screen recordings.
+- **Camera.** A camera films each scene. It moves in on what the voice talks
+  about when there is time, and pulls back at the end so the last frame shows
+  the whole idea. Cards and labels are never cut in half while a shot holds.
+  Things arrive with a little spring, and the final video has motion blur,
+  like a film camera.
 - **Sound.** explainroo makes its own background music for each video and
   adds small sound effects. The music gets quieter while the voice speaks.
 - **File.** ffmpeg puts it all together into an MP4, with subtitle files,
