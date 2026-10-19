@@ -229,9 +229,10 @@ export class Stage {
       if (sc !== 1 || rad) box = { ...box, w: (Math.abs(box.w * Math.cos(rad)) + Math.abs(box.h * Math.sin(rad))) * sc, h: (Math.abs(box.w * Math.sin(rad)) + Math.abs(box.h * Math.cos(rad))) * sc };
       // _pendingExtra is already measured with the element's transform.
       if (this._pendingExtra) box = unionBox(box, this._pendingExtra);
-      this._attach(kind, at, out, box);
+      this._attach(kind, at, out, box, this._pendingInfo);
       this._pendingBox = null;
       this._pendingExtra = null;
+      this._pendingInfo = null;
     }
     if (this._suppress > 0) return null;
     if (this.t < at) return null;
@@ -847,6 +848,8 @@ export class Stage {
     const y = o.y ?? this.cy;
     const shape = o.shape ?? 'rect';
     this._register(o.id, x, y, w, h, shape === 'ellipse' || shape === 'circle' ? 'ellipse' : 'rect');
+    // A shape without words has no detail for the camera to move in on.
+    if (this.engine.layoutLog && !lay) this._pendingInfo = { bare: true };
     const g = geom(x, y, w, h);
     const plain = lay ? String(label).replace(/\*/g, '') : '';
     const life = this._life(o, 'shape', { label: plain.slice(0, 40) || o.icon });
@@ -1080,6 +1083,8 @@ export class Stage {
     const y = o.y ?? this.cy;
     const bgSize = o.bg ? size * (o.bgScale ?? 1.7) : size;
     this._register(o.id, x, y, bgSize, bgSize, o.bg === 'square' ? 'rect' : o.bg ? 'ellipse' : 'rect');
+    // Nor has an icon without a label.
+    if (this.engine.layoutLog && !o.label) this._pendingInfo = { bare: true };
     if (this.engine.layoutLog && o.label) {
       // The label belongs to the icon for the camera, not for arrows.
       const ls = o.labelSize ?? 36;

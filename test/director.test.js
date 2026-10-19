@@ -291,3 +291,14 @@ test("an arrow's label is kept whole, and a labelled arrow gets no close-up", ()
   assert.ok(shot.z > 1.2, `z ${shot.z}`);
   assert.deepEqual(cuts(shot, [label]), []);
 });
+
+test('an icon or shape without words gets no close-up of its own', () => {
+  // The picture fills the frame from the start, so the icon fits the shot.
+  const picture = [el('text', 560, 120, 800, 120, 0.2), el('shape', 150, 400, 300, 300, 0.2), el('shape', 1470, 400, 300, 300, 0.2)];
+  const plan = (icon) => planCamera([...picture, icon], { dur: 12, view, frame, voiceEnd: 11 });
+  const icon = el('icon', 900, 600, 120, 120, 3);
+  const bare = plan({ ...icon, bare: true });
+  assert.ok(!bare.moves.some((m) => m.start > 2 && m.start < 4 && m.to.z > m.from.z * 1.2), JSON.stringify(bare.moves));
+  const labelled = plan({ ...icon, box: { ...icon.box, h: 190 } });
+  assert.ok(labelled.moves.some((m) => m.start > 2 && m.start < 4 && m.to.z > m.from.z * 1.2), JSON.stringify(labelled.moves));
+});

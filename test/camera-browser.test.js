@@ -158,7 +158,7 @@ test('the camera measures the labels of arrows and charts', { skip: !chrome }, a
       const r = await page.evaluate(async () => {
         const { Engine, fetchState } = await import('/engine/runtime.js');
         const state = await fetchState();
-        const engine = (demo, canvas = document.createElement('canvas')) => new Engine({ canvas, state, scenes: { demo }, icons: {}, images: new Map() });
+        const engine = (demo, canvas = document.createElement('canvas')) => new Engine({ canvas, state, scenes: { demo }, icons: { dot: ['M0 0L24 24'] }, images: new Map() });
         const elements = (demo) => {
           const e = engine(demo);
           e.planCameras();
@@ -198,14 +198,24 @@ test('the camera measures the labels of arrows and charts', { skip: !chrome }, a
           const els = elements(demo);
           out[name] = { kinds: els.map((e) => e.kind), box: edges((els.find((e) => e.kind === 'label') ?? els.find((e) => e.kind === 'chart'))?.box), ink: ink(demo) };
         }
+        out.bare = elements((s) => {
+          s.icon('dot', { x: 300, y: 300, at: 0 });
+          s.icon('dot', { x: 700, y: 300, label: 'A label', at: 0 });
+          s.box('', { x: 300, y: 700, w: 200, h: 100, at: 0 });
+          s.box('Words', { x: 700, y: 700, at: 0 });
+        }).map((e) => e.bare);
         return out;
       });
+      const bare = r.bare;
+      delete r.bare;
       for (const [name, { box, ink }] of Object.entries(r)) {
         assert.ok(box, `${name}: ${JSON.stringify(r[name].kinds)}`);
         assert.ok(box.x0 <= ink.x0 + 1 && box.y0 <= ink.y0 + 1 && box.x1 >= ink.x1 - 1 && box.y1 >= ink.y1 - 1, `${name}: ${JSON.stringify({ box, ink })}`);
       }
       // An arrow's label is its own element; the line stays an arrow.
       assert.deepEqual(r.arrow.kinds, ['arrow', 'label']);
+      // Icons and boxes without words are marked, so the camera does not move in on them.
+      assert.deepEqual(bare, [true, undefined, true, undefined]);
     });
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

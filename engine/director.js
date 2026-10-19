@@ -331,9 +331,10 @@ export function planCamera(elements, { dur, view, frame, pace = 1, voiceEnd = nu
       // It is already in the shot. The camera moves in only on a new card,
       // label or picture. A line, an arrow, or something drawn inside an
       // element that is already there, like a line in a chart, gets no
-      // close-up. It tries the new thing with its neighbours first, then on
-      // its own.
-      const own = solid(fresh).filter((e) => !before.some((f) => f.box.w * f.box.h >= e.box.w * e.box.h * 2 && contains(f.box, e.box)));
+      // close-up. Nor does an icon or shape without words: up close it shows
+      // nothing more. It tries the new thing with its neighbours first, then
+      // on its own.
+      const own = solid(fresh).filter((e) => !e.bare && !before.some((f) => f.box.w * f.box.h >= e.box.w * e.box.h * 2 && contains(f.box, e.box)));
       // It is on screen already, so the push may wait a moment for its turn.
       const at = Math.max(begin, last + hold);
       if (!own.length || at > beat.start + 1 / pace || at - zoomed < PUSH_GAP / pace) continue;
