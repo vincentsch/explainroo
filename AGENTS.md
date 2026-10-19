@@ -267,8 +267,9 @@ export default {
     ];
     sides.forEach(({ title, note, color, at }, i) => {
       const c = cells[i];
-      const card = s.box(title, { x: c.x, y: c.y - u * 2, w: c.w * 0.8, size: u * 4, color, at });
-      s.text(note, { x: c.x, y: card.bottom + u * 3, size: u * 2.8, color: 'muted', maxWidth: c.w * 0.85, at });
+      // The note hangs from the card, so a note that wraps grows downward.
+      const card = s.box(title, { x: c.x, y: c.y - u * 4, w: c.w * 0.8, size: u * 4, color, at });
+      s.text(note, { x: c.x, y: card.bottom + u * 2, valign: 'top', size: u * 2.8, color: 'muted', maxWidth: c.w * 0.85, at });
     });
   },
 
