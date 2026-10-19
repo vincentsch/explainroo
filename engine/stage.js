@@ -955,10 +955,13 @@ export class Stage {
       const out = o.out === undefined ? Infinity : this.time(o.out);
       this._logLayout('arrow', at, out, (Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2, Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
       // The line may run off the edge of a close-up, but its label is text,
-      // so the camera keeps it whole.
+      // so the camera keeps it whole. A label outside the frame is never
+      // seen, so the camera leaves it alone.
       if (o.label) {
         const label = this._arrowLabel(o, d, a, b, bend);
-        this._attach('label', at, out, this._textExtent([{ text: String(o.label), x: label.x, y: label.y, font: label.font }]));
+        const box = this._textExtent([{ text: String(o.label), x: label.x, y: label.y, font: label.font }]);
+        const seen = box.x + box.w / 2 > 0 && box.x - box.w / 2 < this.W && box.y + box.h / 2 > 0 && box.y - box.h / 2 < this.H;
+        if (seen) this._attach('label', at, out, box);
       }
     }
     const result = { from: a, to: b, control: c };

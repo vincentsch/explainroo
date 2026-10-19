@@ -198,6 +198,8 @@ test('the camera measures the labels of arrows and charts', { skip: !chrome }, a
           const els = elements(demo);
           out[name] = { kinds: els.map((e) => e.kind), box: edges((els.find((e) => e.kind === 'label') ?? els.find((e) => e.kind === 'chart'))?.box), ink: ink(demo) };
         }
+        // A label the frame never shows is left out.
+        out.offFrame = elements((s) => s.arrow([820, 540], [1120, 540], { at: 0, label: 'request', labelOffset: 640 })).map((e) => e.kind);
         out.bare = elements((s) => {
           s.icon('dot', { x: 300, y: 300, at: 0 });
           s.icon('dot', { x: 700, y: 300, label: 'A label', at: 0 });
@@ -206,8 +208,9 @@ test('the camera measures the labels of arrows and charts', { skip: !chrome }, a
         }).map((e) => e.bare);
         return out;
       });
-      const bare = r.bare;
+      const { bare, offFrame } = r;
       delete r.bare;
+      delete r.offFrame;
       for (const [name, { box, ink }] of Object.entries(r)) {
         assert.ok(box, `${name}: ${JSON.stringify(r[name].kinds)}`);
         assert.ok(box.x0 <= ink.x0 + 1 && box.y0 <= ink.y0 + 1 && box.x1 >= ink.x1 - 1 && box.y1 >= ink.y1 - 1, `${name}: ${JSON.stringify({ box, ink })}`);
@@ -216,6 +219,7 @@ test('the camera measures the labels of arrows and charts', { skip: !chrome }, a
       assert.deepEqual(r.arrow.kinds, ['arrow', 'label']);
       // Icons and boxes without words are marked, so the camera does not move in on them.
       assert.deepEqual(bare, [true, undefined, true, undefined]);
+      assert.deepEqual(offFrame, ['arrow']);
     });
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

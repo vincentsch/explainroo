@@ -302,3 +302,15 @@ test('an icon or shape without words gets no close-up of its own', () => {
   const labelled = plan({ ...icon, box: { ...icon.box, h: 190 } });
   assert.ok(labelled.moves.some((m) => m.start > 2 && m.start < 4 && m.to.z > m.from.z * 1.2), JSON.stringify(labelled.moves));
 });
+
+test("an arrow's label does not count on its own when a scene continues the one before", () => {
+  const card = (x) => el('shape', x, 450, 260, 140, 0.5);
+  const arrow = (x) => el('arrow', x, 500, 300, 40, 1);
+  const label = (x) => el('label', x + 60, 440, 180, 40, 1);
+  const a = [card(200), card(780), arrow(470), label(470), card(1360), arrow(1050), label(1050)];
+  const b = [card(200), card(780), card(1360), arrow(470), label(470)].map((e) => ({ ...e, at: -1 }));
+  assert.equal(continues(a, b, { x0: 0, y0: 0, x1: 1920, y1: 1080 }), continues(a.filter((e) => e.kind !== 'label'), b.filter((e) => e.kind !== 'label'), { x0: 0, y0: 0, x1: 1920, y1: 1080 }));
+  const two = [card(200), card(780), arrow(470), label(470), arrow(1050), label(1050)];
+  const one = [card(200), card(780), arrow(470)].map((e) => ({ ...e, at: -1 }));
+  assert.ok(continues(two, one, { x0: 0, y0: 0, x1: 1920, y1: 1080 }));
+});

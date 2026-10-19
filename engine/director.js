@@ -451,9 +451,12 @@ export function cameraMoving(plan, t) {
 
 // Whether scene B picks up where scene A left off: what A's last frame
 // shows is mostly still there when B starts, in the same places. `last` is
-// the part of the scene A's camera shows at the end.
+// the part of the scene A's camera shows at the end. An arrow's label goes
+// with its arrow, so it does not count on its own.
 export function continues(a, b, last) {
   const inView = (e) => e.box.x + e.box.w / 2 > last.x0 && e.box.x - e.box.w / 2 < last.x1 && e.box.y + e.box.h / 2 > last.y0 && e.box.y - e.box.h / 2 < last.y1;
+  a = a.filter((e) => e.kind !== 'label');
+  b = b.filter((e) => e.kind !== 'label');
   const end = a.filter((e) => e.out === Infinity && inView(e));
   const carried = b.filter((e) => e.at <= 0.05);
   if (end.length < 2 || carried.length < 2) return false;
