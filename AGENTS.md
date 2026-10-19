@@ -95,6 +95,11 @@ When you ask, put everything you need in one message. Typical reasons to ask:
 5. **Plan the pictures.** For each scene, decide what is on screen when each
    marker or important word is spoken. Decide where each thing sits and what
    leaves the screen. Keep things in the same place from scene to scene.
+   Answer four questions for each scene. What is the one thing the viewer
+   should look at? Which relationship does the layout show: an order, a
+   comparison, the parts of a whole or a cause? What appears and what leaves
+   on each cue? What stays in the same place in the next scene? "Layouts that
+   work" below has four layouts to start from.
 
 6. **Make images, if the video needs them.** Icons and diagrams cover most
    technical topics. Everyday how-to topics like cooking, cars or gardening
@@ -235,6 +240,73 @@ Narration for this scene. [#marker] A marker names a moment you can animate on.
   picture of the real screen is better than three boxes with general words.
 - **A clear last frame** that shows the main point.
 
+### Layouts that work
+
+These four layouts cover many scenes: one big number, a comparison, steps in
+order, and one main thing with its parts. Start from the one that fits and
+change the words, colors and cues. Each one also works in tall and square
+frames.
+
+```js
+export default {
+  // One big number with a short caption under it.
+  number(s) {
+    const u = Math.max(s.W, s.H) / 100;
+    // The number also has to fit across a narrow, tall frame.
+    const n = s.number(1000000, { y: s.cy - u * 2, size: Math.min(u * 10, s.safe.w / 6), at: '#number' });
+    s.text('requests a day', { y: n.bottom + u * 3, size: u * 3.6, color: 'muted', at: '#caption' });
+  },
+
+  // Two things side by side, or stacked in a tall frame.
+  compare(s) {
+    const u = Math.max(s.W, s.H) / 100;
+    const cells = s.grid(s.portrait ? 1 : 2, s.portrait ? 2 : 1, { gap: u * 4 });
+    const sides = [
+      { title: 'Callbacks', note: 'one function inside another', color: 'orange', at: '#left' },
+      { title: 'async / await', note: 'reads from top to bottom', color: 'green', at: '#right' },
+    ];
+    sides.forEach(({ title, note, color, at }, i) => {
+      const c = cells[i];
+      const card = s.box(title, { x: c.x, y: c.y - u * 2, w: c.w * 0.8, size: u * 4, color, at });
+      s.text(note, { x: c.x, y: card.bottom + u * 3, size: u * 2.8, color: 'muted', maxWidth: c.w * 0.85, at });
+    });
+  },
+
+  // Steps in order, left to right, or top to bottom in a tall frame.
+  steps(s) {
+    const u = Math.max(s.W, s.H) / 100;
+    const labels = ['Browser', 'Resolver', 'Address'];
+    const xs = s.portrait ? labels.map(() => s.cx) : s.row(labels.length, { width: s.safe.w * 0.72 });
+    const ys = s.portrait ? s.col(labels.length) : labels.map(() => s.cy);
+    labels.forEach((label, i) => {
+      const at = i ? `#step${i + 1}` : 0.3;
+      s.box(label, { id: `step${i}`, x: xs[i], y: ys[i], size: u * 3.6, at });
+      if (i) s.arrow(`step${i - 1}`, `step${i}`, { at });
+    });
+  },
+
+  // One main thing with its parts around it. A tall frame has no room
+  // beside it, so the parts sit in a row underneath.
+  hub(s) {
+    const u = Math.max(s.W, s.H) / 100;
+    const parts = ['Email', 'Calendar', 'Files'];
+    const hubY = s.portrait ? s.cy - s.safe.h * 0.18 : s.cy;
+    const spots = s.portrait
+      ? s.row(parts.length, { width: s.safe.w * 0.72 }).map((x) => ({ x, y: s.cy + s.safe.h * 0.16 }))
+      : [-90, 30, 150].map((d) => ({ x: s.cx + Math.cos((d * Math.PI) / 180) * s.safe.w * 0.34, y: s.cy + Math.sin((d * Math.PI) / 180) * s.safe.h * 0.3 }));
+    s.box('Login server', { id: 'hub', x: s.cx, y: hubY, size: u * 4, color: 'accent', at: '#hub' });
+    parts.forEach((label, i) => {
+      const at = `#spoke${i + 1}`;
+      s.box(label, { id: `part${i}`, ...spots[i], size: u * (s.portrait ? 2.4 : 3.2), at });
+      s.arrow('hub', `part${i}`, { at });
+    });
+  },
+};
+```
+
+Text sizes come from the frame's long side, so they look about the same in
+wide and tall frames. A big number also has to fit across a narrow frame.
+
 ### The camera
 
 explainroo films each scene with a camera that follows the narration. It
@@ -268,7 +340,9 @@ at the end, and let the camera find the close-ups:
   stopped, and the two scenes fade into each other.
 
 The camera measures every element, including what `s.draw` draws, and
-follows the `at` and `out` times. Anything drawn straight on `s.ctx` counts
+follows the `at` and `out` times. It measures each element where it is at
+the end of the scene. When something travels across the frame during a
+scene, keep that scene's camera still with `s.camera([])`. Anything drawn straight on `s.ctx` counts
 as one block that is there for the whole scene, so the camera keeps it whole
 and cannot film it on its own. Use `s.draw` for a drawing that appears on a
 cue. Highlighted code lines and terminal commands get close-ups of their own
