@@ -246,8 +246,26 @@ test('a push in makes way for a focus point that comes soon after', () => {
 
 test('a scene too short for the pull-back still ends on the whole picture', () => {
   // Three steps in a row; the last one comes a second before the scene ends.
-  const steps = [0, 1, 2].map((i) => el('shape', 300 + i * 520, 470, 260, 140, [0.3, 2.4, 4.4][i]));
-  const plan = planCamera(steps, { dur: 5.6, view, frame, voiceEnd: 5 });
-  const end = cameraAt(plan, 5.55);
-  for (const e of steps) assert.ok(whole(end, e), `step at ${e.at}`);
+  // They stay until the end, also when they leave right at the end.
+  for (const out of [Infinity, 5.6]) {
+    const steps = [0, 1, 2].map((i) => el('shape', 300 + i * 520, 470, 260, 140, [0.3, 2.4, 4.4][i], out));
+    const plan = planCamera(steps, { dur: 5.6, view, frame, voiceEnd: 5 });
+    const end = cameraAt(plan, 5.55);
+    for (const e of steps) assert.ok(whole(end, e), `step at ${e.at}, out ${out}`);
+  }
+});
+
+test('a last move in that becomes a wide shot keeps later things whole', () => {
+  const boxes = [[1383, 438, 382, 227, 0], [1632, 306, 119, 209, 0.89], [622, 541, 303, 71, 1.38], [737, 839, 113, 70, 2.19], [252, 632, 252, 163, 3.06]];
+  const items = boxes.map(([x, y, w, h, at]) => centered('shape', x, y, w, h, at));
+  const plan = planCamera(items, { dur: 5.7, view, frame, pace: 1 });
+  const settled = Math.max(3.06, ...plan.moves.map((m) => m.start + m.dur));
+  for (let t = settled + 0.05; t < 5.7; t += 0.1) assert.ok(whole(cameraAt(plan, t), items[4]), `t=${t.toFixed(2)}`);
+});
+
+test('a continued scene also ends on the whole picture', () => {
+  const items = [centered('shape', 350, 540, 260, 140, 0), centered('shape', 850, 540, 260, 140, 0), centered('shape', 1450, 540, 260, 140, 3.5)];
+  const plan = planCamera(items, { dur: 4.8, view, frame, from: { x: 600, y: 540, z: 1.7 }, still: 0.7 });
+  const end = cameraAt(plan, 4.75);
+  for (const e of items) assert.ok(whole(end, e), `box at ${e.box.x}`);
 });

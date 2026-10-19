@@ -362,21 +362,13 @@ export function planCamera(elements, { dur, view, frame, pace = 1, voiceEnd = nu
   const reveal = Math.max(revealAt, last + hold);
   // A scene too short for that ends on its last move. When that move is a
   // close-up that leaves part of the picture out, the last frame would not
-  // show the whole idea: a push in is left out, and a move that follows
-  // something new frames the whole picture instead.
-  const atEnd = picture(visibleDuring(dur - 0.2, dur - 0.1));
-  while (reveal >= dur - 1.1 && atEnd.length && shots.length > 1 && !fits(cur, atEnd)) {
-    const tail = shots[shots.length - 1];
-    if (tail.kind === 'push') {
-      shots.pop();
-      cur = shots[shots.length - 1].shot;
-    } else {
-      if (tail.kind === 'follow') {
-        const wide = overview(tail.begin, dur);
-        if (wide) cur = tail.shot = wide;
-      }
-      break;
-    }
+  // show the whole idea, so the move frames the whole picture instead. A
+  // move in that becomes a wide shot is then usually no move at all.
+  const atEnd = items.filter((e) => e.kind !== 'focus' && e.at <= dur - 0.1 && e.out >= dur - 0.05);
+  const tail = shots[shots.length - 1];
+  if (reveal >= dur - 1.1 && atEnd.length && tail && tail.begin > 0 && ['push', 'follow'].includes(tail.kind) && !fits(cur, atEnd)) {
+    const wide = overview(tail.begin, dur);
+    if (wide) cur = tail.shot = wide;
   }
   if (cur && reveal < dur - 1.1) {
     const all = picture(visibleDuring(reveal, reveal + 0.1));
