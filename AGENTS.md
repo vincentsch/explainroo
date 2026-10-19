@@ -320,7 +320,8 @@ the scene it pulls back, so the last frame shows the whole idea. During each
 scene it also pushes in very slowly.
 
 While a shot holds, every card and label is either fully in the shot or out
-of it. Arrows and lines may run off the edge. While the camera moves from
+of it. Arrows and lines may run off the edge, but their labels stay whole, and
+so do the labels of charts. While the camera moves from
 one shot to the next, things may pass the edge of the frame for a moment.
 Shots stay clear of the captions and of the parts the app covers on Shorts,
 TikTok and Reels.
@@ -334,8 +335,9 @@ at the end, and let the camera find the close-ups:
 - Keep a box with its label, or an icon with its caption, together as one
   unit. Things far apart get their own shots.
 - Lines, arrows and things added inside an element already on screen, like
-  a line in a chart, get no close-up of their own. Use `s.focus` when one
-  should.
+  a line in a chart, get no close-up of their own. Neither does an icon
+  without a label or a box without words, because up close it shows nothing
+  new. Give it a label, or use `s.focus` when one should get a close-up.
 - When a scene goes on with the same picture, draw the carried elements with
   `at: -1` in the same places. The camera then goes on from where it
   stopped, and the two scenes fade into each other.
