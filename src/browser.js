@@ -88,8 +88,9 @@ export async function launch() {
 export async function openEngine(browser, serverUrl, { scale = 1, transparent = false, onConsole, timeout = 30000 } = {}) {
   let page;
   let errors;
-  // A busy machine sometimes leaves the first page load hanging. A fresh
-  // page almost always loads, so a load that times out is tried once more.
+  // A busy machine sometimes leaves the first page load hanging, or loads
+  // the page without its scripts. A fresh page almost always loads, so either
+  // case is tried once more.
   for (let attempt = 1; ; attempt++) {
     page = await browser.newPage({ viewport: { width: 800, height: 600 }, deviceScaleFactor: 1 });
     errors = [];
@@ -99,10 +100,11 @@ export async function openEngine(browser, serverUrl, { scale = 1, transparent = 
     });
     try {
       await page.goto(`${serverUrl}/frame.html?scale=${scale}${transparent ? '&transparent=1' : ''}`, { waitUntil: 'load', timeout });
-      break;
+      if (await page.evaluate(() => window.explainrooReady !== undefined)) break;
+      throw Object.assign(new Error('the engine page loaded, but its scripts did not'), { name: 'ScriptsMissing' });
     } catch (e) {
       await page.close().catch(() => {});
-      if (attempt === 2 || e.name !== 'TimeoutError') throw e;
+      if (attempt === 2 || !['TimeoutError', 'ScriptsMissing'].includes(e.name)) throw e;
     }
   }
   const boot = await page.evaluate(async () => {
