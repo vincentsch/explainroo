@@ -243,3 +243,11 @@ test('a push in makes way for a focus point that comes soon after', () => {
   }
   assert.ok(whole(cameraAt(plan, 8), items[3]) && cameraAt(plan, 8).z > 1.5, 'the focus gets its close-up');
 });
+
+test('a scene too short for the pull-back still ends on the whole picture', () => {
+  // Three steps in a row; the last one comes a second before the scene ends.
+  const steps = [0, 1, 2].map((i) => el('shape', 300 + i * 520, 470, 260, 140, [0.3, 2.4, 4.4][i]));
+  const plan = planCamera(steps, { dur: 5.6, view, frame, voiceEnd: 5 });
+  const end = cameraAt(plan, 5.55);
+  for (const e of steps) assert.ok(whole(end, e), `step at ${e.at}`);
+});

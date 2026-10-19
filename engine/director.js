@@ -360,6 +360,24 @@ export function planCamera(elements, { dur, view, frame, pace = 1, voiceEnd = nu
   // Near the end the camera shows the whole picture when the shot leaves
   // part of it out.
   const reveal = Math.max(revealAt, last + hold);
+  // A scene too short for that ends on its last move. When that move is a
+  // close-up that leaves part of the picture out, the last frame would not
+  // show the whole idea: a push in is left out, and a move that follows
+  // something new frames the whole picture instead.
+  const atEnd = picture(visibleDuring(dur - 0.2, dur - 0.1));
+  while (reveal >= dur - 1.1 && atEnd.length && shots.length > 1 && !fits(cur, atEnd)) {
+    const tail = shots[shots.length - 1];
+    if (tail.kind === 'push') {
+      shots.pop();
+      cur = shots[shots.length - 1].shot;
+    } else {
+      if (tail.kind === 'follow') {
+        const wide = overview(tail.begin, dur);
+        if (wide) cur = tail.shot = wide;
+      }
+      break;
+    }
+  }
   if (cur && reveal < dur - 1.1) {
     const all = picture(visibleDuring(reveal, reveal + 0.1));
     if (all.length && !fits(cur, all)) take(compose(all, visibleDuring(reveal, dur), view, frame, usable, PICTURE_FILL), reveal, 'reveal');
