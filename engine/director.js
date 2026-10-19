@@ -223,7 +223,9 @@ export function planCamera(elements, { dur, view, frame, pace = 1, voiceEnd = nu
   const hold = MIN_HOLD / pace;
   const visibleDuring = (t0, t1) => items.filter((e) => e.at <= t1 && e.out > t0 + 0.25);
   const picture = (list) => list.filter((e) => e.kind !== 'focus');
-  const solid = (list) => list.filter((e) => !['arrow', 'line', 'focus'].includes(e.kind));
+  // What the camera may move in on. An arrow's label is kept whole, but it
+  // is part of the arrow, which gets no close-up.
+  const solid = (list) => list.filter((e) => !['arrow', 'line', 'focus', 'label'].includes(e.kind));
   // Everything on screen from t0 to t1, framed as one picture.
   const overview = (t0, t1) => {
     const v = picture(visibleDuring(t0, t1));
@@ -231,7 +233,8 @@ export function planCamera(elements, { dur, view, frame, pace = 1, voiceEnd = nu
   };
   // Whether a shot already shows these elements whole, in the free part of
   // the frame, also at the end of its slow push. A beat of only arrows and
-  // lines fits when they are at least partly in view.
+  // lines fits when they are at least partly in view. An arrow's label has
+  // to be whole.
   const fits = (shot, list) => {
     const body = list.filter((e) => e.kind !== 'arrow' && e.kind !== 'line');
     const tight = shot.drift === 0 ? shot : clampShot({ ...shot, z: shot.z * (1 + DRIFT) }, view, frame);
@@ -323,7 +326,7 @@ export function planCamera(elements, { dur, view, frame, pace = 1, voiceEnd = nu
       }
       continue;
     }
-    const before = items.filter((e) => e.at < beat.start - 0.05 && e.out > beat.start + 0.3 && e.kind !== 'focus' && e.kind !== 'ink');
+    const before = items.filter((e) => e.at < beat.start - 0.05 && e.out > beat.start + 0.3 && !['focus', 'ink', 'label'].includes(e.kind));
     if (fits(cur, fresh)) {
       // It is already in the shot. The camera moves in only on a new card,
       // label or picture. A line, an arrow, or something drawn inside an

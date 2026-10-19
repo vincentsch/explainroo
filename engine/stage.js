@@ -368,6 +368,32 @@ export class Stage {
     return { x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2, w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) };
   }
 
+  // The box around text drawn beside an element, like a chart's labels, for
+  // the camera: where the letters land, as the browser measures them. Each
+  // entry: { text, x, y, font, align, base } with canvas textAlign and
+  // textBaseline values.
+  _textExtent(entries) {
+    let x0 = Infinity;
+    let y0 = Infinity;
+    let x1 = -Infinity;
+    let y1 = -Infinity;
+    const ctx = this.ctx;
+    ctx.save();
+    for (const e of entries) {
+      if (!e.text) continue;
+      ctx.font = e.font;
+      ctx.textAlign = e.align ?? 'center';
+      ctx.textBaseline = e.base ?? 'middle';
+      const m = ctx.measureText(e.text);
+      x0 = Math.min(x0, e.x - m.actualBoundingBoxLeft - 2);
+      x1 = Math.max(x1, e.x + m.actualBoundingBoxRight + 2);
+      y0 = Math.min(y0, e.y - m.actualBoundingBoxAscent - 2);
+      y1 = Math.max(y1, e.y + m.actualBoundingBoxDescent + 2);
+    }
+    ctx.restore();
+    return x1 > x0 ? this._designBox((x0 + x1) / 2, (y0 + y1) / 2, x1 - x0, y1 - y0) : null;
+  }
+
   _designBox(x, y, w, h) {
     const m = this._matrix();
     const pts = [[x - w / 2, y - h / 2], [x + w / 2, y - h / 2], [x + w / 2, y + h / 2], [x - w / 2, y + h / 2]].map(([px, py]) => m.transformPoint(new DOMPoint(px, py)));
@@ -922,7 +948,15 @@ export class Stage {
     if (this.engine.layoutLog) {
       const xs = [a.x, b.x, c.x];
       const ys = [a.y, b.y, c.y];
-      this._logLayout('arrow', this.time(o.at ?? 0), o.out === undefined ? Infinity : this.time(o.out), (Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2, Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+      const at = this.time(o.at ?? 0);
+      const out = o.out === undefined ? Infinity : this.time(o.out);
+      this._logLayout('arrow', at, out, (Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2, Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+      // The line may run off the edge of a close-up, but its label is text,
+      // so the camera keeps it whole.
+      if (o.label) {
+        const label = this._arrowLabel(o, d, a, b, bend);
+        this._attach('label', at, out, this._textExtent([{ text: String(o.label), x: label.x, y: label.y, font: label.font }]));
+      }
     }
     const result = { from: a, to: b, control: c };
     if (!life) return result;
@@ -955,47 +989,56 @@ export class Stage {
       if ((head === 'start' || head === 'both') && prog > 0.2) drawHead(0.001, -1);
     }
     if (o.label) {
-      const mid = pointAt(d, L / 2);
-      // Put the label on the outer side of a curve, or above a straight arrow.
-      let nx;
-      let ny;
-      const bx = mid.x - (a.x + b.x) / 2;
-      const by = mid.y - (a.y + b.y) / 2;
-      if (bend && Math.hypot(bx, by) > 1) {
-        nx = bx / Math.hypot(bx, by);
-        ny = by / Math.hypot(bx, by);
-      } else {
-        const len = Math.hypot(dx, dy) || 1;
-        nx = -dy / len;
-        ny = dx / len;
-        if (ny > 0 || (ny === 0 && nx > 0)) {
-          nx = -nx;
-          ny = -ny;
-        }
-      }
-      const off = o.labelOffset ?? 34;
-      const ls = o.labelSize ?? 34;
       const la = clamp((life.p - 0.55) / 0.35);
       if (la > 0) {
+        const { x: lx, y: ly, w, size: ls, font } = this._arrowLabel(o, d, a, b, bend);
         ctx.save();
         ctx.globalAlpha *= la;
-        ctx.font = fontString(th, o.labelFont ?? 'hand', ls);
+        ctx.font = font;
         ctx.fillStyle = colorOf(th, o.labelColor ?? o.color, 'muted');
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        const lw = ctx.measureText(String(o.label)).width;
-        // Push further out when the label runs along the arrow's direction.
-        const extra = Math.abs(nx) * lw * 0.5;
-        const lx = mid.x + nx * (off + extra);
-        const ly = mid.y + ny * off;
         ctx.fillText(String(o.label), lx, ly);
-        const w = ctx.measureText(String(o.label)).width;
         this._logText({ text: String(o.label), x0: lx - w / 2, y0: ly - ls / 2, x1: lx + w / 2, y1: ly + ls / 2, size: ls, fg: ctx.fillStyle, bg: null });
         ctx.restore();
       }
     }
     ctx.restore();
     return result;
+  }
+
+  // Where an arrow's label goes: on the outer side of a curve, or above a
+  // straight arrow. x, y is the label's center.
+  _arrowLabel(o, d, a, b, bend) {
+    const mid = pointAt(d, pathLength(d) / 2);
+    let nx;
+    let ny;
+    const bx = mid.x - (a.x + b.x) / 2;
+    const by = mid.y - (a.y + b.y) / 2;
+    if (bend && Math.hypot(bx, by) > 1) {
+      nx = bx / Math.hypot(bx, by);
+      ny = by / Math.hypot(bx, by);
+    } else {
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const len = Math.hypot(dx, dy) || 1;
+      nx = -dy / len;
+      ny = dx / len;
+      if (ny > 0 || (ny === 0 && nx > 0)) {
+        nx = -nx;
+        ny = -ny;
+      }
+    }
+    const off = o.labelOffset ?? 34;
+    const size = o.labelSize ?? 34;
+    const font = fontString(this.theme, o.labelFont ?? 'hand', size);
+    this.ctx.save();
+    this.ctx.font = font;
+    const w = this.ctx.measureText(String(o.label)).width;
+    this.ctx.restore();
+    // Further out when the label runs along the arrow's direction.
+    const extra = Math.abs(nx) * w * 0.5;
+    return { x: mid.x + nx * (off + extra), y: mid.y + ny * off, w, size, font };
   }
 
   connect(a, b, o = {}) {
@@ -1355,6 +1398,22 @@ export class Stage {
     const at = this.time(o.at ?? 0);
     const stagger = (o.stagger ?? 0.22) / this.pace;
     this._register(o.id, x, y, w, h);
+    if (this.engine.layoutLog) {
+      // The labels under the bars and the values on top count for the
+      // camera, not for arrows.
+      const format = o.format ?? ((v) => (Number.isInteger(v) ? String(Math.round(v)) : v.toFixed(1)));
+      const ls = o.labelSize ?? 34;
+      const vs = o.valueSize ?? 40;
+      const text = this._textExtent(items.flatMap((d, i) => {
+        const cx = x - w / 2 + slot * i + slot / 2;
+        const labels = d.label !== undefined ? [{ text: String(d.label), x: cx, y: base + 16, font: fontString(th, 'body', ls), base: 'top' }] : [];
+        const values = o.values !== false ? [{ text: `${o.prefix ?? ''}${format(d.value)}${o.suffix ?? ''}`, x: cx, y: base - (d.value / max) * h - 12, font: fontString(th, 'display', vs), base: 'bottom' }] : [];
+        return [...labels, ...values];
+      }));
+      // The axis reaches 20 pixels past the bars on each side.
+      const axis = this._designBox(x, y, w + 40 + th.stroke.width * 2, h + th.stroke.width * 2);
+      this._pendingExtra = text ? unionBox(axis, text) : axis;
+    }
     // Each bar can have its own `at` (seconds, a spoken word or "#marker").
     const barAt = items.map((d, i) => (d.at !== undefined ? this.time(d.at) : at + 0.3 / this.pace + i * stagger));
     items.forEach((d, i) => this._record('chart', barAt[i], 0.8, { sfx: o.sfx }, { label: `bar${i}` }));
@@ -1421,6 +1480,15 @@ export class Stage {
     const hi = o.max ?? Math.max(...values) * 1.1;
     const pts = values.map((v, i) => [x - w / 2 + (w * i) / Math.max(1, values.length - 1), y + h / 2 - ((v - lo) / (hi - lo || 1)) * h]);
     this._register(o.id, x, y, w, h);
+    if (this.engine.layoutLog) {
+      // The ends of the axes, the dots and the labels under the axis count
+      // for the camera, not for arrows.
+      const pad = 12 + th.stroke.width * 1.3;
+      const around = this._designBox(x, y, w + pad * 2, h + pad * 2);
+      const ls = o.labelSize ?? 30;
+      const text = o.labels && this._textExtent(o.labels.slice(0, pts.length).map((l, i) => ({ text: String(l), x: pts[i][0], y: y + h / 2 + 14, font: fontString(th, 'body', ls), base: 'top' })));
+      this._pendingExtra = text ? unionBox(around, text) : around;
+    }
     const life = this._life(o, 'chart', { enter: 'draw', dur: o.dur ?? 1.6 });
     if (!life) return geom(x, y, w, h);
     ctx.save();
@@ -1478,6 +1546,23 @@ export class Stage {
     const hole = (o.donut ?? 0) * r;
     const total = items.reduce((a, d) => a + d.value, 0) || 1;
     this._register(o.id, x, y, r * 2, r * 2, 'ellipse');
+    if (this.engine.layoutLog) {
+      // The outline of the slices and the labels around the pie count for
+      // the camera, not for arrows.
+      const ring = this._designBox(x, y, r * 2 + th.stroke.width * 4, r * 2 + th.stroke.width * 4);
+      const ls = o.labelSize ?? 32;
+      const lr = r + (o.labelOffset ?? 56);
+      let a0 = -Math.PI / 2;
+      const text = o.labels !== false && this._textExtent(items.map((d) => {
+        const full = (d.value / total) * Math.PI * 2;
+        const mid = a0 + full / 2;
+        a0 += full;
+        if (full <= 0.001) return {};
+        const text = d.label !== undefined ? `${d.label} ${Math.round((d.value / total) * 100)}%` : `${Math.round((d.value / total) * 100)}%`;
+        return { text, x: x + Math.cos(mid) * lr, y: y + Math.sin(mid) * lr, font: fontString(th, 'body', ls, BOLD.body), align: Math.cos(mid) > 0.2 ? 'left' : Math.cos(mid) < -0.2 ? 'right' : 'center', base: 'middle' };
+      }));
+      this._pendingExtra = text ? unionBox(ring, text) : ring;
+    }
     const life = this._life(o, 'chart', { enter: 'grow', dur: o.dur ?? 1.2 });
     if (!life) return geom(x, y, r * 2, r * 2);
     ctx.save();

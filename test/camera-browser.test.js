@@ -146,3 +146,66 @@ test('large type tracking stays with its own text', { skip: !chrome }, async () 
     });
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('the camera measures the labels of arrows and charts', { skip: !chrome }, async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-labels-'));
+  try {
+    fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ theme: 'clean', captions: false, watermark: false, music: false, sfx: false }));
+    fs.writeFileSync(path.join(dir, 'script.md'), '## demo {min=8}\n');
+    fs.writeFileSync(path.join(dir, 'scenes.js'), 'export default { demo(s) {} };');
+    const project = loadProject(dir);
+    await withEngine(project, buildTimeline(project, {}), {}, async (page) => {
+      const r = await page.evaluate(async () => {
+        const { Engine, fetchState } = await import('/engine/runtime.js');
+        const state = await fetchState();
+        const engine = (demo, canvas = document.createElement('canvas')) => new Engine({ canvas, state, scenes: { demo }, icons: {}, images: new Map() });
+        const elements = (demo) => {
+          const e = engine(demo);
+          e.planCameras();
+          return e.cameraPlans.get(0)?.elements ?? [];
+        };
+        // Where a scene paints anything, compared with an empty scene.
+        const pixels = (demo) => {
+          const c = document.createElement('canvas');
+          c.width = 1920;
+          c.height = 1080;
+          engine(demo, c).renderFrame(5);
+          return c.getContext('2d').getImageData(0, 0, 1920, 1080).data;
+        };
+        const empty = pixels(() => {});
+        const ink = (demo) => {
+          const d = pixels(demo);
+          const b = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+          for (let i = 0; i < d.length; i += 4) {
+            if (Math.abs(d[i] - empty[i]) + Math.abs(d[i + 1] - empty[i + 1]) + Math.abs(d[i + 2] - empty[i + 2]) < 60) continue;
+            const x = (i / 4) % 1920;
+            const y = Math.floor(i / 4 / 1920);
+            b.x0 = Math.min(b.x0, x); b.y0 = Math.min(b.y0, y); b.x1 = Math.max(b.x1, x + 1); b.y1 = Math.max(b.y1, y + 1);
+          }
+          return b;
+        };
+        const edges = (box) => box && { x0: box.x - box.w / 2, y0: box.y - box.h / 2, x1: box.x + box.w / 2, y1: box.y + box.h / 2 };
+        const scenes = {
+          // Only the label shows: the line is drawn in a transparent color.
+          arrow: (s) => s.arrow([500, 600], [1400, 450], { color: 'rgba(0,0,0,0)', labelColor: '#d00', label: 'asks for the page', labelSize: 48, at: 0 }),
+          curved: (s) => s.arrow([600, 500], [1300, 500], { bend: 0.8, color: 'rgba(0,0,0,0)', labelColor: '#d00', label: 'ask the name server', at: 0 }),
+          line: (s) => s.lineChart([3, 5, 4, 8, 13], { labels: ['Monday', 'Tue', 'Wed', 'Thu', 'Friday'], labelSize: 40, at: 0, dur: 1 }),
+          bars: (s) => s.bars([{ label: 'A very long label', value: 19 }, { label: 'B', value: 31 }], { suffix: ' thousand', at: 0 }),
+          pie: (s) => s.pie([{ label: 'Images', value: 55 }, { label: 'Other', value: 45 }], { at: 0 }),
+        };
+        const out = {};
+        for (const [name, demo] of Object.entries(scenes)) {
+          const els = elements(demo);
+          out[name] = { kinds: els.map((e) => e.kind), box: edges((els.find((e) => e.kind === 'label') ?? els.find((e) => e.kind === 'chart'))?.box), ink: ink(demo) };
+        }
+        return out;
+      });
+      for (const [name, { box, ink }] of Object.entries(r)) {
+        assert.ok(box, `${name}: ${JSON.stringify(r[name].kinds)}`);
+        assert.ok(box.x0 <= ink.x0 + 1 && box.y0 <= ink.y0 + 1 && box.x1 >= ink.x1 - 1 && box.y1 >= ink.y1 - 1, `${name}: ${JSON.stringify({ box, ink })}`);
+      }
+      // An arrow's label is its own element; the line stays an arrow.
+      assert.deepEqual(r.arrow.kinds, ['arrow', 'label']);
+    });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

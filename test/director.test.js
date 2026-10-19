@@ -269,3 +269,25 @@ test('a continued scene also ends on the whole picture', () => {
   const end = cameraAt(plan, 4.75);
   for (const e of items) assert.ok(whole(end, e), `box at ${e.box.x}`);
 });
+
+test("an arrow's label is kept whole, and a labelled arrow gets no close-up", () => {
+  const els = [
+    el('shape', 300, 420, 300, 160, 0.3),
+    el('shape', 1100, 420, 300, 160, 0.3),
+    el('arrow', 600, 480, 500, 40, 4),
+    el('label', 700, 380, 300, 40, 4),
+    el('shape', 1300, 760, 300, 120, 9),
+  ];
+  const plan = planCamera(els, { dur: 14, view, frame });
+  assert.ok(!plan.moves.some((m) => m.start > 3 && m.start < 5.5), JSON.stringify(plan.moves.map((m) => m.start)));
+  for (let t = 0; t < 14; t += 0.05) {
+    if (cameraMoving(plan, t)) continue;
+    const shown = els.filter((e) => e.at <= t && e.out > t);
+    assert.deepEqual(cuts(cameraAt(plan, t), shown), [], `t=${t.toFixed(2)}`);
+  }
+  // A close-up next to an arrow leaves its label out or takes it in.
+  const label = el('label', 520, 300, 360, 50, 0);
+  const shot = compose([el('shape', 860, 360, 200, 120, 0)], [label, el('arrow', 400, 360, 460, 30, 0)], view, frame);
+  assert.ok(shot.z > 1.2, `z ${shot.z}`);
+  assert.deepEqual(cuts(shot, [label]), []);
+});
