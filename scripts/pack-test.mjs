@@ -151,6 +151,8 @@ async function runSteps(paths, env) {
     // Without the "--", npx reads a flag like --version as its own.
     const r = await run('npx', ['--no', '--', 'explainroo', ...step.args], { cwd: paths.temp, env });
     if (r.status !== 0) throw new Error(`explainroo ${name} exited with ${r.status ?? r.signal}:\n${outputOf(r)}`);
+    // npx sets its own exit code, so only stderr shows a request that it made.
+    expect(!r.stderr.includes('test guard: blocked'), `explainroo ${name} tried to reach the network:\n${outputOf(r)}`);
     const note = step.check(JSON.parse(r.stdout), paths);
     console.log(`ok  ${name.padEnd(28)} ${((Date.now() - started) / 1000).toFixed(1).padStart(6)}s${note ? `  ${note}` : ''}`);
   }
