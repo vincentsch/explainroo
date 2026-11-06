@@ -90,8 +90,8 @@ check finds words the voice got wrong. For a feed-sized player,
 
 None of this leaves your computer, and it costs nothing. Your coding agent is
 a separate service with its own terms and prices. If you want, the agent can
-also make illustrations with an AI image model through OpenRouter, and you pay
-for each image.
+also make illustrations with an AI image model through OpenRouter or MiniAPI,
+and you pay for each image.
 
 ## Looks
 

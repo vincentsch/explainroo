@@ -39,9 +39,10 @@ Make a video
 Product demos
   capture [project] <url>  save screenshots, wording, colors, fonts and logo of a live site (--mobile)
 
-Images (optional, needs an OpenRouter API key)
+Images (optional, needs an OpenRouter or MiniAPI API key)
   image [project] <name> "<what to draw>"   save an illustration as assets/<name>.png
-                        (--model best|cheap, --aspect 16:9, --ref assets/a.png,assets/b.png, --no-style)
+                        (--model best|cheap, --aspect 16:9, --ref assets/a.png,assets/b.png, --no-style,
+                        --provider openrouter|miniapi)
   images [project]      list generated images and what they cost
 
 Reference
@@ -189,6 +190,7 @@ export async function main(argv) {
           aspect: flags.aspect,
           refs: flags.ref ? String(flags.ref).split(',').map((x) => x.trim()).filter(Boolean) : [],
           style: flags['no-style'] ? false : flags.style,
+          provider: flags.provider,
           log,
         });
         print(`${r.file}  ${r.model}  ${r.cost_usd !== null ? '$' + r.cost_usd.toFixed(4) : 'cost unknown'}  (images so far: $${r.total_usd.toFixed(4)})\nOpen the image and check it before you use it.`, r);

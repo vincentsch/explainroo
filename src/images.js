@@ -1,16 +1,20 @@
-// Optional illustrations through OpenRouter. Needs OPENROUTER_API_KEY in the
-// environment or in a .env file in the project folder or the explainroo
-// folder. Every request is logged with its cost in build/images/usage.jsonl.
+// Optional illustrations through OpenRouter (OPENROUTER_API_KEY) or MiniAPI
+// (MINIAPI_KEY, see miniapi.js), from the environment or a .env file in the
+// project folder or the explainroo folder. Every request is logged with its
+// cost in build/images/usage.jsonl.
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { findEnv } from './env.js';
 import { ProjectError } from './project.js';
+import { findMiniapiKey, miniapiImage, resolveMiniapiModel } from './miniapi.js';
 
 export const IMAGE_MODELS = {
   best: 'openai/gpt-5.4-image-2',
   cheap: 'google/gemini-3.1-flash-image',
 };
+
+export const IMAGE_PROVIDERS = ['openrouter', 'miniapi'];
 
 const ASPECTS = ['16:9', '9:16', '1:1', '4:3', '3:4', '3:2', '2:3'];
 
@@ -35,19 +39,34 @@ function toDataUrl(file) {
 }
 
 // Generates one image and saves it as assets/<name>.<ext>.
-export async function generateImage(project, { name, prompt, model, aspect, refs = [], style, log = () => {} }) {
+export async function generateImage(project, { name, prompt, model, aspect, refs = [], style, provider, log = () => {} }) {
   if (!name || !/^[\w-]+$/.test(name)) throw new ProjectError('the image name may only use letters, digits, "-" and "_" (it becomes assets/<name>.png)');
   if (!prompt || prompt.trim().length < 8) throw new ProjectError('describe the image in a sentence or two');
+  const cfg = project.config.images || {};
+  const via = provider || cfg.provider || 'openrouter';
+  if (!IMAGE_PROVIDERS.includes(via)) throw new ProjectError(`image provider must be one of ${IMAGE_PROVIDERS.join(', ')}`);
+  if (via === 'miniapi') {
+    const key = findMiniapiKey(project.dir);
+    if (!key) {
+      throw new ProjectError('images through MiniAPI need a MiniAPI API key. Ask the user for one (https://api.minicut.ai/console/keys?utm_source=vincentsch-explainroo&utm_medium=repo-pr), then set MINIAPI_KEY or put MINIAPI_KEY=... in a .env file in the explainroo folder.');
+    }
+    // MiniAPI takes reference pictures only as public https links, and these are local files.
+    if (refs.length) throw new ProjectError('--ref works with OpenRouter only. MiniAPI takes reference images only as public https links.');
+    const modelId = resolveMiniapiModel(model || cfg.model);
+    const { ratio, styleText, text } = imagePrompt(project, prompt, aspect, style, cfg);
+    const t0 = Date.now();
+    const r = await miniapiImage({ key, model: modelId, prompt: text, aspect: ratio, log });
+    return saveImage(project, { name, buf: r.buf, mime: r.mime, t0, entry: {
+      provider: 'miniapi', model: modelId, served_by: modelId, aspect: ratio, prompt: prompt.trim(), style: styleText, refs,
+      cost_usd: r.cost_usd, request_id: r.request_id,
+    } });
+  }
   const key = findKey(project.dir);
   if (!key) {
     throw new ProjectError('images need an OpenRouter API key. Ask the user for one (openrouter.ai/keys), then set OPENROUTER_API_KEY or put OPENROUTER_API_KEY=... in a .env file in the explainroo folder.');
   }
-  const cfg = project.config.images || {};
   const modelId = resolveModel(model || cfg.model);
-  const ratio = aspect || (project.config.height > project.config.width ? '9:16' : project.config.height === project.config.width ? '1:1' : '16:9');
-  if (!ASPECTS.includes(ratio)) throw new ProjectError(`aspect must be one of ${ASPECTS.join(', ')}`);
-  const styleText = style === false ? '' : (style || cfg.style || DEFAULT_STYLE);
-  const text = `${prompt.trim()}\n\nStyle: ${styleText}\nAspect ratio: ${ratio}.`.trim();
+  const { ratio, styleText, text } = imagePrompt(project, prompt, aspect, style, cfg);
   const content = [{ type: 'text', text }];
   for (const r of refs) {
     // Accept paths relative to the project (assets/a.png) or to the current folder.
@@ -107,19 +126,8 @@ export async function generateImage(project, { name, prompt, model, aspect, refs
     throw new Error(`the model returned no image${said ? `. It said: "${said}"` : ''}. Try another wording or the other model.`);
   }
   const [, mime, b64] = /^data:([^;]+);base64,(.*)$/s.exec(url) || [];
-  const ext = mime === 'image/jpeg' ? 'jpg' : mime === 'image/webp' ? 'webp' : 'png';
-  const assets = path.join(project.dir, 'assets');
-  fs.mkdirSync(assets, { recursive: true });
-  for (const e of ['png', 'jpg', 'webp']) fs.rmSync(path.join(assets, `${name}.${e}`), { force: true });
-  const file = path.join(assets, `${name}.${ext}`);
-  const buf = Buffer.from(b64, 'base64');
-  fs.writeFileSync(file, buf);
-
   const usage = json.usage || {};
-  const entry = {
-    time: new Date().toISOString(),
-    name,
-    file: path.relative(project.dir, file),
+  return saveImage(project, { name, buf: Buffer.from(b64, 'base64'), mime, t0, entry: {
     provider: 'openrouter',
     model: modelId,
     served_by: json.model || modelId,
@@ -130,6 +138,30 @@ export async function generateImage(project, { name, prompt, model, aspect, refs
     cost_usd: typeof usage.cost === 'number' ? usage.cost : null,
     prompt_tokens: usage.prompt_tokens ?? null,
     completion_tokens: usage.completion_tokens ?? null,
+  } });
+}
+
+function imagePrompt(project, prompt, aspect, style, cfg) {
+  const ratio = aspect || (project.config.height > project.config.width ? '9:16' : project.config.height === project.config.width ? '1:1' : '16:9');
+  if (!ASPECTS.includes(ratio)) throw new ProjectError(`aspect must be one of ${ASPECTS.join(', ')}`);
+  const styleText = style === false ? '' : (style || cfg.style || DEFAULT_STYLE);
+  const text = `${prompt.trim()}\n\nStyle: ${styleText}\nAspect ratio: ${ratio}.`.trim();
+  return { ratio, styleText, text };
+}
+
+// Saves the image as assets/<name>.<ext> and logs it with its cost.
+function saveImage(project, { name, buf, mime, t0, entry: details }) {
+  const ext = mime === 'image/jpeg' ? 'jpg' : mime === 'image/webp' ? 'webp' : 'png';
+  const assets = path.join(project.dir, 'assets');
+  fs.mkdirSync(assets, { recursive: true });
+  for (const e of ['png', 'jpg', 'webp']) fs.rmSync(path.join(assets, `${name}.${e}`), { force: true });
+  const file = path.join(assets, `${name}.${ext}`);
+  fs.writeFileSync(file, buf);
+  const entry = {
+    time: new Date().toISOString(),
+    name,
+    file: path.relative(project.dir, file),
+    ...details,
     seconds: Math.round((Date.now() - t0) / 100) / 10,
     bytes: buf.length,
     sha256: crypto.createHash('sha256').update(buf).digest('hex').slice(0, 16),

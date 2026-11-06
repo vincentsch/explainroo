@@ -217,8 +217,11 @@ export function normalizeConfig(raw, dir = '.') {
   }
   if (cfg.images !== null) {
     if (typeof cfg.images !== 'object' || Array.isArray(cfg.images)) fail('images must be an object like { "model": "best", "style": "..." }');
-    const extra = Object.keys(cfg.images).filter((k) => !['model', 'style'].includes(k));
-    if (extra.length) fail(`images has unknown setting(s): ${extra.join(', ')}. Known: model, style`);
+    const extra = Object.keys(cfg.images).filter((k) => !['model', 'style', 'provider'].includes(k));
+    if (extra.length) fail(`images has unknown setting(s): ${extra.join(', ')}. Known: model, style, provider`);
+    if (cfg.images.provider !== undefined && !['openrouter', 'miniapi'].includes(cfg.images.provider)) {
+      fail('images.provider must be "openrouter" or "miniapi"');
+    }
   }
 
   if (cfg.brand !== null) {

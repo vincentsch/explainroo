@@ -49,7 +49,7 @@ layout and the wording. Ask only when you cannot go on without an answer.
 When you ask, put everything you need in one message. Typical reasons to ask:
 
 - The topic is unclear, or you need a fact you cannot check.
-- The user wants AI images and there is no OpenRouter key (see Images).
+- The user wants AI images and there is no OpenRouter or MiniAPI key (see Images).
 - The user wants ElevenLabs and there is no ElevenLabs key (see Voices).
 - The user wants something explainroo cannot do, like video shot with a
   camera.
@@ -561,6 +561,26 @@ This saves `assets/cables.png`. Use it in a scene with
   in `video.json` with `"images": { "style": "...", "model": "best" }`, or
   turn the style off with `--no-style`.
 
+MiniAPI is a second way to make the same images. It has the same two models,
+GPT Image 2 (`best`) and Nano Banana 2 (`cheap`), and charges the account's
+prepaid balance. At the time of writing GPT Image 2 is $0.159 per 1024x768 image at its
+default quality and Nano Banana 2 is $0.088 per image at its default size
+([prices](https://api.minicut.ai/models?utm_source=vincentsch-explainroo&utm_medium=repo-pr)). A job that fails is not charged.
+
+If the user wants MiniAPI, ask them for a MiniAPI API key (from
+[api.minicut.ai/console/keys](https://api.minicut.ai/console/keys?utm_source=vincentsch-explainroo&utm_medium=repo-pr)). Save it
+in the `.env` file as `MINIAPI_KEY=...`, or set it as an environment variable,
+with the same rules as the OpenRouter key. Then add `--provider miniapi`, or set
+`"images": { "provider": "miniapi" }` in `video.json`.
+
+```bash
+node bin/explainroo.js image videos/<name> cables "Two cars parked nose to nose with their hoods open, jumper cables between the batteries" --provider miniapi
+```
+
+`--model` also takes any image model id from the MiniAPI model list.
+`--ref` works with OpenRouter only, because MiniAPI takes reference images
+only as public https links.
+
 **Always open every image and check it.** Image models get details wrong:
 extra fingers, cables on the wrong terminal, text that looks like writing but
 is not. If anything is wrong, change the prompt and make the image again.
@@ -947,7 +967,7 @@ when `ink` or `muted` has too little contrast against `bg`.
 | `verify [project]` | checks the finished MP4, WebM or MOV: loudness, black frames, silence, clear voice (`--file` picks another file) |
 | `export [project]` | writes a web player folder (`--out dir`, `--json`), by default `out/player/` |
 | `capture [project] <url>` | saves screenshots, wording, colors, fonts and logos from a live site (`--mobile`, `--json`) |
-| `image [project] <name> "<prompt>"` | makes an illustration with OpenRouter |
+| `image [project] <name> "<prompt>"` | makes an illustration with OpenRouter or MiniAPI (`--provider`) |
 | `images [project]` | lists the images and what they cost |
 | `voices`, `say "text"` | lists Kokoro voices with their languages (`--language es`, `ja` or `zh` filters voices), or makes a sample in the chosen voice's language |
 | `voices [project] --elevenlabs` | lists the names, ids and labels available to the key (`--json` also works) |
