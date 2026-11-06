@@ -181,7 +181,7 @@ For narration in Spanish, French, Italian, Portuguese or Hindi, also install
 [espeak-ng](https://github.com/espeak-ng/espeak-ng), for example with
 `sudo apt install espeak-ng` or `brew install espeak-ng`. Japanese and
 Chinese need Python with [misaki](https://github.com/hexgrad/misaki) instead,
-as described in [AGENTS.md](AGENTS.md#japanese-and-chinese).
+as described in [docs/japanese-and-chinese.md](docs/japanese-and-chinese.md).
 
 Then start your agent in the `explainroo` folder and ask for a video, for
 example "Make a 60 second video about how HTTPS keeps a password secret." The
