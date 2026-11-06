@@ -52,6 +52,7 @@ Reference
   formats               list sizes for YouTube, Shorts, TikTok, Reels, Instagram, LinkedIn
   icons <word…>         search the 1,800+ built-in icons
   doctor                check ffmpeg, Chrome, espeak-ng, misaki and models (--fetch downloads English models)
+  version               print the version (--version works too)
 
 Options: --size <size> overrides video.json for preview, still, sheet, check and render.
          Size outputs get a suffix, like video-tiktok.mp4. --out still wins.
@@ -93,12 +94,12 @@ export async function main(argv) {
     else if (human) process.stdout.write(human + '\n');
   };
 
-  if (!cmd || cmd === 'help' || flags.help) {
-    process.stdout.write(HELP + '\n');
-    return 0;
-  }
   if (cmd === 'version' || flags.version) {
     print(VERSION, { version: VERSION });
+    return 0;
+  }
+  if (!cmd || cmd === 'help' || flags.help) {
+    process.stdout.write(HELP + '\n');
     return 0;
   }
 
