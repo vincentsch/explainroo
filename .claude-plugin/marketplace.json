@@ -1,0 +1,17 @@
+{
+  "name": "explainroo",
+  "owner": {
+    "name": "Vincent Schmalbach",
+    "url": "https://www.explainroo.com"
+  },
+  "description": "Make narrated videos with your AI agent, free on your own computer.",
+  "plugins": [
+    {
+      "name": "explainroo",
+      "source": "./skills",
+      "description": "The video studio your AI agent runs. Free on your own computer, with no account and no key.",
+      "category": "media",
+      "tags": ["video", "explainer", "narration"]
+    }
+  ]
+}

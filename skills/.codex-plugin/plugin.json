@@ -1,0 +1,24 @@
+{
+  "name": "explainroo",
+  "version": "0.4.1",
+  "description": "The video studio your AI agent runs. Free on your own computer, with no account and no key.",
+  "author": {
+    "name": "Vincent Schmalbach",
+    "url": "https://www.explainroo.com"
+  },
+  "homepage": "https://www.explainroo.com",
+  "repository": "https://github.com/vincentsch/explainroo",
+  "license": "MIT",
+  "keywords": ["video", "explainer", "narration"],
+  "skills": "./explainroo",
+  "interface": {
+    "displayName": "explainroo",
+    "shortDescription": "Make narrated videos on your own computer",
+    "longDescription": "Your agent writes the words and the pictures. A voice model on your computer reads the script, Chrome draws the frames, and you get an MP4.",
+    "developerName": "Vincent Schmalbach",
+    "category": "Productivity",
+    "capabilities": ["Read", "Write"],
+    "websiteURL": "https://www.explainroo.com",
+    "defaultPrompt": ["Make a 60 second explainer video about how DNS works."]
+  }
+}
