@@ -11,41 +11,35 @@ model on this computer reads the script. explainroo writes down when each
 word is spoken, Chrome draws the frames, and explainroo adds music and sound
 effects.
 
-## Find or install explainroo
+## Set it up
 
-Try these first:
-
-```bash
-command -v explainroo
-ls "${EXPLAINROO_HOME:-$HOME/.explainroo}/bin/explainroo.js"
-```
-
-If neither exists, install it. It needs Node.js 20.11 or newer, ffmpeg, and
-Chrome or Chromium.
+It needs Node.js 20.11 or newer, ffmpeg, and Chrome or Chromium. You do not
+need to clone anything. Run this once. It checks the computer and downloads
+the speech models the first time, about 400 MB.
 
 ```bash
-git clone https://github.com/vincentsch/explainroo.git "$HOME/.explainroo"
-cd "$HOME/.explainroo" && npm install
-node bin/explainroo.js doctor --fetch
+npx --yes explainroo doctor --fetch
 ```
 
-In the rest of this file, `explainroo` means whichever one you found: the
-`explainroo` command, or `node "$HOME/.explainroo/bin/explainroo.js"`.
+## Read the instructions
 
-## Read AGENTS.md
+```bash
+npx --yes explainroo docs
+```
 
-`AGENTS.md` in the explainroo folder has the steps, the writing rules, the
-settings and the Scene API, which is the list of everything `scenes.js` can
-draw. Read it before you start.
+This prints the steps, the writing rules, the settings and the Scene API,
+which is the list of everything `scenes.js` can draw. Read it before you
+start. In those instructions, `explainroo` is short for
+`npx --yes explainroo`.
 
 ## Make the video
 
 Create the project where the user wants it, for example `./video`:
 
 ```bash
-explainroo init video --theme paper --title "..."
+npx --yes explainroo init video --theme paper --title "..."
 ```
 
-Then follow the steps in AGENTS.md. When the video is done, tell the user
+Then follow the steps from `docs`. When the video is done, tell the user
 where `video/out/video.mp4` is, how long it is, and what
-`explainroo verify video` said.
+`npx --yes explainroo verify video` said.
