@@ -1,5 +1,11 @@
 # explainroo for coding agents
 
+Run explainroo with `npx --yes explainroo`. `--yes` stops `npx` from waiting
+on its install question. In a source checkout, run `node bin/explainroo.js`
+instead. The command examples below shorten this to plain `explainroo`, so type
+the full form when you run them. Running through `npx` does not install a
+permanent `explainroo` command on `PATH`.
+
 This file tells you, the coding agent, how to make a video with explainroo.
 The user usually gives you a topic, and maybe a length or a style. You write
 the words and the pictures. explainroo makes the video.
@@ -18,29 +24,21 @@ The full documentation for people is at https://www.explainroo.com/docs/.
 
 ## Before you start
 
-Maybe the user pasted the prompt from the README or from explainroo.com, and
-you are not in an explainroo folder yet. Then clone it into the current
-folder first. If the user named another place, use that.
+You only need to clone explainroo to change explainroo itself. Run this once,
+in any folder:
 
 ```bash
-git clone https://github.com/vincentsch/explainroo.git
-cd explainroo
-```
-
-Run this once in the explainroo folder:
-
-```bash
-npm install
-node bin/explainroo.js doctor --fetch
+npx --yes explainroo doctor --fetch
 ```
 
 `doctor` checks Node, ffmpeg and Chrome, and the extra programs some
 languages need. It also downloads the English speech models, about 400 MB,
 the first time only. Other languages fetch their speech check model on first
-use. If the user ran `npm link`, you
-can write `explainroo` instead of `node bin/explainroo.js` in the commands
-below. Commands that work on a video take the project folder first, and every
+use. Commands that work on a video take the project folder first, and every
 command accepts `--json`.
+
+`explainroo docs` prints this file. A few topics have their own page.
+`explainroo docs --list` lists them, and `explainroo docs <topic>` prints one.
 
 ### When to ask the user
 
@@ -54,6 +52,24 @@ When you ask, put everything you need in one message. Typical reasons to ask:
 - The user wants something explainroo cannot do, like video shot with a
   camera.
 
+### Where keys go
+
+A key is a line like `OPENROUTER_API_KEY=...` in a `.env` file. Save it in the
+settings folder, so every project can use it. Create the folder if it is
+missing. `doctor` prints the exact path as `keys file`. It is the first of
+these that applies:
+
+- `$EXPLAINROO_CONFIG/.env`, when that is set
+- On Windows, `%APPDATA%\explainroo\.env`
+- `$XDG_CONFIG_HOME/explainroo/.env`, when that is set
+- `~/.config/explainroo/.env`
+
+explainroo uses the first value it finds. It looks in the environment, then
+`.env` in the project folder, then `.env` in a source checkout, then the
+settings folder. New projects list `.env` in their `.gitignore`. An older
+project may not, so check before you put a key there. Never print a key, and
+never put it in a script, a commit or a log.
+
 ## Making a video, step by step
 
 1. **Learn the subject.** Read the code, docs or pages the user points to.
@@ -63,11 +79,12 @@ When you ask, put everything you need in one message. Typical reasons to ask:
 2. **Create the project.**
 
    ```bash
-   node bin/explainroo.js init videos/<name> --theme paper --title "..."
+   explainroo init videos/<name> --theme paper --title "..."
    ```
 
-   Projects go in `videos/`. Git ignores that folder. Pick the look that fits
-   the audience: `paper` (friendly, hand drawn, the default), `clean`
+   A project can go in any folder. The examples here use `videos/<name>`. Each
+   project's `.gitignore` covers its own output. Pick the look that fits the
+   audience: `paper` (friendly, hand drawn, the default), `clean`
    (products and business), `chalk` (teaching), `blueprint` (engineering),
    `midnight` (developer tools) or `editorial` (essays, history, money and
    other thoughtful topics). Pick the size for the place the video goes,
@@ -81,7 +98,7 @@ When you ask, put everything you need in one message. Typical reasons to ask:
 4. **Make the voice.**
 
    ```bash
-   node bin/explainroo.js voice videos/<name>
+   explainroo voice videos/<name>
    ```
 
    The command prints how long each scene is and how many words the speech
@@ -112,7 +129,7 @@ When you ask, put everything you need in one message. Typical reasons to ask:
 8. **Check.**
 
    ```bash
-   node bin/explainroo.js check videos/<name>
+   explainroo check videos/<name>
    ```
 
    Fix every error and every warning. You decide what to do with the hints.
@@ -121,10 +138,10 @@ When you ask, put everything you need in one message. Typical reasons to ask:
    it.
 
    ```bash
-   node bin/explainroo.js still videos/<name>                 # the end of each scene
-   node bin/explainroo.js still videos/<name> intro@2.5 12.0  # any moment
-   node bin/explainroo.js sheet videos/<name> --scene intro   # one scene over time
-   node bin/explainroo.js sheet videos/<name>                 # the whole video
+   explainroo still videos/<name>                 # the end of each scene
+   explainroo still videos/<name> intro@2.5 12.0  # any moment
+   explainroo sheet videos/<name> --scene intro   # one scene over time
+   explainroo sheet videos/<name>                 # the whole video
    ```
 
    Open the images and judge them like a viewer would. Is the text big
@@ -143,9 +160,9 @@ When you ask, put everything you need in one message. Typical reasons to ask:
 10. **Make the video and check the file.**
 
     ```bash
-    node bin/explainroo.js render videos/<name> --draft   # quick half-size version
-    node bin/explainroo.js render videos/<name>           # final video
-    node bin/explainroo.js verify videos/<name>
+    explainroo render videos/<name> --draft   # quick half-size version
+    explainroo render videos/<name>           # final video
+    explainroo verify videos/<name>
     ```
 
     `render` also writes subtitle files (`.srt` and `.vtt`) and a cover
@@ -373,15 +390,12 @@ Kokoro runs on this computer and needs no key. Pick a voice with
 
 ElevenLabs offers premium and cloned voices. It costs money on the user's
 account and receives the script text. If the user wants it and there is no
-key, ask them for an API key from elevenlabs.io. Set `ELEVENLABS_API_KEY` in
-the environment, or save `ELEVENLABS_API_KEY=...` in a `.env` file in the
-project folder or the explainroo folder. The environment takes priority,
-then the project file. Never print the key, and never put it in a script,
-a commit or a log. Keep `.env` out of git.
+key, ask them for an API key from elevenlabs.io. Save it as
+`ELEVENLABS_API_KEY=...`, as "Where keys go" says.
 
 ```bash
-node bin/explainroo.js voices videos/<name> --elevenlabs
-node bin/explainroo.js voices videos/<name> --elevenlabs --json
+explainroo voices videos/<name> --elevenlabs
+explainroo voices videos/<name> --elevenlabs --json
 ```
 
 The list shows the names, ids and labels available to that key. Use an id
@@ -496,14 +510,12 @@ This is optional. It costs money on the user's OpenRouter account, roughly 7
 to 13 cents per image at the time of writing.
 
 If the user wants images and there is no key, ask them for an OpenRouter API
-key (from openrouter.ai/keys). Save it in a `.env` file in the explainroo
-folder as `OPENROUTER_API_KEY=...`, or set it as an environment variable. Git
-ignores `.env`. Never print the key, and never put it in a script, a commit
-or a log.
+key (from openrouter.ai/keys). Save it as `OPENROUTER_API_KEY=...`, as "Where
+keys go" says.
 
 ```bash
-node bin/explainroo.js image videos/<name> cables "Two cars parked nose to nose with their hoods open, jumper cables between the batteries"
-node bin/explainroo.js images videos/<name>    # what was made and what it cost
+explainroo image videos/<name> cables "Two cars parked nose to nose with their hoods open, jumper cables between the batteries"
+explainroo images videos/<name>    # what was made and what it cost
 ```
 
 This saves `assets/cables.png`. Use it in a scene with
@@ -594,8 +606,8 @@ the size you choose.
 Place things from `s.safe`, `s.cx`, `s.cy`, `s.row`, `s.col` and `s.grid`
 instead of fixed pixel positions. Use `s.portrait` to stack things in tall
 frames. Keep text sizes relative to the frame, for example `s.W * 0.05`.
-`examples/merge-vs-rebase` works in `9:16` and in `youtube`; its scenes.js
-shows one way to do it.
+[examples/merge-vs-rebase](https://github.com/vincentsch/explainroo/tree/main/examples/merge-vs-rebase)
+works in `9:16` and in `youtube`; its scenes.js shows one way to do it.
 
 ```js
 intro(s) {
@@ -646,6 +658,7 @@ project.
 
 ```
 videos/<name>/
+  .gitignore    keeps build/, out/ and .env out of git
   video.json    look, size, language, voice, music, captions, watermark
   script.md     the narration, one "## scene-id" per scene
   scenes.js     one drawing function per scene
@@ -794,7 +807,7 @@ The folder has its own engine, fonts, assets, soundtrack, cover and subtitles.
 It needs no explainroo server. The voice is made first if needed.
 
 ```bash
-node bin/explainroo.js export videos/my-video
+explainroo export videos/my-video
 ```
 
 Serve `out/player/` with any static web server. Opening `index.html` as a
@@ -1210,12 +1223,17 @@ Look at the stills for those.
 
 ## Working on explainroo itself
 
+- To change explainroo, clone it and install it:
+  `git clone https://github.com/vincentsch/explainroo.git`, then `npm install`.
+  Write `node bin/explainroo.js` in place of `explainroo`. Git ignores
+  `videos/` in the checkout, so projects can go there.
 - `src/` is the part that runs in Node: script, voice, word timing, timeline,
   server, rendering, checks and images. `engine/` is the part that runs in
   the browser page: the scene API (`stage.js`), drawing (`pen.js`), looks,
   transitions, captions and audio (`engine/audio/`).
 - Run `npm test` after changes. After engine changes, also render the videos
-  in `examples/` and look at their stills and sheets.
+  in [examples/](https://github.com/vincentsch/explainroo/tree/main/examples)
+  and look at their stills and sheets.
 - `dev/audio-lab.mjs` renders every music style and sound and measures them.
 - `npm run build:icons` rebuilds the icons from `lucide-static`, and
   `npm run build:fonts` downloads the fonts again.

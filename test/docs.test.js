@@ -54,3 +54,58 @@ test('an unknown topic is an error that lists the real ones, and a path is no to
   assert.equal(json.status, 1);
   assert.match(JSON.parse(json.stdout).error, /there is no docs topic/);
 });
+
+// Agents pay for every token of AGENTS.md. New features get a page in docs/ and
+// a few lines here. The ceiling leaves room for the services rule and those lines.
+const AGENTS_CEILING = 66000;
+const agents = fs.readFileSync(path.join(root, 'AGENTS.md'), 'utf8');
+
+test('AGENTS.md stays under its size ceiling', () => {
+  const size = Buffer.byteLength(agents);
+  assert.ok(size <= AGENTS_CEILING, `AGENTS.md is ${size} bytes. Move long parts to docs/ and keep it under ${AGENTS_CEILING}.`);
+});
+
+test('AGENTS.md starts by saying how to run the tool, and writes plain explainroo after that', () => {
+  const [opening, ...rest] = agents.split('\n\n').slice(1);
+  assert.ok(opening.startsWith('Run explainroo with `npx --yes explainroo`.'));
+  for (const words of ['node bin/explainroo.js', 'source checkout', 'plain `explainroo`', 'PATH']) assert.ok(opening.includes(words), words);
+  const below = rest.join('\n\n');
+  // One note for people who change explainroo itself, at the very end.
+  assert.equal(below.split('node bin/explainroo.js').length, 2);
+  assert.ok(below.indexOf('node bin/explainroo.js') > below.indexOf('## Working on explainroo itself'));
+  assert.equal(below.split('git clone').length, 2);
+  assert.ok(below.indexOf('git clone') > below.indexOf('## Working on explainroo itself'));
+  assert.doesNotMatch(agents, /the explainroo folder|Git ignores that folder/);
+});
+
+test('every docs topic named in AGENTS.md exists, and every page is named there', () => {
+  const named = new Set([...agents.matchAll(/`(?:npx --yes )?explainroo docs ([^`\s]+)`/g)].map((m) => m[1]).filter((t) => !/^[-<]/.test(t)));
+  assert.ok(named.has('product-demos') && named.has('japanese-and-chinese'));
+  for (const topic of named) assert.ok(topics.includes(topic), `AGENTS.md names the topic "${topic}", and docs/${topic}.md does not exist`);
+  for (const topic of topics) assert.ok(named.has(topic), `nothing in AGENTS.md leads to docs/${topic}.md`);
+});
+
+test('the instructions link to examples on GitHub, because the package has none', () => {
+  for (const file of ['AGENTS.md', ...topics.map((t) => `docs/${t}.md`)]) {
+    const text = fs.readFileSync(path.join(root, file), 'utf8');
+    const links = /\[[^\]]*\]\(https:\/\/github\.com\/vincentsch\/explainroo\/tree\/main\/examples[^)]*\)/g;
+    assert.doesNotMatch(text.replace(links, ''), /\bexamples\//, file);
+  }
+});
+
+// The anchor GitHub gives a heading.
+const slug = (heading) => heading.trim().toLowerCase().replace(/[^\p{L}\p{N}\s_-]/gu, '').replace(/\s/g, '-');
+
+test('links between the README and the instructions lead somewhere', () => {
+  for (const file of ['README.md', 'AGENTS.md', ...topics.map((t) => `docs/${t}.md`)]) {
+    const text = fs.readFileSync(path.join(root, file), 'utf8');
+    for (const [, target, anchor] of text.matchAll(/\]\((?!https?:)([^)#\s]*)(?:#([^)\s]+))?\)/g)) {
+      const dest = target ? path.join(path.dirname(path.join(root, file)), target) : path.join(root, file);
+      assert.ok(fs.existsSync(dest), `${file} links to ${target}`);
+      if (anchor) {
+        const headings = [...fs.readFileSync(dest, 'utf8').matchAll(/^#+ (.*)$/gm)].map((m) => slug(m[1]));
+        assert.ok(headings.includes(anchor), `${file} links to ${target}#${anchor}`);
+      }
+    }
+  }
+});
