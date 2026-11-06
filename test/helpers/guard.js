@@ -3,6 +3,7 @@
 // uses only Node's own modules, so it also works around an installed copy.
 import childProcess from 'node:child_process';
 import fs from 'node:fs';
+import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -19,19 +20,48 @@ if (!process.env.EXPLAINROO_CONFIG) {
   process.on('exit', () => fs.rmSync(settings, { recursive: true, force: true }));
 }
 
-const LOCAL = new Set(['localhost', '127.0.0.1', '[::1]']);
+// A blocked request fails the run, also when the code under test catches the
+// error or a CLI sets its own exit code afterwards.
+let blocked = false;
+process.on('exit', () => {
+  if (blocked) process.exitCode = 1;
+});
+
+// For the guard's own tests, which make blocked requests on purpose.
+export function forgetBlockedRequests() {
+  blocked = false;
+}
+
+function refuse(target) {
+  const message = `test guard: blocked a request to ${target}`;
+  process.stderr.write(`${message}\n`);
+  blocked = true;
+  return new Error(message);
+}
+
+const LOCAL = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
+
 const realFetch = globalThis.fetch;
 globalThis.fetch = async function fetch(input, init) {
   let url = null;
   try { url = new URL(input?.url ?? input); } catch {}
-  if (url && /^https?:$/.test(url.protocol) && !LOCAL.has(url.hostname)) {
-    const message = `test guard: blocked a request to ${url.origin}`;
-    // Say it and fail the run, also when the code under test catches the error.
-    process.stderr.write(`${message}\n`);
-    process.exitCode = 1;
-    throw new Error(message);
-  }
+  if (url && /^https?:$/.test(url.protocol) && !LOCAL.has(url.hostname)) throw refuse(url.origin);
   return realFetch(input, init);
+};
+
+// Every other way out of Node opens a socket here: http, https, tls and the
+// Playwright client that capture downloads with. This stops them before they
+// even look up the name.
+const realConnect = net.Socket.prototype.connect;
+net.Socket.prototype.connect = function connect(...args) {
+  const target = Array.isArray(args[0]) ? args[0][0] : args[0];
+  const host = typeof target === 'object' ? target?.host : typeof args[1] === 'string' ? args[1] : undefined;
+  if (!host || LOCAL.has(host)) return realConnect.apply(this, args);
+  const error = refuse(host);
+  // Fail a moment later, like a real connection, when the caller is listening.
+  this.connecting = true;
+  setImmediate(() => this.destroy(error));
+  return this;
 };
 
 // NODE_OPTIONS can't reach what Chrome requests itself, so every browser that
