@@ -31,7 +31,7 @@ export async function typesetMath(tex, display = true, cacheFile = null) {
     svg: { fontCache: 'none' },
   }));
   const mj = await ready;
-  if (!mj?.startup) throw new Error('math: MathJax could not start. Run npm install in the explainroo folder.');
+  if (!mj?.startup) throw new Error('math: MathJax could not start. Its package is missing or damaged, so install explainroo again.');
   // Each formula has its own macros and equation counters, whatever the order.
   const doc = mj.startup.mathjax.document('', { InputJax: mj.startup.getInputJax(), OutputJax: mj.startup.getOutputJax() });
   const node = await doc.convertPromise(tex, { display });
