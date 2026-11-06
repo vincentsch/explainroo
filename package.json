@@ -43,7 +43,7 @@
   "author": "Vincent Schmalbach",
   "repository": "github:vincentsch/explainroo",
   "scripts": {
-    "test": "node --test test/*.test.js",
+    "test": "node --import ./test/helpers/guard.js --test test/*.test.js",
     "build:icons": "node scripts/build-icons.mjs",
     "build:fonts": "node scripts/fetch-fonts.mjs"
   },

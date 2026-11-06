@@ -44,4 +44,4 @@ jobs:
       # leftover browser processes do not keep the run open. The macOS
       # runners have three cores, and two test files rendering at once
       # starve Chrome and ffmpeg there, so they run one file at a time.
-      - run: node --test --test-timeout=180000 --test-force-exit ${{ runner.os == 'macOS' && '--test-concurrency=1' || '' }} test/*.test.js
+      - run: node --import ./test/helpers/guard.js --test --test-timeout=180000 --test-force-exit ${{ runner.os == 'macOS' && '--test-concurrency=1' || '' }} test/*.test.js
