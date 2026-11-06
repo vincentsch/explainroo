@@ -37,7 +37,7 @@ All news is on [explainroo.com/news](https://www.explainroo.com/news/).
 ## Make a video
 
 > [!TIP]
-> **Give your coding agent this repo and tell it what the video should explain.**
+> **Tell your coding agent to use explainroo and what the video should explain.**
 > It works with Claude Code, Codex, Pi and other coding agents. Right now it
 > works best with Claude Code and Opus 5.5.
 
@@ -45,8 +45,7 @@ Copy this into your agent and put your topic in place of the brackets:
 
 ```text
 Make me a short explainer video about [your topic].
-Use explainroo for it: clone https://github.com/vincentsch/explainroo,
-read its AGENTS.md and follow the steps.
+Use explainroo for it: run npx --yes explainroo docs and follow what it prints.
 ```
 
 The agent sets up explainroo, makes the video and checks it. You get an MP4
@@ -165,17 +164,15 @@ unofficial demos of [Gmail, ChatGPT and Claude](https://www.explainroo.com/video
 
 ## Install it yourself
 
-You need Node.js 20.11 or newer, ffmpeg, and Chrome or Chromium. The first
-setup downloads the voice and timing models once, about 400 MB together. You
-don't need a graphics card. I develop explainroo on Linux, and its tests run
-on Linux, macOS and Windows for every change.
-
 ```bash
-git clone https://github.com/vincentsch/explainroo.git
-cd explainroo
-npm install
-node bin/explainroo.js doctor --fetch
+npx --yes explainroo doctor --fetch
 ```
+
+This checks your computer and downloads the voice and timing models once,
+about 400 MB together. You don't have to clone anything. You need Node.js
+20.11 or newer, ffmpeg, and Chrome or Chromium. You don't need a graphics
+card. I develop explainroo on Linux, and its tests run on Linux, macOS and
+Windows for every change.
 
 For narration in Spanish, French, Italian, Portuguese or Hindi, also install
 [espeak-ng](https://github.com/espeak-ng/espeak-ng), for example with
@@ -183,12 +180,30 @@ For narration in Spanish, French, Italian, Portuguese or Hindi, also install
 Chinese need Python with [misaki](https://github.com/hexgrad/misaki) instead,
 as described in [docs/japanese-and-chinese.md](docs/japanese-and-chinese.md).
 
-Then start your agent in the `explainroo` folder and ask for a video, for
-example "Make a 60 second video about how HTTPS keeps a password secret." The
-agent follows [AGENTS.md](AGENTS.md) and saves the video as
-`videos/<name>/out/video.mp4`. The example videos are in
+Then ask your agent for a video in any folder, for example "Make a 60 second
+video about how HTTPS keeps a password secret. Use explainroo: run
+npx --yes explainroo docs and follow what it prints." The agent saves the
+video in its project folder as `out/video.mp4`. The example videos are in
 [examples/](examples/), and the full documentation is on
 [explainroo.com](https://www.explainroo.com/docs/).
+
+Your agent can also keep explainroo as a plugin or skill, so it knows the tool
+without being told:
+
+- Claude Code: `/plugin marketplace add vincentsch/explainroo`, then
+  `/plugin install explainroo@explainroo`
+- Codex: `codex plugin marketplace add vincentsch/explainroo`, then
+  `codex plugin add explainroo@explainroo`
+- skills.sh: `npx skills add vincentsch/explainroo`
+
+To change the code, clone it instead:
+
+```bash
+git clone https://github.com/vincentsch/explainroo.git
+cd explainroo
+npm install
+node bin/explainroo.js doctor --fetch
+```
 
 ## The watermark
 
