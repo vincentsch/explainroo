@@ -25,6 +25,14 @@ export function cacheRoot() {
   return process.env.EXPLAINROO_CACHE || path.join(os.homedir(), '.cache', 'explainroo');
 }
 
+// The settings folder holds what must outlast the package folder, which npx
+// can throw away at any time.
+export function configRoot(platform = process.platform) {
+  if (process.env.EXPLAINROO_CONFIG) return process.env.EXPLAINROO_CONFIG;
+  if (platform === 'win32') return path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'explainroo');
+  return path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'explainroo');
+}
+
 export function ttsDtype() {
   const d = process.env.EXPLAINROO_TTS_DTYPE || 'fp32';
   if (!['fp32', 'fp16', 'q8', 'q4', 'q4f16'].includes(d)) throw new Error(`EXPLAINROO_TTS_DTYPE must be fp32, fp16, q8, q4 or q4f16, not "${d}"`);

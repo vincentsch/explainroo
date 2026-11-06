@@ -1,10 +1,10 @@
 // Optional illustrations through OpenRouter. Needs OPENROUTER_API_KEY in the
-// environment or in a .env file in the project folder or the explainroo
-// folder. Every request is logged with its cost in build/images/usage.jsonl.
+// environment or in a .env file that findEnv reads. Every request is logged
+// with its cost in build/images/usage.jsonl.
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { findEnv } from './env.js';
+import { findEnv, settingsEnvFile } from './env.js';
 import { ProjectError } from './project.js';
 
 export const IMAGE_MODELS = {
@@ -40,7 +40,7 @@ export async function generateImage(project, { name, prompt, model, aspect, refs
   if (!prompt || prompt.trim().length < 8) throw new ProjectError('describe the image in a sentence or two');
   const key = findKey(project.dir);
   if (!key) {
-    throw new ProjectError('images need an OpenRouter API key. Ask the user for one (openrouter.ai/keys), then set OPENROUTER_API_KEY or put OPENROUTER_API_KEY=... in a .env file in the explainroo folder.');
+    throw new ProjectError(`images need an OpenRouter API key. Ask the user for one (openrouter.ai/keys), then set OPENROUTER_API_KEY or put OPENROUTER_API_KEY=... in ${settingsEnvFile()}.`);
   }
   const cfg = project.config.images || {};
   const modelId = resolveModel(model || cfg.model);

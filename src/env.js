@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { ROOT } from './server.js';
+import { configRoot } from './models.js';
 
 export function readEnvFile(file, name) {
   if (!fs.existsSync(file)) return null;
@@ -11,6 +12,14 @@ export function readEnvFile(file, name) {
   return null;
 }
 
+// The file for keys that every project can use.
+export function settingsEnvFile() {
+  return path.join(configRoot(), '.env');
+}
+
 export function findEnv(name, projectDir, root = ROOT) {
-  return process.env[name] || readEnvFile(path.join(projectDir, '.env'), name) || readEnvFile(path.join(root, '.env'), name);
+  return process.env[name]
+    || readEnvFile(path.join(projectDir, '.env'), name)
+    || readEnvFile(path.join(root, '.env'), name)
+    || readEnvFile(settingsEnvFile(), name);
 }

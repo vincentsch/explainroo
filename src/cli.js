@@ -10,6 +10,7 @@ import { exportPlayer } from './export.js';
 import { check, stills, sheet, verify } from './qa.js';
 import { startServer, ROOT } from './server.js';
 import { VOICES, LANGUAGES, voiceLanguage, loadTTS, loadASR, cacheRoot, ttsDtype, TTS_SAMPLE_RATE, MULTILINGUAL_ASR_MODEL } from './models.js';
+import { settingsEnvFile } from './env.js';
 import { espeakVersion, misakiAvailable, phonemize, generateSpeech } from './phonemes.js';
 import { writeWav } from './wav.js';
 import { ffmpegVersion } from './ffmpeg.js';
@@ -415,6 +416,7 @@ async function doctor(flags, log, print) {
   add('voice model', has('Kokoro-82M-v1.0-ONNX'), has('Kokoro-82M-v1.0-ONNX') ? `Kokoro 82M (${ttsDtype()}) in ${models}` : 'not downloaded yet; "explainroo doctor --fetch" or the first voice run fetches it');
   add('speech check model', has('whisper-base.en_timestamped'), has('whisper-base.en_timestamped') ? 'Whisper base.en' : 'not downloaded yet; fetched on first use');
   add('language model', has(MULTILINGUAL_ASR_MODEL.split('/')[1]), 'Whisper small for languages other than English; downloaded on first use, not by --fetch');
+  add('keys file', true, `${settingsEnvFile()}; only needed for services that use your own key`);
   const ok = rows.every((r) => r.ok || r.name.includes('model'));
   print(rows.map((r) => `${r.ok ? 'ok  ' : 'FAIL'} ${r.name.padEnd(20)} ${r.detail}`).join('\n'), { ok, checks: rows });
   return ok ? 0 : 1;

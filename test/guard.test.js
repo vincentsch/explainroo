@@ -8,6 +8,7 @@ import { execFile, spawnSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { findChrome, launch } from '../src/browser.js';
+import { configRoot } from '../src/models.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const bin = path.join(root, 'bin', 'explainroo.js');
@@ -95,6 +96,7 @@ test('a Chrome page in a spawned CLI reaches nothing outside this machine', { sk
 
 test('the settings folder is a fresh temp folder, unless one is already set', () => {
   const inherited = process.env.EXPLAINROO_CONFIG;
+  assert.equal(configRoot(), inherited);
   assert.equal(path.dirname(inherited), os.tmpdir());
   assert.match(process.env.NODE_OPTIONS, /--import=file:/);
   const settings = (env) => spawnSync(process.execPath, ['-e', 'process.stdout.write(process.env.EXPLAINROO_CONFIG)'], { encoding: 'utf8', env }).stdout;

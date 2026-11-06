@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { findEnv } from './env.js';
+import { findEnv, settingsEnvFile } from './env.js';
 import { ProjectError } from './project.js';
 
 export function elevenSpeed(speed) {
@@ -10,7 +10,7 @@ export function elevenSpeed(speed) {
 
 function apiKey(dir) {
   const key = findEnv('ELEVENLABS_API_KEY', dir);
-  if (!key) throw new ProjectError('ElevenLabs needs an API key. Ask the user for one from elevenlabs.io, then set ELEVENLABS_API_KEY or put ELEVENLABS_API_KEY=... in a .env file in the project or explainroo folder.');
+  if (!key) throw new ProjectError(`ElevenLabs needs an API key. Ask the user for one from elevenlabs.io, then set ELEVENLABS_API_KEY or put ELEVENLABS_API_KEY=... in ${settingsEnvFile()}.`);
   return key;
 }
 
