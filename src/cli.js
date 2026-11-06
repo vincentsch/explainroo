@@ -52,12 +52,13 @@ Reference
   formats               list sizes for YouTube, Shorts, TikTok, Reels, Instagram, LinkedIn
   icons <word…>         search the 1,800+ built-in icons
   doctor                check ffmpeg, Chrome, espeak-ng, misaki and models (--fetch downloads English models)
+  docs [topic]          print the instructions for coding agents, or one extra page (--list shows the pages)
   version               print the version (--version works too)
 
 Options: --size <size> overrides video.json for preview, still, sheet, check and render.
          Size outputs get a suffix, like video-tiktok.mp4. --out still wins.
          --json for machine-readable output. The project defaults to the current folder.
-Docs: AGENTS.md (for coding agents) and https://www.explainroo.com/docs/`;
+Docs: "explainroo docs" (for coding agents) and https://www.explainroo.com/docs/`;
 
 function parseArgs(argv) {
   const pos = [];
@@ -74,7 +75,7 @@ function parseArgs(argv) {
   }
   return { pos, flags };
 }
-const BOOL = new Set(['json', 'draft', 'transparent', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'elevenlabs', 'mobile']);
+const BOOL = new Set(['json', 'draft', 'transparent', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'elevenlabs', 'mobile', 'list']);
 
 function num(v, name) {
   if (v === undefined) return undefined;
@@ -242,6 +243,7 @@ export async function main(argv) {
       }
       case 'icons': return icons(pos, print);
       case 'doctor': return await doctor(flags, log, print);
+      case 'docs': return docs(pos[0], flags, print);
       default:
         process.stderr.write(`unknown command "${cmd}"\n\n${HELP}\n`);
         return 2;
@@ -384,6 +386,22 @@ function icons(words, print) {
     .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
     .slice(0, 40);
   print(scored.map((x) => `${x.name.padEnd(28)} ${x.tags.slice(0, 6).join(', ')}`).join('\n') || `no icons match "${words.join(' ')}"`, { icons: scored.map((x) => x.name) });
+  return 0;
+}
+
+// The instructions ship with the package, so an agent that runs the tool
+// through npx, with no folder to open, can read them here.
+function docs(topic, flags, print) {
+  const dir = path.join(ROOT, 'docs');
+  const topics = fs.readdirSync(dir).filter((f) => f.endsWith('.md')).map((f) => f.slice(0, -3)).sort();
+  if (flags.list) {
+    print(topics.join('\n'), { topics });
+    return 0;
+  }
+  if (topic !== undefined && !topics.includes(topic)) throw new ProjectError(`there is no docs topic "${topic}". The topics are: ${topics.join(', ')}`);
+  const file = topic === undefined ? path.join(ROOT, 'AGENTS.md') : path.join(dir, `${topic}.md`);
+  const text = fs.readFileSync(file, 'utf8');
+  print(text.trimEnd(), { topic: topic ?? null, file, text });
   return 0;
 }
 

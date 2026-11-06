@@ -758,6 +758,8 @@ when `ink` or `muted` has too little contrast against `bg`.
 | `voices [project] --elevenlabs` | lists the names, ids and labels available to the key (`--json` also works) |
 | `themes`, `formats`, `icons <word>` | lists the looks and the sizes, searches the 1,854 icons |
 | `doctor` | checks Node, ffmpeg, Chrome, the models, and espeak-ng and Python with misaki for other languages (`--fetch` downloads only English models) |
+| `docs [topic]` | prints this file, or one page from `docs/` (`--list` lists the pages) |
+| `version` | prints the version (`--version` also works) |
 
 The extra files share the video's name, also with `--out`: `video.srt`,
 `video.vtt`, `video.cover.jpg` and `video.chapters.txt`. A GIF has no sound,
