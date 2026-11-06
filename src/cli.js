@@ -289,7 +289,7 @@ function init(dir, flags, print) {
   fs.writeFileSync(path.join(target, 'video.json'), JSON.stringify(config, null, 2) + '\n');
   fs.writeFileSync(path.join(target, 'script.md'), fs.readFileSync(path.join(tpl, 'script.md'), 'utf8').replace('{{title}}', title));
   fs.writeFileSync(path.join(target, 'scenes.js'), fs.readFileSync(path.join(tpl, 'scenes.js'), 'utf8').replace(/\{\{title\}\}/g, title.replace(/'/g, "\\'")));
-  fs.writeFileSync(path.join(target, '.gitignore'), 'build/\nout/\n');
+  fs.writeFileSync(path.join(target, '.gitignore'), 'build/\nout/\n.env\n');
   print(`created ${target}\nnext: edit script.md and scenes.js, then run "explainroo preview ${dir}" or "explainroo render ${dir} --draft"`, { dir: target });
   return 0;
 }
