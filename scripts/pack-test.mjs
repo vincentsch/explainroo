@@ -7,7 +7,7 @@
 // node_modules and hide missing dependencies.
 //
 // To test another command, add an entry to the list of steps below.
-import { spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -25,14 +25,34 @@ const topics = fs.readdirSync(path.join(ROOT, 'docs')).filter((f) => f.endsWith(
 // proves. The installed CLI runs inside it, so it may not reach the network.
 const { NODE_OPTIONS, ...outside } = process.env;
 
+let stopRunning = null;
+let stoppedBy = null;
+
 function run(command, args, { cwd, env }) {
-  return spawnSync(command, args, {
-    cwd,
-    env,
-    encoding: 'utf8',
-    timeout: STEP_TIMEOUT,
-    maxBuffer: 256 * 1024 * 1024,
-    shell: process.platform === 'win32',
+  return new Promise((resolve) => {
+    if (stoppedBy) {
+      resolve({ stdout: '', stderr: '', status: null, signal: stoppedBy });
+      return;
+    }
+    // Its own process group, so that a signal reaches npx and the CLI under it.
+    const windows = process.platform === 'win32';
+    const child = spawn(command, args, { cwd, env, detached: !windows, stdio: ['ignore', 'pipe', 'pipe'], shell: windows });
+    stopRunning = (signal) => {
+      try {
+        if (windows) child.kill(signal);
+        else process.kill(-child.pid, signal);
+      } catch {}
+    };
+    const timer = setTimeout(() => stopRunning('SIGTERM'), STEP_TIMEOUT);
+    const r = { stdout: '', stderr: '' };
+    child.stdout.setEncoding('utf8').on('data', (d) => { r.stdout += d; });
+    child.stderr.setEncoding('utf8').on('data', (d) => { r.stderr += d; });
+    child.on('error', (e) => { r.error = e; });
+    child.on('close', (status, signal) => {
+      clearTimeout(timer);
+      stopRunning = null;
+      resolve({ ...r, status, signal });
+    });
   });
 }
 
@@ -40,8 +60,8 @@ function outputOf(r) {
   return [r.error?.message, r.stderr?.trim(), r.stdout?.trim()].filter(Boolean).join('\n').slice(-6000);
 }
 
-function npm(args, cwd) {
-  const r = run('npm', args, { cwd, env: outside });
+async function npm(args, cwd) {
+  const r = await run('npm', args, { cwd, env: outside });
   if (r.status !== 0) throw new Error(`npm ${args.join(' ')} failed:\n${outputOf(r)}`);
   return r.stdout;
 }
@@ -124,35 +144,39 @@ const steps = [
   },
 ];
 
-function runSteps(paths, env) {
+async function runSteps(paths, env) {
   for (const step of steps) {
     const name = step.args.filter((a) => a !== '--json').join(' ');
     const started = Date.now();
     // Without the "--", npx reads a flag like --version as its own.
-    const r = run('npx', ['--no', '--', 'explainroo', ...step.args], { cwd: paths.temp, env });
+    const r = await run('npx', ['--no', '--', 'explainroo', ...step.args], { cwd: paths.temp, env });
     if (r.status !== 0) throw new Error(`explainroo ${name} exited with ${r.status ?? r.signal}:\n${outputOf(r)}`);
     const note = step.check(JSON.parse(r.stdout), paths);
     console.log(`ok  ${name.padEnd(28)} ${((Date.now() - started) / 1000).toFixed(1).padStart(6)}s${note ? `  ${note}` : ''}`);
   }
 }
 
-function main() {
-  // A signal also reaches the running step. Handling it here lets the step end
-  // and the temp folder go away.
-  for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => {});
+async function main() {
+  // A signal ends the running step, and then the temp folder goes away.
+  for (const signal of ['SIGINT', 'SIGTERM']) {
+    process.on(signal, () => {
+      stoppedBy = signal;
+      stopRunning?.(signal);
+    });
+  }
   const temp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-pack-')));
   try {
     const fromRoot = path.relative(fs.realpathSync(ROOT), temp);
     expect(fromRoot.startsWith('..') || path.isAbsolute(fromRoot), `the temp folder ${temp} is inside the checkout. Point TMPDIR somewhere else.`);
     console.log(`packing into ${temp}`);
-    const [{ filename }] = JSON.parse(npm(['pack', '--json', '--pack-destination', temp], ROOT));
+    const [{ filename }] = JSON.parse(await npm(['pack', '--json', '--pack-destination', temp], ROOT));
     fs.writeFileSync(path.join(temp, 'package.json'), '{ "private": true }\n');
     console.log(`installing ${filename}`);
     const started = Date.now();
-    npm(['install', '--no-audit', '--no-fund', '--loglevel=error', path.join(temp, filename)], temp);
+    await npm(['install', '--no-audit', '--no-fund', '--loglevel=error', path.join(temp, filename)], temp);
     console.log(`installed in ${((Date.now() - started) / 1000).toFixed(1)}s`);
     const env = { ...outside, NODE_OPTIONS: `--import=${GUARD}`, EXPLAINROO_CONFIG: path.join(temp, 'settings') };
-    runSteps({ temp, installed: path.join(temp, 'node_modules', pkg.name) }, env);
+    await runSteps({ temp, installed: path.join(temp, 'node_modules', pkg.name) }, env);
     console.log('pack test passed');
     return 0;
   } catch (e) {
@@ -163,4 +187,4 @@ function main() {
   }
 }
 
-process.exit(main());
+process.exitCode = await main();
