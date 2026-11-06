@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -9,10 +10,26 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const readJson = (file) => JSON.parse(fs.readFileSync(path.join(root, file), 'utf8'));
 const pkg = readJson('package.json');
 
-const pack = spawnSync('npm', ['pack', '--dry-run', '--json'], { cwd: root, encoding: 'utf8', shell: process.platform === 'win32', maxBuffer: 64 * 1024 * 1024 });
+// npm has its own HTTP client and checks for updates about once a week. The
+// test guard stops that request, and a new npm cache makes the check due every
+// time, so leaving the flag out can't go unnoticed.
+const cache = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-npm-cache-'));
+const pack = spawnSync('npm', ['pack', '--dry-run', '--json', '--no-update-notifier'], {
+  cwd: root,
+  encoding: 'utf8',
+  env: { ...process.env, npm_config_cache: cache },
+  shell: process.platform === 'win32',
+  maxBuffer: 64 * 1024 * 1024,
+});
+fs.rmSync(cache, { recursive: true, force: true });
+
+test('npm packs without asking the network', () => {
+  assert.equal(pack.status, 0, pack.stderr);
+  // npm sets its own exit code, so only its stderr shows a blocked request.
+  assert.doesNotMatch(pack.stderr, /test guard/);
+});
 
 test('the package holds what an installed copy needs', () => {
-  assert.equal(pack.status, 0, pack.stderr);
   const files = JSON.parse(pack.stdout)[0].files.map((f) => f.path.split(path.sep).join('/'));
   for (const folder of ['bin/', 'src/', 'engine/', 'fonts/', 'templates/', 'skills/']) {
     assert.ok(files.some((f) => f.startsWith(folder)), folder);
