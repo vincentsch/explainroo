@@ -39,4 +39,6 @@ test('the description promises what a free local copy does', () => {
   assert.doesNotMatch(pkg.description, /no API keys/);
   assert.match(pkg.description, /no account and no key/);
   assert.equal(pkg.bin.explainroo, 'bin/explainroo.js');
+  assert.equal(pkg.scripts['test:pack'], 'node scripts/pack-test.mjs');
+  assert.ok(fs.existsSync(path.join(root, 'scripts/pack-test.mjs')));
 });

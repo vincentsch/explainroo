@@ -1234,6 +1234,8 @@ Look at the stills for those.
 - Run `npm test` after changes. After engine changes, also render the videos
   in [examples/](https://github.com/vincentsch/explainroo/tree/main/examples)
   and look at their stills and sheets.
+- `npm run test:pack` installs the package in a temp folder and makes a real
+  video from there. Run it after changes to the package or the command line.
 - `dev/audio-lab.mjs` renders every music style and sound and measures them.
 - `npm run build:icons` rebuilds the icons from `lucide-static`, and
   `npm run build:fonts` downloads the fonts again.

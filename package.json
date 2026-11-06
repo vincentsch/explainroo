@@ -45,6 +45,7 @@
   "repository": "github:vincentsch/explainroo",
   "scripts": {
     "test": "node --import ./test/helpers/guard.js --test test/*.test.js",
+    "test:pack": "node scripts/pack-test.mjs",
     "build:icons": "node scripts/build-icons.mjs",
     "build:fonts": "node scripts/fetch-fonts.mjs"
   },
