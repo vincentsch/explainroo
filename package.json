@@ -1,7 +1,7 @@
 {
   "name": "explainroo",
   "version": "0.4.1",
-  "description": "Narrated explainer videos made by your coding agent. Pure JavaScript, local voice, no API keys.",
+  "description": "The video studio your AI agent runs. Free on your own computer, with no account and no key.",
   "keywords": [
     "video",
     "explainer",
@@ -31,6 +31,7 @@
     "fonts/",
     "templates/",
     "skills/",
+    "docs/*.md",
     "AGENTS.md",
     "CLAUDE.md",
     "README.md",
