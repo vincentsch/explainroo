@@ -109,3 +109,13 @@ test('links between the README and the instructions lead somewhere', () => {
     }
   }
 });
+
+test('the README installs with npx, its prompt runs the docs command, and cloning stays for changing the code', () => {
+  const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
+  const prompt = readme.match(/```text\n([\s\S]*?)```/)[1];
+  assert.ok(prompt.includes('npx --yes explainroo docs'));
+  assert.doesNotMatch(prompt, /clone/);
+  const install = readme.slice(readme.indexOf('## Install it yourself'), readme.indexOf('## The watermark'));
+  assert.equal(install.match(/```bash\n(.*)\n/)[1], 'npx --yes explainroo doctor --fetch');
+  assert.ok(install.indexOf('git clone') > install.indexOf('To change the code'));
+});

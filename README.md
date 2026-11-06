@@ -37,7 +37,7 @@ All news is on [explainroo.com/news](https://www.explainroo.com/news/).
 ## Make a video
 
 > [!TIP]
-> **Tell your coding agent to use explainroo and what the video should explain.**
+> **Tell your coding agent to use explainroo, and what the video should explain.**
 > It works with Claude Code, Codex, Pi and other coding agents. Right now it
 > works best with Claude Code and Opus 5.5.
 
