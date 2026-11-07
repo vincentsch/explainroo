@@ -105,8 +105,11 @@ for (const [name, settings] of [['with built-in effects', {}], ['with "sfx": fal
     for (const file of decoded) assert.match(file, /^[0-9a-f]{64}\.wav$/);
     const mix = fs.readFileSync(path.join(dir, 'build/mix.wav'));
     fs.rmSync(path.join(dir, 'build/sounds'), { recursive: true });
-    assert.equal((await cli(['render', dir, '--workers', '1', '--json'])).code, 0);
+    const again = await cli(['render', dir, '--workers', '1', '--json']);
+    assert.equal(again.code, 0);
     assert.ok(fs.readFileSync(path.join(dir, 'build/mix.wav')).equals(mix), 'the same file gives the same mix');
+    // Nothing about the decoded file reaches the settings, so a render stays reusable.
+    assert.equal(JSON.parse(again.stdout).identity, JSON.parse(rendered.stdout).identity);
     assert.deepEqual(fs.readdirSync(path.join(dir, 'build/sounds')).filter((f) => f.endsWith('.wav')).toSorted(), decoded.toSorted());
 
     const preview = spawn(process.execPath, [bin, 'preview', dir, '--port', '0'], { env: process.env, stdio: ['ignore', 'pipe', 'pipe'] });
