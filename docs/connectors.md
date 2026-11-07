@@ -58,10 +58,16 @@ const connector = {
   async speak(project, scene, text, { previous, next }) {},   // what the service does, here 24 kHz { audio, sampling_rate }
   speed(wanted) {},                        // the speed this service will use
   speedRange: [0.7, 1.2],
-  async voices(dir) {},                    // optional: adds "voices --elevenlabs"
+  async voices(dir, { language }) {},      // optional: adds "voices --provider elevenlabs"
 };
 export default connector;
 ```
+
+A voice reads one sentence per request. One that reads several sentences in one
+go has `chunks: 'pauses'`, so each request runs from one pause or paragraph to
+the next. A voice that is told the language has `language(code)`, which turns
+explainroo's language code into the service's. The language is then part of each
+request and of the key it is saved under. `src/connectors/cartesia.js` does both.
 
 A service that signs in through the browser has no `key`. It has `signIn` (the
 sign-in address, the token address, the redirect address and the scopes),

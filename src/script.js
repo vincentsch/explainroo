@@ -283,8 +283,10 @@ function parseLines(source, language) {
 // Groups a scene's units into speakable chunks. Each chunk is one sentence (or
 // the text between explicit pauses) and is sent to the TTS model on its own,
 // which keeps every request well under the model's context limit and gives
-// exact control over the silence between sentences.
-export function speechChunks(units, { sentenceGap = 0.3, paragraphGap = 0.55, pace = 1, language = 'en' } = {}) {
+// exact control over the silence between sentences. With `chunks: 'pauses'` a
+// chunk runs from one pause or paragraph to the next, for a voice that reads
+// several sentences in one go and pauses between them by itself.
+export function speechChunks(units, { sentenceGap = 0.3, paragraphGap = 0.55, pace = 1, language = 'en', chunks: by = 'sentences' } = {}) {
   const cjk = ['ja', 'zh'].includes(language);
   const sentenceEnd = cjk ? /[.!?…।。！？]["'’)\]」』）]*$/ : /[.!?…।]["'’)\]]*$/;
   const chunks = [];
@@ -307,7 +309,7 @@ export function speechChunks(units, { sentenceGap = 0.3, paragraphGap = 0.55, pa
     }
     cur.text += (cur.words.length && !cjk ? ' ' : '') + u.spoken;
     cur.words.push({ unitIndex: index, display: u.display, spoken: u.spoken });
-    if (sentenceEnd.test(u.spoken)) {
+    if (by !== 'pauses' && sentenceEnd.test(u.spoken)) {
       close();
       gapBefore = sentenceGap / pace;
     }

@@ -66,6 +66,28 @@
       "voice": { "keys": ["id", "model"], "defaults": { "model": "eleven_multilingual_v2" } }
     },
     {
+      "id": "cartesia",
+      "step": "voice",
+      "name": "Cartesia",
+      "about": "A company that turns text into speech with its Sonic voices. It reads everything between two pauses at once, so the sentences flow into each other.",
+      "free": false,
+      "partner": false,
+      "status": "available",
+      "cost": "Paid per character on your Cartesia account.",
+      "data_leaves": "The narration text goes to Cartesia.",
+      "setup": {
+        "env": ["CARTESIA_API_KEY"],
+        "url": "https://play.cartesia.ai/keys",
+        "steps": [
+          "Make an account at play.cartesia.ai.",
+          "Open play.cartesia.ai/keys and make a new API key.",
+          "Copy the key."
+        ],
+        "use": "Run \"explainroo voices --provider cartesia\" to see the voices, then set \"voice\": { \"provider\": \"cartesia\", \"id\": \"<voice id>\" } in video.json."
+      },
+      "voice": { "keys": ["id", "model"], "defaults": { "model": "sonic-3.6" } }
+    },
+    {
       "id": "whisper",
       "step": "timing",
       "name": "Whisper",

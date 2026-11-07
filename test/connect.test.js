@@ -81,7 +81,7 @@ test('an unknown service is an error that lists the real ones, and no service pr
   const usage = await cli(['connect']);
   assert.equal(usage.code, 1);
   assert.match(usage.stderr, /usage: explainroo connect <service>/);
-  assert.match(usage.stderr, /elevenlabs, openrouter/);
+  assert.match(usage.stderr, /elevenlabs, cartesia, openrouter/);
 });
 
 test('with no terminal and no --key-stdin it prints the steps and how to finish, and changes nothing', async (t) => {

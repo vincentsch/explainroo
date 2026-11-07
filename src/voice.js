@@ -52,10 +52,12 @@ export function readVoice(project, id) {
   }
 }
 
-// The chunks of one scene with the project's gaps and pace.
+// The chunks of one scene with the project's gaps and pace. A voice whose
+// connector reads from pause to pause gets those chunks instead of sentences.
 export function sceneChunks(project, scene) {
   const { config } = project;
-  return speechChunks(scene.units, { sentenceGap: config.sentenceGap, paragraphGap: config.paragraphGap, pace: config.pace, language: config.language });
+  const by = speechConnector(config)?.chunks;
+  return speechChunks(scene.units, { sentenceGap: config.sentenceGap, paragraphGap: config.paragraphGap, pace: config.pace, language: config.language, ...(by ? { chunks: by } : {}) });
 }
 
 // The paid requests of the current script, for telling open jobs from old ones,
@@ -89,7 +91,8 @@ function sameTake(chunks, cached, hash, config) {
     const measured = i ? c.start - cached.chunks[i - 1].end : null;
     return { text: c.text, start: c.start, gapBefore: i ? gaps.find((g) => Math.abs(g - measured) < 0.002) ?? round(measured) : chunks[0]?.gapBefore ?? 0 };
   });
-  const paused = (i) => (i ? old[i].gapBefore !== sentenceGap || !SENTENCE_END.test(old[i - 1].text) : old[0].gapBefore > 0);
+  const byPause = speechConnector(config)?.chunks === 'pauses';
+  const paused = (i) => (i ? byPause || old[i].gapBefore !== sentenceGap || !SENTENCE_END.test(old[i - 1].text) : old[0].gapBefore > 0);
   // A marker's time is the start of the word after it, or the end of the last word.
   const marks = new Map();
   for (const [name, time] of Object.entries(cached.marks || {})) {

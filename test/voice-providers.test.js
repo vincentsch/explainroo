@@ -210,12 +210,14 @@ test('ElevenLabs voice list paginates and CLI prints names, ids and labels with 
   assert.equal(await main(['voices', '--elevenlabs', dir, '--json']), 0);
   assert.equal(JSON.parse(output).voices[1].id, 'b');
   output = '';
+  assert.equal(await main(['voices', '--provider', 'elevenlabs', dir, '--json']), 0);
+  assert.equal(JSON.parse(output).voices[0].id, 'a');
   assert.equal(await main(['voices', dir, '--elevenlabs']), 0);
   assert.match(output, /Alice  a  accent: American/);
   output = '';
   await main(['voices']);
   assert.match(output, /af_heart/);
-  assert.match(output, /voices --elevenlabs.*recording/);
+  assert.match(output, /voices --provider elevenlabs for ElevenLabs, voices --provider cartesia for Cartesia.*recording/);
 });
 
 test('cached CLI voice output reports recording mismatches and ElevenLabs speed limits', async (t) => {

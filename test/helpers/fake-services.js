@@ -38,8 +38,7 @@ function sendJson(res, status, data) {
 }
 
 // A sound that differs per text and per purchase, long enough to look like speech.
-export function fakeSpeech(text, take = 1) {
-  const rate = 24000;
+export function fakeSpeech(text, take = 1, rate = 24000) {
   const seed = crypto.createHash('sha256').update(text).digest()[0];
   const samples = Math.round(rate * Math.max(0.3, 0.05 * [...text].length));
   const pcm = Buffer.alloc(samples * 2);
@@ -66,6 +65,48 @@ export function fakeClip({ duration = 6, generate_audio: audio = false }, take) 
 }
 
 const videoId = (pathname) => decodeURIComponent(pathname.split('/')[4]);
+
+// Cartesia as its API reference describes it on 2026-11-07: the key in a Bearer
+// header, the version in Cartesia-Version, raw PCM from /tts/bytes and a voice
+// list in pages of at most 100.
+export const CARTESIA_VERSION_HEADER = '2026-08-14';
+const CARTESIA_MODELS = ['sonic-3.6', 'sonic-3.5', 'sonic-3', 'sonic-latest'];
+const CARTESIA_RATES = [8000, 16000, 22050, 24000, 44100, 48000];
+export const CARTESIA_VOICES = [
+  { id: 'calm-reader', name: 'Calm Reader', gender: 'feminine', accents: [{ accent: 'us', locale: 'en-US', is_native: true }], is_owner: false },
+  { id: 'warm-teacher', name: 'Warm Teacher', gender: 'masculine', accents: [{ accent: 'gb', locale: 'en-GB', is_native: true }], is_owner: false },
+  { id: 'voz-clara', name: 'Voz Clara', gender: 'feminine', accents: [{ accent: 'es', locale: 'es-ES', is_native: true }], is_owner: false },
+  { id: 'my-own-voice', name: 'My Own Voice', gender: null, accents: [{ accent: 'br', locale: 'pt-BR', is_native: true }], is_owner: true },
+];
+
+function cartesiaAllowed(req, res) {
+  if (req.headers.authorization !== `Bearer ${GOOD_KEY}`) {
+    sendJson(res, 401, { message: 'Invalid API key.' });
+    return false;
+  }
+  if (req.headers['cartesia-version'] !== CARTESIA_VERSION_HEADER) {
+    sendJson(res, 400, { message: 'Cartesia-Version must be 2026-08-14.' });
+    return false;
+  }
+  return true;
+}
+
+// What the reference requires of a request to /tts/bytes, or null.
+function cartesiaProblem(body) {
+  if (!body || typeof body !== 'object') return 'The body must be JSON.';
+  if (!CARTESIA_MODELS.includes(body.model_id)) return `model_id must be one of ${CARTESIA_MODELS.join(', ')}.`;
+  if (typeof body.transcript !== 'string' || !body.transcript.trim()) return 'transcript is required.';
+  const voice = typeof body.voice === 'string' ? body.voice : body.voice?.id;
+  if (typeof voice !== 'string' || !voice) return 'voice must be an id or { "id": "..." }.';
+  if (!CARTESIA_VOICES.some((v) => v.id === voice)) return 'voice not found.';
+  if (body.language !== undefined && body.locale !== undefined) return 'Send language or locale, not both.';
+  const format = body.output_format;
+  if (!format || !['raw', 'wav', 'mp3'].includes(format.container)) return 'output_format.container must be raw, wav or mp3.';
+  if (format.container === 'raw' && (!['pcm_f32le', 'pcm_s16le', 'pcm_mulaw', 'pcm_alaw'].includes(format.encoding) || !CARTESIA_RATES.includes(format.sample_rate))) return 'raw output needs an encoding and a sample_rate.';
+  const speed = body.generation_config?.speed;
+  if (speed !== undefined && !(speed >= 0.6 && speed <= 1.5)) return 'generation_config.speed must be between 0.6 and 1.5.';
+  return null;
+}
 
 // What a request with a multipart body sent.
 export async function formFields(request) {
@@ -151,6 +192,29 @@ export const ROUTES = {
         choices: [{ message: { images: [{ image_url: { url: `data:image/png;base64,${bytes.toString('base64')}` } }] } }],
         usage: { cost: 0.1, prompt_tokens: 10, completion_tokens: 20 },
       });
+    },
+  },
+  cartesia: {
+    'GET /voices': ({ req, res }) => {
+      if (!cartesiaAllowed(req, res)) return;
+      const query = new URL(req.url, 'http://fake').searchParams;
+      const limit = Number(query.get('limit') ?? 10);
+      if (!(Number.isInteger(limit) && limit >= 1 && limit <= 100)) return sendJson(res, 400, { message: 'limit must be between 1 and 100.' });
+      const language = query.get('language')?.toLowerCase().replace('_', '-');
+      const all = CARTESIA_VOICES.filter((v) => !language || v.accents.some((a) => a.locale.toLowerCase() === language || a.locale.toLowerCase().startsWith(`${language}-`)));
+      const after = query.get('starting_after');
+      const from = after ? all.findIndex((v) => v.id === after) + 1 : 0;
+      const page = all.slice(from, from + limit);
+      const more = from + limit < all.length;
+      sendJson(res, 200, { data: page, has_more: more, next_page: more ? page.at(-1).id : null });
+    },
+    'POST /tts/bytes': ({ req, res, body, count }) => {
+      if (!cartesiaAllowed(req, res)) return;
+      const problem = cartesiaProblem(body);
+      if (problem) return sendJson(res, problem === 'voice not found.' ? 404 : 400, { message: problem });
+      if (body.output_format.encoding !== 'pcm_s16le') return sendJson(res, 400, { message: 'this fake makes pcm_s16le only' });
+      res.writeHead(200, { 'Content-Type': 'audio/pcm' });
+      res.end(fakeSpeech(body.transcript, count, body.output_format.sample_rate));
     },
   },
   elevenlabs: {

@@ -18,8 +18,9 @@ export function speechConnector(config) {
   return connector?.speak ? connector : null;
 }
 
+// A service that is told the language gets it in each request, and so in the key.
 function speechRequest(paid, config, text) {
-  return { provider: paid.id, voice: config.voice.id, model: config.voice.model ?? null, speed: paid.speed(config.speed * config.pace), text };
+  return { provider: paid.id, voice: config.voice.id, model: config.voice.model ?? null, speed: paid.speed(config.speed * config.pace), ...(paid.language ? { language: paid.language(config.language) } : {}), text };
 }
 
 export function speechKey(paid, config, text) {

@@ -86,7 +86,8 @@ Outside services (optional)
   history [project]     open paid jobs with the command that continues each one, spend and renders
 
 Reference
-  voices [project]      list Kokoro voices (--language es for one language, ${LISTS_VOICES.map((c) => `--${c.id} for your ${c.name} key`).join(', ')})
+  voices [project]      list Kokoro voices (--language es for one language, --provider ${LISTS_VOICES.map((c) => c.id).join('|')} for the
+                        voices your key may use)
   say "text"            hear a Kokoro voice (--voice am_michael, --speed 1, --out sample.wav)
   themes                list looks
   formats               list sizes for YouTube, Shorts, TikTok, Reels, Instagram, LinkedIn
@@ -301,13 +302,16 @@ export async function main(argv) {
       case 'voices': {
         const language = textFlag(flags, 'language');
         if (language !== undefined) normalizeConfig({ language });
-        const paid = LISTS_VOICES.find((c) => flags[c.id]);
+        const provider = textFlag(flags, 'provider');
+        if (provider !== undefined && provider !== 'kokoro' && !LISTS_VOICES.some((c) => c.id === provider)) throw new ProjectError(`--provider must be kokoro, ${LISTS_VOICES.map((c) => c.id).join(' or ')}`);
+        // A flag named after the provider is the older way to say --provider.
+        const paid = provider !== undefined ? LISTS_VOICES.find((c) => c.id === provider) : LISTS_VOICES.find((c) => flags[c.id]);
         if (paid) {
-          const voices = await paid.voices(path.resolve(pos[0] || '.'));
+          const voices = await paid.voices(path.resolve(pos[0] || '.'), { language });
           print(voices.map((v) => `${v.name}  ${v.id}  ${Object.entries(v.labels).map(([k, x]) => `${k}: ${x}`).join(', ')}`).join('\n'), { voices });
         } else {
           const voices = Object.fromEntries(Object.entries(VOICES).filter(([id]) => language === undefined || voiceLanguage(id) === language));
-          print(Object.entries(voices).map(([k, v]) => `${k.padEnd(12)} ${voiceLanguage(k).padEnd(6)} ${v}`).join('\n') + `\nUse ${LISTS_VOICES.map((c) => `voices --${c.id} for ${c.name}`).join(', ')}, or set voice to { "provider": "recording", "src": "assets/narration.wav" } in video.json.`, { voices, languages: Object.fromEntries(Object.keys(voices).map(id => [id, voiceLanguage(id)])) });
+          print(Object.entries(voices).map(([k, v]) => `${k.padEnd(12)} ${voiceLanguage(k).padEnd(6)} ${v}`).join('\n') + `\nUse ${LISTS_VOICES.map((c) => `voices --provider ${c.id} for ${c.name}`).join(', ')}, or set voice to { "provider": "recording", "src": "assets/narration.wav" } in video.json.`, { voices, languages: Object.fromEntries(Object.keys(voices).map(id => [id, voiceLanguage(id)])) });
         }
         return 0;
       }
