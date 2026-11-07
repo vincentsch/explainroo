@@ -574,7 +574,7 @@ same character twice. Ask the user, and run `explainroo docs clips` first.
 
 ```bash
 explainroo clip videos/<name> "A busy street at dusk" --seconds 6 --dry-run     # the price, spends nothing
-explainroo clip videos/<name> "A busy street at dusk" --seconds 6 --max-cost 2  # buys it, never above the cap
+explainroo clip videos/<name> "A busy street at dusk" --seconds 6 --max-cost 2  # buys it if the price fits the cap
 ```
 
 It saves `assets/clips/<name>.mp4` and prints the `s.clip` line to use. The same
