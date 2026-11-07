@@ -89,7 +89,7 @@ describes.
 `init` can only set up a Kokoro voice, so `init --language de` stops and
 creates nothing. Create the project without `--language`, then set `language`
 and `voice`. Wherever German would need Kokoro, explainroo stops with a
-message that shows these lines:
+message that shows these lines. It stops in these places:
 
 - `init --language de`
 - `voices --language de` without `--provider`

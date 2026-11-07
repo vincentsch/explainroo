@@ -13,9 +13,10 @@
   `Math.random()` inside the scene function. Only those three come out the
   same on every render.
 - Text in AI images. Put words on screen with `s.text`.
-- A cue word that is spoken twice. `at: 'writes'` means the first time. Use
-  `s.cue('writes', 2)` or a `[#marker]` for a later one. `check` lists such
-  words as hints.
+- A cue word that is spoken twice. `at: 'writes'` means the first time, and
+  `check` lists such words as hints. Write `'writes#2'` for the second time,
+  or a `[#marker]`. Write `'writes#1'` when you mean the first time, and the
+  hint goes away.
 - Apostrophes in cue words. Cues ignore punctuation, so "visitor's" is heard
   as "visitors". `at: 'visitor'` then waits for the next plain "visitor".
   Use a `[#marker]` there.
@@ -35,6 +36,12 @@
   `{transition=fade}` or `{transition=cut}`.
 - Arrows from an icon that has a label. The `id` of an icon covers the icon
   only, not its label, so an arrow that leaves downward crosses the label.
+- An arrow label near the edge. A vertical arrow's label sits on its left.
+  Move it with `labelSide: 'right'`, or `'above'` or `'below'`.
+- Text with a background but no words, like `s.text('   ', { bg: 'surface' })`
+  for an empty field. It shrinks to a thin empty card. Draw the field with
+  `s.box({ w: 520, h: 72 })` or another shape with a size. `check` warns
+  about it.
 - Colored text in `paper` and `clean`. Green, orange and red are light enough
   for shapes but often too light for text. `check` warns about low contrast.
   It suggests a readable color and shows its contrast ratio.
@@ -50,9 +57,15 @@
 - A render that stops with a closed browser or `EPIPE` on a busy computer.
   Run it again with fewer pages, for example `render --workers 2`.
 
-`check` looks at text and math formulas. It finds text off the frame, too
-close to the edge (3.5%), too small, with low contrast (against the page, a
-background from `s.bg` or `s.short.backdrop`, or the text's own `bg`), on top
-of other text, or under the captions.
-It does not see shapes, arrows and icons, or drawings made with `s.draw`.
-Look at the stills for those.
+`check` looks at text and math formulas, and an arrow's label counts as
+text. It finds text that is:
+
+- off the frame, or closer than 3.5% to the edge
+- too small
+- low in contrast against the page, a background from `s.bg` or
+  `s.short.backdrop`, or the text's own `bg`
+- on top of other text, or under the captions
+
+It also warns about text with a background but no words, and about a `lift`
+above 2 in `s.ui`. It does not see shapes, arrow lines and icons, or drawings
+made with `s.draw`. Look at the stills for those.

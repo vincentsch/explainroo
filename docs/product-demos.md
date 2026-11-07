@@ -31,7 +31,20 @@ against the screenshots. Fonts built into explainroo need no files. For other
 fonts, get the files, check the license and copy the license file next to
 them. Cookie banners and chat widgets can appear in the screenshots, as they
 do for any visitor. Use a screenshot, or a part of one, without them.
-Capturing the same site again replaces its folder.
+Capturing the same site again replaces these files.
+
+To keep several pages of one site, give each page a name:
+
+```bash
+explainroo capture videos/<name> https://example.com/pricing --name pricing
+```
+
+This saves the same files in `assets/capture/example.com/pricing/`, and
+`capture.json`, the logo path and the block for `video.json` point there.
+Capturing again with the same name replaces only that folder. A capture
+without a name replaces its own files and keeps the named folders. A name
+uses letters, digits and hyphens and starts with a letter or a digit. It
+can't be `fonts`, because a capture without a name keeps its fonts there.
 
 You can also show a real screen recording with `s.clip` in a `browser`
 frame. Use `s.camera` to zoom in on the detail the voice mentions.
@@ -70,6 +83,11 @@ frame. Use `s.camera` to zoom in on the detail the voice mentions.
 - `accent` is the main button color. Find it in the app's Tailwind config or
   CSS. `background` is the color behind the screens, `ink` the color of text
   drawn right on it.
+- With captions on, `accent` also colors the word being spoken. A look file
+  that sets `caption` colors decides instead. When the accent is hard to read
+  on the dark caption background (a contrast below 3:1), the captions keep
+  the look's own highlight, and `check` says so in a hint. Bold captions keep
+  their own colors.
 - `font` is the app's font. Inter is built in. Other fonts go in
   `assets/fonts/` and in `fonts`, with one entry per weight. The files can be
   `.woff2`, `.woff`, `.ttf` or `.otf`. A variable font takes
@@ -144,6 +162,12 @@ take seconds, spoken words or `"#markers"`, like everywhere else.
 | `u.cursor(keys, { out })` | the mouse; a key `{ at, x, y, dur, arc }` moves it (`arc` bends the path, 0 is straight), `{ at, click: true }` clicks with a sound |
 | `u.press(at)`, `u.typed(text, at, cps, { gain, sfx })`, `u.stream(text, at, wps)`, `u.count(to, at, dur)` | a button press (0 to 1 and back), text typed so far with typing sounds, text appearing word by word like an AI reply, a number counting up |
 | `u.colors` | `accent`, `accentDark`, `accentTint`, `background`, `ink`, `text`, `soft`, `muted`, `faint`, `line`, `field`, `surface`, `panel`; `brand.colors` in `video.json` replaces the grays, for example `{ "text": "#141413", "line": "#e8e6dc" }` for a warm brand |
+
+`lift` sets the shadow under a panel or card. It is a multiplier from 0 to
+2: 0 is no shadow, 1 the normal shadow and 2 twice the normal shadow. Some
+parts of the kit use their own default, like 1.4 for a dialog. A larger
+`lift` spreads the shadow across much of the frame, so `check` warns about a
+`lift` above 2.
 
 `check` sees the text of `s.ui` too. It reports text that runs off the frame
 (not while the camera zooms in), text that is too small and text that

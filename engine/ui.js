@@ -236,7 +236,9 @@ export class UI {
     c.roundRect(x, y, w, h, r);
     c.fillStyle = o.fill ?? this.colors.surface;
     if (o.shadow !== false) {
+      // A multiplier for the shadow: 0 is none, 1 the normal shadow, 2 twice that.
       const lift = o.lift ?? 1;
+      if (lift > 2) this.s._warn(`lift: ${lift} makes a shadow ${lift} times the normal one, which can cover much of the frame; use a lift from 0 (no shadow) to 2 (twice the normal shadow)`);
       c.shadowColor = `rgba(16, 24, 40, ${0.05 * lift})`;
       c.shadowBlur = 3 * k;
       c.shadowOffsetY = 1 * k;

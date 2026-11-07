@@ -88,3 +88,60 @@ test('capture saves a local site, its loaded fonts and desktop and phone screens
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('named captures of one site stay side by side, and a capture without a name keeps them', { skip: !chrome, timeout: 240000 }, async () => {
+  const site = await captureFixture();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-capture-named-'));
+  const fonts = { googleHostCheck: (host) => host === '127.0.0.1' };
+  const root = path.join(dir, 'assets/capture/127.0.0.1');
+  const files = (folder) => fs.readdirSync(folder).sort();
+  try {
+    fs.writeFileSync(path.join(dir, 'video.json'), '{}');
+    for (const name of ['pricing', 'about']) {
+      const r = await capture(dir, site.url, { name, ...fonts });
+      const folder = `assets/capture/127.0.0.1/${name}`;
+      assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dir, folder, 'capture.json'))), r);
+      assert.deepEqual(r.files, [`${folder}/capture.json`, `${folder}/fonts/Fixture-Sans-400-1.woff2`, `${folder}/full.png`, `${folder}/logo-2.svg`, `${folder}/logo-3.png`, `${folder}/logo.svg`, `${folder}/page.png`]);
+      assert.ok(r.files.every((file) => fs.existsSync(path.join(dir, file))));
+      assert.equal(r.brand.logo, `${folder}/logo.svg`);
+      assert.deepEqual(r.suggestion.fonts.map((f) => f.src), [`${folder}/fonts/Fixture-Sans-400-1.woff2`]);
+    }
+    assert.deepEqual(files(root), ['about', 'pricing']);
+    fs.writeFileSync(path.join(root, 'about', 'notes.txt'), 'mine');
+
+    // Without a name, capture writes the site's folder as before and keeps the pages in it.
+    const plain = await capture(dir, site.url, fonts);
+    assert.equal(plain.brand.logo, 'assets/capture/127.0.0.1/logo.svg');
+    assert.deepEqual(files(root), ['about', 'capture.json', 'fonts', 'full.png', 'logo-2.svg', 'logo-3.png', 'logo.svg', 'page.png', 'pricing']);
+    assert.ok(plain.files.every((file) => !file.includes('/pricing/') && !file.includes('/about/')));
+    assert.equal(fs.readFileSync(path.join(root, 'about', 'notes.txt'), 'utf8'), 'mine');
+    // Again without a name: its own old files go, the named folders stay.
+    fs.writeFileSync(path.join(root, 'stale.txt'), 'old capture');
+    await capture(dir, site.url, { mobile: true, ...fonts });
+    assert.equal(fs.existsSync(path.join(root, 'stale.txt')), false);
+    assert.ok(fs.existsSync(path.join(root, 'mobile.png')));
+    assert.deepEqual(files(path.join(root, 'pricing')), ['capture.json', 'fonts', 'full.png', 'logo-2.svg', 'logo-3.png', 'logo.svg', 'page.png']);
+    assert.equal(fs.readFileSync(path.join(root, 'about', 'notes.txt'), 'utf8'), 'mine');
+
+    // The same name again replaces only that folder.
+    fs.writeFileSync(path.join(root, 'pricing', 'stale.txt'), 'old page');
+    const cli = await run(process.execPath, [bin, 'capture', dir, site.url, '--name', 'pricing', '--json'], { timeout: 60000 });
+    const json = JSON.parse(cli.stdout);
+    assert.equal(json.brand.logo, 'assets/capture/127.0.0.1/pricing/logo.svg');
+    assert.equal(fs.existsSync(path.join(root, 'pricing', 'stale.txt')), false);
+    assert.ok(fs.existsSync(path.join(root, 'pricing', 'capture.json')));
+    assert.equal(fs.readFileSync(path.join(root, 'about', 'notes.txt'), 'utf8'), 'mine');
+    assert.ok(fs.existsSync(path.join(root, 'mobile.png')));
+    // The printed list, the logo and the block for video.json name the page's folder.
+    const human = await run(process.execPath, [bin, 'capture', site.url, '--name', 'home'], { cwd: dir, timeout: 60000 });
+    assert.match(human.stdout, /^saved:\n  assets\/capture\/127\.0\.0\.1\/home\/capture\.json\n/);
+    assert.match(human.stdout, /logo: assets\/capture\/127\.0\.0\.1\/home\/logo\.svg/);
+    assert.match(human.stdout, /"logo": "assets\/capture\/127\.0\.0\.1\/home\/logo\.svg"/);
+    assert.deepEqual(files(root).filter((f) => !f.includes('.')), ['about', 'fonts', 'home', 'pricing']);
+    // No temp folder is left behind.
+    assert.deepEqual(files(path.join(dir, 'assets/capture')), ['127.0.0.1']);
+  } finally {
+    await site.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

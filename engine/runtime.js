@@ -5,7 +5,7 @@ import { Stage, SceneError, boundsRecorder } from './stage.js';
 import { getTheme, makeBackground, fontString, colorOf } from './themes.js';
 import { Pen } from './pen.js';
 import { drawTransition } from './transitions.js';
-import { buildPhrases, drawCaptions, buildChunks, drawBoldCaptions } from './captions.js';
+import { buildPhrases, drawCaptions, buildChunks, drawBoldCaptions, captionHighlight } from './captions.js';
 import { AUDIO_FILE, clamp, hashStr, mulberry32, suggest, suggestColor, contrast, opaque, withAlpha, parseColor, mixColor, rgba } from './util.js';
 import { layoutAreas } from './layout.js';
 import { loadClips, soundURL, ClipFrames } from './clips.js';
@@ -113,6 +113,11 @@ export class Engine {
     this.scale = scale;
     this.transparent = transparent;
     this.theme = getTheme(config.theme, config.look);
+    // Without a look file, getTheme gives the built-in look that every engine in
+    // this page shares, so a brand color goes on this engine's own copy.
+    const highlight = captionHighlight(config, this.theme);
+    if (highlight.color) this.theme = { ...this.theme, caption: { ...this.theme.caption, active: highlight.color } };
+    this.captionNote = highlight.note ?? null;
     this.pen = new Pen({ rough, theme: this.theme });
     this.icons = icons;
     this.iconCache = new Map();
@@ -588,6 +593,7 @@ export class Engine {
       }
     }
     for (const id of this.extraScenes) add('warn', id, null, `scenes.js has a function "${id}" but ${this.state.text?.files?.script ?? 'script.md'} has no scene with that id, so it is never shown`);
+    if (this.captionNote) add('hint', null, null, this.captionNote);
     const scratch = document.createElement('canvas');
     scratch.width = this.canvas.width;
     scratch.height = this.canvas.height;
@@ -633,7 +639,7 @@ export class Engine {
           once(`err:${sc.id}:${e.message}`, () => add('error', sc.id, t, e.message));
           break;
         }
-        for (const pr of this.textLog.filter((x) => x.problem)) once(`problem:${sc.id}:${pr.problem}`, () => add('error', sc.id, t, pr.problem));
+        for (const pr of this.textLog.filter((x) => x.problem)) once(`problem:${sc.id}:${pr.key ?? pr.problem}`, () => add(pr.level ?? 'error', sc.id, t, pr.problem));
         const texts = this.textLog.filter((x) => !x.problem && x.alpha > 0.5);
         for (const tx of texts) {
           if (viewWidth !== null) {
@@ -709,7 +715,7 @@ export class Engine {
     const repeated = new Map();
     for (const c of this.cueNotes) repeated.set(`${c.scene}|${c.word.toLowerCase()}`, c);
     for (const c of repeated.values()) {
-      add('hint', c.scene, null, `cue "${c.word}" means the first of the ${c.count} times it is spoken in this scene; if you meant a later one, use s.cue("${c.word}", 2) or a [#marker]`);
+      add('hint', c.scene, null, `cue "${c.word}" means the first of the ${c.count} times it is spoken in this scene; write "${c.word}#1" if you mean the first time, or "${c.word}#2" for a later one`);
     }
     this.cueNotes = null;
     for (const { scene, t, tex } of this.lateMath.values()) add('error', scene, t, `math "${tex}" was not collected at the start; keep TeX strings fixed and always call s.math with at and out for timing`);

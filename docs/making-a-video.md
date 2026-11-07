@@ -83,6 +83,7 @@ user. Read it first.
    explainroo still videos/<name> intro@2.5 12.0  # any moment
    explainroo sheet videos/<name> --scene intro   # one scene over time
    explainroo sheet videos/<name>                 # the whole video
+   explainroo sheet videos/<name> --times 3,intro@2.5,40  # moments to compare
    ```
 
    Open the images and judge them like a viewer would. Is the text big
@@ -113,7 +114,7 @@ user. Read it first.
     lower. `verify` warns above that and fails above 0 dBTP, where the sound
     clips. It also runs the speech check on the finished sound to make sure
     the voice is still clear over the music, and it lists the words that only
-    nearly matched next to the share it understood.
+    nearly matched next to the percentage it understood.
 
 11. **Tell the user** where the video and its subtitle files, chapters and
     cover are, how long the video is, what verify said, and what you could

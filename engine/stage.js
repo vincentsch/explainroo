@@ -13,6 +13,8 @@ const DEFAULT_DUR = { draw: 0.9, write: 0.8, pop: 0.6, rise: 0.75, fade: 0.6, zo
 const ENTERS = ['draw', 'write', 'type', 'words', 'sync', 'pop', 'rise', 'fade', 'zoom', 'drop', 'grow', 'none', 'slide-left', 'slide-right', 'slide-up', 'slide-down'];
 const EXITS = ['fade', 'pop', 'rise', 'drop', 'slide-left', 'slide-right', 'none'];
 const BOLD = { display: undefined, body: 600, hand: undefined, mono: 700 };
+// labelSide of an arrow: the direction from the arrow's middle to its label.
+const LABEL_SIDES = { left: [-1, 0], right: [1, 0], above: [0, -1], below: [0, 1] };
 
 export class SceneError extends Error {}
 
@@ -55,6 +57,9 @@ export class Stage {
     this.clamp = clamp;
     this._ids = new Map();
     this._kindSeq = Object.create(null);
+    // Elements are always called, so the n-th text of a scene is the same text
+    // at every moment. check tells texts without an id apart by it.
+    this._texts = 0;
     this._suppress = 0;
     this._camMoved = false;
   }
@@ -108,21 +113,33 @@ export class Stage {
 
   // ---------- time ----------
 
-  // Start time of the n-th time a word or phrase is spoken in this scene.
-  cue(word, n = 1) {
+  // Start time of the n-th time a word or phrase is spoken in this scene. n is 1
+  // unless it is given, here or as "word#n".
+  cue(word, n) {
     return this._cue(word, n).start;
   }
 
-  cueEnd(word, n = 1) {
+  cueEnd(word, n) {
     return this._cue(word, n).end;
   }
 
-  _cue(word, n) {
+  _cue(cue, given) {
+    const written = String(cue);
+    // "fills#2" is the second time "fills" is spoken. Only digits after the last
+    // # count, so "C#" stays a word. This comes before normWord, which keeps #.
+    const hash = written.lastIndexOf('#');
+    const counted = hash > 0 && /^\d+$/.test(written.slice(hash + 1)) && written.slice(0, hash).trim() ? Number(written.slice(hash + 1)) : null;
+    const word = counted === null ? written : written.slice(0, hash);
+    if (counted === 0) throw new SceneError(`cue("${written}"): the number after # counts from 1, so "${word.trim()}#1" is the first time it is spoken`);
+    if (counted !== null && given !== undefined && given !== counted) throw new SceneError(`cue("${written}", ${given}) names two different times; write "${word.trim()}#${given}" or cue("${word.trim()}", ${given})`);
+    const n = counted ?? given ?? 1;
+    // A number that is written, here or as an argument, means that time on purpose.
+    const meant = counted !== null || given !== undefined;
     const cjk = ['ja', 'zh'].includes(this.engine.config.language);
-    const want = (cjk ? [String(word)] : String(word).split(/\s+/)).map(normWord).filter(Boolean);
-    if (!want.length) throw new SceneError(`cue("${word}") is empty`);
+    const want = (cjk ? [word] : word.split(/\s+/)).map(normWord).filter(Boolean);
+    if (!want.length) throw new SceneError(`cue("${written}") is empty`);
     const ws = this.words;
-    if (!ws.length) throw new SceneError(`cue("${word}"): scene "${this.id}" has no narration`);
+    if (!ws.length) throw new SceneError(`cue("${written}"): scene "${this.id}" has no narration`);
     const norms = ws.map((w) => normWord(w.text));
     let seen = 0;
     let found = null;
@@ -140,14 +157,14 @@ export class Stage {
     }
     if (found) {
       // A word spoken more than once silently means its first time; tell the check.
-      if (seen > 1 && n === 1 && this.engine.cueNotes) this.engine.cueNotes.push({ scene: this.id, word: String(word), count: seen });
+      if (seen > 1 && !meant && this.engine.cueNotes) this.engine.cueNotes.push({ scene: this.id, word: written, count: seen });
       return found;
     }
     const count = seen ? ` (it is spoken ${seen} time${seen > 1 ? 's' : ''})` : '';
     const hint = suggest(want[0], [...new Set(norms)], 6).join(', ');
     // Each language says other words, so a cue that works in one fails in another.
     const several = this.engine.state?.text?.languages ? ' Word cues differ between languages, so a scene that every language draws is safer with the same [#marker] in each script.' : '';
-    throw new SceneError(`cue("${word}"${n > 1 ? `, ${n}` : ''}) is not in the narration of scene "${this.id}"${count}. Close words: ${hint}${several ? `.${several}` : ''}`);
+    throw new SceneError(`cue("${written}"${counted === null && n > 1 ? `, ${n}` : ''}) is not in the narration of scene "${this.id}"${count}. Close words: ${hint}${several ? `.${several}` : ''}`);
   }
 
   mark(name) {
@@ -517,6 +534,14 @@ export class Stage {
     if (log) log.push({ scene: this.id, t: this.t, problem: message });
   }
 
+  // Something `check` should warn about, found while drawing. `check` keeps one
+  // finding per scene and `key`, so a key that stands for one element gives one
+  // warning for each element, wherever and whenever it is seen.
+  _warn(message, key = message) {
+    const log = this.engine.textLog;
+    if (log) log.push({ scene: this.id, t: this.t, problem: message, level: 'warn', key });
+  }
+
   _autoTextColor(fill, fallback) {
     if (!fill || fill === 'none') return fallback;
     fill = opaque(fill, this.theme.bg);
@@ -704,6 +729,7 @@ export class Stage {
   }
 
   _text(str, o, kind) {
+    const call = ++this._texts;
     const th = this.theme;
     const ctx = this.ctx;
     const role = o.font ?? 'body';
@@ -751,12 +777,21 @@ export class Stage {
     const life = this._life({ ...o, enter }, kind, { dur: enter === 'sync' ? Math.max(0.3, (times[times.length - 1] ?? 0) - this.time(o.at ?? 0) + 0.3) : dur, real: enter === 'sync', label: plain.slice(0, 40) });
     if (!life) return g;
 
+    // Spaces on a background, often meant as an empty field, shrink to a thin
+    // card. check names such a text by its id, or by where it sits in the frame,
+    // inside its groups and before its own entrance moves it.
+    const blank = o.bg && !plain.trim() && this.engine.textLog;
+    const place = blank && (o.id === undefined || o.id === null) ? this._matrix().transformPoint(new DOMPoint(x, y)) : null;
     this._push(bx, by, life, o);
     const color = colorOf(th, o.color, 'ink');
     const accent = colorOf(th, o.mark ?? 'accent');
     if (o.bg) {
       const bgc = colorOf(th, o.bg === true ? 'surface' : o.bg);
       this.pen.draw(ctx, { kind: 'rect', w: g.w, h: g.h, r: o.radius ?? Math.min(th.radius, g.h / 2) }, { fill: bgc, stroke: o.border ? colorOf(th, o.border) : 'none', width: 2, shadow: this._shadow(), seed: this._seed('textbg', o, plain), rough: false }, { stroke: 1, fill: 1 });
+      if (blank && bgc !== 'none') {
+        const name = place ? `at ${Math.round(place.x)},${Math.round(place.y)}` : `"${o.id}"`;
+        this._warn(`text ${name} has a background but no words, so it draws an empty card; for an empty field, use s.box({ w, h }) or another shape with a size`, place ? `blank text ${call}` : `blank text id ${o.id}`);
+      }
     }
     ctx.font = font;
     ctx.textBaseline = 'alphabetic';
@@ -992,6 +1027,7 @@ export class Stage {
 
   // from/to: [x, y], {x, y} or an element id (the arrow then stops at its edge).
   arrow(from, to, o = {}) {
+    if (o.labelSide !== undefined && !Object.hasOwn(LABEL_SIDES, o.labelSide)) throw new SceneError(`arrow: labelSide "${o.labelSide}" is not one of ${Object.keys(LABEL_SIDES).join(', ')}`);
     const th = this.theme;
     const A = this._point(from);
     const B = this._point(to);
@@ -1070,15 +1106,18 @@ export class Stage {
     return result;
   }
 
-  // Where an arrow's label goes: on the outer side of a curve, or above a
-  // straight arrow. x, y is the label's center.
+  // Where an arrow's label goes: on the side `labelSide` names, or else on the
+  // outer side of a curve, or above a straight arrow (left of a vertical one).
+  // x, y is the label's center.
   _arrowLabel(o, d, a, b, bend) {
     const mid = pointAt(d, pathLength(d) / 2);
     let nx;
     let ny;
     const bx = mid.x - (a.x + b.x) / 2;
     const by = mid.y - (a.y + b.y) / 2;
-    if (bend && Math.hypot(bx, by) > 1) {
+    if (o.labelSide !== undefined) {
+      [nx, ny] = LABEL_SIDES[o.labelSide];
+    } else if (bend && Math.hypot(bx, by) > 1) {
       nx = bx / Math.hypot(bx, by);
       ny = by / Math.hypot(bx, by);
     } else {

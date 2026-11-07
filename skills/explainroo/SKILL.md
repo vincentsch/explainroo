@@ -21,7 +21,7 @@ explainroo turns two files into an MP4 video with narration. `script.md`
 holds what the voice says. `scenes.js` draws what the viewer sees. Every
 drawing can appear on a word the voice says. A voice model (Kokoro) reads
 the script on this computer, or the narration comes from ElevenLabs,
-Cartesia or your own recording. Whisper listens to the narration and writes
+Cartesia or the user's own recording. Whisper listens to the narration and writes
 down when each word is spoken. Chrome draws the frames in the background.
 explainroo adds music and sound effects, and ffmpeg makes the MP4. Kokoro,
 Whisper, Chrome and ffmpeg run on this computer, so a video needs no account
@@ -78,8 +78,8 @@ npx --yes explainroo doctor --fetch
 ```
 
 `doctor` checks Node, ffmpeg and Chrome, and the extra programs some
-languages need. It also downloads the English speech models, about 400 MB,
-the first time only. Each part is `ready`, `missing` with how to get it, or
+languages need. With `--fetch` it also downloads the English speech models,
+about 400 MB, the first time only. Each part is `ready`, `missing` with how to get it, or
 `not needed` for this setup. `doctor videos/<name>` checks what that
 project's languages and voices need. Commands that work on a video take the
 project folder first, and every command accepts `--json`.
@@ -131,7 +131,7 @@ user the plan. Add `--yes` only after the user said yes.
 4. **Make the voice** with `explainroo voice videos/<name>`. Fix a word the
    speech check did not confirm with `{shown|spoken}`, and run it again. When
    the word already has one, try another spoken spelling
-   (`explainroo docs voices`).
+   (`explainroo docs writing`).
 5. **Plan the pictures.** Decide what appears on each cue, what leaves and
    what stays in place (`explainroo docs pictures`).
 6. **Make images**, if the video needs them and the user agrees

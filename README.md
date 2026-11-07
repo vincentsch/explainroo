@@ -281,7 +281,8 @@ about 400 MB together. You don't have to clone anything. You need Node.js
 card. I develop explainroo on Linux, and its tests run on Linux, macOS and
 Windows for every change.
 
-For narration in Spanish, French, Italian, Portuguese or Hindi, also install
+For narration with Kokoro, the free voice, in Spanish, French, Italian,
+Portuguese or Hindi, also install
 [espeak-ng](https://github.com/espeak-ng/espeak-ng), for example with
 `sudo apt install espeak-ng` or `brew install espeak-ng`. Japanese and
 Chinese need Python with [misaki](https://github.com/hexgrad/misaki) instead,

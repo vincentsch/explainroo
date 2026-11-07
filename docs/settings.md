@@ -25,7 +25,7 @@ videos/<name>/
 | `theme` | `paper` | a built-in look, or a relative path to a `.json` look file (see Custom looks) |
 | `size` | `16:9` | a platform (`youtube`, `shorts`, `tiktok`, `reels`, `vertical`, `instagram`, `linkedin`, `square`), `16:9`, `9:16`, `1:1`, `4:5` or `WIDTHxHEIGHT`; see `explainroo docs sizes` |
 | `fps` | 30 | 24, 25, 30, 50 or 60 |
-| `language` | `en` | narration language: `en`, `es`, `fr`, `it`, `pt-br`, `hi`, `ja` or `zh`; see `explainroo docs languages` |
+| `language` | `en` | narration language: `en`, `es`, `fr`, `it`, `pt-br`, `hi`, `ja` or `zh`, and `de` with a paid voice or a recording; see `explainroo docs languages` |
 | `voice` | the language's voice | a Kokoro id or a provider object for Kokoro, ElevenLabs, Cartesia or a recording; English uses `af_heart`; see `explainroo docs voices` |
 | `languages` | none | settings for one language, like `{ "es": { "voice": "ef_dora" } }`; see `explainroo docs languages` |
 | `sizes` | none | `captions`, `cover`, `pace` and `watermark` for one size, like `{ "tiktok": { "captions": "bold", "pace": 1.2 } }`; see `explainroo docs sizes` |
@@ -44,7 +44,7 @@ videos/<name>/
 | `boil` | 0 | redraws per second of hand-drawn lines; 0 keeps them still |
 | `watermark` | `"explainroo.com"` | small text in a corner, or `false` |
 | `images` | none | `{ "model": "best" or "cheap", "style": "..." }` |
-| `brand` | none | colors, fonts and logo for `s.ui`, see `explainroo docs product-demos` |
+| `brand` | none | colors, fonts and logo for `s.ui`; its `accent` also colors the spoken word in captions; see `explainroo docs product-demos` |
 | `fonts` | none | the video's own font files, see `explainroo docs product-demos` |
 
 The looks:

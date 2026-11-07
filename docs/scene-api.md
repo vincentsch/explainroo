@@ -45,6 +45,15 @@ Every `at` and `out` accepts seconds (`2.4`), a spoken word (`'resolver'`) or
 a marker (`'#ask'`). Word cues ignore case and punctuation. A phrase works
 too. A wrong word or marker stops with an error that lists the closest words.
 
+A word that is spoken more than once means its first time, and `check` gives
+a hint about it. Add `#` and a number for a later time: `'fills#2'` is the
+second time "fills" is spoken in the scene, the same as `s.cue('fills', 2)`.
+Write `'fills#1'` when you mean the first time, and the hint goes away. This
+works wherever a time goes: `at`, `out`, `s.time`, `s.cue` and `s.cueEnd`.
+Only digits after the last `#` count, so `'C#'` stays a word and `'#ask'`
+stays a marker. A number larger than the times the word is spoken is an
+error that says how often it is spoken.
+
 An easing sets how a movement speeds up and slows down. The easing names are
 `linear`, `in`, `out`, `inOut`, `outBack`, `outElastic`, `outQuart` and
 `inOutSine`. `s.ease.out(p)`, `s.lerp(a, b, p)` and `s.clamp(v, lo, hi)` are
@@ -138,6 +147,7 @@ s.box('Resolver', { id: 'res', x: 960, y: 540, icon: 'server', color: 'blue', at
 s.circle({ id: 'you', x: 400, y: 540, r: 90, label: 'You', at: 0.5 });
 s.arrow('you', 'res', { label: 'asks', at: 'asks' });
 s.arrow([300, 900], [1600, 900], { bend: 0.3, dashed: true, at: 5 });
+s.arrow([960, 260], [960, 820], { label: 'answers', labelSide: 'right', at: 'answers' });
 s.line([[200, 800], [900, 700]], { color: 'accent', at: 2 });
 s.path('M0 0 C 200 -150 400 150 600 0', { x: 660, y: 540, at: 3 });
 ```
@@ -158,8 +168,16 @@ s.path('M0 0 C 200 -150 400 150 600 0', { x: 660, y: 540, at: 3 });
 stops at the edge of that element. Options: `bend` (about -1 to 1), `head`
 (`end`, `start`, `both`, `none`), `label`, `labelSize`, `labelColor`,
 `labelFont` (the handwritten font by default; `'body'` suits `clean`),
-`labelOffset`, `gap`, `dashed`, `width`, `headSize`. `s.connect` does the
-same.
+`labelOffset`, `labelSide`, `gap`, `dashed`, `width`, `headSize`.
+`s.connect` does the same.
+
+A label sits above a straight arrow, left of a vertical one and on the outer
+side of a curve, `labelOffset` (34) away from the arrow's middle.
+`labelSide: 'left'`, `'right'`, `'above'` or `'below'` puts it on that side
+instead. The third arrow above is vertical, and its label goes to the right,
+for example because the left side is near the edge or full. `check` treats
+the label as text. So it finds a label that overlaps other text or runs off
+the frame, the same way it does for any text.
 
 ## Icons, images and video clips
 

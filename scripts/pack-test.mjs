@@ -273,6 +273,15 @@ const steps = [
     },
   },
   {
+    // A sheet of chosen moments, in the order given, in a file of its own.
+    args: ['sheet', 'video', '--times', 'steps@1,2,hook', '--json'],
+    check: (r, { temp }) => {
+      expect(r.file.startsWith(temp) && r.file.endsWith(path.join('out', 'sheet-times.jpg')) && fs.statSync(r.file).size > 0, `the sheet went to ${r.file}`);
+      expect(r.times.map((x) => x.label).join() === 'steps@1,t2.00,hook@end', `the sheet shows ${JSON.stringify(r.times)}`);
+      return `${r.frames} chosen moments`;
+    },
+  },
+  {
     args: ['history', 'video', '--json'],
     check: (r) => {
       expect(r.versions.length === 1 && r.versions[0].full && !r.versions[0].draft && r.versions[0].identity, 'history does not show the render');

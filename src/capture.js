@@ -15,6 +15,34 @@ export function validateUrl(value) {
   return url;
 }
 
+// A name for one page of a site, the folder it goes in next to the capture
+// without a name. That capture keeps its fonts in fonts/, so no page can have
+// that name.
+export function isCaptureName(name) {
+  return typeof name === 'string' && /^[a-z0-9][a-z0-9-]*$/i.test(name) && name.toLowerCase() !== 'fonts';
+}
+
+export function checkCaptureName(name) {
+  if (name === undefined || isCaptureName(name)) return name;
+  if (typeof name === 'string' && name.toLowerCase() === 'fonts') throw new ProjectError('--name can\'t be "fonts", because a capture without a name keeps its fonts there. Pick another name, like "fonts-page".');
+  throw new ProjectError(`--name "${name}" can't be a capture name. A name uses letters, digits and hyphens and starts with a letter or a digit, like "pricing".`);
+}
+
+// Puts a finished capture in place of the one before. A capture without a name
+// replaces the files of the last one without a name, and the named pages in
+// its folder stay.
+function swapIn(temp, dest, keepNamed) {
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  const named = keepNamed && fs.existsSync(dest) ? fs.readdirSync(dest, { withFileTypes: true }).filter((e) => e.isDirectory() && isCaptureName(e.name)).map((e) => e.name) : [];
+  if (!named.length) {
+    fs.rmSync(dest, { recursive: true, force: true });
+    fs.renameSync(temp, dest);
+    return;
+  }
+  for (const entry of fs.readdirSync(dest)) if (!named.includes(entry)) fs.rmSync(path.join(dest, entry), { recursive: true, force: true });
+  for (const entry of fs.readdirSync(temp)) fs.renameSync(path.join(temp, entry), path.join(dest, entry));
+}
+
 export function isGoogleFont(value, hostCheck = (host) => host === 'fonts.gstatic.com') {
   try {
     const url = new URL(value);
@@ -215,13 +243,17 @@ async function download(context, url) {
   return response.body();
 }
 
-export async function capture(project, value, { mobile = false, googleHostCheck } = {}) {
+// A capture with a name goes in a folder of its own inside the site's folder,
+// so several pages of one site stay side by side.
+export async function capture(project, value, { mobile = false, name: pageName, googleHostCheck } = {}) {
   const url = validateUrl(value);
+  checkCaptureName(pageName);
   const projectDir = findProjectDir(typeof project === 'string' ? project : project?.dir);
   const host = url.hostname.replace(/[:[\]]/g, '_');
-  const relative = `assets/capture/${host}`;
+  const site = `assets/capture/${host}`;
+  const relative = pageName ? `${site}/${pageName}` : site;
   const dest = path.join(projectDir, relative);
-  for (const folder of ['assets', 'assets/capture', relative]) {
+  for (const folder of ['assets', 'assets/capture', site, ...(pageName ? [relative] : [])]) {
     const file = path.join(projectDir, folder);
     const stat = fs.lstatSync(file, { throwIfNoEntry: false });
     if (stat && !stat.isDirectory()) throw new ProjectError(`${folder} must be a folder, not a link or file. Move it and try capture again.`);
@@ -250,8 +282,8 @@ export async function capture(project, value, { mobile = false, googleHostCheck 
       if (val) result.brand[key] = val;
     }
     result.notes = [];
-    fs.mkdirSync(path.dirname(dest), { recursive: true });
-    temp = fs.mkdtempSync(path.join(path.dirname(dest), `.${host}-`));
+    fs.mkdirSync(path.join(projectDir, 'assets/capture'), { recursive: true });
+    temp = fs.mkdtempSync(path.join(projectDir, 'assets/capture', `.${host}-`));
     await screenshots(page, temp);
     result.logo = { picked: null, candidates: [] };
     const logos = [];
@@ -305,8 +337,7 @@ export async function capture(project, value, { mobile = false, googleHostCheck 
     const files = fs.readdirSync(temp).filter((name) => name !== 'fonts').map((name) => `${relative}/${name}`);
     result.files = [...files, ...savedFonts.map((f) => f.src), `${relative}/capture.json`].sort();
     fs.writeFileSync(path.join(temp, 'capture.json'), JSON.stringify(result, null, 2) + '\n');
-    fs.rmSync(dest, { recursive: true, force: true });
-    fs.renameSync(temp, dest);
+    swapIn(temp, dest, !pageName);
     return result;
   } finally {
     await browser.close();

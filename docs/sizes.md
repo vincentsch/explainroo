@@ -29,9 +29,11 @@ margins, so use it only when the video is not meant for those apps.
 Vertical videos have little room. Stack things instead of putting them side
 by side, use fewer words on screen, and place everything from `s.safe`.
 `explainroo formats` prints the content area of each size in pixels, with the
-watermark and without it. On TikTok it is 745 x 746 with the watermark and
-745 x 810 without it, which is what a TikTok package uses. `check --size tiktok`
-measures the first, and `check --size tiktok --no-watermark` the second.
+watermark and without it, for normal captions. On TikTok it is 745 x 746 with
+the watermark and 745 x 810 without it, which is what a TikTok package uses.
+Bold captions need a shorter band, so with them it is 745 x 799 and 745 x 863.
+`check --size tiktok` measures the area with the watermark, and
+`check --size tiktok --no-watermark` the one without it.
 `explainroo docs short-video` has a kit for the parts these videos share, like a
 hook title on the first frame.
 
@@ -121,8 +123,9 @@ between sizes never makes narration again. A paid voice buys the narration at
 that pace once, and then uses it from `history/voice/`.
 `explainroo voice videos/<name> --size tiktok` makes or repairs the narration of
 that size. A command that continues a paid request at that pace has the
-`--size` in it. `verify` without a size reads the normal build, so for a video
-of such a size it listens to the whole file at once instead of scene by scene.
+`--size` in it. `verify` takes no `--size`, so check such a video with
+`verify --file out/video-tiktok.mp4`. It reads the scene times of the normal
+build, so it listens to the whole file at once instead of scene by scene.
 
 ## Pace
 

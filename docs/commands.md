@@ -10,7 +10,7 @@ take the project folder first, and every command accepts `--json`.
 | `voice [project]` | makes the narration and the word times, saved per scene so only changed scenes are made again (`--force` makes every scene again, `--new` buys again only paid sentences with no good answer, `--size` makes the narration of a size whose block in `"sizes"` sets its own pace, `--lang`) |
 | `preview [project]` | a live preview in the browser that reloads when you save (`--size`, `--no-watermark`) |
 | `still [project] [times]` | PNG pictures at `12.5`, `scene`, `scene@2.4` or `scene@end` (`--size`, `--no-watermark`, `--transparent` keeps alpha) |
-| `sheet [project]` | one image with many frames of the video or of one scene (`--scene`, `--every`, `--size`, `--no-watermark`) |
+| `sheet [project]` | one image with many frames of the video or of one scene (`--scene`, `--every`, `--size`, `--no-watermark`). `--times 3,12.5,intro@2` makes `out/sheet-times.jpg` of just those moments, in that order. It takes every time that `still` takes. With `--size tiktok` the file is `out/sheet-times-tiktok.jpg` |
 | `check [project]` | finds layout, timing and pronunciation problems (`--size`, `--no-watermark`) |
 | `render [project]` | the video plus subtitle files, chapters and a cover (`--format mp4`, `gif`, `webm` or `mov`, `--transparent`, `--size`, `--no-watermark`, `--draft`, `--quality final` or `fast`, `--from`, `--to`, `--workers`, `--out`) |
 | `verify [project]` | checks the finished MP4, WebM or MOV: loudness, true peak, black frames, silence, clear voice (`--file` picks another file) |
@@ -18,7 +18,7 @@ take the project folder first, and every command accepts `--json`.
 | `package [project]` | a folder to post on one platform (`--platform`, `--title`, `--description`, `--hashtags`, `--size` for x, `--workers`) |
 | `share [project]` | uploads a video to explainroo.com for a page link, once that service runs (`--platform`, `--file`, `--title`, `--new`) |
 | `publish [project]` | posts a package after a typed yes or `--yes` (`--via`, `--platform`, `--privacy`, `--media-url`, `--channel`, `--account`, `--dry-run`, `--new`) |
-| `capture [project] <url>` | saves screenshots, wording, colors, fonts and logos from a live site (`--mobile`, `--json`) |
+| `capture [project] <url>` | saves screenshots, wording, colors, fonts and logos from a live site (`--mobile`, `--json`). `--name pricing` saves to `assets/capture/<site>/pricing/`, so several pages of one site stay side by side |
 | `image [project] <name> "<prompt>"` | makes an illustration with OpenRouter (`--new` buys it again, `--resume <id>` runs a job from `history` again) |
 | `images [project]` | lists the images and what they cost |
 | `clip [project] "<prompt>"` | buys a short AI video clip with OpenRouter (`--seconds`, `--max-cost`, `--dry-run`, `--aspect`, `--model`, `--resolution`, `--audio`, `--name`, `--no-wait`, `--new`, `--resume <id>`). `--dry-run` shows the price, also without a project |
@@ -35,8 +35,8 @@ take the project folder first, and every command accepts `--json`.
 The extra files share the video's name, also with `--out`: `video.srt`,
 `video.vtt`, `video.cover.jpg` and `video.chapters.txt`. A GIF has no sound,
 runs at 15 frames per second and is at most 960 pixels on its long side.
-`render` prints the size of the file it writes. A draft is half the size, made
-even, so a 1080 x 1350 video gives a 540 x 676 draft.
+`render` prints the width and height of the file it writes. A draft is half
+the size, made even, so a 1080 x 1350 video gives a 540 x 676 draft.
 
 A final draws 6 samples per frame for motion blur, which makes it several times
 slower than a draft. `render` says so before the frames. `--quality fast` makes

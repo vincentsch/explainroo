@@ -1,7 +1,7 @@
 // Burned-in captions built from the narration's word timings. The current
 // phrase is shown; words light up as they are spoken.
 import { fontString, fontStack, LANGUAGE_FONTS } from './themes.js';
-import { clamp, ease } from './util.js';
+import { clamp, ease, contrast, opaque } from './util.js';
 import { BOLD_CAPTION_SIZE } from './layout.js';
 
 // Some words belong to the word before them, so a phrase or line should not
@@ -22,6 +22,19 @@ export function clingsToPrevious(language) {
   }
   if (language === 'zh') return (text, before = '') => /^[的了吗呢吧啊着过得地们][，。！？、]*$/.test(text) || counter(text, before);
   return () => false;
+}
+
+// The color of the spoken word in normal captions. brand.accent from video.json
+// takes the place of the look's highlight, unless a look file sets caption
+// colors or the accent is hard to read on the caption background. Then the
+// look's highlight stays, and `note` says why. Bold captions keep their palette.
+export function captionHighlight(config, theme) {
+  const accent = config.brand?.accent;
+  if (!accent || !config.captions || config.captions === 'bold') return {};
+  if (Object.keys(config.look?.caption ?? {}).length) return {};
+  const ratio = contrast(accent, opaque(theme.caption.bg, theme.bg));
+  if (ratio >= 3) return { color: accent };
+  return { note: `brand.accent ${accent} is hard to read on the caption background (${(Math.floor(ratio * 10) / 10).toFixed(1)}:1, below 3:1), so captions keep the look's highlight ${theme.caption.active}` };
 }
 
 export function buildPhrases(timeline, maxChars) {

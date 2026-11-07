@@ -375,3 +375,31 @@ test('the sizes, settings, short-video and publishing topics explain settings pe
   const help = oneLine(run('--help').stdout);
   for (const words of ['--size makes the narration of a size whose block in "sizes" sets its own pace', '--quality final|fast', '--quality fast makes a final without it', '"sizes" in video.json sets captions, cover, pace and watermark for one size', 'export [project] write a web player folder (--out dir, default: out/player/; --size, --no-watermark)', 'override video.json for preview, still, sheet, check, render and export']) assert.ok(help.includes(words), words);
 });
+
+test('the scene-api, troubleshooting, product-demos and commands topics and the help cover cues, arrow labels, captures, captions, lift and sheet --times', () => {
+  const api = oneLine(page('scene-api'));
+  for (const words of ['`\'fills#2\'` is the second time "fills" is spoken in the scene, the same as `s.cue(\'fills\', 2)`', 'Write `\'fills#1\'` when you mean the first time, and the hint goes away.', '`at`, `out`, `s.time`, `s.cue` and `s.cueEnd`', 'so `\'C#\'` stays a word and `\'#ask\'` stays a marker', 's.arrow([960, 260], [960, 820], { label: \'answers\', labelSide: \'right\', at: \'answers\' });', '`labelSide: \'left\'`, `\'right\'`, `\'above\'` or `\'below\'` puts it on that side', 'A label sits above a straight arrow, left of a vertical one and on the outer side of a curve, `labelOffset` (34) away', '`check` treats the label as text']) assert.ok(api.includes(words), words);
+  const trouble = oneLine(page('troubleshooting'));
+  for (const words of ['Write `\'writes#2\'` for the second time', 'Write `\'writes#1\'` when you mean the first time, and the hint goes away.', 'Move it with `labelSide: \'right\'`', 'Text with a background but no words', '`s.box({ w: 520, h: 72 })`', 'an arrow\'s label counts as text', 'a `lift` above 2 in `s.ui`', 'It does not see shapes, arrow lines and icons']) assert.ok(trouble.includes(words), words);
+  assert.doesNotMatch(trouble, /s\.cue\('writes', 2\)/);
+  const demos = oneLine(page('product-demos'));
+  for (const words of ['explainroo capture videos/<name> https://example.com/pricing --name pricing', '`assets/capture/example.com/pricing/`', 'Capturing again with the same name replaces only that folder.', 'A capture without a name replaces its own files and keeps the named folders.', 'It can\'t be `fonts`, because a capture without a name keeps its fonts there.', 'With captions on, `accent` also colors the word being spoken. A look file that sets `caption` colors decides instead.', 'a contrast below 3:1', 'Bold captions keep their own colors.', 'It is a multiplier from 0 to 2: 0 is no shadow, 1 the normal shadow and 2 twice the normal shadow.', 'like 1.4 for a dialog', '`check` warns about a `lift` above 2.']) assert.ok(demos.includes(words), words);
+  assert.doesNotMatch(demos, /Capturing the same site again replaces its folder\./);
+  assert.match(page('settings'), /^\| `brand` \| none \| .*its `accent` also colors the spoken word in captions/m);
+  const commands = page('commands');
+  assert.match(commands, /^\| `sheet \[project\]` \|.*`--times 3,12\.5,intro@2` makes `out\/sheet-times\.jpg` of just those moments, in that order\. It takes every time that `still` takes\. With `--size tiktok` the file is `out\/sheet-times-tiktok\.jpg`/m);
+  assert.match(commands, /^\| `capture \[project\] <url>` \|.*`--name pricing` saves to `assets\/capture\/<site>\/pricing\/`/m);
+  assert.ok(page('making-a-video').includes('explainroo sheet videos/<name> --times 3,intro@2.5,40'));
+  const help = oneLine(run('--help').stdout);
+  for (const words of ['--times 3,12.5,intro@2 makes out/sheet-times.jpg of just those moments, written like the times of still', '--name pricing saves to assets/capture/<site>/pricing/, so several pages of one site stay side by side']) assert.ok(help.includes(words), words);
+});
+
+test('the docs say that verify takes no --size, that German is a language, and that only Kokoro needs espeak-ng', () => {
+  assert.ok(oneLine(page('sizes')).includes('`verify` takes no `--size`, so check such a video with `verify --file out/video-tiktok.mp4`.'));
+  assert.ok(oneLine(page('sizes')).includes('Bold captions need a shorter band, so with them it is 745 x 799 and 745 x 863.'));
+  assert.match(page('settings'), /^\| `language` \| `en` \| .*and `de` with a paid voice or a recording/m);
+  assert.ok(oneLine(read('README.md')).includes('For narration with Kokoro, the free voice, in Spanish, French, Italian, Portuguese or Hindi, also install'));
+  assert.ok(oneLine(read('AGENTS.md')).includes('With `--fetch` it also downloads the English speech models'));
+  const formats = run('formats').stdout;
+  assert.match(formats, /--size on init, preview, still, sheet, check, render or export\./);
+});

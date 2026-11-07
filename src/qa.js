@@ -145,12 +145,19 @@ export async function stills(project, specs, { log = () => {}, scale = 1, transp
   return list.map((x) => ({ time: Math.round(x.T * 100) / 100, label: x.label, file: path.join(project.dir, x.path) }));
 }
 
-export async function sheet(project, { scene = null, every = null, cols = null, log = () => {} } = {}) {
+// `times` takes what still takes, like ["3", "intro@2"], and shows just those
+// moments, in that order, in a sheet of its own.
+export async function sheet(project, { scene = null, every = null, times: moments = null, cols = null, log = () => {} } = {}) {
+  if (moments && (scene || (every !== null && every !== undefined))) throw new ProjectError(`--times picks the moments itself, so it can't go with --${scene ? 'scene' : 'every'}. Leave out one of them.`);
   const { timeline } = await prepare(project, { log });
   let times = [];
   let labels = [];
-  const file = path.relative(project.dir, outputPath(project, scene ? `sheet-${scene}` : 'sheet', '.jpg')).split(path.sep).join('/');
-  if (scene) {
+  const file = path.relative(project.dir, outputPath(project, moments ? 'sheet-times' : scene ? `sheet-${scene}` : 'sheet', '.jpg')).split(path.sep).join('/');
+  if (moments) {
+    const list = resolveTimes(timeline, moments);
+    times = list.map((x) => x.T);
+    labels = list.map((x) => x.label);
+  } else if (scene) {
     const sc = timeline.scenes.find((s) => s.id === scene);
     if (!sc) throw new Error(`no scene "${scene}". Scenes: ${timeline.scenes.map((s) => s.id).join(', ')}`);
     const step = every ?? Math.max(0.25, Math.min(1, sc.dur / 16));
@@ -168,10 +175,10 @@ export async function sheet(project, { scene = null, every = null, cols = null, 
       labels.push(`${sc.id} ${(T - sc.start).toFixed(1)}s`);
     }
   }
-  const c = cols ?? (times.length > 20 ? 6 : times.length > 9 ? 5 : 4);
+  const c = cols ?? Math.min(times.length, times.length > 20 ? 6 : times.length > 9 ? 5 : 4);
   const thumb = timeline.width >= timeline.height ? 320 : 200;
   await withEngine(project, timeline, { scale: 0.5, log }, (page) => page.evaluate((o) => window.explainroo.sheet(o), { times, labels, cols: c, thumb, path: file }));
-  return { file: path.join(project.dir, file), frames: times.length };
+  return { file: path.join(project.dir, file), frames: times.length, ...(moments ? { times: times.map((T, i) => ({ time: Math.round(T * 100) / 100, label: labels[i] })) } : {}) };
 }
 
 // The report goes to `report`, and by default to out/report.json, also for a

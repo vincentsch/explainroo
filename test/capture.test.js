@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { capture, validateUrl, pickColors, rankLogos, isGoogleFont } from '../src/capture.js';
+import { capture, validateUrl, pickColors, rankLogos, isGoogleFont, isCaptureName } from '../src/capture.js';
 
 test('capture accepts only HTTP URLs without login credentials', () => {
   assert.equal(validateUrl('https://example.com/demo').hostname, 'example.com');
@@ -58,5 +58,30 @@ test('capture refuses to write through a linked assets folder', async () => {
     fs.symlinkSync(path.join(dir, 'outside'), path.join(dir, 'project', 'assets'), 'junction');
     await assert.rejects(capture(path.join(dir, 'project'), 'http://127.0.0.1'), /not a link or file/);
     assert.deepEqual(fs.readdirSync(path.join(dir, 'outside')), []);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('a capture name uses letters, digits and hyphens, and is never fonts', async () => {
+  for (const name of ['pricing', 'Pricing', 'page-2', '2024-plans', 'a']) assert.equal(isCaptureName(name), true, name);
+  for (const name of ['fonts', 'Fonts', '-pricing', 'pricing page', 'pricing.v2', '../pricing', 'pricing/', 'über', '', '.hidden', 42, null]) assert.equal(isCaptureName(name), false, String(name));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-capture-name-'));
+  try {
+    fs.writeFileSync(path.join(dir, 'video.json'), '{}');
+    // A bad name stops before a browser opens, and writes nothing.
+    await assert.rejects(capture(dir, 'http://127.0.0.1:9/', { name: 'fonts' }), /^Error: --name can't be "fonts", because a capture without a name keeps its fonts there\. Pick another name, like "fonts-page"\.$/);
+    await assert.rejects(capture(dir, 'http://127.0.0.1:9/', { name: 'FONTS' }), /--name can't be "fonts"/);
+    await assert.rejects(capture(dir, 'http://127.0.0.1:9/', { name: 'pricing page' }), /^Error: --name "pricing page" can't be a capture name\. A name uses letters, digits and hyphens and starts with a letter or a digit, like "pricing"\.$/);
+    await assert.rejects(capture(dir, 'http://127.0.0.1:9/', { name: '../outside' }), /can't be a capture name/);
+    assert.deepEqual(fs.readdirSync(dir), ['video.json']);
+    const bin = new URL('../bin/explainroo.js', import.meta.url).pathname;
+    const { spawnSync } = await import('node:child_process');
+    const run = (...args) => spawnSync(process.execPath, [bin, 'capture', dir, 'http://127.0.0.1:9/', ...args], { encoding: 'utf8' });
+    const bad = run('--name', '-x');
+    assert.equal(bad.status, 1);
+    assert.match(bad.stderr, /^error: --name "-x" can't be a capture name/);
+    const empty = run('--name');
+    assert.equal(empty.status, 1);
+    assert.match(empty.stderr, /^error: --name needs a value/);
+    assert.deepEqual(fs.readdirSync(dir), ['video.json']);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

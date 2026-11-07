@@ -45,7 +45,9 @@ Make a video
   preview [project]     live preview in your browser, reloads on save (--port, --size, --no-watermark)
   still [project] [t…]  PNG stills: "12.5", "scene", "scene@2.4" (default: end of every scene; --size,
                         --no-watermark, --transparent)
-  sheet [project]       contact sheet of the whole video (--scene id, --every s, --size, --no-watermark)
+  sheet [project]       contact sheet of the whole video (--scene id, --every s, --size, --no-watermark).
+                        --times 3,12.5,intro@2 makes out/sheet-times.jpg of just those moments, written
+                        like the times of still
   check [project]       find layout, timing and pronunciation problems (--view-width pixels, --size, --no-watermark)
   render [project]      write the video with subtitles, chapters and a cover (--format mp4|gif|webm|mov,
                         --transparent, --size, --no-watermark, --draft, --quality final|fast, --from s, --to s,
@@ -67,7 +69,9 @@ Post a video
                         run needs a typed yes, or --yes when there is no terminal. --new posts again
 
 Product demos
-  capture [project] <url>  save screenshots, wording, colors, fonts and logo of a live site (--mobile)
+  capture [project] <url>  save screenshots, wording, colors, fonts and logo of a live site (--mobile).
+                        --name pricing saves to assets/capture/<site>/pricing/, so several pages of one site
+                        stay side by side
 
 Images (optional, costs money, needs an OpenRouter key from "explainroo connect openrouter")
   image [project] <name> "<what to draw>"   save an illustration as assets/<name>.png
@@ -97,8 +101,8 @@ Reference
                         voices your key may use)
   say "text"            hear a Kokoro voice (--voice am_michael, --speed 1, --out sample.wav)
   themes                list looks
-  formats               list sizes for YouTube, Shorts, TikTok, Reels, Instagram, LinkedIn, and the content
-                        area of each, with the watermark and without it
+  formats               list sizes for YouTube, Shorts, TikTok, Reels, Instagram and LinkedIn. For each it
+                        shows the content area with the watermark and without it
   icons <word…>         search the 1,800+ built-in icons
   doctor [project]      check ffmpeg, Chrome, espeak-ng, misaki and models: each is ready, not needed or missing.
                         With a project, for its languages and voices (--fetch downloads the English models)
@@ -167,8 +171,8 @@ export async function main(argv) {
     switch (cmd) {
       case 'init': return init(pos[0], flags, print);
       case 'capture': {
-        if (pos.length < 1 || pos.length > 2) throw new ProjectError('usage: explainroo capture [project] <url> [--mobile] [--json]');
-        const r = await capture(pos.length === 2 ? pos[0] : undefined, pos.at(-1), { mobile: !!flags.mobile });
+        if (pos.length < 1 || pos.length > 2) throw new ProjectError('usage: explainroo capture [project] <url> [--name <name>] [--mobile] [--json]');
+        const r = await capture(pos.length === 2 ? pos[0] : undefined, pos.at(-1), { mobile: !!flags.mobile, name: textFlag(flags, 'name') });
         const families = r.fonts.families.map((f) => f.family).join(', ') || 'none found';
         print(`saved:\n${r.files.map((f) => '  ' + f).join('\n')}\naccent: ${r.colors.accent || 'none found'}\nfonts: ${families}\nlogo: ${r.logo.picked || 'none found'}\n${r.notes.join('\n')}\nPaste into video.json:\n${JSON.stringify(r.suggestion, null, 2)}\nOpen the screenshots and check them before you use them.`, r);
         return 0;
@@ -207,7 +211,7 @@ export async function main(argv) {
       }
       case 'sheet': {
         const project = loadProject(pos[0], runOverrides(flags));
-        const r = await sheet(project, { scene: flags.scene, every: num(flags.every, 'every'), cols: num(flags.cols, 'cols'), log });
+        const r = await sheet(project, { scene: flags.scene, every: num(flags.every, 'every'), times: timesFlag(flags), cols: num(flags.cols, 'cols'), log });
         print(`${r.file} (${r.frames} frames)`, r);
         return 0;
       }
@@ -360,7 +364,7 @@ export async function main(argv) {
         const area = (a) => `${a.w}x${a.h} at ${a.x},${a.y}`;
         const areas = (r) => (area(r.content) === area(r.content_without_watermark) ? `${area(r.content)} with or without the watermark` : `${area(r.content)} with the watermark, ${area(r.content_without_watermark)} without it`);
         const rows = info.map((r) => `${r.name.padEnd(10)} ${`${r.width}x${r.height}`.padEnd(10)} ${r.use}\n${''.padEnd(22)}content area ${areas(r)}${r.captions ? ', captions below it' : ''}`);
-        print(rows.join('\n') + '\n\nAlso: 16:9, 9:16, 1:1, 4:5 or WIDTHxHEIGHT. Set it with "size" in video.json or --size on init, preview, still, sheet, check or render. "check --size <name>" uses the area with the watermark, and "check --size <name> --no-watermark" the one without it.', { formats: info });
+        print(rows.join('\n') + '\n\nAlso: 16:9, 9:16, 1:1, 4:5 or WIDTHxHEIGHT. Set it with "size" in video.json or --size on init, preview, still, sheet, check, render or export. "check --size <name>" uses the area with the watermark, and "check --size <name> --no-watermark" the one without it.', { formats: info });
         return 0;
       }
       case 'icons': return icons(pos, print);
@@ -460,6 +464,15 @@ function runOverrides(flags) {
 
 function langOverride(flags) {
   return { lang: textFlag(flags, 'lang') };
+}
+
+// --times 3,12.5,intro@2: the times that still takes, separated by commas.
+function timesFlag(flags) {
+  const value = textFlag(flags, 'times');
+  if (value === undefined) return undefined;
+  const times = String(value).split(',').map((x) => x.trim()).filter(Boolean);
+  if (!times.length) throw new ProjectError('--times needs at least one time, like --times 3,12.5,intro@2');
+  return times;
 }
 
 // --quality fast makes a final without motion blur. That is the same video as one
