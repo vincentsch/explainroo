@@ -558,11 +558,12 @@ test('a Buffer refresh saves the new refresh token before anything uses it, keep
   const sent = new URLSearchParams(s.fake.requests('buffer-auth', 'POST /token')[0].raw.toString());
   assert.equal(sent.get('grant_type'), 'refresh_token');
   assert.equal(sent.get('refresh_token'), old);
+  assert.equal(sent.get('client_id'), BUFFER_CLIENT, 'the built-in client renews the login');
   const renewed = readEnvFile(s.envFile, 'BUFFER_REFRESH_TOKEN');
   assert.notEqual(renewed, old);
   assert.ok(Date.parse(readEnvFile(s.envFile, 'BUFFER_TOKEN_EXPIRES')) > Date.now());
   assert.equal(readEnvFile(s.envFile, 'SOMETHING_ELSE'), 'stays');
-  assert.equal(readEnvFile(s.envFile, 'BUFFER_CLIENT_ID'), BUFFER_CLIENT);
+  assert.equal(readEnvFile(s.envFile, 'BUFFER_CLIENT_ID'), null);
   assert.equal(fs.statSync(s.envFile).mode & 0o777, 0o600);
   for (const r of runs) assert.ok(!r.text.includes(renewed) && !r.text.includes(old));
   const posted = await s.json('--via', 'buffer', ...media, '--yes');

@@ -316,7 +316,6 @@
         "url": "https://buffer.com",
         "steps": [
           "Make an account at buffer.com and connect the channels you want to post to.",
-          "Until explainroo has a Buffer client of its own, you make one in Buffer's settings and put its id in BUFFER_CLIENT_ID. \"explainroo connect buffer\" shows how.",
           "Run \"explainroo connect buffer\", open the link it prints and approve.",
           "Give the address the browser lands on to \"explainroo connect buffer --callback-url\"."
         ],

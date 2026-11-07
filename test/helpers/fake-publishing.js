@@ -6,7 +6,11 @@
 import crypto from 'node:crypto';
 
 export const GOOGLE_CLIENT = { id: 'fake-client.apps.googleusercontent.com', secret: 'fake-google-secret' };
-export const BUFFER_CLIENT = 'fake-buffer-client';
+// Buffer knows explainroo's public client, which is built in, and one that a user
+// made of their own and put in BUFFER_CLIENT_ID.
+export const BUFFER_CLIENT = 'bV6YR9jmW9kqN6sXNGwfza2QAwLF5NeRH-YzvfuHyTo';
+export const OWN_BUFFER_CLIENT = 'fake-own-buffer-client';
+const BUFFER_CLIENTS = [BUFFER_CLIENT, OWN_BUFFER_CLIENT];
 // Some Blotato keys end in "=", and this one does too.
 export const BLOTATO_KEY = 'fake-blotato-key==';
 export const YOUTUBE_REDIRECT = 'http://127.0.0.1:8976/callback';
@@ -75,7 +79,7 @@ export function approveLink(state, link, { deny = false, scope } = {}) {
   }
   if (p.get('response_type') !== 'code' || p.get('code_challenge_method') !== 'S256') throw new Error('the sign-in link does not ask for a code with S256');
   const redirect = new URL(p.get('redirect_uri'));
-  if (service === 'buffer' && (p.get('redirect_uri') !== BUFFER_REDIRECT || p.get('client_id') !== BUFFER_CLIENT)) throw new Error('Buffer only knows the registered client and redirect address');
+  if (service === 'buffer' && (p.get('redirect_uri') !== BUFFER_REDIRECT || !BUFFER_CLIENTS.includes(p.get('client_id')))) throw new Error('Buffer only knows the registered clients and redirect address');
   if (service === 'youtube' && (p.get('redirect_uri') !== YOUTUBE_REDIRECT || p.get('access_type') !== 'offline')) throw new Error('the Google link has another redirect address or no offline access');
   if (deny) {
     redirect.searchParams.set('error', 'access_denied');
@@ -115,14 +119,15 @@ export function grantOf(state, header, service) {
 }
 
 // A login made without the browser steps, as the lines connect saves, for tests
-// that are about something else.
+// that are about something else. A Buffer login uses the built-in client, so it
+// has no BUFFER_CLIENT_ID line.
 export function loginLines(state, service) {
   const grantId = next(state, 'grant-');
   const scope = service === 'youtube' ? `${UPLOAD_SCOPE} ${READ_SCOPE}` : 'account:read posts:read posts:write offline_access';
   state.grants.set(grantId, { service, scope, revoked: false, refresh: null, client_id: service === 'youtube' ? GOOGLE_CLIENT.id : BUFFER_CLIENT });
   const tokens = issue(state, grantId, { refresh: true });
   if (service === 'youtube') return { YOUTUBE_CLIENT_ID: GOOGLE_CLIENT.id, YOUTUBE_CLIENT_SECRET: GOOGLE_CLIENT.secret, YOUTUBE_REFRESH_TOKEN: tokens.refresh_token };
-  return { BUFFER_ACCESS_TOKEN: tokens.access_token, BUFFER_REFRESH_TOKEN: tokens.refresh_token, BUFFER_TOKEN_EXPIRES: new Date(Date.now() + 3600 * 1000).toISOString(), BUFFER_CLIENT_ID: BUFFER_CLIENT };
+  return { BUFFER_ACCESS_TOKEN: tokens.access_token, BUFFER_REFRESH_TOKEN: tokens.refresh_token, BUFFER_TOKEN_EXPIRES: new Date(Date.now() + 3600 * 1000).toISOString() };
 }
 
 // Makes the access tokens of a service run out, as an hour would.
@@ -140,7 +145,7 @@ function tokenRoute(service) {
     const bad = (error, description, status = 400) => sendJson(res, status, { error, error_description: description });
     if (service === 'youtube' && (form.get('client_id') !== GOOGLE_CLIENT.id || form.get('client_secret') !== GOOGLE_CLIENT.secret)) return bad('invalid_client', 'Unauthorized', 401);
     // A public client has no secret to send.
-    if (service === 'buffer' && (form.get('client_id') !== BUFFER_CLIENT || form.has('client_secret'))) return bad('invalid_client', 'Unknown public client', 401);
+    if (service === 'buffer' && (!BUFFER_CLIENTS.includes(form.get('client_id')) || form.has('client_secret'))) return bad('invalid_client', 'Unknown public client', 401);
     if (form.get('grant_type') === 'authorization_code') {
       const code = p.codes.get(form.get('code'));
       if (!code || code.service !== service || code.used) return bad('invalid_grant', 'Malformed auth code.');
@@ -156,6 +161,8 @@ function tokenRoute(service) {
       const entry = p.tokens.get(form.get('refresh_token'));
       const grant = entry?.type === 'refresh' ? p.grants.get(entry.grant) : null;
       if (!grant || grant.service !== service || grant.revoked) return bad('invalid_grant', 'Token has been expired or revoked.');
+      // Only the client that made a login can renew it.
+      if (form.get('client_id') !== grant.client_id) return bad('invalid_grant', 'The refresh token belongs to another client.');
       if (service === 'buffer') {
         // A refresh token works once. One that comes back ends the whole login.
         if (grant.refresh !== form.get('refresh_token')) {

@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
-import { BLOTATO_KEY, BUFFER_CLIENT, BUFFER_REDIRECT, GOOGLE_CLIENT, YOUTUBE_REDIRECT } from './helpers/fake-publishing.js';
+import { BLOTATO_KEY, BUFFER_CLIENT, BUFFER_REDIRECT, GOOGLE_CLIENT, OWN_BUFFER_CLIENT, YOUTUBE_REDIRECT } from './helpers/fake-publishing.js';
 import { bin, setup } from './helpers/publishing.js';
 import { readEnvFile } from '../src/env.js';
 
@@ -105,29 +105,32 @@ test('a sign-in refuses an address from another sign-in, a refusal in the browse
   assert.ok(!swapped.text.includes(GOOGLE_CLIENT.secret));
 });
 
-test('connect buffer without a client explains how to make one, with the exact redirect address', async (t) => {
-  const { cli, fake, envFile } = await setup(t);
+test('connect buffer prints the sign-in link at once, with the built-in client and the exact redirect address, and sends nothing', async (t) => {
+  const { cli, fake, envFile, settings } = await setup(t);
   const r = await cli(['connect', 'buffer']);
   assert.equal(r.code, 0, r.text);
-  assert.match(r.stdout, /explainroo has none built in yet/);
-  assert.ok(r.stdout.includes(`Add the redirect address ${BUFFER_REDIRECT}, exactly as written.`));
-  assert.match(r.stdout, /public client, so it has no secret/);
-  assert.match(r.stdout, /BUFFER_CLIENT_ID=<the client id>/);
+  for (const words of ['Cost: Free on Buffer', 'Data that leaves this computer: The title, the text and a link to the video go to Buffer']) assert.ok(r.stdout.includes(words), words);
+  assert.match(r.stdout, /^Open this link in a browser, sign in to Buffer and approve:$/m);
+  assert.equal(new URL(link(r.stdout)).searchParams.get('client_id'), BUFFER_CLIENT);
+  assert.match(r.stdout, /goes to https:\/\/localhost:8976\/callback and shows an error page, because nothing runs there\. That is expected\./);
+  assert.match(r.stdout, /connect buffer --callback-url '<the address>'/);
+  assert.doesNotMatch(r.stdout, /BUFFER_CLIENT_ID|App Clients|own client/);
   const json = JSON.parse((await cli(['connect', 'buffer', '--json'])).stdout);
-  assert.equal(json.needs_client, true);
+  assert.equal(json.client, 'built in');
   assert.equal(json.redirect_uri, BUFFER_REDIRECT);
-  assert.equal(fs.existsSync(envFile), false);
+  assert.match(json.cost, /^Free on Buffer's free plan/);
+  assert.equal(new URL(json.link).searchParams.get('client_id'), BUFFER_CLIENT);
+  assert.equal(fs.existsSync(envFile), false, 'nothing is saved before the second step');
+  assert.deepEqual(fs.readdirSync(settings), ['sign-in-buffer.json']);
   assert.equal(fake.total(), 0);
 });
 
-test('the Buffer sign-in: a public client with PKCE and no secret, and the tokens saved next to the other lines', async (t) => {
+test('the Buffer sign-in: the built-in public client with PKCE and no secret, and the tokens saved next to the other lines', async (t) => {
   const { cli, fake, envFile } = await setup(t);
   fs.writeFileSync(envFile, 'OTHER_LINE=keep me\n', { mode: 0o600 });
-  const human = await cli(['connect', 'buffer'], { extra: { BUFFER_CLIENT_ID: BUFFER_CLIENT } });
-  assert.match(human.stdout, /goes to https:\/\/localhost:8976\/callback and shows an error page, because nothing runs there\. That is expected\./);
-  assert.match(human.stdout, /connect buffer --callback-url '<the address>'/);
+  await cli(['connect', 'buffer']);
   // A second start replaces the first, so the newest link is the one to approve.
-  const first = await cli(['connect', 'buffer', '--json'], { extra: { BUFFER_CLIENT_ID: BUFFER_CLIENT } });
+  const first = await cli(['connect', 'buffer', '--json']);
   assert.equal(first.code, 0, first.text);
   const out = JSON.parse(first.stdout);
   const p = new URL(out.link).searchParams;
@@ -135,10 +138,12 @@ test('the Buffer sign-in: a public client with PKCE and no secret, and the token
   assert.equal(p.get('client_id'), BUFFER_CLIENT);
   assert.equal(p.get('redirect_uri'), BUFFER_REDIRECT);
   assert.equal(p.get('code_challenge_method'), 'S256');
+  assert.equal(p.get('prompt'), 'consent');
   assert.deepEqual(p.get('scope').split(' '), ['account:read', 'posts:read', 'posts:write', 'offline_access']);
-  const done = await cli(['connect', 'buffer', '--callback-url', fake.approve(out.link), '--json'], { extra: { BUFFER_CLIENT_ID: BUFFER_CLIENT } });
+  const done = await cli(['connect', 'buffer', '--callback-url', fake.approve(out.link), '--json']);
   assert.equal(done.code, 0, done.text);
   assert.equal(JSON.parse(done.stdout).account, 'Fake Org');
+  assert.equal(fake.count('buffer-auth', 'POST /token'), 1);
   const exchange = new URLSearchParams(fake.requests('buffer-auth', 'POST /token')[0].raw.toString());
   assert.equal(exchange.has('client_secret'), false, 'a public client sends no secret');
   assert.equal(exchange.get('client_id'), BUFFER_CLIENT);
@@ -147,9 +152,42 @@ test('the Buffer sign-in: a public client with PKCE and no secret, and the token
   assert.match(readEnvFile(envFile, 'BUFFER_ACCESS_TOKEN'), /^buffer-access-/);
   assert.match(readEnvFile(envFile, 'BUFFER_REFRESH_TOKEN'), /^buffer-refresh-/);
   assert.ok(Date.parse(readEnvFile(envFile, 'BUFFER_TOKEN_EXPIRES')) > Date.now() + 50 * 60 * 1000);
-  assert.equal(readEnvFile(envFile, 'BUFFER_CLIENT_ID'), BUFFER_CLIENT, 'only that client can renew the login');
+  assert.equal(readEnvFile(envFile, 'BUFFER_CLIENT_ID'), null, 'the built-in client needs no line');
   assert.equal(fs.statSync(envFile).mode & 0o777, 0o600);
   assert.ok(!done.text.includes(readEnvFile(envFile, 'BUFFER_REFRESH_TOKEN')));
+});
+
+test('BUFFER_CLIENT_ID in the environment signs in with a client of your own, and saves its id with the login', async (t) => {
+  const { cli, fake, envFile, dir } = await setup(t);
+  const own = { extra: { BUFFER_CLIENT_ID: OWN_BUFFER_CLIENT } };
+  const human = await cli(['connect', 'buffer'], own);
+  assert.equal(human.code, 0, human.text);
+  assert.match(human.stdout, /^It uses your own client from BUFFER_CLIENT_ID\. Open this link in a browser, sign in to Buffer and approve:$/m);
+  const first = await cli(['connect', 'buffer', '--json'], own);
+  const out = JSON.parse(first.stdout);
+  assert.equal(out.client, 'own');
+  assert.equal(new URL(out.link).searchParams.get('client_id'), OWN_BUFFER_CLIENT);
+  const done = await cli(['connect', 'buffer', '--callback-url', fake.approve(out.link)], own);
+  assert.equal(done.code, 0, done.text);
+  assert.equal(new URLSearchParams(fake.requests('buffer-auth', 'POST /token')[0].raw.toString()).get('client_id'), OWN_BUFFER_CLIENT);
+  assert.equal(readEnvFile(envFile, 'BUFFER_CLIENT_ID'), OWN_BUFFER_CLIENT, 'only that client can renew the login');
+  // Renewing the login later reads the saved id, also without the variable.
+  fake.expireAccess('buffer');
+  fs.writeFileSync(envFile, fs.readFileSync(envFile, 'utf8').replace(/^BUFFER_TOKEN_EXPIRES=.*$/m, 'BUFFER_TOKEN_EXPIRES=2020-01-01T00:00:00.000Z'));
+  const plan = await cli(['publish', dir, '--via', 'buffer', '--media-url', 'https://media.example/v.mp4', '--dry-run', '--json']);
+  assert.equal(plan.code, 0, plan.text);
+  const renew = new URLSearchParams(fake.requests('buffer-auth', 'POST /token')[1].raw.toString());
+  assert.equal(renew.get('grant_type'), 'refresh_token');
+  assert.equal(renew.get('client_id'), OWN_BUFFER_CLIENT);
+});
+
+test('a Buffer sign-in without offline_access says that no refresh token came, and saves nothing', async (t) => {
+  const { cli, fake, envFile } = await setup(t);
+  const out = JSON.parse((await cli(['connect', 'buffer', '--json'])).stdout);
+  const r = await cli(['connect', 'buffer', '--callback-url', fake.approve(out.link, { scope: 'account:read posts:read posts:write' })]);
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /Buffer gave no refresh token, so the login would end within the hour\./);
+  assert.equal(fs.existsSync(envFile), false);
 });
 
 test('connect blotato says before the key is made that it ends the trial, and keeps a key that ends in "="', async (t) => {

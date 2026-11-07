@@ -13,10 +13,13 @@ import { ProjectError, ServiceError, rememberSecret, thrownOutcome } from '../er
 import { expiresAt, rotatingAccessToken, tokenRequest } from '../oauth.js';
 import { serviceUrl } from '../services.js';
 
-// The public client that explainroo signs in with. None is registered yet, so it
-// is empty, and BUFFER_CLIENT_ID replaces it.
-export const BUFFER_CLIENT_ID = '';
+// The public client that explainroo signs in with. A public client has no secret,
+// so its id can be in the code. BUFFER_CLIENT_ID replaces it with a client of the
+// user's own.
+export const BUFFER_CLIENT_ID = 'bV6YR9jmW9kqN6sXNGwfza2QAwLF5NeRH-YzvfuHyTo';
 export const BUFFER_REDIRECT = 'https://localhost:8976/callback';
+// The client allows the first three. offline_access is not a permission of the
+// client. The sign-in asks for it, and only then does Buffer give a refresh token.
 export const BUFFER_SCOPES = ['account:read', 'posts:read', 'posts:write', 'offline_access'];
 
 // Values that Buffer's reference does not list. mode and schedulingType are known
@@ -47,18 +50,6 @@ function fail(message) {
 
 function clientId(dir) {
   return findEnv(ENV.client, dir) || BUFFER_CLIENT_ID;
-}
-
-// The steps from Buffer's docs for making a public client of your own. The free
-// plan allows one.
-function clientSteps() {
-  return [
-    'In Buffer, open Settings, then API, and pick the App Clients tab.',
-    'Click New Client, give it a name, and make it a public client, so it has no secret.',
-    `Add the redirect address ${BUFFER_REDIRECT}, exactly as written.`,
-    `Allow the permissions ${BUFFER_SCOPES.join(', ')}.`,
-    'Save it, and copy the client id.',
-  ];
 }
 
 function login(dir) {
@@ -226,7 +217,6 @@ const connector = {
     params: { prompt: 'consent' },
   },
   clientId,
-  clientSteps,
   login,
   loginLines,
   test,

@@ -11,6 +11,7 @@ import { ensureIgnored, selfCommand, shellWord } from './history.js';
 import { findProjectDir } from './project.js';
 import { SERVICES, findService, needsKey } from './services.js';
 import { findConnector } from './connectors/index.js';
+import { BUFFER_CLIENT_ID } from './connectors/buffer.js';
 
 const FLAGS = new Set(['key-stdin', 'project', 'json', 'quiet', 'callback-url']);
 
@@ -167,16 +168,11 @@ async function googleClient(service, connector, { flags, file, lookIn, project, 
   return { id, saved: true };
 }
 
-// Buffer's public client. Explainroo has no registered one yet, so it comes from
-// BUFFER_CLIENT_ID until it does.
-function bufferClient(service, connector, { lookIn, print }) {
+// Buffer signs in with the public client that comes with explainroo, or with a
+// client of the user's own from BUFFER_CLIENT_ID.
+function bufferClient(connector, lookIn) {
   const id = connector.clientId(lookIn);
-  if (id) return { id };
-  const steps = connector.clientSteps();
-  print(`${explain(service)}\n\nBuffer needs a public client to sign in with, and explainroo has none built in yet. You can make your own in your Buffer account:\n${steps.map((step, i) => `  ${i + 1}. ${step}`).join('\n')}\nThen put BUFFER_CLIENT_ID=<the client id> in ${keyFile({})}, or set it in the environment, and run this again.`, {
-    service: service.id, free: service.free, needs_key: true, connected: false, needs_client: true, about: service.about, cost: service.cost, data_leaves: service.data_leaves, url: service.setup.url, client_steps: steps, redirect_uri: connector.signIn.redirectUri, env: ['BUFFER_CLIENT_ID'],
-  });
-  return null;
+  return { id, own: id !== BUFFER_CLIENT_ID };
 }
 
 // Signing in through the browser, in two steps. See src/oauth.js.
@@ -190,13 +186,16 @@ async function signIn(service, connector, options) {
     if (flags['key-stdin']) throw new ProjectError('--callback-url and --key-stdin belong to different steps. Run them one at a time.');
     return finishSignIn(service, connector, { ...options, address, again });
   }
-  const client = service.id === 'youtube' ? await googleClient(service, connector, { ...options, again }) : bufferClient(service, connector, options);
+  const google = service.id === 'youtube';
+  const client = google ? await googleClient(service, connector, { ...options, again }) : bufferClient(connector, options.lookIn);
   if (!client) return 0;
   const { signIn: s } = connector;
   const { link } = startSignIn(service.id, { authorizeUrl: s.authorizeUrl, clientId: client.id, redirectUri: s.redirectUri, scopes: s.scopes, params: s.params, target: file });
   const finish = `${again} --callback-url '<the address>'`;
-  const kept = client.kept ? 'It uses the client that is already saved. ' : client.saved ? `The client is saved in ${file}. ` : '';
+  const kept = client.kept ? 'It uses the client that is already saved. ' : client.saved ? `The client is saved in ${file}. ` : client.own ? 'It uses your own client from BUFFER_CLIENT_ID. ' : '';
+  // YouTube explained the service when it asked for the client. Buffer asks nothing.
   const words = [
+    ...(google ? [] : [explain(service), '']),
     `${kept}Open this link in a browser, sign in to ${connector.name} and approve:`,
     link,
     `The browser then goes to ${s.redirectUri} and shows an error page, because nothing runs there. That is expected.`,
@@ -204,7 +203,10 @@ async function signIn(service, connector, options) {
     `  ${finish}`,
     `The link works for an hour. The login is saved only in that step.`,
   ].join('\n');
-  print(words, { service: service.id, link, redirect_uri: s.redirectUri, file, client: client.kept ? 'kept' : client.saved ? 'saved' : 'built in', finish });
+  print(words, {
+    service: service.id, free: service.free, about: service.about, cost: service.cost, data_leaves: service.data_leaves,
+    link, redirect_uri: s.redirectUri, file, client: client.kept ? 'kept' : client.saved ? 'saved' : client.own ? 'own' : 'built in', finish,
+  });
   return 0;
 }
 
@@ -225,7 +227,8 @@ async function finishSignIn(service, connector, { address, again, file, lookIn, 
   }
   const tokens = r.json;
   const granted = typeof tokens.scope === 'string' ? tokens.scope.split(/\s+/) : null;
-  const left = granted ? s.scopes.filter((scope) => !granted.includes(scope)) : [];
+  // offline_access only asks for the refresh token, and the next check looks for that.
+  const left = granted ? s.scopes.filter((scope) => scope !== 'offline_access' && !granted.includes(scope)) : [];
   if (left.length) throw new ProjectError(`the sign-in did not allow everything explainroo needs (${left.join(', ')} is missing). Run "${again}" again and allow all of it. Nothing was saved.`);
   if (!tokens.refresh_token) throw new ProjectError(`${connector.name} gave no refresh token, so the login would end within the hour. Run "${again}" again. Nothing was saved.`);
   let who;
