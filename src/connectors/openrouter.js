@@ -93,12 +93,17 @@ async function image(dir, { model, text, refs = [], aspect }, { log = () => {}, 
   };
 }
 
+// The address of the list of video models with their prices.
+function videoModelsUrl() {
+  return `${serviceUrl(connector)}/api/v1/videos/models`;
+}
+
 // The list of video models with their prices. It is public, so this sends no key.
 async function videoModels({ timeout = 30000 } = {}) {
   let res;
   let json = null;
   try {
-    res = await fetch(`${serviceUrl(connector)}/api/v1/videos/models`, { signal: AbortSignal.timeout(timeout) });
+    res = await fetch(videoModelsUrl(), { signal: AbortSignal.timeout(timeout) });
     if (res.ok) json = await res.json();
   } catch {
     throw new ProjectError('could not read the list of video models from OpenRouter. Check your connection and try again. Nothing was spent.');
@@ -194,6 +199,7 @@ const connector = {
   key: apiKey,
   test,
   image,
+  videoModelsUrl,
   videoModels,
   startVideo,
   videoStatus,

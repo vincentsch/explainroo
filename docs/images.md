@@ -5,7 +5,8 @@ This is optional. It costs money on the user's OpenRouter account, roughly 7
 to 13 cents per image at the time of writing.
 
 If the user wants images and there is no key, run
-`explainroo connect openrouter` and show the user what it prints.
+`explainroo connect openrouter` and show the user what it prints. The same key
+makes AI video clips, and `explainroo docs clips` says how.
 `explainroo docs settings` says where the key goes.
 
 ```bash

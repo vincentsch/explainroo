@@ -14,14 +14,15 @@ import { phonemize, generateSpeech } from './phonemes.js';
 import { writeWav } from './wav.js';
 import { doctor, formatDoctor } from './doctor.js';
 import { generateImage, jobRequest, imageLog, imageSpend, oldImageLog, IMAGE_MODELS } from './images.js';
-import { buyClip, clipJobRequest, clipRequest, formatClip } from './ai-clips.js';
+import { buyClip, clipJobRequest, clipRequest, formatClip, quoteClip } from './ai-clips.js';
 import { capture } from './capture.js';
 import { connect } from './connect.js';
 import { CONNECTORS } from './connectors/index.js';
 import { hideSecrets } from './errors.js';
 import { formatHistory, historyReport, selfCommand } from './history.js';
 import { boughtCharacters, speechConnector } from './paid-speech.js';
-import { formatServices, findService, needsKey, SERVICES, STEPS } from './services.js';
+import { formatServices, findService, needsKey, SERVICES, STEPS, stepServices } from './services.js';
+import { clipPricesToday, showsClipPrices } from './price-list.js';
 import { narrationTime, speechKeys } from './voice.js';
 import { findEnv } from './env.js';
 import { formatPackage, packageVideo } from './package.js';
@@ -65,21 +66,24 @@ Post a video
 Product demos
   capture [project] <url>  save screenshots, wording, colors, fonts and logo of a live site (--mobile)
 
-Images (optional, needs an OpenRouter API key)
+Images (optional, costs money, needs an OpenRouter key from "explainroo connect openrouter")
   image [project] <name> "<what to draw>"   save an illustration as assets/<name>.png
                         (--model best|cheap, --aspect 16:9, --ref assets/a.png,assets/b.png, --no-style)
                         The same request returns the file it already bought (--new buys it again,
                         --resume <id> runs a job from history again)
   images [project]      list generated images and what they cost
 
-AI video clips (optional, costs money, needs an OpenRouter API key)
+AI video clips (optional, costs money, uses the same OpenRouter key as images)
   clip [project] "<what it shows>" --seconds 6 --max-cost 2   buy a short clip as assets/clips/<name>.mp4
-                        (--dry-run shows the price and spends nothing, --aspect 16:9, --model cheap|quality,
-                        --resolution 720p, --audio, --name <name>, --no-wait returns right after the request)
+                        (--aspect 16:9, --model cheap|quality, --resolution 720p, --audio, --name <name>,
+                        --no-wait returns right after the request)
+                        --dry-run shows the price and spends nothing. It needs no key and no project, and
+                        without a project it prices 16:9 at 720p without sound unless the flags say otherwise
                         The same command never buys twice (--new buys it again, --resume <id> continues a job)
 
 Outside services (optional)
-  services [step]       list the choices for each step, free ones first (--project dir)
+  services [step]       list the choices for each step, free ones first (--project dir). For clips it
+                        shows today's prices from OpenRouter's public list, which it reads at most once a day
                         Steps: ${STEPS.map((s) => s.id).join(', ')}
   connect <service>     set a service up: test its key and save it (--key-stdin, --project dir), or sign in
                         through the browser and finish with --callback-url '<address>'
@@ -279,15 +283,20 @@ export async function main(argv) {
       }
       case 'clip': {
         const isProject = pos[0] && fs.existsSync(path.join(pos[0], 'video.json'));
-        const project = loadProject(isProject ? pos.shift() : undefined);
+        // Outside a project only a dry run works, because a clip is bought into a project.
+        const project = (isProject || fs.existsSync('video.json')) ? loadProject(isProject ? pos.shift() : undefined) : null;
         const resume = textFlag(flags, 'resume');
         const fromRequest = ['seconds', 'aspect', 'model', 'resolution', 'audio', 'name'].filter((flag) => flags[flag] !== undefined);
+        if (!project && resume !== undefined) throw new ProjectError('--resume continues a job from the record of a project, and there is no video.json here. Put the project folder first: explainroo clip videos/<name> --resume <id>');
         if (resume !== undefined && (pos.length || fromRequest.length)) throw new ProjectError(`--resume takes the whole request from the job, so leave out ${pos.length ? 'the prompt' : `--${fromRequest[0]}`}.`);
         if (resume === undefined && pos.length !== 1) throw new ProjectError('usage: explainroo clip [project] "<what the clip shows>" --seconds 6 --max-cost 2 [--dry-run] [--aspect 16:9] [--model cheap|quality] [--resolution 720p] [--audio] [--name <name>] [--no-wait] [--new] [--resume <id>]. Put the prompt in quotes, and check the project folder.');
+        if (!project && !flags['dry-run']) throw new ProjectError('there is no video.json here, and a clip is bought into a project. Without a project only --dry-run works, and it shows the price. Make a project with "explainroo init videos/<name>", then put its folder first: explainroo clip videos/<name> "<what it shows>" --seconds 6 --max-cost 2');
         const request = resume !== undefined ? clipJobRequest(project, resume) : clipRequest(project, { prompt: pos[0], seconds: num(flags.seconds, 'seconds'), aspect: textFlag(flags, 'aspect'), model: textFlag(flags, 'model'), resolution: textFlag(flags, 'resolution'), audio: !!flags.audio, name: textFlag(flags, 'name') });
         const maxCost = num(flags['max-cost'], 'max-cost');
         if (maxCost !== undefined && !(maxCost > 0)) throw new ProjectError('--max-cost must be an amount in US dollars above 0, like 2 or 0.50');
-        const r = await buyClip(project, request, { fresh: !!flags.new, maxCost, dryRun: !!flags['dry-run'], noWait: !!flags['no-wait'], log, notice });
+        const r = project
+          ? await buyClip(project, request, { fresh: !!flags.new, maxCost, dryRun: !!flags['dry-run'], noWait: !!flags['no-wait'], log, notice })
+          : await quoteClip(request, { maxCost });
         print(formatClip(r), r);
         return 0;
       }
@@ -347,7 +356,7 @@ export async function main(argv) {
         return r.ok ? 0 : 1;
       }
       case 'docs': return docs(pos[0], flags, print);
-      case 'services': return services(pos[0], flags, print);
+      case 'services': return await services(pos[0], flags, print);
       case 'connect': return await connect(pos, flags, { print, log, notice });
       case 'history': {
         const project = loadProject(pos[0]);
@@ -567,15 +576,19 @@ function docs(topic, flags, print) {
   return 0;
 }
 
-function services(step, flags, print) {
+// Each entry is listed under every step it serves, with that step's words. The
+// clips step also shows today's prices, which never make services fail.
+async function services(step, flags, print) {
   if (step !== undefined && !STEPS.some((s) => s.id === step)) throw new ProjectError(`there is no step "${step}". The steps are: ${STEPS.map((s) => s.id).join(', ')}.`);
   const steps = STEPS.filter((s) => step === undefined || s.id === step);
-  const list = SERVICES.filter((s) => steps.some((x) => x.id === s.step));
   const dir = path.resolve(textFlag(flags, 'project') ?? '.');
   const connected = (id) => {
     const service = findService(id);
     return needsKey(service) ? service.setup.env.every((name) => !!findEnv(name, dir)) : undefined;
   };
-  print(formatServices(steps, list, { connected, command: selfCommand() }), { steps, services: list.map((s) => (needsKey(s) ? { ...s, connected: connected(s.id) } : s)) });
+  const clipPrices = steps.some((s) => s.id === 'clips') ? await clipPricesToday() : null;
+  const prices = (service) => (clipPrices && showsClipPrices(service) ? clipPrices : undefined);
+  const list = steps.flatMap((s) => stepServices(s.id)).map((s) => ({ ...s, ...(needsKey(s) ? { connected: connected(s.id) } : {}), ...(prices(s) ? { prices: prices(s) } : {}) }));
+  print(formatServices(steps, SERVICES, { connected, command: selfCommand(), prices }), { steps, services: list });
   return 0;
 }

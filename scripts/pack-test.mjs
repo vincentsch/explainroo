@@ -24,6 +24,12 @@ const MIN_NARRATION_UNDERSTOOD = 0.85;
 const GERMAN = 'leap-years-de';
 const MIN_GERMAN_CONFIRMED = 0.9;
 const CLIP_PROMPT = 'A busy street at dusk in the rain';
+const PRICE_LIST = 'GET /api/v1/videos/models';
+// services keeps the price list it reads in the cache folder. These steps get one of
+// their own, so the fake's prices never land in ~/.cache/explainroo.
+const priceCache = ({ temp }) => ({ EXPLAINROO_CACHE: path.join(temp, 'cache') });
+// What a step saw before it ran, for the checks that compare.
+let before = {};
 
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
 const topics = fs.readdirSync(path.join(ROOT, 'docs')).filter((f) => f.endsWith('.md')).map((f) => f.slice(0, -3));
@@ -162,14 +168,46 @@ const steps = [
   },
   {
     args: ['services', '--json'],
-    check: (r) => {
+    env: priceCache,
+    setup: ({ fake }) => { before = { list: fake.count('openrouter', PRICE_LIST) }; },
+    check: (r, { fake }) => {
       expect(r.steps.length === 7 && r.services.length > 0, 'services lists no steps');
       for (const step of r.steps) {
         const first = r.services.find((s) => s.step === step.id);
         expect(first?.free, `the first entry of ${step.id} is not free`);
       }
       expect(r.services.every((s) => s.partner === false), 'a service says it is a paid partner');
-      expect(r.services.find((s) => s.id === 'openrouter').connected === false, 'openrouter says connected with no key');
+      const openrouter = r.services.filter((s) => s.id === 'openrouter');
+      expect(openrouter.map((s) => `${s.step} ${s.connected}`).join() === 'images false,clips false', `openrouter is listed as ${JSON.stringify(openrouter.map((s) => [s.step, s.connected]))}`);
+      expect(fake.count('openrouter', PRICE_LIST) === before.list + 1, 'services did not read the price list once');
+    },
+  },
+  {
+    // The answer from the step before is kept, so this asks for nothing.
+    args: ['services', 'clips', '--json'],
+    env: priceCache,
+    setup: ({ fake }) => { before = { list: fake.count('openrouter', PRICE_LIST) }; },
+    check: (r, { fake, temp }) => {
+      const { prices } = r.services.find((s) => s.id === 'openrouter');
+      expect(prices?.shown === 'prices' && prices.url === `${fake.env.EXPLAINROO_OPENROUTER_URL}/api/v1/videos/models` && Date.now() - Date.parse(prices.read) < 60 * 60 * 1000, `services clips shows ${JSON.stringify(prices)}`);
+      expect(prices.models.map((m) => `${m.id} ${m.usd_per_second}`).join() === 'google/veo-3.1-lite 0.03,google/veo-3.1 0.2', `services clips shows ${JSON.stringify(prices.models)}`);
+      expect(fake.count('openrouter', PRICE_LIST) === before.list, 'services read the price list again, although it kept an answer from today');
+      expect(fs.readdirSync(path.join(temp, 'cache', 'prices')).length === 1, 'services did not keep one answer in its cache folder');
+      expect(fake.requests('openrouter', PRICE_LIST).every((q) => q.headers.authorization === undefined), 'a request for the price list carried a key');
+      return `cheap $0.03 and quality $0.20 a second, read ${prices.read.slice(0, 10)}`;
+    },
+  },
+  {
+    // The temp folder has no video.json, so this is a dry run outside a project.
+    args: ['clip', CLIP_PROMPT, '--seconds', '6', '--dry-run', '--json'],
+    env: ({ temp }) => ({ EXPLAINROO_CACHE: path.join(temp, 'dry-run-cache') }),
+    setup: ({ temp }) => { before = { files: fs.readdirSync(temp).sort().join() }; },
+    check: (r, { temp, fake }) => {
+      expect(r.dry_run && r.project === null && r.model === 'google/veo-3.1-lite' && r.aspect === '16:9' && r.resolution === '720p' && r.audio === false && r.price_usd === 0.18, `the dry run outside a project says ${JSON.stringify(r)}`);
+      expect(!('file' in r) && !('would' in r), 'the dry run outside a project names a file or a record');
+      expect(fs.readdirSync(temp).sort().join() === before.files && !fs.existsSync(path.join(temp, 'dry-run-cache')), 'the dry run outside a project wrote something');
+      expect(fake.count('openrouter', 'POST /api/v1/videos') === 0, 'the dry run sent a paid request');
+      return `about $${r.price_usd} for 16:9 at 720p, with no project`;
     },
   },
   {

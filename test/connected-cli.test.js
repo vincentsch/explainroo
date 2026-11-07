@@ -39,8 +39,8 @@ async function setup(t) {
   t.after(fake.close);
   const dir = makeProject(t);
   const env = { ...process.env, ...fake.env, OPENROUTER_API_KEY: GOOD_KEY, EXPLAINROO_CLOUD_KEY: '', EXPLAINROO_CLIP_POLL_MS: '20' };
-  const start = (args, extra = {}) => {
-    const child = spawn(process.execPath, [bin, ...args], { env: { ...env, ...extra }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const start = (args, extra = {}, cwd = undefined) => {
+    const child = spawn(process.execPath, [bin, ...args], { cwd, env: { ...env, ...extra }, stdio: ['ignore', 'pipe', 'pipe'] });
     const result = new Promise((resolve) => {
       let stdout = '';
       let stderr = '';
@@ -50,7 +50,7 @@ async function setup(t) {
     });
     return { child, result };
   };
-  const cli = (args, extra) => start(args, extra).result;
+  const cli = (args, extra, cwd) => start(args, extra, cwd).result;
   const image = (name, prompt, ...flags) => ['image', dir, name, prompt, ...flags];
   return { fake, dir, env, start, cli, image, purchases: () => fake.count('openrouter', PAID) };
 }
@@ -624,6 +624,69 @@ test('a dry run shows the real model, length, size and price, with no key and no
   assert.equal(json.would, 'buy');
   assert.equal(json.within_cap, null);
   assert.equal(fake.count('openrouter', CLIP_POST), 0);
+});
+
+test('outside a project a dry run prices 16:9 at 720p without sound, with no key, and writes nothing', async (t) => {
+  const { dir, cli, fake } = await setup(t);
+  const empty = temp(t);
+  const outside = (...flags) => cli(['clip', STREET, '--seconds', '6', '--dry-run', ...flags], noKey(t), empty);
+  const r = await outside();
+  assert.equal(r.code, 0, r.text);
+  assert.match(r.stdout, /google\/veo-3\.1-lite/);
+  assert.match(r.stdout, /Size: {3}16:9, 720p/);
+  assert.match(r.stdout, /Sound: {2}off/);
+  assert.match(r.stdout, /about \$0\.18 \(\$0\.03 a second/);
+  assert.match(r.stdout, /No project was used, so the aspect is 16:9 unless --aspect says otherwise/);
+  assert.match(r.stdout, /Nothing was spent\. A clip is bought into a project\./);
+  assert.doesNotMatch(r.stdout, /assets\/clips|already bought|\(job /);
+
+  const json = JSON.parse((await outside('--json')).stdout);
+  assert.deepEqual(json, { dry_run: true, project: null, model: 'google/veo-3.1-lite', seconds: 6, aspect: '16:9', resolution: '720p', audio: false, billed_audio: false, price_usd: 0.18, usd_per_second: 0.03, rate_name: 'duration_seconds_without_audio_720p', minimum_usd: null, max_cost_usd: null, within_cap: null });
+  // A wide project gets the same number for the same settings.
+  const inside = JSON.parse((await cli([...clip(dir, STREET, '--dry-run'), '--json'], noKey(t))).stdout);
+  assert.deepEqual([inside.project, inside.aspect, inside.price_usd, inside.usd_per_second, inside.rate_name], [dir, '16:9', json.price_usd, json.usd_per_second, json.rate_name]);
+
+  // The flags change it as usual.
+  const tall = JSON.parse((await outside('--aspect', '9:16', '--json')).stdout);
+  assert.deepEqual([tall.aspect, tall.price_usd], ['9:16', 0.18]);
+  const quality = JSON.parse((await outside('--model', 'quality', '--json')).stdout);
+  assert.deepEqual([quality.model, quality.price_usd, quality.usd_per_second], ['google/veo-3.1', 1.2, 0.2]);
+  const sound = JSON.parse((await outside('--audio', '--resolution', '1080p', '--max-cost', '0.4', '--json')).stdout);
+  assert.deepEqual([sound.audio, sound.resolution, sound.price_usd, sound.max_cost_usd, sound.within_cap], [true, '1080p', 0.48, 0.4, false]);
+  assert.match((await outside('--max-cost', '0.10')).stdout, /about \$0\.18 .*\n(.*\n)*This is above the cap of \$0\.10, so the real run would refuse\./);
+
+  assert.deepEqual(fs.readdirSync(empty), []);
+  assert.equal(fake.count('openrouter', CLIP_POST), 0);
+  assert.ok(fake.requests('openrouter', CLIP_MODELS_LIST).every((q) => q.headers.authorization === undefined));
+});
+
+test('outside a project only the dry run works, and the message says how to make a project', async (t) => {
+  // The key is there, so the project is the only thing missing.
+  const { cli, fake } = await setup(t);
+  const empty = temp(t);
+  for (const flags of [['--max-cost', '2'], [], ['--new', '--max-cost', '2']]) {
+    const r = await cli(['clip', STREET, '--seconds', '6', ...flags], {}, empty);
+    assert.equal(r.code, 1, flags.join(' '));
+    assert.match(r.stderr, /there is no video\.json here, and a clip is bought into a project\. Without a project only --dry-run works/);
+    assert.match(r.stderr, /explainroo init videos\/<name>/);
+  }
+  for (const args of [['--resume', 'abcdef12'], ['--resume', 'abcdef12', '--dry-run'], ['videos/mistyped', '--resume', 'abcdef12']]) {
+    const resume = await cli(['clip', ...args], {}, empty);
+    assert.equal(resume.code, 1, args.join(' '));
+    assert.match(resume.stderr, /--resume continues a job from the record of a project, and there is no video\.json here/);
+  }
+  // A mistyped project folder before the prompt is never taken for a prompt.
+  const typo = await cli(['clip', 'videos/mistyped', STREET, '--seconds', '6', '--dry-run'], {}, empty);
+  assert.equal(typo.code, 1);
+  assert.match(typo.stderr, /usage: explainroo clip .*check the project folder/);
+  assert.equal(fake.total(), 0);
+  assert.deepEqual(fs.readdirSync(empty), []);
+});
+
+test('a dry run in the project folder itself works as it does with the folder first', async (t) => {
+  const { dir, cli } = await setup(t);
+  const r = JSON.parse((await cli(['clip', STREET, '--seconds', '6', '--dry-run', '--json'], noKey(t), dir)).stdout);
+  assert.deepEqual([r.project, r.file, r.would, r.price_usd], [dir, path.join(dir, `assets/clips/${r.name}.mp4`), 'buy', 0.18]);
 });
 
 test('a dry run says when the cap is too low, and when the real run would buy nothing', async (t) => {

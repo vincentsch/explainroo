@@ -106,7 +106,8 @@ agent run them:
 | `voice` with ElevenLabs or Cartesia | The narration text | That company |
 | `voices --provider elevenlabs` or `cartesia` | Your key, to list its voices | That company |
 | `image` or `clip` | The prompt and any reference images | OpenRouter and the model's provider |
-| `clip --dry-run` | A request for the list of video models and their prices, without your prompt | OpenRouter |
+| `clip --dry-run` | A request for the list of video models and their prices, without your prompt or a key | OpenRouter |
+| `services`, when it lists clips | The same request as `clip --dry-run`, at most once a day. It asks for the list of video models and their prices, without your prompt or a key | OpenRouter |
 | `share` | The video file and its title | explainroo.com, where the hosted service is coming |
 | `publish` | The video or a link to it, its title and its text | YouTube, Buffer or Blotato, and whatever they send it to |
 | `publish --dry-run` | Your login, to read your channels or accounts | YouTube, Buffer or Blotato |
@@ -214,9 +215,10 @@ money use your own account and key:
 | Posting | A package you upload yourself, YouTube, or Buffer on its free plan | Blotato |
 
 `explainroo services` lists every choice with what it costs and what data
-leaves your computer. `explainroo connect <service>` sets one up and tests your
-key or login. explainroo's instructions tell your agent to show you the
-options, free ones first, and to let you choose.
+leaves your computer. For clips it also shows today's price per second.
+`explainroo connect <service>` sets one up and tests your key or login. One
+OpenRouter key makes images and clips. explainroo's instructions tell your
+agent to show you the options, free ones first, and to let you choose.
 
 A project keeps a record of what was paid for in its `history/` folder. The
 same request again uses the file it already bought. After a crash, a clip that
@@ -229,9 +231,10 @@ is never sent again by itself. `explainroo history` shows the record, and
 `explainroo clip` buys a short video clip that an AI model makes from a text
 prompt. It goes through OpenRouter on your own key, and the clip plays in a
 scene like any other video file. `--dry-run` shows the price and spends
-nothing. A paid run needs `--max-cost`, and it refuses when the price is
-higher. Clips work for short shots of the real world, like a street or food.
-They get text and diagrams wrong, and a character looks different in each clip.
+nothing, also before you have a project. A paid run needs `--max-cost`, and it
+refuses when the price is higher. Clips work for short shots of the real world,
+like a street or food. They get text and diagrams wrong, and a character looks
+different in each clip.
 `explainroo docs clips` has the details.
 
 ## Music and sound files

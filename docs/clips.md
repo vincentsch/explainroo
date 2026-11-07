@@ -6,7 +6,12 @@ prompt. It goes through OpenRouter, on the same key as images. The clip lands in
 never buys twice, so it is safe after a crash or a timeout.
 
 Clips cost money, so the user decides. Run `explainroo services clips --json` and
-tell the user the options, free ones first. Their own footage is free.
+tell the user the options, free ones first. Their own footage is free. The list
+also shows today's price per second of the cheap and the quality model.
+
+If the user chose clips and has no key, run `explainroo connect openrouter` and
+show the user what it prints. One OpenRouter key makes images and clips, so a key
+that already makes images needs nothing more.
 
 ## What clips are good and bad at
 
@@ -37,6 +42,19 @@ explainroo clip videos/<name> "A busy street at dusk in the rain" --seconds 6 --
 
 This prints the model, the length, the size and the price, and spends nothing. It
 needs no key and no cap, because OpenRouter's list of models and prices is public.
+
+The dry run also works without a project. Run it without the project folder,
+somewhere that has no `video.json`:
+
+```bash
+explainroo clip "A busy street at dusk in the rain" --seconds 6 --dry-run
+```
+
+Without a project the price is for 16:9 at 720p without sound, unless the flags
+say otherwise. In a project the aspect follows the project's frame, and the dry
+run also says whether the record already has this clip. A dry run writes nothing, with or without a project. Buying needs a
+project, because the clip goes into its `assets/clips/` and its record.
+
 Show the price to the user and ask how much they want to spend. Then pass that
 amount in US dollars as the cap:
 
@@ -63,8 +81,8 @@ anything inside a clip.
 | --- | --- |
 | `--seconds` | The length, which the model must list. Required. |
 | `--max-cost` | The most it may cost, in US dollars. Required when it buys. |
-| `--dry-run` | Shows the price and spends nothing. |
-| `--aspect` | `16:9` by default for a wide project, and `9:16` for anything else. `fit: 'cover'` crops either one to a square or 4:5 frame. |
+| `--dry-run` | Shows the price and spends nothing. It works without a project too. |
+| `--aspect` | `16:9` by default for a wide project and without a project, and `9:16` for any other project. `fit: 'cover'` crops either one to a square or 4:5 frame. |
 | `--model` | `cheap` (the default) is `google/veo-3.1-lite`, and `quality` is `google/veo-3.1`. A full OpenRouter id works too. |
 | `--resolution` | `720p` by default. The model must list it. |
 | `--audio` | Asks for sound. Sound is off by default, because `s.clip` plays silent unless you set `volume`, and sound often costs more. |
@@ -79,9 +97,9 @@ per second can't be used, and the error suggests another one.
 
 ## How the price is worked out
 
-The tool reads OpenRouter's list each time, because a price saved in the npm
-package would get out of date. A model lists several rates, and four steps pick one. A later step never
-undoes an earlier one.
+`clip` reads OpenRouter's list each time, for a dry run and again right before it
+buys, because a price saved in the npm package would get out of date. A model lists
+several rates, and four steps pick one. A later step never undoes an earlier one.
 
 1. **What it makes.** Only rates for text to video count, and not the ones for images
    or video going in.
@@ -93,6 +111,18 @@ undoes an earlier one.
    size never applies.
 4. **Minimum.** The price is the rate times the seconds, or the model's minimum charge
    if that is larger.
+
+`services clips` works out the price per second of the cheap and the quality model
+from the same list in the same way, at 720p without sound. It keeps the list it read
+for a day in `~/.cache/explainroo/prices/`, or in `prices/` under `EXPLAINROO_CACHE`.
+So its prices can be a day old, and it shows the date it read them. It shows the
+range from 2026-11-07 instead in two cases, and it says which one:
+
+- `EXPLAINROO_OFFLINE=1` is set. Then it asks for nothing.
+- The list could not be read within a few seconds.
+
+A model the list has no price for gets the range too. A dry run always gives the
+quote for the exact clip.
 
 ## If something goes wrong
 
@@ -125,3 +155,7 @@ The prompt goes to OpenRouter and to the company that runs the model. Video jobs
 not covered by OpenRouter's zero data retention, because the provider has to keep the
 result for a short time so that you can fetch it. Your API key stays in your `.env`
 file and goes only to OpenRouter.
+
+A dry run and `services` only ask OpenRouter for its public list of video models
+and their prices. That request has no prompt and no key. `services` sends it at most
+once a day, and only when it lists clips.

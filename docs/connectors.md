@@ -34,13 +34,27 @@ Add an entry to `src/services.json`. The website can read the same file later.
 - `step` is `voice`, `timing`, `images`, `clips`, `music`, `sharing` or `posting`.
 - `free` means it costs no money at all to use. Within a step, free entries come
   first, and every step starts with a free entry.
+- One entry can serve several steps on the same key. Its `step` is then a list,
+  and its `per_step` object holds what differs per step, keyed by step: `cost`,
+  `data_leaves` and `use`. Everything else, like the name and the key, is
+  shared. `openrouter` makes images and clips this way:
+
+  ```json
+  "step": ["images", "clips"],
+  "per_step": {
+    "images": { "cost": "Paid per image ...", "data_leaves": "...", "use": "..." },
+    "clips": { "cost": "Paid per second ...", "price_range": "...", "data_leaves": "...", "use": "..." }
+  }
+  ```
+
+  `services` lists such an entry under each of its steps, with that step's words,
+  and `connect` sets it up once for all of them. `price_range` is the range that
+  `services clips` shows when it can't show today's prices.
 - `status` is `available`, or `coming` when the code works but the service does
   not run yet.
 - Write `about` for someone who has never heard of the company.
 - `voice` only appears on a voice provider. It lists the settings `video.json`
   may give, and `normalizeConfig` checks them.
-- `connector` is for a second entry that uses the same account and key as another
-  one. `openrouter-video` has `"connector": "openrouter"`, and needs no file of its own.
 - `setup.login` is `"oauth"` for a service that signs in through the browser
   instead of taking a key. `setup.env` then lists the lines a login saves.
 

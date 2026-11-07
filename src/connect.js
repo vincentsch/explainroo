@@ -9,7 +9,7 @@ import { findEnv, keyFile, saveKey, saveKeys } from './env.js';
 import { forgetSignIn, readCallback, startSignIn, tokenRequest } from './oauth.js';
 import { ensureIgnored, selfCommand, shellWord } from './history.js';
 import { findProjectDir } from './project.js';
-import { SERVICES, findService, needsKey } from './services.js';
+import { SERVICES, STEPS, findService, forStep, needsKey, serviceSteps } from './services.js';
 import { findConnector } from './connectors/index.js';
 import { BUFFER_CLIENT_ID } from './connectors/buffer.js';
 
@@ -55,12 +55,34 @@ async function readStdin() {
   return (await readStdinLines())[0] ?? '';
 }
 
+// An entry as it reads under each step it serves. Connecting it once sets it up
+// for all of them, like OpenRouter for images and clips.
+function stepViews(service) {
+  return serviceSteps(service).map((step) => forStep(service, step));
+}
+
+// The cost of a step, with the range of its prices when it has one.
+const costOf = (view) => [view.cost, view.price_range].filter(Boolean).join(' ');
+
+// The cost and the data of every step, for the JSON. Each step's words say what
+// they are about, like "Paid per image" and "Paid per second".
+function costAndData(service) {
+  const views = stepViews(service);
+  return { cost: views.map(costOf).join(' '), data_leaves: views.map((v) => v.data_leaves).join(' ') };
+}
+
+// How to use the entry once it is set up, for every step it serves.
+const useOf = (service) => stepViews(service).map((v) => v.setup.use).join(' ');
+
 function explain(service) {
+  const views = stepViews(service);
+  const lines = views.length === 1
+    ? [`Cost: ${costOf(views[0])}`, `Data that leaves this computer: ${views[0].data_leaves}`]
+    : views.flatMap((v) => [`${STEPS.find((s) => s.id === v.step).name}:`, `  Cost: ${costOf(v)}`, `  Data that leaves this computer: ${v.data_leaves}`]);
   return [
     service.name,
     service.about,
-    `Cost: ${service.cost}`,
-    `Data that leaves this computer: ${service.data_leaves}`,
+    ...lines,
     'Steps:',
     ...service.setup.steps.map((step, i) => `  ${i + 1}. ${step}`),
   ].join('\n');
@@ -78,13 +100,13 @@ export async function connect(args, flags, { print, log, notice }) {
     throw new ProjectError('connect only takes the service, --key-stdin, --callback-url and --project. A key never goes on the command line, because it would end up in shell history and logs.');
   }
   if (!needsKey(service)) {
-    const use = service.setup.use;
+    const use = useOf(service);
     const coming = service.status === 'coming' ? ' The service is coming, so it may not answer yet.' : '';
     print(`${service.name} ${service.free ? 'is free and ' : ''}needs no setting up.${coming}\n${service.setup.steps.join('\n')}\n${use}`, { service: service.id, free: service.free, needs_key: false, ...(coming ? { coming: true } : {}), steps: service.setup.steps, use });
     return 0;
   }
   if (service.status === 'coming') throw new ProjectError(`${service.name} is not available yet.`);
-  const connector = findConnector(service.connector ?? service.id);
+  const connector = findConnector(service.id);
   const env = service.setup.env[0];
   if (flags.project === true) throw new ProjectError('--project needs a value');
   const project = flags.project === undefined ? null : findProjectDir(flags.project);
@@ -112,7 +134,7 @@ export async function connect(args, flags, { print, log, notice }) {
     const terminal = `${self} connect ${service.id}${target}`;
     const stdin = `printf '%s\\n' "$${env}" | ${self} connect ${service.id}${target} --key-stdin`;
     print(`${explain(service)}\n\nThere is no terminal here to ask for the key, so nothing has changed. To finish, do one of these:\n  Run this in your own terminal, and paste the key when it asks: ${terminal}\n  Or send the key on stdin: ${stdin}\nA key never goes on the command line.`, {
-      service: service.id, free: service.free, needs_key: true, connected: !!findEnv(env, lookIn), about: service.about, cost: service.cost, data_leaves: service.data_leaves, url: service.setup.url, steps: service.setup.steps, env, finish: { terminal, stdin },
+      service: service.id, free: service.free, needs_key: true, connected: !!findEnv(env, lookIn), about: service.about, ...costAndData(service), url: service.setup.url, steps: service.setup.steps, env, finish: { terminal, stdin },
     });
     return 0;
   }
@@ -130,7 +152,8 @@ export async function connect(args, flags, { print, log, notice }) {
   // The lookup order can put another value first, and the user should know.
   const shadowed = findEnv(env, lookIn) !== key;
   const note = shadowed ? `\nA different ${env} is set in the environment or in a .env file that is read first, so that one is still used.` : '';
-  print(`The key works, and it is saved in ${file}.\n${connector.name} is connected. ${service.setup.use}${note}`, { service: service.id, connected: true, file, env, use: service.setup.use, ...(shadowed ? { shadowed: true } : {}) });
+  const use = useOf(service);
+  print(`The key works, and it is saved in ${file}.\n${connector.name} is connected. ${use}${note}`, { service: service.id, connected: true, file, env, use, ...(shadowed ? { shadowed: true } : {}) });
   return 0;
 }
 
@@ -155,7 +178,7 @@ async function googleClient(service, connector, { flags, file, lookIn, project, 
   } else {
     const stdin = `printf '%s\\n%s\\n' "$${env.id}" "$${env.secret}" | ${again} --key-stdin`;
     print(`${explain(service)}\n\nThere is no terminal here to ask for the client id and secret, so nothing has changed. To go on, do one of these:\n  Run this in your own terminal, and paste them when it asks: ${again}\n  Or send them on stdin as two lines, the id first: ${stdin}\nA secret never goes on the command line.`, {
-      service: service.id, free: service.free, needs_key: true, connected: false, about: service.about, cost: service.cost, data_leaves: service.data_leaves, url: service.setup.url, steps: service.setup.steps, env: [env.id, env.secret], finish: { terminal: again, stdin },
+      service: service.id, free: service.free, needs_key: true, connected: false, about: service.about, ...costAndData(service), url: service.setup.url, steps: service.setup.steps, env: [env.id, env.secret], finish: { terminal: again, stdin },
     });
     return null;
   }
@@ -204,7 +227,7 @@ async function signIn(service, connector, options) {
     `The link works for an hour. The login is saved only in that step.`,
   ].join('\n');
   print(words, {
-    service: service.id, free: service.free, about: service.about, cost: service.cost, data_leaves: service.data_leaves,
+    service: service.id, free: service.free, about: service.about, ...costAndData(service),
     link, redirect_uri: s.redirectUri, file, client: client.kept ? 'kept' : client.saved ? 'saved' : client.own ? 'own' : 'built in', finish,
   });
   return 0;
@@ -244,6 +267,6 @@ async function finishSignIn(service, connector, { address, again, file, lookIn, 
   const refreshName = Object.keys(values).find((name) => /REFRESH_TOKEN$/.test(name));
   const shadowed = findEnv(refreshName, lookIn) !== values[refreshName];
   const note = shadowed ? `\nA different ${refreshName} is set in the environment or in a .env file that is read first, so that one is still used.` : '';
-  print(`Signed in to ${connector.name}${who ? ` as ${who}` : ''}. The login is saved in ${file}.\n${service.setup.use}${note}`, { service: service.id, connected: true, file, account: who ?? null, ...(shadowed ? { shadowed: true } : {}) });
+  print(`Signed in to ${connector.name}${who ? ` as ${who}` : ''}. The login is saved in ${file}.\n${useOf(service)}${note}`, { service: service.id, connected: true, file, account: who ?? null, ...(shadowed ? { shadowed: true } : {}) });
   return 0;
 }

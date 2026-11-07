@@ -23,9 +23,11 @@ async function setup(t) {
   const fake = await startFakeServices();
   t.after(fake.close);
   const settings = temp(t);
+  // services keeps the price list it reads in the cache folder, so that is a temp folder too.
+  const cache = temp(t);
   const cli = (args, input) => new Promise((resolve) => {
     const child = spawn(process.execPath, [bin, ...args], {
-      env: { ...process.env, ...fake.env, EXPLAINROO_CONFIG: settings, ELEVENLABS_API_KEY: '', OPENROUTER_API_KEY: '' },
+      env: { ...process.env, ...fake.env, EXPLAINROO_CONFIG: settings, EXPLAINROO_CACHE: cache, ELEVENLABS_API_KEY: '', OPENROUTER_API_KEY: '' },
       stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
     });
     if (input !== undefined) child.stdin.end(input);
@@ -66,21 +68,34 @@ test('a free service that is coming says so', async (t) => {
   assert.equal(fake.total(), 0);
 });
 
-test('the entry for video clips uses the OpenRouter connector and the same key', async (t) => {
+test('one OpenRouter key is set up once for images and clips, and openrouter-video is no service', async (t) => {
   const { fake, cli, env } = await setup(t);
-  const steps = await cli(['connect', 'openrouter-video']);
+  const steps = await cli(['connect', 'openrouter']);
   assert.equal(steps.code, 0, steps.text);
-  assert.match(steps.stdout, /OpenRouter video/);
-  assert.match(steps.stdout, /Paid per second/);
-  assert.match(steps.stdout, /connect openrouter-video --key-stdin/);
-  const r = await cli(['connect', 'openrouter-video', '--key-stdin'], `${GOOD_KEY}\n`);
+  assert.match(steps.stdout, /^OpenRouter\n.*one OpenRouter key for illustrations and for short AI video clips\.\nImages:\n {2}Cost: Paid per image.*\n {2}Data that leaves this computer: The prompt and any reference images.*\nClips:\n {2}Cost: Paid per second.*On 2026-11-07 .*cents a second.*\n {2}Data that leaves this computer: The prompt goes to OpenRouter.*\nSteps:\n/);
+  assert.match(steps.stdout, /connect openrouter --key-stdin/);
+  const json = JSON.parse((await cli(['connect', 'openrouter', '--json'])).stdout);
+  assert.match(json.cost, /^Paid per image.* Paid per second/);
+  assert.match(json.data_leaves, /image model\. The prompt goes to OpenRouter and to the company that runs the video model/);
+  const r = await cli(['connect', 'openrouter', '--key-stdin'], `${GOOD_KEY}\n`);
   assert.equal(r.code, 0, r.text);
   assert.equal(fake.count('openrouter', KEY_CHECK.openrouter), 1);
   assert.equal(fs.readFileSync(env, 'utf8'), `OPENROUTER_API_KEY=${GOOD_KEY}\n`);
-  assert.match(r.stdout, /OpenRouter is connected\. See the price with: explainroo clip/);
+  assert.match(r.stdout, /OpenRouter is connected\. Make an image with: explainroo image .* See the price first with: explainroo clip/);
   assert.doesNotMatch(r.text, new RegExp(GOOD_KEY));
-  const listed = JSON.parse((await cli(['services', 'clips', '--json'])).stdout).services.find((s) => s.id === 'openrouter-video');
-  assert.equal(listed.connected, true);
+  for (const step of ['images', 'clips']) {
+    const listed = JSON.parse((await cli(['services', step, '--json'])).stdout).services.filter((s) => s.id === 'openrouter');
+    assert.deepEqual(listed.map((s) => [s.step, s.connected]), [[step, true]], step);
+  }
+  // Only the clips step read the price list, and without the key.
+  assert.equal(fake.total(), 2);
+  assert.equal(fake.requests('openrouter', 'GET /api/v1/videos/models')[0].headers.authorization, undefined);
+
+  const gone = await cli(['connect', 'openrouter-video', '--key-stdin'], `${GOOD_KEY}\n`);
+  assert.equal(gone.code, 1);
+  assert.match(gone.stderr, /there is no service with that name\. The services are: kokoro, .*openrouter.*\./);
+  assert.doesNotMatch(gone.stderr, /openrouter-video/);
+  assert.equal(fake.count('openrouter', KEY_CHECK.openrouter), 1);
 });
 
 test('an unknown service is an error that lists the real ones, and no service prints the usage', async (t) => {

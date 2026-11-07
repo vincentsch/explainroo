@@ -150,13 +150,14 @@ test('the hard limits name every language and every service that needs a key or 
     assert.ok(limits.includes(`\`${code}\``), `the hard limits on the start page don't name the language code ${code}`);
     assert.ok(limits.includes(LANGUAGE_NAMES[code]), `the hard limits on the start page don't name ${LANGUAGE_NAMES[code]}`);
   }
-  // Services that share a key count once, like the two OpenRouter entries.
-  const groups = new Map();
-  for (const service of SERVICES.filter(needsKey)) groups.set(service.setup.env[0], [...(groups.get(service.setup.env[0]) ?? []), service.id]);
-  assert.ok(groups.size >= 6);
-  for (const ids of groups.values()) {
-    assert.ok(ids.some((id) => new RegExp(`(^|[^\\w-])${id}(?![\\w-])`, 'i').test(limits)), `the hard limits on the start page don't name ${ids.join(' or ')}`);
+  const keyed = SERVICES.filter(needsKey).map((service) => service.id);
+  assert.ok(keyed.length >= 6);
+  for (const id of keyed) {
+    assert.ok(new RegExp(`(^|[^\\w-])${id}(?![\\w-])`, 'i').test(limits), `the hard limits on the start page don't name ${id}`);
   }
+  // One OpenRouter key makes images and clips, and the start page says how to set it up.
+  assert.match(oneLine(limits), /\| OpenRouter \| AI images \(`image`\) and AI clips \(`clip`\) \| one key for both, from `connect openrouter` \|/);
+  assert.ok(oneLine(limits).includes('`services` reads the same list when it lists clips, at most once a day.'));
   for (const words of ['No other language works yet', 'espeak-ng', 'misaki', 'creating the key starts its paid plan', 'Nothing else leaves the computer']) assert.ok(oneLine(limits).includes(words), words);
 });
 
@@ -185,6 +186,26 @@ test('the page about clips says honestly what they are good and bad at, and what
   for (const words of ['a street, food, weather', 'hands', 'a mood', 'Readable text and numbers', 'Diagrams, app screens and logos', 'The same character across clips', 'Timing to a word', 'use drawings and screenshots', 'Do not ask\nfor real people', 'a failed try may cost money']) assert.ok(honest.includes(words), words);
   for (const words of ['--dry-run', '--max-cost', '--seconds', '--aspect', '--model', '--resolution', '--audio', '--name', '--no-wait', '--new', '--resume <id>', 'google/veo-3.1-lite', 'google/veo-3.1', 'history/failed-check/', 'history/replaced/', 'The prompt goes to OpenRouter and to the company that runs the model', 'zero data retention']) assert.ok(page.includes(words), words);
   assert.doesNotMatch(page, /\bbest\b/i);
+  // The price without a project, and where today's prices come from.
+  const price = oneLine(page.slice(page.indexOf('## See the price first')));
+  for (const words of ['The dry run also works without a project.', 'explainroo clip "A busy street at dusk in the rain" --seconds 6 --dry-run', 'Without a project the price is for 16:9 at 720p without sound, unless the flags say otherwise.', 'A dry run writes nothing, with or without a project. Buying needs a project', '`services clips` works out the price per second of the cheap and the quality model from the same list in the same way', 'It keeps the list it read for a day', '`EXPLAINROO_OFFLINE=1` is set.', 'The list could not be read within a few seconds.', '`services` sends it at most once a day, and only when it lists clips.']) assert.ok(price.includes(words), words);
+});
+
+test('the clips and images topics, the start page and the help set up one OpenRouter key with connect openrouter', () => {
+  for (const text of [page('clips'), page('images'), part('When to ask the user')]) assert.match(oneLine(text), /`explainroo connect openrouter`/);
+  assert.ok(oneLine(page('clips')).includes('One OpenRouter key makes images and clips'));
+  assert.ok(oneLine(page('images')).includes('The same key makes AI video clips'));
+  const help = run('--help').stdout;
+  assert.match(help, /^Images \(optional, costs money, needs an OpenRouter key from "explainroo connect openrouter"\)$/m);
+  assert.match(help, /^AI video clips \(optional, costs money, uses the same OpenRouter key as images\)$/m);
+  assert.match(oneLine(help), /--dry-run shows the price and spends nothing\. It needs no key and no project, and without a project it prices 16:9 at 720p without sound/);
+  assert.match(oneLine(help), /For clips it shows today's prices from OpenRouter's public list, which it reads at most once a day/);
+  // The connectors page explains an entry with several steps, and nothing names a second OpenRouter id.
+  const connectors = oneLine(page('connectors'));
+  for (const words of ['One entry can serve several steps on the same key.', '"step": ["images", "clips"]', '`per_step`']) assert.ok(connectors.includes(words), words);
+  assert.doesNotMatch(connectors, /`connector`/);
+  for (const file of ['AGENTS.md', 'README.md', 'skills/explainroo/SKILL.md', 'src/services.json', 'src/cli.js', 'src/connect.js', ...topics.map((t) => `docs/${t}.md`)]) assert.doesNotMatch(read(file), /openrouter-video/, file);
+  assert.doesNotMatch(help, /openrouter-video/);
 });
 
 test('the page about music describes files, s.sound and Soundroo, with public links only', () => {
@@ -313,7 +334,7 @@ test('the README headline is the first sentence of the package description', () 
 });
 
 // Each command that can send something off the computer has a row in the README.
-const SENDS = ['connect', 'voice', 'voices', 'image', 'clip', 'share', 'publish', 'capture'];
+const SENDS = ['connect', 'voice', 'voices', 'image', 'clip', 'services', 'share', 'publish', 'capture'];
 
 test('the README says what leaves the computer for each command that sends something', () => {
   const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
@@ -321,6 +342,8 @@ test('the README says what leaves the computer for each command that sends somet
   const section = readme.slice(start, readme.indexOf('\n## ', start));
   const rows = section.split('\n').filter((line) => line.startsWith('| `'));
   for (const command of SENDS) assert.ok(rows.some((row) => row.startsWith(`| \`${command}`)), command);
+  // services sends what a dry run of clip sends, and only once a day.
+  assert.ok(rows.includes('| `services`, when it lists clips | The same request as `clip --dry-run`, at most once a day. It asks for the list of video models and their prices, without your prompt or a key | OpenRouter |'));
   const words = section.replace(/\s+/g, ' ');
   for (const claim of ['needs no account and no key', 'The voice, the timing, the music and the rendering run on your computer', 'Your coding agent is a separate service with its own terms and prices', 'no telemetry', 'Nothing uploads to the hosted service without the explicit `explainroo share` command.']) assert.ok(words.includes(claim), claim);
   assert.doesNotMatch(readme, /none of this leaves/i);

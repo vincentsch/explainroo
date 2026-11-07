@@ -120,27 +120,6 @@
       }
     },
     {
-      "id": "openrouter",
-      "step": "images",
-      "name": "OpenRouter images",
-      "about": "A company that gives one account access to many AI models. explainroo uses it to make illustrations.",
-      "free": false,
-      "partner": false,
-      "status": "available",
-      "cost": "Paid per image on your OpenRouter account, roughly 7 to 13 cents.",
-      "data_leaves": "The prompt and any reference images go to OpenRouter and to the company that runs the image model.",
-      "setup": {
-        "env": ["OPENROUTER_API_KEY"],
-        "url": "https://openrouter.ai/keys",
-        "steps": [
-          "Make an account at openrouter.ai and add some credit.",
-          "Open openrouter.ai/keys and make a new key.",
-          "Copy the key."
-        ],
-        "use": "Make an image with: explainroo image <project> <name> \"<what to draw>\". The same key makes video clips."
-      }
-    },
-    {
       "id": "own-footage",
       "step": "clips",
       "name": "Your own footage",
@@ -157,25 +136,34 @@
       }
     },
     {
-      "id": "openrouter-video",
-      "connector": "openrouter",
-      "step": "clips",
-      "name": "OpenRouter video",
-      "about": "The same OpenRouter account that makes illustrations can make short AI video clips from a text prompt.",
+      "id": "openrouter",
+      "step": ["images", "clips"],
+      "name": "OpenRouter",
+      "about": "A company that gives one account access to many AI models. explainroo uses one OpenRouter key for illustrations and for short AI video clips.",
       "free": false,
       "partner": false,
       "status": "available",
-      "cost": "Paid per second on your OpenRouter account. On 2026-11-07 the video models explainroo can price cost from about half a cent to 60 cents a second. Six silent seconds at 720p on the default model came to about 18 cents. \"explainroo clip <project> \"<what it shows>\" --seconds 6 --dry-run\" gives today's price. A failed try may cost money too.",
-      "data_leaves": "The prompt goes to OpenRouter and to the company that runs the video model. Video jobs are not covered by OpenRouter's zero data retention.",
+      "per_step": {
+        "images": {
+          "cost": "Paid per image on your OpenRouter account, roughly 7 to 13 cents.",
+          "data_leaves": "The prompt and any reference images go to OpenRouter and to the company that runs the image model.",
+          "use": "Make an image with: explainroo image <project> <name> \"<what to draw>\"."
+        },
+        "clips": {
+          "cost": "Paid per second on your OpenRouter account. \"explainroo clip \"<what it shows>\" --seconds 6 --dry-run\" shows the price of one clip, with no key and no project. A failed try may cost money too.",
+          "price_range": "On 2026-11-07 the video models explainroo can price cost from about half a cent to 60 cents a second. Six silent seconds at 720p on the default model came to about 18 cents.",
+          "data_leaves": "The prompt goes to OpenRouter and to the company that runs the video model. Video jobs are not covered by OpenRouter's zero data retention.",
+          "use": "See the price first with: explainroo clip <project> \"<what it shows>\" --seconds 6 --dry-run. Run \"explainroo docs clips\" for what clips are good and bad at."
+        }
+      },
       "setup": {
         "env": ["OPENROUTER_API_KEY"],
         "url": "https://openrouter.ai/keys",
         "steps": [
           "Make an account at openrouter.ai and add some credit.",
-          "Open openrouter.ai/keys and make a new key. An image key works too.",
+          "Open openrouter.ai/keys and make a new key.",
           "Copy the key."
-        ],
-        "use": "See the price with: explainroo clip <project> \"<what it shows>\" --seconds 6 --dry-run. Run \"explainroo docs clips\" for what clips are good and bad at."
+        ]
       }
     },
     {

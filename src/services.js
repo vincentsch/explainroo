@@ -17,6 +17,31 @@ export function needsKey(service) {
   return service.setup.env.length > 0;
 }
 
+// The steps an entry serves. An entry that serves several steps on one key has a
+// list, and its per_step object holds what differs per step.
+export function serviceSteps(service) {
+  return [service.step].flat();
+}
+
+// An entry as it reads under one of its steps: the cost, the data that leaves and
+// the use of that step.
+export function forStep(service, step) {
+  const { per_step: perStep, ...entry } = service;
+  if (!perStep) return entry;
+  const { use, ...words } = perStep[step];
+  return { ...entry, step, ...words, setup: { ...entry.setup, use } };
+}
+
+// The entries of one step, each with the words of that step.
+export function stepServices(step, services = SERVICES) {
+  return services.filter((s) => serviceSteps(s).includes(step)).map((s) => forStep(s, step));
+}
+
+// Dollars the way a price is read, like $0.18, $0.20 or $1.008.
+export function usd(value) {
+  return `$${value.toFixed(4).replace(/0{1,2}$/, '')}`;
+}
+
 // "a, b or c"
 export function oneOf(words) {
   return words.length < 2 ? words.join('') : `${words.slice(0, -1).join(', ')} or ${words.at(-1)}`;
@@ -41,15 +66,37 @@ export function serviceLabels(service, connected) {
   ];
 }
 
-// The list in plain words. `command` is how to run this tool, and `connected`
-// says for a service id whether its key is there.
-export function formatServices(steps, services, { connected = () => undefined, command = 'explainroo' } = {}) {
+// Why a step shows its range from this file instead of today's prices.
+const RANGE_BECAUSE = {
+  offline: "Offline mode is on (EXPLAINROO_OFFLINE=1), so here is the range instead of today's prices.",
+  unreadable: "Today's prices could not be read, so here is the range.",
+};
+
+// Today's prices of an entry under one step, when they were read, or else its range
+// and why. A model the list has no price for gets the range too.
+function priceLines(service, prices) {
+  if (!service.price_range) return [];
+  if (prices?.shown !== 'prices') return [`    Prices: ${prices?.because ? `${RANGE_BECAUSE[prices.because]} ` : ''}${service.price_range}`];
+  const { resolution, audio } = prices.settings;
+  const nameWidth = Math.max(...prices.models.map((m) => m.name.length));
+  const idWidth = Math.max(...prices.models.map((m) => m.id.length));
+  const lines = [`    Prices at ${resolution} ${audio ? 'with' : 'without'} sound, from ${service.name}'s list read on ${prices.read.slice(0, 10)}:`];
+  for (const m of prices.models) lines.push(`      ${m.name.padEnd(nameWidth)}  ${m.id.padEnd(idWidth)}  ${m.usd_per_second === null ? 'no price in that list' : `${usd(m.usd_per_second)} a second`}`);
+  if (prices.models.some((m) => m.usd_per_second === null)) lines.push(`    A model with no price in that list has the range. ${service.price_range}`);
+  return lines;
+}
+
+// The list in plain words. `command` is how to run this tool, `connected` says for
+// a service id whether its key is there, and `prices` gives what an entry's prices
+// are today under the step it is listed under.
+export function formatServices(steps, services, { connected = () => undefined, command = 'explainroo', prices = () => undefined } = {}) {
   return steps.map((step) => {
     const lines = [`${step.name}: ${step.what}`];
-    for (const service of services.filter((s) => s.step === step.id)) {
+    for (const service of stepServices(step.id, services)) {
       lines.push(`  ${service.name} (${serviceLabels(service, connected(service.id)).join(', ')})`);
       lines.push(`    ${service.about}`);
       lines.push(`    Cost: ${service.cost}`);
+      lines.push(...priceLines(service, prices(service)));
       lines.push(`    Data: ${service.data_leaves}`);
       lines.push(needsKey(service) && connected(service.id) !== true ? `    Set up: ${command} connect ${service.id}` : `    Use: ${service.setup.use}`);
     }

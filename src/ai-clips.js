@@ -10,7 +10,7 @@ import { ProjectError, ServiceError } from './errors.js';
 import { createJob, decide, ensureIgnored, findJob, historyDir, jobKey, listAttempts, listJobs, placeOutput, projectWord, saveOutputFile, selfCommand, shortId, stopSentence, updateJob } from './history.js';
 import { checkClipRequest, clipPrice } from './clip-price.js';
 import { probe } from './ffmpeg.js';
-import { serviceUrl } from './services.js';
+import { serviceUrl, usd } from './services.js';
 import openrouter from './connectors/openrouter.js';
 
 export const CLIP_MODELS = {
@@ -18,7 +18,7 @@ export const CLIP_MODELS = {
   quality: 'google/veo-3.1',
 };
 
-const DEFAULT_RESOLUTION = '720p';
+export const DEFAULT_RESOLUTION = '720p';
 // How long a run waits for the job, then says how to go on. OpenRouter's docs
 // suggest reading the status about every 30 seconds. Tests set these shorter.
 const waitMs = () => Number(process.env.EXPLAINROO_CLIP_WAIT_MS) || 10 * 60 * 1000;
@@ -33,10 +33,6 @@ const SEND_MS = 2 * 60 * 1000;
 // to its paid request. Only an older claim was left by a run that died.
 function beingSent(job) {
   return job?.status === 'requesting' && !job.job_id && Date.now() - Date.parse(job.created) < SEND_MS + 30 * 1000;
-}
-
-function usd(value) {
-  return `$${value.toFixed(4).replace(/0{1,2}$/, '')}`;
 }
 
 // A short name from the prompt. The end comes from the whole prompt, so two prompts
@@ -55,19 +51,20 @@ function clipModelId(name) {
 }
 
 // What makes it the same clip, from what the command says. It needs no model list,
-// so a job can be picked up with no connection to that list.
+// so a job can be picked up with no connection to that list. Without a project,
+// which only a dry run allows, the aspect is 16:9.
 export function clipRequest(project, { prompt, seconds, aspect, model, resolution, audio = false, name }) {
   const text = String(prompt ?? '').trim();
   if (text.length < 8) throw new ProjectError('describe the clip in a sentence or two');
   if (seconds === undefined) throw new ProjectError('clip needs --seconds, because the length sets the price. --dry-run shows the price and spends nothing.');
-  const { width, height } = project.config;
+  const frame = project?.config;
   const [, number, unit] = /^(\d+)([pk])$/i.exec(resolution ?? DEFAULT_RESOLUTION) ?? [];
   return {
     name: name ?? clipName(text),
     prompt: text,
     model: clipModelId(model),
     seconds,
-    aspect: aspect ?? (width > height ? '16:9' : '9:16'),
+    aspect: aspect ?? (!frame || frame.width > frame.height ? '16:9' : '9:16'),
     resolution: number ? `${number}${unit.toLowerCase() === 'k' ? 'K' : 'p'}` : resolution,
     audio: !!audio,
   };
@@ -246,11 +243,9 @@ async function followJob(project, job, { log, wait = waitMs() }) {
   }
 }
 
-function dryRun(project, request, { model, price }, decision, maxCost) {
+// The settings and the price of a dry run, which a project and its record add to.
+function priced(request, { model, price }, maxCost) {
   return {
-    dry_run: true,
-    name: request.name,
-    file: path.join(project.dir, publicName(request)),
     model: model.id,
     seconds: request.seconds,
     aspect: request.aspect,
@@ -263,11 +258,27 @@ function dryRun(project, request, { model, price }, decision, maxCost) {
     minimum_usd: price.minimum_usd,
     max_cost_usd: maxCost ?? null,
     within_cap: maxCost === undefined ? null : price.usd <= maxCost,
+  };
+}
+
+function dryRun(project, request, quoted, decision, maxCost) {
+  return {
+    dry_run: true,
+    project: project.dir,
+    name: request.name,
+    file: path.join(project.dir, publicName(request)),
+    ...priced(request, quoted, maxCost),
     would: decision.action,
     ...(decision.job ? { job: shortId(decision.job) } : {}),
     ...(decision.reason ? { reason: decision.reason } : {}),
     ...(decision.action === 'stop' && beingSent(decision.job) ? { sending: true } : {}),
   };
+}
+
+// A dry run outside a project. It reads the price list like any dry run, and it has
+// no record to look in and no folder for the file, so it writes nothing.
+export async function quoteClip(request, { maxCost } = {}) {
+  return { dry_run: true, project: null, ...priced(request, await quote(request), maxCost) };
 }
 
 export async function buyClip(project, request, { fresh = false, maxCost, dryRun: dry = false, noWait = false, log = () => {}, notice = () => {} } = {}) {
@@ -346,6 +357,11 @@ export function formatClip(r) {
       'That is an estimate. The real cost goes in the record after the job, and a failed try may cost money too.',
     ];
     if (r.within_cap === false) lines.push(`This is above the cap of ${usd(r.max_cost_usd)}, so the real run would refuse.`);
+    if (r.project === null) {
+      lines.push("No project was used, so the aspect is 16:9 unless --aspect says otherwise. In a project, it follows the project's frame.");
+      lines.push('Nothing was spent. A clip is bought into a project. To buy it, put the project folder first and use --max-cost instead of --dry-run. Ask the user how much they want to spend.');
+      return lines.join('\n');
+    }
     if (r.would === 'use') lines.push(`This request is already bought (job ${r.job}), so the real run returns its file for free.`);
     if (r.would === 'resume') lines.push(`This request is already running (job ${r.job}), so the real run picks it up and buys nothing.`);
     if (r.would === 'stop') lines.push(r.sending ? `Another run is sending this request (job ${r.job}) right now, so the real run stops and asks you to wait for it.` : `An earlier try of this request (job ${r.job}) has no good result, so the real run stops and asks for --new.`);

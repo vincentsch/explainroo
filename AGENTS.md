@@ -47,7 +47,7 @@ the user's own account, and only when you run a command that uses them.
 
 | Service | Used for | Needs | Costs money | What it gets |
 | --- | --- | --- | --- | --- |
-| OpenRouter | AI images (`image`) and AI clips (`clip`) | a key | yes, per image and per second of clip | the prompt and any reference images, also for the company that runs the model |
+| OpenRouter | AI images (`image`) and AI clips (`clip`) | one key for both, from `connect openrouter` | yes, per image and per second of clip | the prompt and any reference images, also for the company that runs the model |
 | ElevenLabs, Cartesia | a paid voice | a key | yes, per character | the narration text, when narration is made |
 | Blotato | posting with `publish` | a key | yes, creating the key starts its paid plan | the video, its title and its text |
 | YouTube | posting with `publish` | a sign-in with the user's own Google client | no | the video, its title and its description |
@@ -55,7 +55,8 @@ the user's own account, and only when you run a command that uses them.
 
 `connect`, `voices --provider` and `publish --dry-run` send only the key or
 the sign-in to that service. `clip --dry-run` reads OpenRouter's public price
-list, without the prompt. `share` uploads the video and its title to
+list, without the prompt or a key. `services` reads the same list when it lists
+clips, at most once a day. `share` uploads the video and its title to
 explainroo.com, where the hosted service is coming. `capture` loads the page
 you name. The models and fonts download the first time, and nothing of the
 user's goes along. Nothing else leaves the computer, and everything else is
