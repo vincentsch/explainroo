@@ -1,10 +1,9 @@
 # Short videos
 
 `s.short` is a kit for Shorts, TikTok and Reels. It draws the parts these
-videos tend to share: a bold backdrop, a hook title that is there on the first
-frame, a small kicker label, a sticker, a step pill, a progress bar and a payoff
-card. It also gives camera keys for a punch-in or a slow drift, and a flash, a
-jolt and a pattern interrupt.
+videos tend to share, like a hook title that is there on the first frame and a
+payoff card at the end. It also gives camera keys for a punch-in or a slow
+drift, and a few short effects. Each part is described below.
 
 It works best with a platform size (`tiktok`, `shorts`, `reels` or `vertical`)
 and `"captions": "bold"`, which shows two to four big words at a time.
@@ -39,7 +38,7 @@ sets its own camera first, with keys from `punch` or `drift`:
 tip(s) {
   s.camera(s.short.punch('#bag', { x: s.cx, y: s.safe.y + s.safe.h * 0.5, zoom: 1.3, hold: 1.2 }));
   s.short.backdrop({ color: '#1b2440', pattern: 'grid' });
-  s.icon('shopping-bag', { y: s.safe.y + s.safe.h * 0.5, size: 300, color: 'orange', label: 'Paper bag', at: '#bag' });
+  s.icon('shopping-bag', { y: s.safe.y + s.safe.h * 0.5, size: 300, color: 'orange', label: 'Paper bag', labelColor: '#ffffff', at: '#bag' });
 },
 ```
 
@@ -47,18 +46,24 @@ tip(s) {
 
 ## What the kit draws
 
-Times are seconds, spoken words or `"#markers"`, and `pace` applies. Every
+Times are seconds, spoken words or `"#markers"`. A higher `pace` shortens the
+kit's animations, as it does for other elements. Every
 method that draws text lets `check` see it, and every entrance makes its sound
 and counts as something new on screen.
 
 ### `backdrop(options)`
 
 A full-frame background: a vertical gradient, an optional glow behind the
-subject, a faint pattern and a vignette. Call it first in the scene.
+subject, a faint pattern and a vignette. Call it first in the scene, right
+after `s.camera` if the scene has one.
 `color` (top of the gradient), `color2` (bottom), `glow` (a color), `gx` and
 `gy` (the glow's center), `glowR`, `pattern` (`'dots'`, `'grid'`, `'rays'` or
 `'none'`), `patternAlpha`, `vignette` (0 to 1). Rays turn slowly, so the
 background is never quite still.
+
+The backdrop is dark, and the look's own text colors may be dark too. Give text
+you draw on it a light color, like `color: '#ffffff'` or
+`labelColor: '#ffffff'`. `check` measures text against the backdrop.
 
 ### `hook(text, options)`
 
@@ -78,7 +83,7 @@ A small uppercase label in a pill, like "QUICK TIP". `x`, `y`, `size`, `color`,
 
 ### `sticker(text, options)`
 
-A tilted box with bold text for one key fact, like "*2* days". `x`, `y`,
+A tilted box with bold text for one fact, like "*2* days". `x`, `y`,
 `size`, `color` (the box), `textColor`, `keyColor`, `rotate` (degrees, -4 by
 default), `border`, `at`, `out`, `sfx`, `id`.
 
@@ -91,7 +96,7 @@ in several languages. Also `label`, `x`, `y`, `size`, `color`, `at`, `out`,
 
 ### `progress(options)`
 
-A thin bar just above the content area that fills over the whole video. `x`,
+A thin bar above the content area that fills over the whole video. `x`,
 `y`, `w`, `h`, `color`.
 
 ### `payoff(options)`
@@ -118,8 +123,9 @@ for the flash, and for `interrupt` also `flash: false` and `sfx`.
 
 ## An example
 
-A video about keeping bread fresh, in four scenes. The script uses markers, so
-the same scenes work in every language.
+A video about keeping bread fresh, in four scenes. The scenes cue on markers, so
+their timing works in every language. For text on screen in several languages,
+use `s.str`.
 
 ```js
 export default {
@@ -134,14 +140,14 @@ export default {
     s.short.backdrop({ color: '#1b2440', pattern: 'grid' });
     s.short.step(1, 2);
     s.short.progress();
-    s.icon('shopping-bag', { y: s.safe.y + s.safe.h * 0.5, size: 300, color: 'orange', label: 'Paper bag', labelSize: 64, at: '#bag' });
+    s.icon('shopping-bag', { y: s.safe.y + s.safe.h * 0.5, size: 300, color: 'orange', label: 'Paper bag', labelSize: 64, labelColor: '#ffffff', at: '#bag' });
   },
   freeze(s) {
     s.short.interrupt('#freeze');
     s.short.backdrop({ color: '#10304a', glow: '#4dabf7', pattern: 'rays' });
     s.short.step(2, 2);
     s.short.progress();
-    s.icon('snowflake', { y: s.safe.y + s.safe.h * 0.5, size: 300, color: 'blue', label: 'Freeze slices', labelSize: 64, at: '#freeze' });
+    s.icon('snowflake', { y: s.safe.y + s.safe.h * 0.5, size: 300, color: 'blue', label: 'Freeze slices', labelSize: 64, labelColor: '#ffffff', at: '#freeze' });
   },
   payoff(s) {
     s.camera(s.short.drift());

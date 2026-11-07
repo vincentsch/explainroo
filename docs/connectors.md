@@ -3,7 +3,8 @@
 A service is an outside company's API that a step of making a video can use. It
 takes three things to add one: an entry in a data file, one small file of code,
 and one test against a fake server. Anyone can send one as a pull request.
-Nothing about payment is implied, and every service runs on the user's own key.
+Nothing about payment is implied, and a service from another company runs on the
+user's own key or login.
 
 ## 1. The data entry
 
@@ -14,7 +15,7 @@ Add an entry to `src/services.json`. The website can read the same file later.
   "id": "elevenlabs",
   "step": "voice",
   "name": "ElevenLabs",
-  "about": "A company that turns text into speech. It offers premium and cloned voices.",
+  "about": "A company that turns text into speech. It has its own voices and can clone one.",
   "free": false,
   "partner": false,
   "status": "available",
@@ -46,7 +47,8 @@ Add an entry to `src/services.json`. The website can read the same file later.
 ## 2. The connector
 
 Add one file in `src/connectors/`, and one line in `src/connectors/index.js`. No
-code is ever loaded from a project, because a connector runs with the user's keys.
+connector is ever loaded from a project folder, because a connector runs with the
+user's keys.
 
 ```js
 const connector = {
@@ -69,12 +71,16 @@ the next. A voice that is told the language has `language(code)`, which turns
 explainroo's language code into the service's. The language is then part of each
 request and of the key it is saved under. `src/connectors/cartesia.js` does both.
 
-A service that signs in through the browser has no `key`. It has `signIn` (the
-sign-in address, the token address, the redirect address and the scopes),
-`login(dir)`, which says whether a login is saved, `test(accessToken)` and
-`loginLines(tokens)`, the lines a new login saves. `src/oauth.js` holds the two
-steps of the sign-in and the refreshing of tokens, and `src/connectors/youtube.js`
-and `src/connectors/buffer.js` use it.
+A service that signs in through the browser has no `key`. It has these instead:
+
+- `signIn`: the sign-in address, the token address, the redirect address and the
+  scopes
+- `login(dir)`, which says whether a login is saved
+- `test(accessToken)`
+- `loginLines(tokens)`, the lines a new login saves
+
+`src/oauth.js` holds the two steps of the sign-in and the refreshing of tokens,
+and `src/connectors/youtube.js` and `src/connectors/buffer.js` use it.
 
 Build each address with `serviceUrl(connector)` from `src/services.js`. It lets
 `EXPLAINROO_ELEVENLABS_URL` replace the base address. That variable is read from
@@ -93,7 +99,7 @@ in the project record and decides what happens next:
 | `failed` | The service answered with an error after the work may have started | The command stops and asks for `--new` |
 | `lost` | No answer came back, so nobody can tell what it cost | The command stops and asks for `--new` |
 
-Never send a paid request again by yourself after a timeout or a dropped
+A connector never sends a paid request again after a timeout or a dropped
 connection, because the first one may have been charged. One more try after a
 clear 5xx answer is fine.
 

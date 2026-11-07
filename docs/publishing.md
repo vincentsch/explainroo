@@ -101,7 +101,7 @@ Each field is settled in this order, and a later one wins:
 The `post.json` in the folder also has `text`. It is what a service gets when it
 has one text field. It is the description, or the title when there is no
 description, followed by the hashtags it doesn't already contain. On YouTube the
-chapters go at the end of the description first. The title is never added to a
+chapters go at the end of the description, before the hashtags. The title is never added to a
 description, so nothing appears twice.
 
 ### Limits
@@ -143,7 +143,7 @@ wrong, set `ai_label` in `post.json`.
 
 ## What package checks
 
-- **The setup it ships.** `check` runs at the platform's size, with or without
+- **The layout at the platform's size.** `check` runs at the platform's size, with or without
   the watermark as the file will be. An error stops the package with the same
   messages as `check`, and says which size failed. A layout with fixed positions
   for `16:9` can fail at a tall size, so place things from `s.safe`. Warnings
@@ -154,7 +154,7 @@ wrong, set `ai_label` in `post.json`.
   same version of explainroo, with its file unchanged since. A draft, a
   `--scale` render and a `--from` or `--to` render never count. Otherwise
   `package` renders. For TikTok,
-  `render --size tiktok --no-watermark` makes the very file it needs.
+  `render --size tiktok --no-watermark` makes the file it needs.
 - **The file.** `verify` runs on the packaged file, unless this exact file was
   verified before. Its report goes in the folder, and its result goes in
   `post.json`. Fix any error before you post.
@@ -188,7 +188,8 @@ and does not expire.
 
 Sharing the same file again from this project folder prints the link it already
 has and uploads nothing. `--new` uploads it again. A copy of the project made
-with git has no `history/private/`, so it shares on its own.
+with git has no `history/private/`, so its first `share` uploads the video
+again.
 
 | What happens | What `share` says | Run it again |
 | --- | --- | --- |
@@ -274,7 +275,7 @@ locked or disconnected are never offered.
 | TikTok, Instagram, LinkedIn and X through Buffer, and Instagram, LinkedIn and X through Blotato | public right away, because there is no such setting | refused |
 
 A value a place can't honour is refused before anything is sent, and never
-ignored. The plan says plainly when a post goes public right away. Posts to
+ignored. The plan says when a post goes public right away. Posts to
 YouTube don't notify your subscribers.
 
 ### Where the video comes from
@@ -282,9 +283,9 @@ YouTube don't notify your subscribers.
 - **YouTube** gets the file from your computer, as an upload that can go on
   after a break.
 - **Buffer** has no upload, so it needs a public https link to this exact
-  file, which must work until the post goes out. Run `explainroo share <project> --platform
-  tiktok` first, and `publish` takes the link from it, or pass your own with
-  `--media-url`. A link to `out/video.mp4` doesn't count for a TikTok package,
+  file, which must work until the post goes out. Pass your own with
+  `--media-url`. Once the hosted service runs, `explainroo share <project>
+  --platform tiktok` can make one, and `publish` takes the link from it. A link to `out/video.mp4` doesn't count for a TikTok package,
   because the package has its own file. The plan warns when the link expires
   within a day.
 - **Blotato** gets the file uploaded to its own storage first, unless you pass
@@ -314,8 +315,8 @@ explainroo connect youtube --callback-url '<the address>'
 ```
 
 That checks the sign-in, reads your channel and saves the login. While your
-Google project is in testing status, Google ends the login after 7 days, and
-`connect youtube` signs in again. On 2026-11-07 a Google project could upload
+Google project is in testing status, Google ends the login after 7 days. Then
+run `connect youtube` again to sign in. On 2026-11-07 a Google project could upload
 100 videos a day through the API.
 
 **Buffer** signs in with a public client, which has no secret. explainroo has
@@ -358,9 +359,9 @@ out. Running the same command again reads the stage:
 | `finished` | The post is there | prints the status and the link, and posts nothing |
 | `failed` | The service says the post failed | stops. `--new` posts again |
 
-A YouTube upload that breaks off asks YouTube how much arrived and goes on from
-there, in the same run or the next one. That is a question, not a second
-upload. The upload address is kept in `history/private/`, which git leaves out.
+When a YouTube upload breaks off, `publish` asks YouTube how much arrived and
+goes on from there, in the same run or the next one. Asking does not start a
+second upload. The upload address is kept in `history/private/`, which git leaves out.
 When YouTube no longer knows the upload, `publish` stops, and `--new` starts a
 new one.
 

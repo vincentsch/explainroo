@@ -2,8 +2,8 @@
 
 Use `export` for a video on a docs site or in an iframe. The canvas draws
 at the screen's resolution, so text stays sharp when the player grows.
-The folder has its own engine, fonts, assets, soundtrack, cover and subtitles.
-It needs no explainroo server. The voice is made first if needed.
+The folder holds everything the player needs, so it needs no explainroo
+server. The voice is made first if needed.
 
 ```bash
 explainroo export videos/my-video
@@ -26,7 +26,8 @@ match your video's width and height.
 
 `index.html?autoplay=1&muted=1` starts muted playback, subject to the
 browser's autoplay rules. `index.html?t=12.5` starts at 12.5 seconds.
-The player has the usual keys and a CC button for text captions.
+Space or K plays and pauses, the arrow keys jump 5 seconds, F goes full
+screen and M mutes. A CC button shows text captions.
 
 Clips use the browser's video decoder. Use a format the browser can play.
 Their timing can differ a little from the MP4. Math formulas are included

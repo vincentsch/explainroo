@@ -11,7 +11,8 @@ python3 -m pip install "misaki[zh]"   # Chinese
 
 On Windows, write `python` instead of `python3`. If misaki is in a virtual
 environment, set `EXPLAINROO_PYTHON` to that environment's Python.
-ElevenLabs and recordings need neither.
+ElevenLabs, Cartesia and recordings don't need misaki to speak. When misaki is
+there, the speech check also uses it to compare Japanese by its kana reading.
 
 Write the narration as usual, without spaces between words. explainroo
 finds the words itself, so cue words and markers work: `at: '解析'` matches
@@ -21,10 +22,9 @@ Sentences end with `。`, `！` or `？`.
 
 Latin words such as API or JavaScript are read in English. For a Japanese
 reading, write it out: `{API|エーピーアイ}`. Numbers can stay in digits,
-including decimals like 365.2422. The Japanese reader sometimes picks the
-wrong reading for a word, such as ついたち for 一日 (write `1日` for
-いちにち) or こよみ for 暦 in グレゴリオ暦 (write `{グレゴリオ暦|グレゴリオれき}`).
-When the speech check flags a word, compare what it heard with the script
+including decimals like 365.2422. The Japanese voice sometimes reads a word
+wrong. It says ついたち for 一日, so write `1日` for いちにち. In グレゴリオ暦 it
+says こよみ for 暦, so write `{グレゴリオ暦|グレゴリオれき}`. When the speech check flags a word, compare what it heard with the script
 before you change anything.
 
 Whisper often writes a word with other characters that sound the same, so

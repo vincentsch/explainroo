@@ -1,11 +1,8 @@
 # Music and sound files
 
 Every video gets music made on your computer, and each look has its own style. That
-is free and it fits most videos. This page is for when you want your own file or
-your own original music.
-
-All of this runs on your computer. `explainroo services music --json` lists the
-choices.
+music is free. This page is for when you want your own file or your own original
+music. `explainroo services music --json` lists the choices.
 
 ## Your own music file
 
@@ -21,7 +18,7 @@ choices.
 - Music shorter than the video loops. Add `"loop": false` to play it once.
 - Music longer than the video fades out at the end.
 - It stays in stereo.
-- `credit` says who made it. The video doesn't show it, so put it where the user
+- `credit` says who made it. The video doesn't show it, so put it where viewers
   will see it, for example in the video's description.
 
 Use `style` or `src`, not both. Only use music the user is allowed to use. A file
@@ -83,5 +80,5 @@ Copy it into your video project's `assets/` folder and use it like any other fil
 "music": { "src": "assets/my-track.wav", "credit": "Made with Soundroo" }
 ```
 
-Soundroo can't sing, and you can't hear the music yourself, so ask the user how it
-sounds.
+Soundroo's music has no singing. You can't hear the music yourself, so ask the
+user how it sounds.

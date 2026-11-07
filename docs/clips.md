@@ -25,8 +25,8 @@ Clips are bad at these things:
 When the content must be exact, use drawings and screenshots instead. Do not ask
 for real people.
 
-Clips also cost more than anything else in a video, and a failed try may cost money
-too. Use one where a drawing can't do the job, and look at it before you keep it.
+On the default model a clip costs more than an image, and
+a failed try may cost money too. Use one where a drawing can't do the job.
 
 ## See the price first
 
@@ -43,8 +43,8 @@ amount in US dollars as the cap:
 explainroo clip videos/<name> "A busy street at dusk in the rain" --seconds 6 --max-cost 2
 ```
 
-A run with no `--max-cost` is an error. A price above the cap refuses before any
-request goes out, and so does a price that can't be worked out. The price is an
+A run that buys needs `--max-cost`. When the price is above the cap, or can't be
+worked out, the command stops before any request goes out. The price is an
 estimate. The real cost goes in the record after the job, and the command says so
 if it came out above the cap.
 
@@ -78,8 +78,8 @@ per second can't be used, and the error suggests another one.
 
 ## How the price is worked out
 
-The tool reads OpenRouter's list each time, because a price in a published package
-goes stale. A model lists several rates, and four steps pick one. A later step never
+The tool reads OpenRouter's list each time, because a price saved in the npm
+package would get out of date. A model lists several rates, and four steps pick one. A later step never
 undoes an earlier one.
 
 1. **What it makes.** Only rates for text to video count, and not the ones for images
@@ -96,20 +96,20 @@ undoes an earlier one.
 ## If something goes wrong
 
 A job has a record in `history/` from before the request goes out, and the job id is
-saved right after the answer. The request itself is never sent twice by itself. So
-the command can be killed at any point, and running it again is safe. Commands that
-agents run often time out, and that is fine here.
+saved right after the answer. explainroo never sends the request a second time on
+its own. So the command can stop at any point, for example when an agent's command
+times out, and running it again is safe.
 
 | What happened | What to do | Can it cost more? |
 | --- | --- | --- |
-| The command stopped or timed out while the job was running | Run the same command again, also if it has `--new`, or `clip <project> --resume <id>` | No. It only reads the job and downloads the file. |
+| The command stopped or timed out while the job was running | Run the same command again, even if it has `--new`, or `clip <project> --resume <id>` | No. It only reads the job and downloads the file. |
 | Another run is sending the same request right now | The command says so. Run the same command again a minute later, without `--new`. It picks up that job. | No |
 | It waited about ten minutes and the job is still running | The same | No |
 | The same command runs again after the file is there | It returns the file | No |
 | The request went out and no answer was saved | The command stops and says so. It may or may not have gone through, and your OpenRouter activity page shows what was charged. `--new` buys it again. | Yes, with `--new` |
 | The job failed, was cancelled or expired, or the file is gone from OpenRouter | The record says so. `--new` buys it again. | Yes, with `--new`. The failed try may have cost money too. |
 | The file failed the check (no video, or the wrong length) | It is kept in `history/failed-check/`. `--new` buys it again. | Yes, with `--new` |
-| OpenRouter refused (no credit, a bad key) | Fix that and run the same command. It cost nothing. | No, it only goes out again |
+| OpenRouter refused (no credit, a bad key) | Fix that and run the same command. | No. The refused request cost nothing. |
 
 OpenRouter keeps a finished file for a short time and doesn't say how long, so don't
 leave a job for days before you fetch it. `explainroo history` lists every clip job

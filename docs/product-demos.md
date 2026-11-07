@@ -1,10 +1,10 @@
 # Product demos
 
 A product demo is the kind of video software companies make to show their
-app. You rebuild the app's screens with `s.ui`, which has cards, fields,
-buttons, dropdowns, toggles and status labels in the app's colors and fonts.
-A mouse pointer clicks through the screens and types into the fields, and the
-camera zooms in on what the voice talks about.
+app. You rebuild the app's screens with `s.ui`, in the app's colors and fonts.
+The table at the end lists what it draws. A mouse pointer clicks through the
+screens and types into the fields, and the camera zooms in on what the voice
+talks about.
 [examples/unspar-demo](https://github.com/vincentsch/explainroo/tree/main/examples/unspar-demo)
 is a complete one.
 
@@ -22,7 +22,7 @@ saves what a demo needs in `assets/capture/<hostname>/`:
   camera zooms in. `--mobile` adds `mobile.png` and `mobile-full.png`.
 - `capture.json` with the colors, fonts, logo candidates and the page's
   wording: headings, navigation, buttons and form labels. Copy the wording
-  exactly. The live site is the source of truth for claims and wording.
+  exactly.
 - Up to three logo files, and the font files that come from Google Fonts, in
   the weights the page uses.
 
@@ -70,10 +70,11 @@ frame. Use `s.camera` to zoom in on the detail the voice mentions.
 - `accent` is the main button color. Find it in the app's Tailwind config or
   CSS. `background` is the color behind the screens, `ink` the color of text
   drawn right on it.
-- `font` is the app's font. Inter is built in; other fonts go in
-  `assets/fonts/` and in `fonts` (`.woff2`, `.woff`, `.ttf` or `.otf`, one
-  entry per weight, or `"weight": "100 900"` for a variable font, and
-  `"style": "italic"`). Copy the font's license file next to it.
+- `font` is the app's font. Inter is built in. Other fonts go in
+  `assets/fonts/` and in `fonts`, with one entry per weight. The files can be
+  `.woff2`, `.woff`, `.ttf` or `.otf`. A variable font takes
+  `"weight": "100 900"`, and an italic file takes `"style": "italic"`. Copy
+  the font's license file next to it.
 - `headline` is the font for big headlines. Instrument Serif is built in. If
   the brand has no serif, use its own font and pass `{ weight: 700,
   italic: false }` to `u.headline()`.
@@ -106,7 +107,7 @@ When the camera zooms in, either keep the headline fully in view (zoom up to
 about 1.1) or zoom far enough that it leaves the frame (about 1.3 and more).
 In between it gets cut in half.
 
-Time every click to a `[#mark]` in the script, so it happens when the voice
+Time every click to a `[#marker]` in the script, so it happens when the voice
 says it. A cursor move starts at its `at` and arrives `dur` seconds later
 (0.7 by default), so start the move a little more than `dur` before the
 click. The first 0.7 seconds of a scene are covered by the transition from
@@ -115,11 +116,11 @@ the scene before, so put no clicks there.
 The watermark sits in the bottom right corner. When the camera zooms in, it
 can cover what is there, so keep important text out of that corner.
 
-Use the product's name as plain text in the first frame. The first frame is
-also the video's cover.
+Use the product's name as plain text in the first frame. Many apps show the
+first frame as the cover.
 
 **`s.ui` reference.** Positions are in the frame (1920 wide for 16:9). Times
-take seconds, spoken words or `"#marks"`, like everywhere else.
+take seconds, spoken words or `"#markers"`, like everywhere else.
 
 | Call | What it draws |
 |---|---|
@@ -157,7 +158,7 @@ spelling first; only respell it when the speech check mishears it.
 
 Many sounds under the voice make it hard to follow, and `verify` then
 understands less of it. Keep long typing quiet (`u.typed(text, at, cps, {
-gain: 0.25 })`) and give each moment one sound, not three.
+gain: 0.25 })`) and give each moment one sound.
 
 A blur filter on every frame makes rendering slow. The kit blurs things once
 and reuses them. Do the same if you add your own blur.
