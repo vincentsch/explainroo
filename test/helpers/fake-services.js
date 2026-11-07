@@ -12,7 +12,9 @@
 //   fake.release();   // answers every request that a { hold: true } kept waiting
 //
 // { cut: true } drops the connection while the request body is still coming in.
-// Each request keeps its raw body, so a test can read a multipart upload.
+// Each request keeps its raw body, so a test can read a multipart upload. A plan
+// step the server doesn't know goes to the route, such as { keep: 1000 } for a
+// YouTube upload. fake-publishing.js has the posting services and their sign-ins.
 //
 // To add a service, add its routes to ROUTES. A connector with the id "my-service"
 // reads its address from EXPLAINROO_MY_SERVICE_URL.
@@ -23,6 +25,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { ffmpegPath } from '../../src/ffmpeg.js';
+import { PUBLISHING_ROUTES, approveLink, expireAccess, loginLines, publishingState } from './fake-publishing.js';
 
 // The one key the fake services accept.
 export const GOOD_KEY = 'fake-key-for-tests';
@@ -101,6 +104,7 @@ async function shareRoute({ req, res, raw, count }) {
 }
 
 export const ROUTES = {
+  ...PUBLISHING_ROUTES,
   cloud: {
     'POST /api/v1/shares': shareRoute,
   },
@@ -175,7 +179,7 @@ export async function startFakeServices({ routes = {} } = {}) {
   const requests = [];
   const plans = new Map();
   const waiting = [];
-  const state = { videos: new Map() };
+  const state = { videos: new Map(), publishing: publishingState() };
   let holding = [];
   let unmatched = 0;
   const planKey = (service, route) => `${service} ${route}`;
@@ -226,7 +230,7 @@ export async function startFakeServices({ routes = {} } = {}) {
       res.write('{"cut off');
       return setTimeout(() => req.socket.destroy(), 20);
     }
-    Promise.resolve(table[service][route]({ req, res, body, raw, count, pathname, state })).catch((e) => {
+    Promise.resolve(table[service][route]({ req, res, body, raw, count, pathname, state, step })).catch((e) => {
       if (!res.headersSent) sendJson(res, 500, { error: { message: `the fake failed: ${e.message}` } });
     });
   });
@@ -246,6 +250,14 @@ export async function startFakeServices({ routes = {} } = {}) {
       for (const resolve of holding) resolve();
       holding = [];
     },
+    // The browser step of a sign-in: approving the printed link gives the address it lands on.
+    approve: (link, options) => approveLink(state.publishing, link, options),
+    // Channels, accounts, uploads and posts of the posting services, to set up or read.
+    publishing: state.publishing,
+    // The .env lines of a login to youtube or buffer, made without the browser.
+    login: (service) => loginLines(state.publishing, service),
+    // Ends the access tokens of a service, as an hour would.
+    expireAccess: (service) => expireAccess(state.publishing, service),
     // Resolves once a route has seen n requests.
     until: (service, route, n = 1) => new Promise((resolve) => {
       if (requests.filter((r) => r.service === service && r.route === route).length >= n) resolve();
