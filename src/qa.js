@@ -32,7 +32,10 @@ export async function check(project, { log = () => {}, step = 0.25, viewWidth = 
       issues.push({ level: 'error', scene: null, t: null, message: `music: ${e.message}` });
     }
   }
-  const pageIssues = await withEngine(project, timeline, { scale: 0.5, log }, (page) => page.evaluate(([s, w]) => window.explainroo.check(s, w), [step, viewWidth]));
+  const pageIssues = await withEngine(project, timeline, { scale: 0.5, log }, async (page) => [
+    ...(await page.evaluate(([s, w]) => window.explainroo.check(s, w), [step, viewWidth])),
+    ...(await page.evaluate(() => window.explainroo.soundFileIssues())),
+  ]);
   issues.push(...pageIssues);
   const order = { error: 0, warn: 1, hint: 2 };
   issues.sort((a, b) => order[a.level] - order[b.level]);

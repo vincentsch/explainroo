@@ -47,8 +47,9 @@ that matters in a pause.
 `"sfx": false` turns off the built-in effects only. A file you asked for with
 `s.sound` still plays.
 
-`check` tells you when a sound file is missing. `verify` tells you when the music or
-a sound makes the voice hard to understand. If it does, lower `volume`.
+`check` tells you when a music or sound file is missing or can't be read. `verify`
+tells you when the music or a sound makes the voice hard to understand. If it does,
+lower `volume`.
 
 ## Original music with Soundroo
 

@@ -121,6 +121,10 @@ window.explainrooReady = (async () => {
     check(step, viewWidth) {
       return engine.check(step, viewWidth);
     },
+    // After check: the files its scenes play with s.sound that can't be read.
+    soundFileIssues() {
+      return engine.soundFileIssues();
+    },
     async soundtrack(path) {
       const { buffer, cues, errors } = await renderAudio(engine, audio);
       if (errors.length) throw new Error(errors.map((e) => `scene "${e.scene}" at ${e.t.toFixed(2)}s: ${e.message}`).join('\n'));

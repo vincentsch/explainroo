@@ -293,14 +293,18 @@ export async function startServer({ projectDir, getState, port = 0, log = () => 
         fs.createReadStream(cached).pipe(res);
         return;
       }
-      if (p === '/__sound/info' || p === '/__sound/audio') {
+      if (p === '/__sound/info' || p === '/__sound/audio' || p === '/__sound/check') {
         let sound;
         try {
           sound = await decodedSound(projectDir, url.searchParams.get('path') || '');
         } catch (e) {
-          if (e instanceof ProjectError) return send(res, 404, e.message);
-          throw e;
+          if (!(e instanceof ProjectError)) throw e;
+          // For check, a file that can't be read is the answer, not a failed request
+          // that the page would log as one.
+          if (p === '/__sound/check') return send(res, 200, JSON.stringify({ error: e.message }), TYPES['.json']);
+          return send(res, 404, e.message);
         }
+        if (p === '/__sound/check') return send(res, 200, JSON.stringify({ error: null }), TYPES['.json']);
         if (p === '/__sound/info') return send(res, 200, JSON.stringify(sound.info), TYPES['.json']);
         res.writeHead(200, { 'Content-Type': TYPES['.wav'], 'Cache-Control': 'no-store' });
         if (req.method === 'HEAD') return res.end();

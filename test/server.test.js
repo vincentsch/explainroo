@@ -200,10 +200,16 @@ test('sound endpoints only read audio assets, keep the cache inside build, and m
   fs.symlinkSync(path.join(dir, '.env'), path.join(dir, 'assets/key.mp3'));
   const server = await startServer({ projectDir: dir, getState: () => ({ config: { fps: 30 } }) });
   try {
-    for (const endpoint of ['info', 'audio']) {
+    for (const endpoint of ['info', 'audio', 'check']) {
       const url = (p) => `/__sound/${endpoint}?path=${encodeURIComponent(p)}`;
       for (const p of ['root.ogg', 'assets/../root.ogg', 'assets/missing.ogg', 'assets/notes.md', 'assets/ok.avi', 'assets/.private.ogg', 'assets/.hidden/ok.ogg', 'assets/away.ogg', 'assets/root-link.ogg', 'assets/key.mp3', '../away.ogg', '.env', sound, '']) {
-        assert.equal((await request(server.port, { path: url(p) })).status, 404, `${endpoint}: ${p}`);
+        const r = await request(server.port, { path: url(p) });
+        // check answers every question, and a file it may not read is a "not found" there too.
+        if (endpoint === 'check') {
+          assert.equal(r.status, 200, `${endpoint}: ${p}`);
+          assert.match(JSON.parse(r.body).error, /^sound file ".*" not found/, `${endpoint}: ${p}`);
+        } else assert.equal(r.status, 404, `${endpoint}: ${p}`);
+        assert.doesNotMatch(r.body, /secret/);
       }
       assert.equal((await request(server.port, { path: url('assets/ok.ogg'), host: 'evil.example' })).status, 403);
       assert.equal((await request(server.port, { path: url('assets/ok.ogg'), origin: 'http://evil.example' })).status, 403);
@@ -213,6 +219,12 @@ test('sound endpoints only read audio assets, keep the cache inside build, and m
     assert.ok(responses.every((r) => r.status === 200));
     const info = JSON.parse(responses[0].body);
     assert.ok(info.lufs < 0 && Math.abs(info.duration - 1) < 0.1, responses[0].body);
+    assert.deepEqual(JSON.parse((await request(server.port, { path: '/__sound/check?path=assets/ok.ogg' })).body), { error: null });
+    fs.writeFileSync(path.join(dir, 'assets/broken.mp3'), 'not a sound');
+    const broken = await request(server.port, { path: '/__sound/check?path=assets/broken.mp3' });
+    assert.equal(broken.status, 200);
+    assert.match(JSON.parse(broken.body).error, /^assets\/broken\.mp3 could not be read as a sound file/);
+    assert.equal((await request(server.port, { path: '/__sound/info?path=assets/broken.mp3' })).status, 404);
     const audio = await fetch(`${server.url}/__sound/audio?path=assets/ok.ogg`);
     assert.equal(audio.headers.get('content-type'), 'audio/wav');
     const bytes = Buffer.from(await audio.arrayBuffer());

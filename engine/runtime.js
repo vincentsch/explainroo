@@ -143,6 +143,18 @@ export class Engine {
     return file;
   }
 
+  // Only decoding a sound file shows whether it can be read, and the server does
+  // that. So check asks for each file that s.sound played in its last run.
+  async soundFileIssues() {
+    const issues = [];
+    for (const [src, { scene, t }] of this.soundsPlayed ?? []) {
+      const res = await fetch(soundURL('check', src));
+      const { error } = res.ok ? await res.json() : { error: await res.text() };
+      if (error) issues.push({ level: 'error', scene, t: Math.round(t * 100) / 100, message: error });
+    }
+    return issues;
+  }
+
   clipImage(clip, frame) {
     if (this.recorder) return null;
     if (clip.video) {
@@ -558,6 +570,7 @@ export class Engine {
       fn();
     };
     this.cueNotes = [];
+    this.soundsPlayed = new Map();
     for (const sc of this.timeline.scenes) {
       const entrances = [];
       this.recorder = { push: (e) => entrances.push(e) };
@@ -631,6 +644,7 @@ export class Engine {
           if (e.volume > 0 && e.speed !== 1) once(`clip-sound:${sc.id}:${e.key}`, () => add('warn', sc.id, e.at, `clip "${e.src}" stays silent at speed ${e.speed}; use speed: 1 for its sound`));
           if (!e.loop && e.out - e.end > 1) once(`clip-freeze:${sc.id}:${e.key}`, () => add('hint', sc.id, e.end, `clip "${e.src}" freezes on its last frame from ${e.end.toFixed(2)}s until ${e.out.toFixed(2)}s; use loop: true or an earlier out`));
         }
+        if (e.kind === 'sound' && !this.soundsPlayed.has(e.src)) this.soundsPlayed.set(e.src, { scene: sc.id, t: e.at });
         if (e.at > sc.dur) once(`late:${sc.id}:${e.key}`, () => add('error', sc.id, e.at, `a ${e.kind} is set to appear at ${e.at.toFixed(2)}s but the scene ends at ${sc.dur.toFixed(2)}s`));
       }
       if (!times.length) {

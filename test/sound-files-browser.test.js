@@ -202,7 +202,13 @@ test('check finds a sound file that is missing or a music file it can\'t read, a
   assert.match(await check(), /sound volume must be from 0 to 1/);
   fs.writeFileSync(path.join(dir, 'scenes.js'), `export default { first(s) { s.title('x', { at: 0 }); s.sound('assets/noise.flac', { at: 20 }); } };`);
   assert.match(await check(), /a sound is set to appear at 20\.00s but the scene ends/);
-  // A short path works too, the way images and clips do.
+  // A file that is there but can't be read is found before render, at the scene that plays it.
+  fs.writeFileSync(path.join(dir, 'assets/broken.mp3'), 'this is not a sound file either');
+  fs.writeFileSync(path.join(dir, 'scenes.js'), `export default { first(s) { s.title('x', { at: 0 }); s.sound('assets/broken.mp3', { at: 1 }); } };`);
+  const broken = JSON.parse((await cli(['check', dir, '--json'])).stdout).issues.filter((i) => i.level === 'error');
+  assert.deepEqual(broken.map(({ scene, t }) => [scene, t]), [['first', 1]]);
+  assert.match(broken[0].message, /assets\/broken\.mp3 could not be read as a sound file/);
+  // A short path works too, the way images and clips do, and a broken file no scene plays doesn't matter.
   fs.writeFileSync(path.join(dir, 'scenes.js'), `export default { first(s) { s.title('x', { at: 0 }); s.sound('noise.flac', { at: 1 }); } };`);
   assert.equal(await check(), '');
 });

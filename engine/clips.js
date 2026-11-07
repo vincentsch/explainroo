@@ -11,7 +11,8 @@ export function clipURL(kind, src, frame) {
   return `/__clip/${kind}?path=${encodeURIComponent(src)}${frame === undefined ? '' : '&frame=' + frame}`;
 }
 
-// A music or sound file, decoded by the server. "info" is its measured level.
+// A music or sound file, decoded by the server. "info" is its measured level, and
+// "check" says whether it can be read.
 export function soundURL(kind, src) {
   return `/__sound/${kind}?path=${encodeURIComponent(src)}`;
 }
