@@ -242,7 +242,7 @@
       "id": "package",
       "step": "posting",
       "name": "A package to upload by hand",
-      "about": "\"explainroo package\" writes a folder for one platform with the sized video, the title, the text with hashtags, captions, a cover, the AI label and credits. You upload it yourself.",
+      "about": "\"explainroo package\" writes a folder with everything needed to post the video on one platform. You upload it yourself.",
       "free": true,
       "partner": false,
       "status": "available",
