@@ -4,10 +4,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
+import crypto from 'node:crypto';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { GOOD_KEY, fakeClip, startFakeServices } from './helpers/fake-services.js';
+import { GOOD_KEY, fakeClip, formFields, startFakeServices } from './helpers/fake-services.js';
+import net from 'node:net';
+import { failedRequest, shareAnswer } from '../src/connectors/cloud.js';
 import { findChrome } from '../src/browser.js';
 import { probe } from '../src/ffmpeg.js';
 
@@ -1412,3 +1415,324 @@ test('a bought clip plays through s.clip with the line the command prints', { sk
 });
 
 const image_ = (dir) => ['image', dir, 'hero', PROMPT_A];
+
+// Sharing a link: the exact request, what each answer means and what the record keeps.
+const SHARE = 'POST /api/v1/shares';
+const NOT_AGAIN = 'No share link was received. The server may have received the video. Explainroo will not upload it again automatically.';
+
+// Enough of an MP4 for the fake to take it: the box that names the format, then bytes.
+function fakeMp4(file, size = 2048) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from('ftypisom'), crypto.randomBytes(size)]));
+  return file;
+}
+
+async function sharing(t) {
+  const s = await setup(t);
+  fakeMp4(path.join(s.dir, 'out/video.mp4'));
+  return { ...s, uploads: () => s.fake.count('cloud', SHARE) };
+}
+
+function closedPort() {
+  return new Promise((resolve) => {
+    const server = net.createServer().listen(0, '127.0.0.1', () => {
+      const { port } = server.address();
+      server.close(() => resolve(port));
+    });
+  });
+}
+
+test('share sends the video and its title as the exact multipart form, and an expiring link keeps its claim link private', async (t) => {
+  const { dir, cli, fake, uploads } = await sharing(t);
+  const r = await cli(['share', dir, '--json']);
+  assert.equal(r.code, 0, r.text);
+  const out = JSON.parse(r.stdout);
+  assert.deepEqual(Object.keys(out).slice(0, 5), ['id', 'url', 'media_url', 'expires_at', 'claim_url']);
+  assert.equal(out.url, 'https://www.explainroo.com/v/share1');
+  assert.equal(out.media_url, 'https://www.explainroo.com/media/share1.mp4');
+  assert.ok(Date.parse(out.expires_at) > Date.now());
+  assert.equal(out.claim_url, 'https://www.explainroo.com/claim/share1-secret');
+  assert.equal(out.reused, false);
+  assert.equal(out.file, 'out/video.mp4');
+  assert.equal(out.title, 'Test');
+
+  // The request: a POST to /api/v1/shares, no key and no Authorization header, and
+  // a form with exactly the file as "video" and the title as "title".
+  assert.equal(uploads(), 1);
+  const [request] = fake.requests('cloud', SHARE);
+  assert.equal(request.pathname, '/api/v1/shares');
+  assert.equal(request.headers.authorization, undefined);
+  assert.match(request.headers['content-type'], /^multipart\/form-data; boundary=/);
+  const form = await formFields(request);
+  assert.deepEqual([...form.keys()], ['video', 'title']);
+  assert.equal(form.get('title'), 'Test');
+  const video = form.get('video');
+  assert.equal(video.name, 'video.mp4');
+  assert.equal(video.type, 'video/mp4');
+  assert.deepEqual(Buffer.from(await video.arrayBuffer()), fs.readFileSync(path.join(dir, 'out/video.mp4')));
+
+  // The record keeps the link, and the claim link stays out of tracked files.
+  const [job] = jobs(dir).filter((j) => j.kind === 'share');
+  assert.equal(job.status, 'done');
+  assert.deepEqual(job.result, { id: 'share1', url: out.url, media_url: out.media_url, expires_at: out.expires_at });
+  assert.equal(job.cost_usd, 0);
+  for (const name of fs.readdirSync(path.join(dir, 'history/jobs'))) assert.doesNotMatch(read(dir, `history/jobs/${name}`), /claim/);
+  const [secret] = fs.readdirSync(path.join(dir, 'history/private')).filter((name) => name.startsWith('share-'));
+  assert.equal(JSON.parse(read(dir, `history/private/${secret}`)).claim_url, out.claim_url);
+  assert.match(read(dir, '.gitignore'), /^history\/private\/$/m);
+
+  // The same file again prints the link it has and uploads nothing.
+  const again = await cli(['share', dir]);
+  assert.equal(again.code, 0, again.text);
+  assert.match(again.stdout, /^out\/video\.mp4 was already shared on .*, so nothing was uploaded\./);
+  assert.match(again.stdout, /^Page: https:\/\/www\.explainroo\.com\/v\/share1$/m);
+  assert.match(again.stdout, /^The link expires on \d{4}-\d\d-\d\d \d\d:\d\d UTC\.$/m);
+  assert.match(again.stdout, /claim link .* keep it to yourself:\nhttps:\/\/www\.explainroo\.com\/claim\/share1-secret$/m);
+  assert.equal(uploads(), 1);
+  // --new makes another.
+  const fresh = JSON.parse((await cli(['share', dir, '--new', '--json'])).stdout);
+  assert.equal(fresh.id, 'share2');
+  assert.equal(uploads(), 2);
+  assert.match((await cli(['history', dir])).stdout, /Shared links\n {2}\w+ out\/video\.mp4 https:\/\/www\.explainroo\.com\/v\/share1, expires /);
+  const report = JSON.parse((await cli(['history', dir, '--json'])).stdout);
+  assert.equal(report.spend.attempts, 0, 'sharing costs nothing');
+  assert.deepEqual(report.open, []);
+});
+
+test('with an account key the link does not expire, and the key goes only in the header', async (t) => {
+  const { dir, cli, fake } = await sharing(t);
+  const r = await cli(['share', dir, '--title', 'My own title'], { EXPLAINROO_CLOUD_KEY: GOOD_KEY });
+  assert.equal(r.code, 0, r.text);
+  assert.match(r.stdout, /^Shared out\/video\.mp4 as "My own title"\./);
+  assert.match(r.stdout, /It belongs to your account, so the link does not expire\./);
+  assert.doesNotMatch(r.text, /claim|expires on/);
+  assert.doesNotMatch(r.text, new RegExp(GOOD_KEY));
+  const [request] = fake.requests('cloud', SHARE);
+  assert.equal(request.headers.authorization, `Bearer ${GOOD_KEY}`);
+  assert.equal((await formFields(request)).get('title'), 'My own title');
+  const out = JSON.parse((await cli(['share', dir, '--json'], { EXPLAINROO_CLOUD_KEY: GOOD_KEY })).stdout);
+  assert.equal(out.expires_at, null);
+  assert.equal(out.claim_url, null);
+  assert.equal(out.reused, true);
+  assert.deepEqual(fs.readdirSync(path.join(dir, 'history/private')).filter((name) => name.startsWith('share-')), [], 'there is no claim link to keep');
+  for (const name of fs.readdirSync(path.join(dir, 'history/jobs'))) assert.doesNotMatch(read(dir, `history/jobs/${name}`), new RegExp(GOOD_KEY));
+});
+
+test('with no server at the address, share says so, sends nothing, offers the free routes and may run again', async (t) => {
+  const { dir, cli } = await sharing(t);
+  const port = await closedPort();
+  const env = { EXPLAINROO_CLOUD_URL: `http://127.0.0.1:${port}` };
+  for (let run = 0; run < 2; run++) {
+    const r = await cli(['share', dir], env);
+    assert.equal(r.code, 1, r.text);
+    assert.match(r.stderr, new RegExp(`error: the hosted service doesn't answer at http://127\\.0\\.0\\.1:${port} yet\\. The video was not sent\\.`));
+    assert.match(r.stderr, /export .* writes a web player for your own site, and .* package .* --platform <name>" makes a folder to upload by hand\./);
+    assert.doesNotMatch(r.stderr, /may have received/);
+  }
+  // Nothing left the computer, so the record has nothing to keep.
+  assert.deepEqual(jobs(dir), []);
+  const json = JSON.parse((await cli(['share', dir, '--json'], env)).stdout);
+  assert.match(json.error, /doesn't answer/);
+  assert.equal((await cli(['share', dir])).code, 0, 'once a server answers, the same command works');
+});
+
+test('a 404 page, a 405, an HTML page and an answer without a link all mean no service runs there yet, and may run again', async (t) => {
+  const { dir, cli, fake, uploads } = await sharing(t);
+  fake.plan('cloud', SHARE,
+    { status: 404, html: '<!doctype html><title>Not found</title>' },
+    { status: 405, html: '<!doctype html><title>Method not allowed</title>' },
+    { status: 200, html: '<!doctype html><title>explainroo</title>' },
+    { status: 201, body: { id: 'x', note: 'no link here' } });
+  for (const status of [404, 405, 200, 201]) {
+    const r = await cli(['share', dir]);
+    assert.equal(r.code, 1, r.text);
+    assert.match(r.stderr, new RegExp(`the hosted service isn't running at http://127\\.0\\.0\\.1:\\d+/cloud yet \\(it answered with HTTP ${status}\\)\\. No share link was made\\.`));
+    assert.match(r.stderr, /writes a web player for your own site/);
+  }
+  assert.equal(uploads(), 4);
+  assert.equal(JSON.parse((await cli(['share', dir, '--json'])).stdout).url, 'https://www.explainroo.com/v/share5');
+});
+
+test('a rejected key, a refused file, too many uploads and a check that took too long each say so, and may run again', async (t) => {
+  const { dir, cli, fake, uploads } = await sharing(t);
+  const bad = await cli(['share', dir], { EXPLAINROO_CLOUD_KEY: 'not-the-key' });
+  assert.equal(bad.code, 1);
+  assert.match(bad.stderr, /rejected the key in EXPLAINROO_CLOUD_KEY \(HTTP 401: Unauthenticated\.\)\. No share link was made, and the video was not shared without the key\./);
+  assert.doesNotMatch(bad.text, /not-the-key/);
+  assert.equal(uploads(), 1, 'it never tries again without the key');
+  assert.equal(fake.requests('cloud', SHARE)[0].headers.authorization, 'Bearer not-the-key');
+
+  fs.writeFileSync(path.join(dir, 'out/video.mp4'), 'not a video at all');
+  const refused = await cli(['share', dir]);
+  assert.match(refused.stderr, /refused the file \(HTTP 415: The video must be an MP4 or WebM file\.\)\. No share link was made\. It takes MP4 and WebM files with a video stream\./);
+  fakeMp4(path.join(dir, 'out/video.mp4'));
+
+  fake.plan('cloud', SHARE,
+    { status: 422, body: { message: 'The title may not be greater than 200 characters.', errors: { title: ['The title may not be greater than 200 characters.'] } } },
+    { status: 413, body: { message: 'The video is too large.' } },
+    { status: 429, headers: { 'Retry-After': '120' }, body: { message: 'Too Many Attempts.' } },
+    { status: 503, body: { message: 'Service Unavailable' } });
+  const unprocessable = await cli(['share', dir]);
+  assert.match(unprocessable.stderr, /refused the file \(HTTP 422: The title may not be greater than 200 characters\.\)\. No share link was made\./);
+  const large = await cli(['share', dir]);
+  assert.match(large.stderr, /refused the file \(HTTP 413: The video is too large\.\)\. .*too large for it/);
+  const busy = await cli(['share', dir]);
+  assert.match(busy.stderr, /has had too many uploads\. Try again in 2 minutes\. No share link was made\./);
+  const slow = await cli(['share', dir]);
+  assert.match(slow.stderr, /could not check the file in time and published nothing\. Try again later\./);
+  for (const r of [unprocessable, large, busy, slow]) {
+    assert.equal(r.code, 1);
+    assert.doesNotMatch(r.stderr, /may have received/);
+  }
+  // None of these can have published anything, so the next run uploads without --new.
+  const ok = await cli(['share', dir]);
+  assert.equal(ok.code, 0, ok.text);
+  assert.equal(uploads(), 7);
+});
+
+test('a connection that drops during the upload says the server may have the video, and only --new uploads it again', async (t) => {
+  const { dir, cli, fake, uploads } = await sharing(t);
+  // Big enough that the upload is still going when the fake cuts it.
+  fakeMp4(path.join(dir, 'out/video.mp4'), 8 * 1024 * 1024);
+  fake.plan('cloud', SHARE, { cut: true });
+  const dropped = await cli(['share', dir]);
+  assert.equal(dropped.code, 1, dropped.text);
+  assert.match(dropped.stderr, /error: the connection dropped during the upload\. No share link was received\. The server may have received the video\. Explainroo will not upload it again automatically\. To upload it again anyway, run the same command with --new\./);
+  assert.ok(fake.requests('cloud', SHARE)[0].raw.length < 8 * 1024 * 1024, 'the fake cut the upload partway');
+  const [job] = jobs(dir);
+  assert.equal(job.status, 'lost');
+  for (let run = 0; run < 2; run++) {
+    const blocked = await cli(['share', dir]);
+    assert.equal(blocked.code, 1);
+    assert.ok(blocked.stderr.includes(NOT_AGAIN), blocked.stderr);
+    assert.match(blocked.stderr, /--new/);
+  }
+  assert.equal(uploads(), 1);
+  const again = await cli(['share', dir, '--new', '--json']);
+  assert.equal(again.code, 0, again.text);
+  assert.equal(uploads(), 2);
+  assert.equal(JSON.parse(again.stdout).reused, false);
+  // Once a link came back, a plain repeat uses it.
+  assert.equal(JSON.parse((await cli(['share', dir, '--json'])).stdout).reused, true);
+  assert.equal(uploads(), 2);
+});
+
+test('a 500 and a timeout are blocked like a dropped connection, and an upload left without an answer is too', async (t) => {
+  const { dir, cli, fake, uploads, start } = await sharing(t);
+  fake.plan('cloud', SHARE, { status: 500 });
+  const server = await cli(['share', dir]);
+  assert.match(server.stderr, /the hosted service answered with HTTP 500\. No share link was received\. The server may have received the video\./);
+  assert.ok((await cli(['share', dir])).stderr.includes(NOT_AGAIN));
+  assert.equal(uploads(), 1);
+
+  fake.plan('cloud', SHARE, { hang: true });
+  const slow = await cli(['share', dir, '--new'], { EXPLAINROO_SHARE_TIMEOUT_MS: '2000' });
+  assert.equal(slow.code, 1);
+  assert.match(slow.stderr, /the upload did not finish in 2 seconds\. No share link was received\. The server may have received the video\./);
+  assert.equal(uploads(), 2);
+
+  // A run that is killed while it waits leaves a request with no answer.
+  fake.plan('cloud', SHARE, { hang: true });
+  const killed = start(['share', dir, '--new']);
+  await fake.until('cloud', SHARE, 3);
+  killed.child.kill('SIGKILL');
+  await killed.result;
+  const after = await cli(['share', dir]);
+  assert.equal(after.code, 1);
+  assert.match(after.stderr, /an upload of this file started on .* and no answer was saved\. Another run may still be uploading it, or a run stopped before the answer came\. No share link was received\. The server may have received the video\./);
+  assert.equal(uploads(), 3);
+});
+
+test('share picks the final video, a package with --platform or any file with --file, never a draft by itself, and only MP4 or WebM', async (t) => {
+  const { dir, cli, fake, uploads } = await sharing(t);
+  fs.rmSync(path.join(dir, 'out/video.mp4'));
+  fakeMp4(path.join(dir, 'out/draft.mp4'));
+  const missing = await cli(['share', dir]);
+  assert.equal(missing.code, 1);
+  assert.match(missing.stderr, /out\/video\.mp4 does not exist yet\. Run ".* render .*" first, or share a package with --platform\. out\/draft\.mp4 is a half-size draft, so share never picks it\. To share it anyway, pass it with --file\./);
+  assert.equal(uploads(), 0);
+  // A file that a draft render wrote under the final name is refused too.
+  fs.copyFileSync(path.join(dir, 'out/draft.mp4'), path.join(dir, 'out/video.mp4'));
+  fs.mkdirSync(path.join(dir, 'history'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'history/versions.jsonl'), `${JSON.stringify({ file: 'out/video.mp4', format: 'mp4', draft: true, scale: 0.5, sha256: crypto.createHash('sha256').update(fs.readFileSync(path.join(dir, 'out/video.mp4'))).digest('hex') })}\n`);
+  assert.match((await cli(['share', dir])).stderr, /out\/video\.mp4 is a half-size draft, so share does not send it/);
+  assert.equal(uploads(), 0);
+  // --file is the deliberate way past that.
+  assert.equal((await cli(['share', dir, '--file', path.join(dir, 'out/draft.mp4')])).code, 0);
+  assert.equal(uploads(), 1);
+
+  for (const name of ['video.mov', 'video.gif']) {
+    fakeMp4(path.join(dir, 'out', name));
+    const r = await cli(['share', dir, '--file', path.join(dir, 'out', name)]);
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, new RegExp(`takes MP4 and WebM files only, and out/${name.replace('.', '\\.')} is neither\\. Nothing was sent\\.`));
+  }
+  assert.match((await cli(['share', dir, '--file', path.join(dir, 'nope.mp4')])).stderr, /nope\.mp4 does not exist/);
+  const webm = path.join(dir, 'out/video.webm');
+  fs.writeFileSync(webm, Buffer.concat([Buffer.from([0x1a, 0x45, 0xdf, 0xa3]), crypto.randomBytes(512)]));
+  assert.equal((await cli(['share', dir, '--file', webm])).code, 0);
+  assert.equal((await formFields(fake.requests('cloud', SHARE).at(-1))).get('video').type, 'video/webm');
+  assert.equal(uploads(), 2);
+
+  // A package: its own file and its own title, and only while it is the file its post.json describes.
+  assert.match((await cli(['share', dir, '--platform', 'tiktok'])).stderr, /there is no tiktok package to share yet\. Run ".* package .* --platform tiktok" first\./);
+  assert.match((await cli(['share', dir, '--platform', 'vine'])).stderr, /there is no platform "vine"/);
+  const folder = path.join(dir, 'out/package/tiktok');
+  const packaged = fakeMp4(path.join(folder, 'video.mp4'));
+  const sha256 = crypto.createHash('sha256').update(fs.readFileSync(packaged)).digest('hex');
+  fs.writeFileSync(path.join(folder, 'post.json'), JSON.stringify({ platform: 'tiktok', title: 'The TikTok title', sha256 }));
+  const shared = JSON.parse((await cli(['share', dir, '--platform', 'tiktok', '--json'])).stdout);
+  assert.equal(shared.file, 'out/package/tiktok/video.mp4');
+  assert.equal(shared.title, 'The TikTok title');
+  assert.equal((await formFields(fake.requests('cloud', SHARE).at(-1))).get('title'), 'The TikTok title');
+  fakeMp4(packaged);
+  assert.match((await cli(['share', dir, '--platform', 'tiktok'])).stderr, /out\/package\/tiktok\/video\.mp4 is not the video its post\.json describes/);
+  assert.match((await cli(['share', dir, '--platform', 'tiktok', '--file', packaged])).stderr, /--platform or --file, not both/);
+  assert.equal(uploads(), 3);
+});
+
+test('a copy of the project with the same file shares on its own, and never takes the other copy\'s link', async (t) => {
+  const { dir, cli, fake, uploads } = await sharing(t);
+  assert.equal((await cli(['share', dir])).code, 0);
+  fake.plan('cloud', SHARE, { cut: true });
+  fakeMp4(path.join(dir, 'out/other.mp4'));
+  assert.equal((await cli(['share', dir, '--file', path.join(dir, 'out/other.mp4')])).code, 1);
+  // git keeps history/ and leaves out history/private/, and a render makes the same bytes.
+  const copy = temp(t);
+  fs.cpSync(dir, copy, { recursive: true, filter: (src) => !src.includes(`${path.sep}private`) });
+  const fresh = JSON.parse((await cli(['share', copy, '--json'])).stdout);
+  assert.equal(fresh.reused, false);
+  assert.equal(fresh.url, 'https://www.explainroo.com/v/share3');
+  // An upload the other copy lost doesn't block this one.
+  assert.equal((await cli(['share', copy, '--file', path.join(copy, 'out/other.mp4')])).code, 0);
+  assert.equal(uploads(), 4);
+  // The first copy still has its own link, and its own blocked upload.
+  assert.equal(JSON.parse((await cli(['share', dir, '--json'])).stdout).url, 'https://www.explainroo.com/v/share1');
+  assert.match((await cli(['share', dir, '--file', path.join(dir, 'out/other.mp4')])).stderr, /will not upload it again automatically/);
+  assert.equal(uploads(), 4);
+});
+
+test('two shares of the same file at once upload it once', async (t) => {
+  const { dir, start, fake, uploads } = await sharing(t);
+  fake.plan('cloud', SHARE, { hold: true });
+  const runs = [start(['share', dir]).result, start(['share', dir]).result];
+  const loser = await Promise.race(runs);
+  assert.equal(loser.code, 1, loser.text);
+  assert.match(loser.stderr, /Another run may still be uploading it/);
+  await fake.until('cloud', SHARE);
+  fake.release();
+  const results = await Promise.all(runs);
+  assert.deepEqual(results.map((r) => r.code).toSorted(), [0, 1]);
+  assert.equal(uploads(), 1);
+  assert.deepEqual(jobs(dir).map((j) => j.status), ['done']);
+});
+
+test('a request that threw is told apart by its code: nothing sent, or maybe sent', () => {
+  for (const code of ['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'UND_ERR_CONNECT_TIMEOUT']) assert.equal(failedRequest(Object.assign(new TypeError('fetch failed'), { cause: { code } })), 'unreachable', code);
+  for (const code of ['ECONNRESET', 'EPIPE', 'UND_ERR_SOCKET', undefined]) assert.equal(failedRequest(Object.assign(new TypeError('fetch failed'), { cause: { code } })), 'dropped', String(code));
+  assert.equal(failedRequest(Object.assign(new Error('timed out'), { name: 'TimeoutError' })), 'timeout');
+  assert.equal(shareAnswer({ id: 1, url: 'https://x.example/v/1' }).id, '1');
+  assert.equal(shareAnswer({ id: 1, url: 'javascript:alert(1)' }), null);
+  assert.equal(shareAnswer(null), null);
+  assert.equal(shareAnswer({ url: 'https://x.example/v/1', claim_url: 'ftp://x' }).claim_url, null);
+});

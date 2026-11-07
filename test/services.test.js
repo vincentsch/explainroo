@@ -46,16 +46,28 @@ test('within each step free entries come first, and the first entry of every ste
 });
 
 test('the first list holds what exists today', () => {
-  assert.deepEqual(SERVICES.map((s) => s.id), ['kokoro', 'recording', 'elevenlabs', 'whisper', 'own-images', 'openrouter', 'own-footage', 'openrouter-video', 'built-in-music', 'own-music', 'soundroo', 'web-player', 'package']);
+  assert.deepEqual(SERVICES.map((s) => s.id), ['kokoro', 'recording', 'elevenlabs', 'whisper', 'own-images', 'openrouter', 'own-footage', 'openrouter-video', 'built-in-music', 'own-music', 'soundroo', 'web-player', 'cloud', 'package']);
 });
 
-test('package is the free route for posting', () => {
+test('the hosted link is coming and says what leaves the computer, and package is the free route for posting', () => {
+  const link = findService('cloud');
+  assert.equal(link.step, 'sharing');
+  assert.equal(link.status, 'coming');
+  assert.equal(link.free, true);
+  assert.match(link.data_leaves, /^The video file and its title go to explainroo\.com, and only when you run "explainroo share"\.$/);
+  assert.match(link.cost, /without an account expires/);
+  assert.match(link.setup.steps.join(' '), /EXPLAINROO_CLOUD_KEY/);
+  assert.equal(findConnector('cloud').baseUrl, 'https://www.explainroo.com');
   const posting = SERVICES.filter((s) => s.step === 'posting');
   assert.equal(posting[0].id, 'package');
   assert.equal(posting[0].free, true);
   assert.match(posting[0].setup.use, /explainroo package <project> --platform tiktok/);
   assert.match(posting[0].data_leaves, /Nothing leaves your computer until you upload/);
   assert.equal(findService('upload-by-hand'), null);
+  assert.match(run(['services', 'sharing']).stdout, /Hosted link on explainroo\.com \(free, coming\)/);
+  const connect = run(['connect', 'cloud']);
+  assert.equal(connect.status, 0, connect.stderr);
+  assert.match(connect.stdout, /needs no setting up/);
 });
 
 test('a service with a key has a connector with a free key test, and a connector has an entry', () => {

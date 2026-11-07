@@ -1,8 +1,8 @@
-// The project record: a folder next to video.json that says what was paid for
-// and what was rendered. build/ and out/ can be deleted. This folder stays.
+// The project record: a folder next to video.json that says what was paid for,
+// rendered and shared. build/ and out/ can be deleted. This folder stays.
 //
 //   history/jobs/<key>.json        one file per attempt, <key>.2.json for the second
-//   history/versions.jsonl         one line per finished render, plus verify results
+//   history/versions.jsonl         one line per finished render and package, plus verify results
 //   history/voice/<key>.wav        paid speech, saved request by request
 //   history/replaced/<hash>.<ext>  files that a newer purchase under the same name moved
 //   history/failed-check/          what came back for a clip and failed its check
@@ -106,6 +106,11 @@ export function createJob(dir, key, { attempt = 1, ...fields }) {
     fs.closeSync(fd);
   }
   return job;
+}
+
+// For an attempt that never left this computer, so that there is nothing to remember.
+export function forgetJob(dir, job) {
+  fs.rmSync(jobFile(dir, job.key, job.attempt), { force: true });
 }
 
 export function updateJob(dir, job, changes) {
@@ -402,6 +407,8 @@ export function continueCommand(dir, job, reason) {
   return `${selfCommand()} ${CONTINUE[job.kind](job, projectWord(dir), again, reason)}`;
 }
 
+const FREE_KINDS = new Set(['share']);
+
 function jobLabel(job) {
   const r = job.request || {};
   if (job.kind === 'speech') return `scene ${oneLine(job.scene ?? '?', 60)}: "${oneLine(r.text, 60)}"`;
@@ -435,9 +442,11 @@ export function historyReport(dir, { current = () => true, needed = () => false,
     const reason = stopReason(dir, job);
     return { id: shortId(job), kind: job.kind, provider: job.provider, status: job.status, reason, what: jobLabel(job), created: job.created, updated: job.updated, message: stopSentence(job, reason), command: continueCommand(dir, job, reason) };
   });
-  const spend = { usd: 0, attempts: jobs.length + otherSpend.length, unknown_price: 0, may_have_cost_usd: 0, characters: {} };
+  // Sharing a link costs nothing, so it is no part of the spend.
+  const paid = jobs.filter((job) => !FREE_KINDS.has(job.kind));
+  const spend = { usd: 0, attempts: paid.length + otherSpend.length, unknown_price: 0, may_have_cost_usd: 0, characters: {} };
   for (const entry of otherSpend) spend.usd += entry.cost_usd || 0;
-  for (const job of jobs) {
+  for (const job of paid) {
     spend.usd += job.cost_usd || 0;
     const byCharacters = job.status === 'done' && job.characters;
     if (byCharacters) spend.characters[job.provider] = (spend.characters[job.provider] || 0) + job.characters;
@@ -461,6 +470,14 @@ function clipLine(job) {
   return `  ${oneLine(`${job.id}  ${job.status}  ${file}  ${cost}`, 400)}`;
 }
 
+function shareLine(job) {
+  const r = job.result ?? {};
+  const where = job.status === 'done' && r.url
+    ? `${r.url}, ${r.expires_at ? `expires ${when(r.expires_at)}` : 'does not expire'}`
+    : job.status === 'refused' ? 'not shared' : 'no link came back, and the server may have the video';
+  return `  ${oneLine(`${job.id}  ${job.request?.file ?? '?'}  ${where}`, 400)}`;
+}
+
 export function formatHistory({ open, spend, versions, jobs = [] }) {
   const parts = [];
   parts.push(open.length ? ['Open jobs', ...open.flatMap((o) => [`  ${o.id}  ${o.kind}  ${o.what}`, `    ${o.message}`, `    To continue: ${o.command}`])].join('\n') : 'No open jobs.');
@@ -470,6 +487,8 @@ export function formatHistory({ open, spend, versions, jobs = [] }) {
   parts.push(spend.attempts ? [`Spend so far, across ${spend.attempts} attempt${spend.attempts === 1 ? '' : 's'}`, ...paid].join('\n') : 'Nothing bought yet.');
   const clips = jobs.filter((job) => job.kind === 'clip');
   if (clips.length) parts.push(['Clips', ...clips.map(clipLine)].join('\n'));
+  const shares = jobs.filter((job) => job.kind === 'share');
+  if (shares.length) parts.push(['Shared links', ...shares.map(shareLine)].join('\n'));
   parts.push(versions.length ? ['Rendered versions', ...versions.map(versionLine)].join('\n') : 'Nothing rendered yet.');
   return parts.join('\n\n');
 }

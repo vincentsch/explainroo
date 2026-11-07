@@ -27,6 +27,7 @@ import { formatServices, findService, needsKey, SERVICES, STEPS } from './servic
 import { speechKeys } from './voice.js';
 import { findEnv } from './env.js';
 import { formatPackage, packageVideo } from './package.js';
+import { formatShare, share } from './share.js';
 
 // Paid voices that can list what a key may use, each with its own flag.
 const LISTS_VOICES = CONNECTORS.filter((c) => c.voices);
@@ -53,6 +54,8 @@ Post a video
   package [project]     write a folder for one platform: the sized video, its words, captions, cover, AI label
                         and credits (--platform youtube|shorts|tiktok|reels|linkedin|x, --title, --description,
                         --hashtags, --size for x, --workers n). The words come from post.json, see "docs publishing"
+  share [project]       upload a finished video to explainroo.com and get a page link (--platform name shares
+                        a package, --file, --title, --new uploads again). Nothing is uploaded without this command
 
 Product demos
   capture [project] <url>  save screenshots, wording, colors, fonts and logo of a live site (--mobile)
@@ -201,6 +204,12 @@ export async function main(argv) {
         const r = await packageVideo(pos[0], { platform: textFlag(flags, 'platform'), size: textFlag(flags, 'size'), title: textFlag(flags, 'title'), description: textFlag(flags, 'description'), hashtags: textFlag(flags, 'hashtags'), workers: num(flags.workers, 'workers'), log });
         print(formatPackage(r), r);
         return r.ok ? 0 : 1;
+      }
+      case 'share': {
+        const project = loadProject(pos[0]);
+        const r = await share(project, { platform: textFlag(flags, 'platform'), file: textFlag(flags, 'file'), title: textFlag(flags, 'title'), fresh: !!flags.new, log });
+        print(formatShare(r), r);
+        return 0;
       }
       case 'export': {
         const project = loadProject(pos[0]);

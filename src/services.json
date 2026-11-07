@@ -222,6 +222,23 @@
       }
     },
     {
+      "id": "cloud",
+      "step": "sharing",
+      "name": "Hosted link on explainroo.com",
+      "about": "\"explainroo share\" uploads a finished video to explainroo.com and gives back a page that anyone with the link can watch, and a link to the file that posting tools can use. The service is coming. The command works, and it says so when no server answers yet.",
+      "free": true,
+      "partner": false,
+      "status": "coming",
+      "cost": "Free. A link shared without an account expires, and the command says when.",
+      "data_leaves": "The video file and its title go to explainroo.com, and only when you run \"explainroo share\".",
+      "setup": {
+        "env": [],
+        "url": "https://www.explainroo.com",
+        "steps": ["Nothing to set up. A key from an explainroo.com account in EXPLAINROO_CLOUD_KEY makes the link part of that account, so it does not expire."],
+        "use": "Run \"explainroo share <project>\" to share out/video.mp4, or add --platform tiktok to share a package. Run \"explainroo docs publishing\" for more."
+      }
+    },
+    {
       "id": "package",
       "step": "posting",
       "name": "A package to upload by hand",

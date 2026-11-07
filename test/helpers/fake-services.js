@@ -8,7 +8,11 @@
 //   spawn(cli, { env: { ...process.env, ...fake.env } });
 //   fake.count('openrouter', 'POST /api/v1/chat/completions');
 //   fake.plan('openrouter', 'POST /api/v1/chat/completions', { status: 500 }, { drop: true }, { delay: 200 }, { hang: true }, { hold: true }, { raw: Buffer.from('x') });
+//   fake.plan('cloud', 'POST /api/v1/shares', { cut: true }, { status: 404, html: '<p>Not found</p>' }, { status: 429, headers: { 'Retry-After': '120' } });
 //   fake.release();   // answers every request that a { hold: true } kept waiting
+//
+// { cut: true } drops the connection while the request body is still coming in.
+// Each request keeps its raw body, so a test can read a multipart upload.
 //
 // To add a service, add its routes to ROUTES. A connector with the id "my-service"
 // reads its address from EXPLAINROO_MY_SERVICE_URL.
@@ -60,7 +64,46 @@ export function fakeClip({ duration = 6, generate_audio: audio = false }, take) 
 
 const videoId = (pathname) => decodeURIComponent(pathname.split('/')[4]);
 
+// What a request with a multipart body sent.
+export async function formFields(request) {
+  return new Response(request.raw, { headers: { 'content-type': request.headers['content-type'] ?? '' } }).formData();
+}
+
+// The hosted service: a share with no key expires and has a claim link, and one
+// with an account's key does not.
+const SHARE_DAYS = 7;
+async function shareRoute({ req, res, raw, count }) {
+  const auth = req.headers.authorization;
+  if (auth !== undefined && auth !== `Bearer ${GOOD_KEY}`) return sendJson(res, 401, { message: 'Unauthenticated.' });
+  let form;
+  try {
+    form = await formFields({ raw, headers: req.headers });
+  } catch {
+    return sendJson(res, 422, { message: 'The video field is required.', errors: { video: ['The video field is required.'] } });
+  }
+  const video = form.get('video');
+  const title = form.get('title');
+  if (!(video instanceof Blob)) return sendJson(res, 422, { message: 'The video field is required.', errors: { video: ['The video field is required.'] } });
+  if (typeof title !== 'string' || !title.trim()) return sendJson(res, 422, { message: 'The title field is required.', errors: { title: ['The title field is required.'] } });
+  const head = Buffer.from(await video.slice(0, 12).arrayBuffer());
+  const mp4 = head.subarray(4, 8).toString('latin1') === 'ftyp';
+  const webm = head.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]));
+  if (!mp4 && !webm) return sendJson(res, 415, { message: 'The video must be an MP4 or WebM file.' });
+  const id = `share${count}`;
+  const account = auth !== undefined;
+  sendJson(res, 201, {
+    id,
+    url: `https://www.explainroo.com/v/${id}`,
+    media_url: `https://www.explainroo.com/media/${id}.${mp4 ? 'mp4' : 'webm'}`,
+    expires_at: account ? null : new Date(Date.now() + SHARE_DAYS * 86400000).toISOString(),
+    claim_url: account ? null : `https://www.explainroo.com/claim/${id}-secret`,
+  });
+}
+
 export const ROUTES = {
+  cloud: {
+    'POST /api/v1/shares': shareRoute,
+  },
   openrouter: {
     'GET /api/v1/videos/models': ({ res }) => {
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -134,6 +177,7 @@ export async function startFakeServices({ routes = {} } = {}) {
   const waiting = [];
   const state = { videos: new Map() };
   let holding = [];
+  let unmatched = 0;
   const planKey = (service, route) => `${service} ${route}`;
 
   const server = http.createServer(async (req, res) => {
@@ -141,15 +185,25 @@ export async function startFakeServices({ routes = {} } = {}) {
     const [, service, ...rest] = url.pathname.split('/');
     const pathname = `/${rest.join('/')}`;
     const route = Object.keys(table[service] ?? {}).find((r) => matches(r, req.method, pathname));
+    // A cut has to happen while the body is still coming in.
+    const cut = route && plans.get(planKey(service, route))?.[0]?.cut ? plans.get(planKey(service, route)).shift() : null;
     const chunks = [];
-    for await (const chunk of req) chunks.push(chunk);
-    const text = Buffer.concat(chunks).toString('utf8');
+    const { socket } = req;
+    for await (const chunk of req) {
+      chunks.push(chunk);
+      if (cut) break;
+    }
+    const raw = Buffer.concat(chunks);
     let body = null;
-    try { body = JSON.parse(text); } catch {}
-    if (!route) return sendJson(res, 404, { error: { message: `the fake has no route for ${req.method} ${pathname}` } });
+    try { body = JSON.parse(raw.toString('utf8')); } catch {}
+    if (!route) {
+      unmatched++;
+      return sendJson(res, 404, { error: { message: `the fake has no route for ${req.method} ${pathname}` } });
+    }
     const count = requests.filter((r) => r.service === service && r.route === route).length + 1;
-    requests.push({ service, route, method: req.method, pathname, search: url.search, headers: req.headers, body });
+    requests.push({ service, route, method: req.method, pathname, search: url.search, headers: req.headers, body, raw });
     for (const wait of waiting.filter((w) => w.service === service && w.route === route && count >= w.n)) wait.resolve();
+    if (cut) return socket.destroy();
     const step = plans.get(planKey(service, route))?.shift() ?? {};
     if (step.hang) return;
     if (step.drop) return req.socket.destroy();
@@ -159,13 +213,22 @@ export async function startFakeServices({ routes = {} } = {}) {
       res.writeHead(200, { 'Content-Type': 'video/mp4' });
       return res.end(step.raw);
     }
-    if (step.status) return sendJson(res, step.status, step.body ?? { error: { message: `fake error ${step.status}` } });
+    if (step.html !== undefined) {
+      res.writeHead(step.status ?? 200, { 'Content-Type': 'text/html; charset=utf-8', ...step.headers });
+      return res.end(step.html);
+    }
+    if (step.status) {
+      res.writeHead(step.status, { 'Content-Type': 'application/json', ...step.headers });
+      return res.end(JSON.stringify(step.body ?? { error: { message: `fake error ${step.status}` } }));
+    }
     if (step.dropBody) {
       res.writeHead(200, { 'Content-Type': 'application/json', 'Content-Length': '1000' });
       res.write('{"cut off');
       return setTimeout(() => req.socket.destroy(), 20);
     }
-    table[service][route]({ req, res, body, count, pathname, state });
+    Promise.resolve(table[service][route]({ req, res, body, raw, count, pathname, state })).catch((e) => {
+      if (!res.headersSent) sendJson(res, 500, { error: { message: `the fake failed: ${e.message}` } });
+    });
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -175,6 +238,8 @@ export async function startFakeServices({ routes = {} } = {}) {
     env: Object.fromEntries(Object.keys(table).map((service) => [`EXPLAINROO_${service.toUpperCase().replace(/-/g, '_')}_URL`, `${base}/${service}`])),
     requests: (service, route) => requests.filter((r) => r.service === service && r.route === route),
     count: (service, route) => requests.filter((r) => r.service === service && r.route === route).length,
+    // Every request, also one to an address the fake doesn't know.
+    total: () => requests.length + unmatched,
     // The next answers of a route, one for each request.
     plan: (service, route, ...steps) => plans.set(planKey(service, route), steps),
     release: () => {
