@@ -227,11 +227,21 @@ export function tintOf(theme, c) {
   return mixColor(theme.surface, base, theme.tintStrength);
 }
 
+// The fonts explainroo brings for Hindi, Japanese and Chinese. Every font name
+// lists them after its own family, so text in those languages is drawn with
+// them and not with whatever fonts the computer happens to have.
+export const LANGUAGE_FONTS = ['Noto Sans Devanagari', 'Noto Sans JP', 'Noto Sans SC'];
+
+// "Family", then the language fonts, then a generic family.
+export function fontStack(family, fallback = 'sans-serif') {
+  return `${[family, ...LANGUAGE_FONTS].map((f) => `"${f}"`).join(', ')}, ${fallback}`;
+}
+
 export function fontString(theme, role = 'body', size = 48, weight) {
   const f = theme.fonts[role] || theme.fonts.body;
   const w = weight ?? f.weight;
   const fallback = role === 'mono' ? 'monospace' : 'sans-serif';
-  return `${w} ${Math.round(size * 100) / 100}px "${f.family}", "Noto Sans Devanagari", "Noto Sans JP", "Noto Sans SC", ${fallback}`;
+  return `${w} ${Math.round(size * 100) / 100}px ${fontStack(f.family, fallback)}`;
 }
 
 // Background textures are rendered once and reused on every frame.

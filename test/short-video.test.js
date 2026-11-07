@@ -1,8 +1,9 @@
-// The parts of the short-video kit that need no browser: keywords in its titles
-// and the camera keys it returns for s.camera.
+// The parts of the short-video kit that need no browser: keywords in its titles,
+// its fonts and the camera keys it returns for s.camera.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Short, richWords } from '../engine/short.js';
+import { fontStack } from '../engine/themes.js';
 
 test('*keywords* in a kit title are marked word by word, also across words', () => {
   assert.deepEqual(richWords('Your bread is *stale* again?'), [
@@ -11,6 +12,11 @@ test('*keywords* in a kit title are marked word by word, also across words', () 
   assert.deepEqual(richWords('*Two whole* days.').map((w) => [w.text, w.key]), [['Two', true], ['whole', true], ['days.', false]]);
   assert.deepEqual(richWords('*Fresh*, again').map((w) => [w.text, w.key]), [['Fresh,', true], ['again', false]]);
   assert.deepEqual(richWords('2 * 3').map((w) => [w.text, w.key]), [['2', false], ['*', false], ['3', false]]);
+});
+
+test('the kit draws in Inter with the fonts explainroo brings for Hindi, Japanese and Chinese', () => {
+  assert.equal(new Short({}).font(56, 900), `900 56px ${fontStack('Inter')}`);
+  assert.equal(new Short({}).font(34), '400 34px "Inter", "Noto Sans Devanagari", "Noto Sans JP", "Noto Sans SC", sans-serif');
 });
 
 test('punch and drift take fixed places and return keys for s.camera', () => {

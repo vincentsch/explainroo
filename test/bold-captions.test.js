@@ -11,7 +11,8 @@ import { loadProject, normalizeConfig, ProjectError } from '../src/project.js';
 import { sceneHash, synthesize } from '../src/voice.js';
 import { buildTimeline } from '../src/timeline.js';
 import { subtitleCues, toSrt } from '../src/subtitles.js';
-import { boldChunks, boldText, buildChunks, buildPhrases, isKeyword } from '../engine/captions.js';
+import { BOLD_CAPTION_FAMILIES, boldCaptionFont, boldChunks, boldText, buildChunks, buildPhrases, isKeyword } from '../engine/captions.js';
+import { LANGUAGE_FONTS, fontString, getTheme } from '../engine/themes.js';
 import { layoutAreas } from '../engine/layout.js';
 import { GOOD_KEY, startFakeServices } from './helpers/fake-services.js';
 
@@ -121,6 +122,14 @@ test('numbers, money and starred words are keywords, and a caption drops a comma
   const timeline = { scenes: [{ start: 10, words: [{ text: 'Bread', start: 0, end: 0.2, key: true }, { text: 'rises.', start: 0.3, end: 0.5 }] }] };
   assert.deepEqual(buildChunks(timeline).map((c) => c.words.map((w) => [w.text, w.key, w.start])), [[['Bread', true, 10], ['rises.', false, 10.3]]]);
   assert.deepEqual(buildPhrases(timeline, 40)[0].words.map((w) => w.text), ['Bread', 'rises.']);
+});
+
+test('bold captions name the fonts explainroo brings for Hindi, Japanese and Chinese, as every look font does', () => {
+  // The look fonts keep the exact font names they always had.
+  assert.equal(fontString(getTheme('clean'), 'body', 48), '400 48px "Inter", "Noto Sans Devanagari", "Noto Sans JP", "Noto Sans SC", sans-serif');
+  assert.equal(fontString(getTheme('paper'), 'mono', 31.333), '400 31.33px "JetBrains Mono", "Noto Sans Devanagari", "Noto Sans JP", "Noto Sans SC", monospace');
+  assert.equal(boldCaptionFont(74), '900 74px "Inter", "Noto Sans Devanagari", "Noto Sans JP", "Noto Sans SC", sans-serif');
+  assert.deepEqual(BOLD_CAPTION_FAMILIES, ['Inter', ...LANGUAGE_FONTS]);
 });
 
 test('"captions": "bold" is a setting of its own, and Japanese and Chinese refuse it with a clear message', () => {

@@ -8,6 +8,8 @@
 // straight on the canvas, so the automatic camera keeps what it draws as one
 // block. A scene that wants a move sets s.camera with punch() or drift().
 
+import { fontStack } from './themes.js';
+
 const INK = '#0b0b10';
 const KEY = '#ffd43b';
 const TONES = {
@@ -118,8 +120,9 @@ export class Short {
     this.s._record('short', this.at(at ?? 0), dur, { sfx: quiet ? null : sfx ?? null }, { label, pitch });
   }
 
+  // Inter, then the fonts explainroo brings for Hindi, Japanese and Chinese.
   font(size, weight = 400) {
-    return `${weight} ${size}px "Inter", sans-serif`;
+    return `${weight} ${size}px ${fontStack('Inter')}`;
   }
 
   measure(str, size, weight = 400, tracking = 0) {

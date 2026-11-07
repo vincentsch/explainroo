@@ -1,6 +1,6 @@
 // Burned-in captions built from the narration's word timings. The current
 // phrase is shown; words light up as they are spoken.
-import { fontString } from './themes.js';
+import { fontString, fontStack, LANGUAGE_FONTS } from './themes.js';
 import { clamp, ease } from './util.js';
 import { BOLD_CAPTION_SIZE } from './layout.js';
 
@@ -138,6 +138,14 @@ export function drawCaptions(ctx, phrases, T, theme, W, H, area = null) {
 
 export const BOLD_CAPTIONS = { font: 'Inter', weight: 900, fill: '#ffffff', key: '#ffd43b', stroke: '#0b0b10' };
 
+// The font of bold captions, with the language fonts after its own family.
+export function boldCaptionFont(size, style = BOLD_CAPTIONS) {
+  return `${style.weight} ${size}px ${fontStack(style.font)}`;
+}
+
+// Every family that font names, for an export to bring along.
+export const BOLD_CAPTION_FAMILIES = [BOLD_CAPTIONS.font, ...LANGUAGE_FONTS];
+
 const SENTENCE_END = /[.!?;:…।]["'’”)\]]*$/;
 const COMMA = /[,–—]["'’”)\]]*$/;
 
@@ -222,7 +230,7 @@ export function drawBoldCaptions(ctx, chunks, T, W, H, area, style = BOLD_CAPTIO
   const maxH = 2 * (area.bottom - area.cy);
   ctx.save();
   const measure = (size) => {
-    ctx.font = `${style.weight} ${size}px "${style.font}", sans-serif`;
+    ctx.font = boldCaptionFont(size, style);
     // The outline takes part of each space, so words get a little more room.
     const space = ctx.measureText(' ').width + size * 0.14;
     const widths = words.map((w) => ctx.measureText(w.show).width);
