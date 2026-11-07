@@ -34,7 +34,7 @@ test('the package holds what an installed copy needs', () => {
   for (const folder of ['bin/', 'src/', 'engine/', 'fonts/', 'templates/', 'skills/']) {
     assert.ok(files.some((f) => f.startsWith(folder)), folder);
   }
-  for (const file of ['AGENTS.md', 'README.md', 'LICENSE', 'package.json', 'bin/explainroo.js', 'skills/explainroo/SKILL.md']) {
+  for (const file of ['AGENTS.md', 'README.md', 'LICENSE', 'package.json', 'bin/explainroo.js', 'skills/explainroo/SKILL.md', 'src/services.json', 'src/connectors/index.js']) {
     assert.ok(files.includes(file), file);
   }
   const pages = fs.readdirSync(path.join(root, 'docs')).filter((f) => f.endsWith('.md'));

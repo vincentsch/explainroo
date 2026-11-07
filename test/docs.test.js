@@ -85,6 +85,26 @@ test('every docs topic named in AGENTS.md exists, and every page is named there'
   for (const topic of topics) assert.ok(named.has(topic), `nothing in AGENTS.md leads to docs/${topic}.md`);
 });
 
+test('AGENTS.md has the rule about outside services near when to ask the user', () => {
+  const rule = 'Explainroo makes the whole video for free. When the user asks for something that can use an outside service, run `explainroo services <step> --json` and tell the user the options, free ones first. Say which cost money and which are paid partners. Let the user choose. Never pick a paid service for them and never call a partner the best.';
+  const section = agents.slice(agents.indexOf('### When to ask the user'), agents.indexOf('### Where keys go'));
+  assert.ok(section.replace(/\s+/g, ' ').includes(rule));
+  assert.match(section, /explainroo connect openrouter|connect openrouter/);
+});
+
+test('the page about adding a service says what it takes, and implies nothing about payment', () => {
+  const page = fs.readFileSync(path.join(root, 'docs/connectors.md'), 'utf8');
+  for (const words of ['src/services.json', 'src/connectors/', 'test/helpers/fake-services.js', 'Anyone can send one', 'Nothing about payment is implied']) assert.ok(page.includes(words), words);
+});
+
+test('AGENTS.md says what history/ is, and no longer calls paid work safe to delete', () => {
+  const files = agents.slice(agents.indexOf('## Project files and settings'), agents.indexOf('`video.json` settings'));
+  assert.match(files, /history\/ {6}what was paid for and rendered/);
+  assert.match(files, /safe to delete,\s+because paid speech and paid images stay in history\//);
+  assert.doesNotMatch(agents, /elevenlabs-usage\.jsonl/);
+  for (const row of ['`services [step]`', '`connect <service>`', '`history [project]`', '`--new`', '`--resume <id>`', '`--force`', '`--key-stdin`']) assert.ok(agents.includes(row), row);
+});
+
 test('the instructions link to examples on GitHub, because the package has none', () => {
   for (const file of ['AGENTS.md', ...topics.map((t) => `docs/${t}.md`)]) {
     const text = fs.readFileSync(path.join(root, file), 'utf8');

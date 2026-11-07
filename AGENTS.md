@@ -47,17 +47,32 @@ layout and the wording. Ask only when you cannot go on without an answer.
 When you ask, put everything you need in one message. Typical reasons to ask:
 
 - The topic is unclear, or you need a fact you cannot check.
-- The user wants AI images and there is no OpenRouter key (see Images).
-- The user wants ElevenLabs and there is no ElevenLabs key (see Voices).
+- The user chose AI images and there is no OpenRouter key. Run
+  `explainroo connect openrouter` and show the user what it prints.
+- The user chose ElevenLabs and there is no ElevenLabs key. Run
+  `explainroo connect elevenlabs` and show the user what it prints.
 - The user wants something explainroo cannot do, like video shot with a
   camera.
 
+Explainroo makes the whole video for free. When the user asks for something
+that can use an outside service, run `explainroo services <step> --json` and
+tell the user the options, free ones first. Say which cost money and which are
+paid partners. Let the user choose. Never pick a paid service for them and
+never call a partner the best.
+
 ### Where keys go
 
-A key is a line like `OPENROUTER_API_KEY=...` in a `.env` file. Save it in the
-settings folder, so every project can use it. Create the folder if it is
-missing. `doctor` prints the exact path as `keys file`. It is the first of
-these that applies:
+`explainroo connect <service>` sets up a key. It says what the service costs and
+what data leaves the computer, tests the key, and saves it only if the test
+passes. In a terminal it asks with a hidden prompt. With no terminal it prints
+the steps and two ways to finish: the user runs it in their own terminal, or the
+key comes in on stdin with `--key-stdin`. A key never goes on the command line.
+
+A key is a line like `OPENROUTER_API_KEY=...` in a `.env` file. `connect` saves it
+in the settings folder, so every project can use it. In a source checkout it uses
+the `.env` in that folder, and `--project <dir>` uses that project's `.env`.
+`doctor` prints the settings file as `keys file`. It is the first of these that
+applies:
 
 - `$EXPLAINROO_CONFIG/.env`, when that is set
 - On Windows, `%APPDATA%\explainroo\.env`
@@ -390,8 +405,7 @@ Kokoro runs on this computer and needs no key. Pick a voice with
 
 ElevenLabs offers premium and cloned voices. It costs money on the user's
 account and receives the script text. If the user wants it and there is no
-key, ask them for an API key from elevenlabs.io. Save it as
-`ELEVENLABS_API_KEY=...`, as "Where keys go" says.
+key, run `explainroo connect elevenlabs`, as "Where keys go" says.
 
 ```bash
 explainroo voices videos/<name> --elevenlabs
@@ -406,10 +420,17 @@ in `video.json`:
 ```
 
 `model` is optional and defaults to `eleven_multilingual_v2`. The voice
-command reports the characters used. Each request is saved in
-`build/voice/elevenlabs-usage.jsonl`, without the key or script text.
+command reports the characters used.
 ElevenLabs uses `speed` times `pace`, limited to 0.7 through 1.2.
 The voice command tells you when it uses that limit.
+
+Paid speech is bought per sentence, and each answer is saved in `history/voice/`.
+Moving a marker, changing `{shown|...}` or deleting `build/` buys nothing, and
+editing a sentence buys only that sentence. If a run stops while a request is out,
+nobody can tell whether it was charged, so `voice` stops and explains. Then
+`explainroo voice <project> --new` buys only those sentences again. `voice --force`
+makes every scene again, so with a paid voice it buys every sentence again, and it
+says so first.
 
 You can also record the narration yourself. Use a quiet room and read
 script.md as written. Put one take for the whole video in `assets/`:
@@ -509,9 +530,8 @@ explainroo can make illustrations with AI image models through OpenRouter.
 This is optional. It costs money on the user's OpenRouter account, roughly 7
 to 13 cents per image at the time of writing.
 
-If the user wants images and there is no key, ask them for an OpenRouter API
-key (from openrouter.ai/keys). Save it as `OPENROUTER_API_KEY=...`, as "Where
-keys go" says.
+If the user wants images and there is no key, run
+`explainroo connect openrouter`, as "Where keys go" says.
 
 ```bash
 explainroo image videos/<name> cables "Two cars parked nose to nose with their hoods open, jumper cables between the batteries"
@@ -520,6 +540,12 @@ explainroo images videos/<name>    # what was made and what it cost
 
 This saves `assets/cables.png`. Use it in a scene with
 `s.image('assets/cables.png', { w: 1100, frame: 'card', at: 'cables' })`.
+
+The same command again returns the same file and spends nothing. Changing the name,
+the prompt or a setting makes a new image, and `--new` buys this one again. A
+purchase never deletes a file: the old `assets/cables.png` moves to
+`history/replaced/`, and asking for its request again brings it back. A request
+that failed or got no answer may have cost money, so it needs `--new`.
 
 - `--model best` (default) uses OpenAI GPT Image 2. It does what you ask and
   is worth the price for most images.
@@ -658,13 +684,16 @@ project.
 
 ```
 videos/<name>/
-  .gitignore    keeps build/, out/ and .env out of git
+  .gitignore    keeps build/, out/, .env and history/private/ out of git
   video.json    look, size, language, voice, music, captions, watermark
   script.md     the narration, one "## scene-id" per scene
   scenes.js     one drawing function per scene
   assets/       images: screenshots, logos, generated illustrations
-  build/        voice, timing and audio made by explainroo (safe to delete)
+  build/        voice, timing and audio made by explainroo (safe to delete,
+                because paid speech and paid images stay in history/)
   out/          video.mp4, draft.mp4, stills/, sheets, report.json
+  history/      what was paid for and rendered, so keep it. A new session runs
+                "explainroo history" to see open jobs and how to continue them
 ```
 
 `video.json` settings, all optional:
@@ -756,7 +785,7 @@ when `ink` or `muted` has too little contrast against `bg`.
 | Command | What it does |
 |---|---|
 | `init <dir>` | creates a project (`--theme`, `--size`, `--pace`, `--language`, `--voice`, `--title`) |
-| `voice [project]` | makes the narration and the word times, saved per scene so only changed scenes are made again |
+| `voice [project]` | makes the narration and the word times, saved per scene so only changed scenes are made again (`--force` makes every scene again, `--new` buys again only paid sentences with no good answer) |
 | `preview [project]` | a live preview in the browser that reloads when you save (`--size`) |
 | `still [project] [times]` | PNG pictures at `12.5`, `scene`, `scene@2.4` or `scene@end` (`--size`, `--transparent` keeps alpha) |
 | `sheet [project]` | one image with many frames of the video or of one scene (`--scene`, `--every`, `--size`) |
@@ -765,8 +794,11 @@ when `ink` or `muted` has too little contrast against `bg`.
 | `verify [project]` | checks the finished MP4, WebM or MOV: loudness, black frames, silence, clear voice (`--file` picks another file) |
 | `export [project]` | writes a web player folder (`--out dir`, `--json`), by default `out/player/` |
 | `capture [project] <url>` | saves screenshots, wording, colors, fonts and logos from a live site (`--mobile`, `--json`) |
-| `image [project] <name> "<prompt>"` | makes an illustration with OpenRouter |
+| `image [project] <name> "<prompt>"` | makes an illustration with OpenRouter (`--new` buys it again, `--resume <id>` runs a job from `history` again) |
 | `images [project]` | lists the images and what they cost |
+| `services [step]` | lists the choices for each step, free ones first, with what each costs and what data leaves (`--json`, `--project`) |
+| `connect <service>` | sets a service up: tests its key and saves it (`--key-stdin`, `--project`) |
+| `history [project]` | prints open paid jobs with the command that continues each one, then spend, then rendered versions |
 | `voices`, `say "text"` | lists Kokoro voices with their languages (`--language es`, `ja` or `zh` filters voices), or makes a sample in the chosen voice's language |
 | `voices [project] --elevenlabs` | lists the names, ids and labels available to the key (`--json` also works) |
 | `themes`, `formats`, `icons <word>` | lists the looks and the sizes, searches the 1,854 icons |
@@ -1239,3 +1271,4 @@ Look at the stills for those.
 - `dev/audio-lab.mjs` renders every music style and sound and measures them.
 - `npm run build:icons` rebuilds the icons from `lucide-static`, and
   `npm run build:fonts` downloads the fonts again.
+- To add an outside service, read `explainroo docs connectors`.
