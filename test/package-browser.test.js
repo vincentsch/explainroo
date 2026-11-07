@@ -6,11 +6,13 @@ import path from 'node:path';
 import { findChrome } from '../src/browser.js';
 import { probe } from '../src/ffmpeg.js';
 import { readVersions, sha256File } from '../src/history.js';
-import { runCli as cli, tinyProject as tiny } from './helpers/tiny-project.js';
+import { runCli as cli, speechCheckModel, tinyProject as tiny } from './helpers/tiny-project.js';
 
 let chrome = null;
 try { chrome = findChrome(); } catch {}
 const skip = !chrome && 'no browser here';
+// verify listens to narration, which needs the speech check model.
+const narrated = skip || (!speechCheckModel && 'the speech check model is not downloaded');
 
 async function pack(dir, platform, ...flags) {
   const r = await cli(['package', dir, '--platform', platform, '--workers', '2', '--json', ...flags]);
@@ -21,7 +23,7 @@ async function pack(dir, platform, ...flags) {
 
 const read = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
 
-test('a package for each of the six platforms: the sized video, its words, captions, cover, AI label and credits', { skip, timeout: 400000 }, async (t) => {
+test('a package for each of the six platforms: the sized video, its words, captions, cover, AI label and credits', { skip: narrated, timeout: 400000 }, async (t) => {
   const dir = tiny(t);
   fs.writeFileSync(path.join(dir, 'post.json'), JSON.stringify({ description: 'A tiny video about tiny things.', hashtags: ['tiny'] }));
   // A file left from an earlier package that no longer applies goes.
@@ -81,7 +83,7 @@ test('a package for each of the six platforms: the sized video, its words, capti
 });
 
 test('the words are settled from the default, post.json, its platform block and the flags, in that order', { skip, timeout: 300000 }, async (t) => {
-  const dir = tiny(t);
+  const dir = tiny(t, {}, { narrated: false });
   const words = (file) => fs.writeFileSync(path.join(dir, 'post.json'), JSON.stringify(file));
   words({ title: 'From post.json', description: 'Words for every platform.', hashtags: ['tiny'], made_for_kids: true, category: 28, platforms: { tiktok: { title: 'For TikTok', hashtags: ['#tok'] } } });
   const flagged = await pack(dir, 'tiktok', '--title', 'From the flag', '--description', 'Words from the flag. #tok', '--hashtags', 'tok,extra');

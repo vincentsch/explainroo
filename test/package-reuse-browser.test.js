@@ -5,11 +5,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { findChrome } from '../src/browser.js';
 import { readVersions, sha256File } from '../src/history.js';
-import { runCli as cli, tinyProject as tiny } from './helpers/tiny-project.js';
+import { runCli as cli, speechCheckModel, tinyProject as tiny } from './helpers/tiny-project.js';
 
 let chrome = null;
 try { chrome = findChrome(); } catch {}
 const skip = !chrome && 'no browser here';
+// verify listens to narration, which needs the speech check model.
+const narrated = skip || (!speechCheckModel && 'the speech check model is not downloaded');
 
 async function pack(dir, platform, ...flags) {
   const r = await cli(['package', dir, '--platform', platform, '--workers', '2', '--json', ...flags]);
@@ -20,7 +22,7 @@ async function pack(dir, platform, ...flags) {
 
 const read = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
 
-test('a full render is copied and all the files next to it are written again, and an earlier verify of the same file counts', { skip, timeout: 300000 }, async (t) => {
+test('a full render is copied and all the files next to it are written again, and an earlier verify of the same file counts', { skip: narrated, timeout: 300000 }, async (t) => {
   const dir = tiny(t, { size: '16:9' });
   const rendered = await cli(['render', dir, '--workers', '2', '--json']);
   assert.equal(rendered.code, 0, rendered.text);
@@ -51,7 +53,7 @@ test('a full render is copied and all the files next to it are written again, an
 });
 
 test('a --from/--to render and a --scale render are never reused, so package renders the whole video', { skip, timeout: 300000 }, async (t) => {
-  const dir = tiny(t, { size: '16:9' });
+  const dir = tiny(t, { size: '16:9' }, { narrated: false });
   const part = await cli(['render', dir, '--from', '0', '--to', '0.5', '--workers', '2']);
   assert.equal(part.code, 0, part.text);
   const first = await pack(dir, 'youtube');
@@ -67,7 +69,7 @@ test('a --from/--to render and a --scale render are never reused, so package ren
 });
 
 test('a package that fails check says which size failed and writes nothing, and bad flags stop before any work', { skip, timeout: 300000 }, async (t) => {
-  const dir = tiny(t, { size: '16:9' });
+  const dir = tiny(t, { size: '16:9' }, { narrated: false });
   // A position that suits a wide frame runs off a tall one.
   fs.writeFileSync(path.join(dir, 'scenes.js'), "export default { intro(s) { s.text('Wide', { x: 1500, y: 540, size: 60, at: 0 }); } };");
   const failed = await cli(['package', dir, '--platform', 'tiktok']);

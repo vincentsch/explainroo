@@ -1,11 +1,14 @@
-// A one-second project with its narration already made, so that a test can render,
-// package and verify it without loading the speech models for the voice. A short
-// tone stands in for the narration.
+// A one-second project, so that a test can render, package and verify it quickly.
+// Its narration is already made: a short tone stands in for it, so the voice model
+// never loads. verify still listens to narration with the speech check model, so a
+// test of a narrated project skips where that model is not downloaded, as in CI.
+// One without narration needs no model at all.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { ASR_MODEL, cacheRoot } from '../../src/models.js';
 import { loadProject } from '../../src/project.js';
 import { speechChunks } from '../../src/script.js';
 import { sceneHash, voicePaths } from '../../src/voice.js';
@@ -13,13 +16,16 @@ import { writeWav } from '../../src/wav.js';
 
 const bin = fileURLToPath(new URL('../../bin/explainroo.js', import.meta.url));
 
+export const speechCheckModel = fs.existsSync(path.join(cacheRoot(), 'models', ASR_MODEL));
+
 // One scene of a second with a chapter, placed from s.safe so that it fits every size.
-export function tinyProject(t, settings = {}) {
+export function tinyProject(t, settings = {}, { narrated = true } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-tiny-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ size: '320x180', theme: 'clean', fps: 24, motionBlur: false, sfx: false, lead: 0, hold: 0, end: 0, ...settings }));
-  fs.writeFileSync(path.join(dir, 'script.md'), '# Tiny video\n\n## intro {min=1 chapter="Intro"}\nHello.');
+  fs.writeFileSync(path.join(dir, 'script.md'), `# Tiny video\n\n## intro {min=1 chapter="Intro"}\n${narrated ? 'Hello.' : ''}`);
   fs.writeFileSync(path.join(dir, 'scenes.js'), "export default { intro(s) { s.text('Tiny', { x: s.cx, y: s.safe.y + s.safe.h / 2, size: Math.min(s.W, s.H) * 0.08, at: 0 }); } };");
+  if (!narrated) return dir;
   const project = loadProject(dir);
   const scene = project.script.scenes[0];
   fs.mkdirSync(project.paths.voice, { recursive: true });
