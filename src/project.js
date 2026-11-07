@@ -10,7 +10,7 @@ import { VOICES, LANGUAGES, voiceLanguage } from './models.js';
 import { ProjectError } from './errors.js';
 import { voiceProviders, oneOf } from './services.js';
 import { THEMES as LOOKS } from '../engine/themes.js';
-import { parseColor } from '../engine/util.js';
+import { AUDIO_FILE, parseColor } from '../engine/util.js';
 
 export { ProjectError };
 
@@ -162,6 +162,24 @@ export function resolveSize(size) {
   return { width, height };
 }
 
+// "music" with a file instead of a style. Only what the user wrote and the
+// defaults go in here: the config is part of the page's version hash.
+function musicFileSetting(music) {
+  if ('style' in music) fail('music takes a style or a src, not both. Remove one of them.');
+  const known = ['src', 'volume', 'credit', 'loop'];
+  const extra = Object.keys(music).filter((k) => !known.includes(k));
+  if (extra.length) fail(`music has unknown setting(s) for a file: ${extra.join(', ')}. Known: ${known.join(', ')}`);
+  const { src } = music;
+  if (!(typeof src === 'string' && /^assets\/.+/.test(src) && !src.split('/').includes('..') && !src.includes('\\') && AUDIO_FILE.test(src))) {
+    fail('music.src must be a wav, mp3, m4a, aac, flac, ogg or opus file inside assets/, with no ..');
+  }
+  const file = { volume: 0.5, loop: true, ...music };
+  if (!(typeof file.volume === 'number' && file.volume >= 0 && file.volume <= 1)) fail('music.volume must be between 0 and 1');
+  if (typeof file.loop !== 'boolean') fail('music.loop must be true or false');
+  if (file.credit !== undefined && !(typeof file.credit === 'string' && file.credit.trim())) fail('music.credit must be a short text that says who made the music');
+  return file;
+}
+
 export function normalizeConfig(raw, dir = '.') {
   const cfg = { ...DEFAULTS, ...raw };
   if (typeof cfg.language !== 'string' || !Object.hasOwn(LANGUAGES, cfg.language)) fail(`language must be one of ${Object.keys(LANGUAGES).join(', ')}`);
@@ -265,7 +283,8 @@ export function normalizeConfig(raw, dir = '.') {
   let music = cfg.music;
   if (music === true) music = { style: cfg.look ? (cfg.look.music ?? THEME_MUSIC[cfg.look.extends]) : THEME_MUSIC[cfg.theme] };
   else if (typeof music === 'string') music = { style: music };
-  if (music) {
+  if (music?.src !== undefined) music = musicFileSetting(music);
+  else if (music) {
     // A faster pace plays the music a little faster too.
     music = { volume: 0.5, seed: cfg.seed, tempo: Math.sqrt(cfg.pace), ...music };
     if (!MUSIC_STYLES.includes(music.style)) fail(`music style must be one of ${MUSIC_STYLES.join(', ')}, not "${music.style}"`);
@@ -298,9 +317,10 @@ export function loadProject(arg, { size } = {}) {
     fail(`video.json is not valid JSON: ${e.message}`);
   }
   const config = normalizeConfig(size === undefined ? raw : { ...raw, size }, dir);
-  for (const f of [...config.fonts.map((x) => x.src), ...(config.brand?.logo ? [config.brand.logo] : [])]) {
+  for (const f of [...config.fonts.map((x) => x.src), ...(config.brand?.logo ? [config.brand.logo] : []), ...(config.music?.src ? [config.music.src] : [])]) {
     if (!fs.existsSync(path.join(dir, f))) fail(`${f} is listed in video.json but the file is missing`);
   }
+  if (config.music?.src && !fs.realpathSync(path.join(dir, config.music.src)).startsWith(path.join(fs.realpathSync(dir), 'assets') + path.sep)) fail('music.src must stay inside assets/, including links');
   const scriptPath = path.join(dir, 'script.md');
   if (!fs.existsSync(scriptPath)) fail(`${scriptPath} is missing`);
   const script = parseScript(fs.readFileSync(scriptPath, 'utf8'), { language: config.language });

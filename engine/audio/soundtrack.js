@@ -23,6 +23,15 @@ const DUCK_DB = -8;
 const DUCK_ATTACK = 0.2;
 const DUCK_RELEASE = 0.5;
 const SFX_BASE_DB = 0;
+// All five built-in styles measure near -32 LUFS at volume 0.5, so a music file
+// is brought to that level and volume means the same for both.
+const MUSIC_FILE_LUFS = -32;
+// Quieter than this is silence, or too short to measure. It is not turned up.
+const UNMEASURED_LUFS = -60;
+// Longer music fades out at the end of the video.
+const MUSIC_FILE_FADE_OUT = 2;
+// A file fades for a moment wherever it starts or stops, so a cut never clicks.
+const FILE_EDGE = 0.01;
 
 async function loadVoice(v, sr, cache) {
   if (v.buffer) {
@@ -52,6 +61,25 @@ async function loadVoice(v, sr, cache) {
     );
   }
   return cache.get(v.url);
+}
+
+// Music and sound files keep their two channels. Voices stay mono, above.
+async function loadStereo(file, sr, cache) {
+  if (file.data) return file.data.map((c) => resample(c, file.sampleRate || sr, sr));
+  if (!file.url) throw new Error('music and sound files need url or data');
+  if (!cache.has(file.url)) {
+    cache.set(
+      file.url,
+      (async () => {
+        const res = await fetch(file.url);
+        if (!res.ok) throw new Error(`Could not load sound file: ${await res.text()}`);
+        const wav = parseWav(await res.arrayBuffer());
+        const [left, right = left] = wav.channels;
+        return [resample(left, wav.sampleRate, sr), resample(right, wav.sampleRate, sr)];
+      })(),
+    );
+  }
+  return cache.get(file.url);
 }
 
 // Merge narration spans that are too close to release the music in between.
@@ -84,6 +112,36 @@ function levelEnv(level, duration) {
   const fadeIn = Math.min(1.5, duration * 0.25);
   const fadeOut = Math.min(0.35, duration * 0.1);
   return new Env(0).set(0, 0).lin(level, fadeIn).set(level, Math.max(fadeIn, duration - fadeOut)).lin(0, duration);
+}
+
+function fileLevelEnv(duration) {
+  const fadeIn = Math.min(1.5, duration * 0.25);
+  const fadeOut = Math.min(MUSIC_FILE_FADE_OUT, duration * 0.1);
+  return new Env(0).set(0, 0).lin(1, fadeIn).set(1, Math.max(fadeIn, duration - fadeOut)).lin(0, duration);
+}
+
+// Adds a stereo file to the mix between samples `start` and `end`, reading it from
+// `offset`, through gain curves.
+function addFile(L, R, [left, right], { start, end, offset = 0, loop = false, gain = 1, gains = [], sr }) {
+  const size = left.length;
+  if (!size) return;
+  const edge = Math.max(1, Math.round(FILE_EDGE * sr));
+  const g = gains.map(() => new Float32Array(BLOCK));
+  gains.forEach((e) => e.begin(sr, start));
+  for (let i0 = start; i0 < end; i0 += BLOCK) {
+    const cnt = Math.min(BLOCK, end - i0);
+    gains.forEach((e, j) => e.fill(g[j], cnt));
+    for (let k = 0; k < cnt; k++) {
+      const i = i0 + k;
+      let source = offset + i - start;
+      if (loop) source %= size;
+      else if (source >= size) return;
+      let m = gain * Math.min(1, (i - start + 1) / edge, (end - i) / edge, (size - source) / edge, loop ? (source + 1) / edge : 1);
+      for (let j = 0; j < g.length; j++) m *= g[j][k];
+      L[i] += left[source] * m;
+      R[i] += right[source] * m;
+    }
+  }
 }
 
 function toAudioBuffer(L, R, sampleRate) {
@@ -128,7 +186,9 @@ export async function renderSoundtrack(opts = {}) {
     voiceSpans = [],
     clips = [],
     music = null,
+    musicFile = null,
     sfx = [],
+    sounds = [],
     scenes = [],
     sfxVolume = 1,
   } = opts;
@@ -187,12 +247,38 @@ export async function renderSoundtrack(opts = {}) {
     });
   }
 
+  // a music file: brought to the level of the built-in music, ducked the same way
+  const files = new Map();
+  if (musicFile) {
+    const channels = await loadStereo(musicFile, sr, files);
+    const volume = Math.max(0, Math.min(1, musicFile.volume == null ? 0.5 : Number(musicFile.volume)));
+    const measured = musicFile.lufs != null && musicFile.lufs > UNMEASURED_LUFS;
+    addFile(L, R, channels, {
+      start: 0,
+      end: length,
+      loop: musicFile.loop !== false,
+      gain: (measured ? dbToGain(MUSIC_FILE_LUFS - musicFile.lufs) : 1) * (volume / 0.5),
+      gains: [fileLevelEnv(duration), duckEnv([...voiceSpans, ...clipSpans])],
+      sr,
+    });
+  }
+
   // sound effects with a little room, pitched ones in the music key
   if (sfx.length) {
     const syn = new Synth(sr, length, { reverb: { room: 0.45, damp: 0.5, preDelay: 0.006, lowCut: 300 }, reverbLevel: 0.25 });
     const lane = syn.lane({ stereo: true, reverb: 1 });
     scheduleSfx(syn, lane, sfx, { tonic: 60 + (plan ? plan.keyRoot : 0), duration, volume: dbToGain(SFX_BASE_DB) * Math.max(0, Number(sfxVolume)) });
     renderInto(syn, L, R);
+  }
+
+  // sound files on their cues, inside their scene, ducked like the music
+  for (const sound of sounds) {
+    const channels = await loadStereo(sound, sr, files);
+    const at = Math.round(sound.start * sr);
+    const start = Math.max(0, at, Math.round((sound.sceneStart ?? sound.start) * sr));
+    const end = Math.min(length, Math.round(sound.end * sr));
+    if (end <= start) continue;
+    addFile(L, R, channels, { start, end, offset: start - at, gain: sound.volume == null ? 0.5 : Number(sound.volume), gains: [duckEnv([...voiceSpans, ...clipSpans])], sr });
   }
 
   limitInPlace([L, R], sr, { ceilingDb: -1 });
