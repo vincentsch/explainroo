@@ -96,6 +96,30 @@ test('CLI still, sheet and check use the override, while existing names stay unc
   }
 });
 
+test('--no-watermark works on still, sheet, check and render under names of its own, and draws what "watermark": false draws', { skip: !chrome, timeout: 300000 }, t => {
+  const dir = fixture(t);
+  const marked = run('still', dir).stills[0].file;
+  const bare = run('still', dir, ['--no-watermark']).stills[0].file;
+  assert.equal(marked, path.join(dir, 'out/stills/intro@end.png'));
+  assert.equal(bare, path.join(dir, 'out/stills-no-watermark/intro@end.png'));
+  assert.notDeepEqual(fs.readFileSync(bare), fs.readFileSync(marked));
+  assert.equal(run('still', dir, ['--size', 'tiktok', '--no-watermark', '--scale', '0.1']).stills[0].file, path.join(dir, 'out/stills-tiktok-no-watermark/intro@end.png'));
+  assert.equal(run('sheet', dir, ['--no-watermark']).file, path.join(dir, 'out/sheet-no-watermark.jpg'));
+  assert.deepEqual(run('check', dir, ['--size', 'tiktok', '--no-watermark']).issues.filter(i => i.level !== 'hint'), []);
+  const rendered = run('render', dir, ['--no-watermark', '--scale', '0.5', '--workers', '1']);
+  const base = path.join(dir, 'out/video-no-watermark');
+  assert.equal(rendered.out, `${base}.mp4`);
+  for (const ext of ['srt', 'vtt', 'cover.jpg', 'chapters.txt']) assert.ok(fs.statSync(`${base}.${ext}`).size > 0, ext);
+  assert.equal(fs.existsSync(path.join(dir, 'out/video.mp4')), false);
+  const line = fs.readFileSync(path.join(dir, 'history/versions.jsonl'), 'utf8').trim().split('\n').map(l => JSON.parse(l)).at(-1);
+  assert.equal(line.watermark, false);
+  assert.equal(line.file, 'out/video-no-watermark.mp4');
+  // The flag draws the same frame as the setting in video.json.
+  const settings = path.join(dir, 'video.json');
+  fs.writeFileSync(settings, JSON.stringify({ ...JSON.parse(fs.readFileSync(settings, 'utf8')), watermark: false }));
+  assert.deepEqual(fs.readFileSync(run('still', dir).stills[0].file), fs.readFileSync(bare));
+});
+
 test('preview keeps the size override after settings change', { timeout: 15000 }, async t => {
   const dir = fixture(t);
   const child = spawn(process.execPath, [bin, 'preview', dir, '--size', 'tiktok', '--port', '0'], { stdio: ['ignore', 'ignore', 'pipe'] });

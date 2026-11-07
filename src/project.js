@@ -308,15 +308,18 @@ export function findProjectDir(arg) {
   fail('no video.json here. Run the command in a video folder or pass the project folder, for example "explainroo <command> videos/my-video".');
 }
 
-export function loadProject(arg, { size } = {}) {
+// `overrides` replace settings of video.json for one run, such as the size from
+// --size or the watermark from --no-watermark. The file itself stays as it is.
+export function loadProject(arg, overrides = {}) {
   const dir = findProjectDir(arg);
+  const set = Object.fromEntries(Object.entries(overrides).filter(([, value]) => value !== undefined));
   let raw;
   try {
     raw = JSON.parse(fs.readFileSync(path.join(dir, 'video.json'), 'utf8'));
   } catch (e) {
     fail(`video.json is not valid JSON: ${e.message}`);
   }
-  const config = normalizeConfig(size === undefined ? raw : { ...raw, size }, dir);
+  const config = normalizeConfig({ ...raw, ...set }, dir);
   for (const f of [...config.fonts.map((x) => x.src), ...(config.brand?.logo ? [config.brand.logo] : []), ...(config.music?.src ? [config.music.src] : [])]) {
     if (!fs.existsSync(path.join(dir, f))) fail(`${f} is listed in video.json but the file is missing`);
   }
@@ -329,12 +332,15 @@ export function loadProject(arg, { size } = {}) {
   if (!fs.existsSync(scenesPath)) fail(`${scenesPath} is missing`);
   const build = path.join(dir, 'build');
   const out = path.join(dir, 'out');
-  return { dir, config, script, sizeOverride: size, paths: { build, out, voice: path.join(build, 'voice'), scenes: scenesPath, script: scriptPath, look: config.look ? path.resolve(dir, config.theme) : null } };
+  return { dir, config, script, overrides: set, sizeOverride: set.size, paths: { build, out, voice: path.join(build, 'voice'), scenes: scenesPath, script: scriptPath, look: config.look ? path.resolve(dir, config.theme) : null } };
 }
 
+// An override gets its own name, like video-tiktok.mp4 or stills-no-watermark/,
+// so it never replaces the normal output.
 export function outputPath(project, name, ext = '', out = null) {
-  const suffix = project.sizeOverride === undefined ? '' : `-${project.sizeOverride.replace(':', '-')}`;
-  return path.resolve(out || path.join(project.paths.out, `${name}${suffix}${ext}`));
+  const size = project.sizeOverride === undefined ? '' : `-${project.sizeOverride.replace(':', '-')}`;
+  const watermark = project.overrides?.watermark === false ? '-no-watermark' : '';
+  return path.resolve(out || path.join(project.paths.out, `${name}${size}${watermark}${ext}`));
 }
 
 export function listAssets(dir) {

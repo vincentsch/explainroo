@@ -38,12 +38,13 @@ Make a video
   init <dir>            create a project (--theme, --size, --pace, --language en|es|fr|it|pt-br|hi|ja|zh, --voice, --title)
   voice [project]       make the narration and word timings (--force makes every scene again,
                         --new buys again only the paid sentences with no good saved answer)
-  preview [project]     live preview in your browser, reloads on save (--port, --size)
-  still [project] [t…]  PNG stills: "12.5", "scene", "scene@2.4" (default: end of every scene; --size, --transparent)
-  sheet [project]       contact sheet of the whole video (--scene id, --every s, --size)
-  check [project]       find layout, timing and pronunciation problems (--view-width pixels, --size)
+  preview [project]     live preview in your browser, reloads on save (--port, --size, --no-watermark)
+  still [project] [t…]  PNG stills: "12.5", "scene", "scene@2.4" (default: end of every scene; --size,
+                        --no-watermark, --transparent)
+  sheet [project]       contact sheet of the whole video (--scene id, --every s, --size, --no-watermark)
+  check [project]       find layout, timing and pronunciation problems (--view-width pixels, --size, --no-watermark)
   render [project]      write the video with subtitles, chapters and a cover (--format mp4|gif|webm|mov,
-                        --transparent, --size, --draft, --from s, --to s, --workers n, --out file)
+                        --transparent, --size, --no-watermark, --draft, --from s, --to s, --workers n, --out file)
   verify [project]      check the video: loudness, black frames, narration (--file)
   export [project]      write a web player folder (--out dir, default: out/player/)
 
@@ -79,8 +80,8 @@ Reference
   docs [topic]          print the instructions for coding agents, or one extra page (--list shows the pages)
   version               print the version (--version works too)
 
-Options: --size <size> overrides video.json for preview, still, sheet, check and render.
-         Size outputs get a suffix, like video-tiktok.mp4. --out still wins.
+Options: --size <size> and --no-watermark override video.json for preview, still, sheet, check and render.
+         Their outputs get a suffix, like video-tiktok.mp4 or video-no-watermark.mp4. --out still wins.
          --json for machine-readable output. The project defaults to the current folder.
 Docs: "explainroo docs" (for coding agents) and https://www.explainroo.com/docs/`;
 
@@ -99,7 +100,7 @@ function parseArgs(argv) {
   }
   return { pos, flags };
 }
-const BOOL = new Set(['json', 'draft', 'transparent', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'mobile', 'list', 'new', 'key-stdin', 'audio', 'dry-run', 'no-wait', ...LISTS_VOICES.map((c) => c.id)]);
+const BOOL = new Set(['json', 'draft', 'transparent', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'mobile', 'list', 'new', 'key-stdin', 'audio', 'dry-run', 'no-wait', 'no-watermark', ...LISTS_VOICES.map((c) => c.id)]);
 
 function num(v, name) {
   if (v === undefined) return undefined;
@@ -163,19 +164,19 @@ export async function main(argv) {
       case 'preview': return await preview(pos[0], flags, log);
       case 'still': {
         const isProject = pos[0] && fs.existsSync(path.join(pos[0], 'video.json'));
-        const project = loadProject(isProject ? pos.shift() : undefined, { size: textFlag(flags, 'size') });
+        const project = loadProject(isProject ? pos.shift() : undefined, runOverrides(flags));
         const list = await stills(project, pos, { log, scale: num(flags.scale, 'scale') ?? 1, transparent: !!flags.transparent });
         print(list.map((s) => `${s.label.padEnd(24)} ${s.file}`).join('\n'), { stills: list });
         return 0;
       }
       case 'sheet': {
-        const project = loadProject(pos[0], { size: textFlag(flags, 'size') });
+        const project = loadProject(pos[0], runOverrides(flags));
         const r = await sheet(project, { scene: flags.scene, every: num(flags.every, 'every'), cols: num(flags.cols, 'cols'), log });
         print(`${r.file} (${r.frames} frames)`, r);
         return 0;
       }
       case 'check': {
-        const project = loadProject(pos[0], { size: textFlag(flags, 'size') });
+        const project = loadProject(pos[0], runOverrides(flags));
         const r = await check(project, { log, step: num(flags.step, 'step') ?? 0.25, viewWidth: num(flags['view-width'], 'view-width') ?? null });
         const errors = r.issues.filter((i) => i.level === 'error').length;
         const human = r.issues.length
@@ -185,7 +186,7 @@ export async function main(argv) {
         return errors ? 1 : 0;
       }
       case 'render': {
-        const project = loadProject(pos[0], { size: textFlag(flags, 'size') });
+        const project = loadProject(pos[0], runOverrides(flags));
         const r = await render(project, { log, draft: !!flags.draft, transparent: !!flags.transparent, from: num(flags.from, 'from'), to: num(flags.to, 'to'), workers: num(flags.workers, 'workers'), scale: num(flags.scale, 'scale'), out: textFlag(flags, 'out'), format: textFlag(flags, 'format') });
         print([r.out, r.subtitles?.srt, r.subtitles?.vtt, r.chapters, r.cover].filter(Boolean).map((f) => path.relative(process.cwd(), f) || f).join('\n'), r);
         return 0;
@@ -326,6 +327,11 @@ function textFlag(flags, name) {
   return flags[name];
 }
 
+// The settings of video.json that --size and --no-watermark replace for one run.
+function runOverrides(flags) {
+  return { size: textFlag(flags, 'size'), watermark: flags['no-watermark'] ? false : undefined };
+}
+
 function init(dir, flags, print) {
   if (!dir) throw new ProjectError('usage: explainroo init <dir> [--theme paper] [--size youtube|tiktok|linkedin|...] [--pace 1.2] [--language es] [--voice af_heart] [--title "..."]');
   const target = path.resolve(dir);
@@ -356,8 +362,7 @@ function init(dir, flags, print) {
 }
 
 async function preview(dir, flags, log) {
-  const size = textFlag(flags, 'size');
-  let project = loadProject(dir, { size });
+  let project = loadProject(dir, runOverrides(flags));
   let { timeline } = await prepare(project, { log });
   let state = makeState(project, timeline);
   let lastError = null;
@@ -383,7 +388,7 @@ async function preview(dir, flags, log) {
       if (now !== last) {
         last = now;
         log('script, settings or look changed, updating project');
-        project = loadProject(project.dir, { size });
+        project = loadProject(project.dir, project.overrides);
         ({ timeline } = await prepare(project, { log }));
         lastError = null;
       }

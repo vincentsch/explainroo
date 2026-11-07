@@ -83,6 +83,40 @@ test('output paths keep existing names or add the explicit size to every output 
   }
 });
 
+test('--no-watermark gets names of its own, alone and next to a size, and --out still wins', () => {
+  const project = { paths: { out: '/tmp/video/out' } };
+  const bare = { ...project, overrides: { watermark: false } };
+  const sized = { ...project, sizeOverride: 'tiktok', overrides: { size: 'tiktok', watermark: false } };
+  for (const [name, ext] of [['video', '.mp4'], ['draft', '.mp4'], ['video', '.srt'], ['video', '.cover.jpg'], ['video', '.chapters.txt'], ['stills', ''], ['sheet', '.jpg'], ['sheet-intro', '.jpg']]) {
+    assert.equal(outputPath(bare, name, ext), path.resolve(`/tmp/video/out/${name}-no-watermark${ext}`));
+    assert.equal(outputPath(sized, name, ext), path.resolve(`/tmp/video/out/${name}-tiktok-no-watermark${ext}`));
+    assert.equal(outputPath(bare, name, ext, 'chosen.mp4'), path.resolve('chosen.mp4'));
+  }
+  assert.equal(outputPath({ ...project, overrides: {} }, 'video', '.mp4'), path.resolve('/tmp/video/out/video.mp4'));
+});
+
+test('overrides replace settings for one run, move the free area up without a watermark, and leave video.json alone', t => {
+  const dir = fixture(t, { size: 'tiktok', watermark: 'example.com' });
+  const before = fs.readFileSync(path.join(dir, 'video.json'), 'utf8');
+  const marked = loadProject(dir);
+  const bare = loadProject(dir, { watermark: false });
+  assert.equal(marked.config.watermark, 'example.com');
+  assert.equal(bare.config.watermark, false);
+  assert.deepEqual(bare.overrides, { watermark: false });
+  assert.equal(bare.sizeOverride, undefined);
+  const on = layoutAreas(marked.config, marked.config.width, marked.config.height);
+  const off = layoutAreas(bare.config, bare.config.width, bare.config.height);
+  assert.equal(off.safe.top, off.app.top);
+  assert.ok(on.safe.top > off.safe.top);
+  assert.equal(on.safe.bottom, off.safe.bottom);
+  const both = loadProject(dir, { size: 'reels', watermark: false });
+  assert.deepEqual(reloadProject(both).overrides, { size: 'reels', watermark: false });
+  assert.equal(reloadProject(both).config.watermark, false);
+  assert.equal(reloadProject(both).config.size, 'reels');
+  assert.deepEqual(loadProject(dir, { size: undefined, watermark: undefined }).overrides, {});
+  assert.equal(fs.readFileSync(path.join(dir, 'video.json'), 'utf8'), before);
+});
+
 test('portrait is true only when the frame is taller than wide', () => {
   for (const size of ['youtube', 'vertical', 'linkedin', 'square', '400x400', '800x600']) {
     const config = normalizeConfig({ size });

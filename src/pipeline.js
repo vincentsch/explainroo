@@ -98,5 +98,5 @@ export async function withEngine(project, timeline, { scale = 1, pages = 1, tran
 }
 
 export function reloadProject(project) {
-  return loadProject(project.dir, { size: project.sizeOverride });
+  return loadProject(project.dir, project.overrides ?? { size: project.sizeOverride });
 }
