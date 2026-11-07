@@ -4,7 +4,7 @@ import path from 'node:path';
 import { loadProject, ProjectError, THEMES, MUSIC_STYLES, FORMATS, resolveSize, normalizeConfig } from './project.js';
 import { layoutAreas } from '../engine/layout.js';
 import { ScriptError } from './script.js';
-import { prepare, makeState } from './pipeline.js';
+import { prepare, makeState, VERSION } from './pipeline.js';
 import { render } from './render.js';
 import { exportPlayer } from './export.js';
 import { check, stills, sheet, verify } from './qa.js';
@@ -25,8 +25,6 @@ import { currentSpeechKeys } from './voice.js';
 
 // Paid voices that can list what a key may use, each with its own flag.
 const LISTS_VOICES = CONNECTORS.filter((c) => c.voices);
-
-const VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
 
 const HELP = `explainroo ${VERSION}: narrated explainer videos from code
 

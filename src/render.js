@@ -2,12 +2,13 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { prepare, withEngine } from './pipeline.js';
+import { prepare, renderIdentity, withEngine, VERSION } from './pipeline.js';
 import { frameEncoder, ffmpeg, normalizeLoudness } from './ffmpeg.js';
 import { subtitleCues, toSrt, toVtt } from './subtitles.js';
 import { buildChapters, toChaptersText, toChapterMetadata } from './chapters.js';
 import { resolveTimes } from './qa.js';
 import { outputPath } from './project.js';
+import { recordVersion, relativeFile, sha256File } from './history.js';
 
 export function renderFormat({ format = 'mp4', out, transparent = false } = {}) {
   if (!['mp4', 'gif', 'webm', 'mov'].includes(format)) throw new Error('--format must be mp4, gif, webm or mov');
@@ -26,6 +27,7 @@ export async function render(project, opts = {}) {
   const format = renderFormat(opts);
   const t0 = Date.now();
   const { timeline } = await prepare(project, { log });
+  const identity = renderIdentity(project, timeline);
   const draft = !!opts.draft;
   const transparent = !!opts.transparent;
   const segmentFormat = format === 'gif' ? 'mp4' : format;
@@ -150,7 +152,27 @@ export async function render(project, opts = {}) {
       fs.copyFileSync(temp, files.cover);
     } finally { fs.rmSync(temp, { force: true }); }
   } else fs.rmSync(`${base}.cover.jpg`, { force: true });
+  const sha256 = sha256File(out);
+  recordVersion(project.dir, {
+    time: new Date().toISOString(),
+    file: relativeFile(project.dir, out),
+    format,
+    draft,
+    transparent,
+    scale,
+    range: { from: from / fps, to: to / fps },
+    full: !partial,
+    width,
+    height,
+    fps: format === 'gif' ? 15 : fps,
+    size: project.config.size,
+    watermark: project.config.watermark !== false,
+    duration: (to - from) / fps,
+    sha256,
+    version: VERSION,
+    identity,
+  });
   const secs = (Date.now() - t0) / 1000;
   log(`wrote ${path.relative(process.cwd(), out) || out} in ${secs.toFixed(1)}s`);
-  return { out, ...files, duration: (to - from) / fps, frames: to - from, seconds: secs, width, height };
+  return { out, ...files, duration: (to - from) / fps, frames: to - from, seconds: secs, width, height, sha256, identity };
 }

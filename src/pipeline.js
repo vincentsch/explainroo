@@ -7,8 +7,10 @@ import { ensureFonts } from './fonts.js';
 import { synthesize } from './voice.js';
 import { buildTimeline } from './timeline.js';
 import { listAssets, loadProject } from './project.js';
-import { startServer } from './server.js';
+import { startServer, ROOT } from './server.js';
 import { launch, openEngine } from './browser.js';
+
+export const VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
 
 export async function prepare(project, { log = () => {}, ...voice } = {}) {
   await ensureFonts(project.config.language, { log });
@@ -38,6 +40,43 @@ export function makeState(project, timeline) {
   ].join('|');
   const version = crypto.createHash('sha1').update(stamp + JSON.stringify(timeline) + JSON.stringify(project.config)).digest('hex').slice(0, 12);
   return { config: project.config, timeline, assets, version, title: project.config.title };
+}
+
+// The Node files that shape frames and sound, next to the page engine.
+const RENDER_FILES = ['src/render.js', 'src/ffmpeg.js', 'src/pipeline.js'];
+// Folders in a project that no scene imports from.
+const NOT_SCRIPTS = new Set(['build', 'out', 'history', 'assets']);
+
+function filesUnder(root, folder = '', skip = () => false) {
+  return fs.readdirSync(path.join(root, folder), { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1)).flatMap((entry) => {
+    const rel = folder ? `${folder}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) return skip(entry.name, folder) ? [] : filesUnder(root, rel, skip);
+    return entry.isFile() ? [rel] : [];
+  });
+}
+
+function hashFiles(hash, root, files) {
+  for (const rel of files) hash.update(rel).update('\0').update(fs.readFileSync(path.join(root, rel)));
+  return hash;
+}
+
+const codeHashes = new Map();
+
+export function renderingCodeHash(root = ROOT, version = VERSION) {
+  const id = `${root}\0${version}`;
+  if (!codeHashes.has(id) || root !== ROOT) codeHashes.set(id, hashFiles(crypto.createHash('sha256').update(version), root, [...filesUnder(root, 'engine'), ...RENDER_FILES]).digest('hex'));
+  return codeHashes.get(id);
+}
+
+// Says whether an existing video still matches its project. makeState().version
+// only has to reload files in the page: it misses helpers in subfolders and the
+// engine's own code. Narration stays out of this, so a new engine version renders
+// frames again and makes no voice again.
+export function renderIdentity(project, timeline) {
+  const skip = (name, folder) => name === 'node_modules' || name.startsWith('.') || (!folder && NOT_SCRIPTS.has(name));
+  const scripts = filesUnder(project.dir, '', skip).filter((f) => /\.m?js$/.test(f));
+  const hash = crypto.createHash('sha256').update(makeState(project, timeline).version).update('\0').update(renderingCodeHash()).update('\0');
+  return hashFiles(hash, project.dir, scripts).digest('hex').slice(0, 32);
 }
 
 // Runs fn(page, ctx) with the engine loaded at `scale`, then cleans up.

@@ -6,6 +6,8 @@ videos/
 # build output inside any project
 build/
 out/
+# a render of an example adds to its record
+examples/*/history/
 .cache/
 .scratch/
 .env

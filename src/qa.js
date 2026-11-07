@@ -9,6 +9,7 @@ import { readWav } from './wav.js';
 import { alignWords, readAlike } from './align.js';
 import { buildChapters, chapterHints } from './chapters.js';
 import { outputPath } from './project.js';
+import { recordVersion, relativeFile, sha256File } from './history.js';
 
 export async function check(project, { log = () => {}, step = 0.25, viewWidth = null } = {}) {
   if (viewWidth !== null && (!Number.isFinite(viewWidth) || viewWidth <= 0)) throw new Error("--view-width must be a positive number");
@@ -182,5 +183,15 @@ export async function verify(project, { file = null, log = () => {} } = {}) {
   };
   fs.mkdirSync(project.paths.out, { recursive: true });
   fs.writeFileSync(path.join(project.paths.out, 'report.json'), JSON.stringify(report, null, 2));
+  recordVersion(project.dir, {
+    event: 'verify',
+    time: new Date().toISOString(),
+    file: relativeFile(project.dir, video),
+    sha256: sha256File(video),
+    ok: !issues.some((i) => i.level === 'error'),
+    warnings: issues.filter((i) => i.level === 'warn').length,
+    loudness: loud?.integrated ?? null,
+    understood: speech?.matchRate ?? null,
+  });
   return report;
 }
