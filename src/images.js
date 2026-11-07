@@ -152,9 +152,10 @@ export function jobRequest(project, id) {
   return { name: r.name, prompt: r.prompt, model: r.model, aspect: r.aspect, style: r.style === '' ? false : r.style, refs: r.refs.map((ref) => ref.file), resumes: job.key };
 }
 
-// Every image request: the old log, then the record.
+// Every image request: the old log, then the record. Images belong to every
+// language of a video, so the old log is in build/ also for another language.
 export function imageLog(project) {
-  const p = path.join(project.paths.build, 'images', 'usage.jsonl');
+  const p = path.join(project.dir, 'build', 'images', 'usage.jsonl');
   const old = fs.existsSync(p) ? fs.readFileSync(p, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : [];
   return [...old, ...listJobs(project.dir).filter((job) => job.kind === 'image').map(jobEntry)];
 }

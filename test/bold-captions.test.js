@@ -30,6 +30,27 @@ test('stars come off the shown and the spoken word, which gets a keyword flag', 
   assert.deepEqual(words('これは*重要*です', 'ja').map((w) => [w.display, !!w.key]), [['これ', false], ['は', false], ['重要', true], ['です', false]]);
 });
 
+test('in Japanese and Chinese a star next to punctuation or a bracket still comes off', () => {
+  for (const [starred, plain, language, key] of [
+    ['我们去*北京*。', '我们去北京。', 'zh', '北京。'],
+    ['これは「*東京*」です。', 'これは「東京」です。', 'ja', '「東京」'],
+    ['*重要*です。', '重要です。', 'ja', '重要'],
+  ]) {
+    const a = parseScript(`## x\n${starred}\n`, { language }).scenes[0];
+    const b = parseScript(`## x\n${plain}\n`, { language }).scenes[0];
+    assert.equal(a.text, b.text, starred);
+    assert.equal(a.spoken, b.spoken, starred);
+    assert.deepEqual(a.units.map((u) => u.space), b.units.map((u) => u.space), starred);
+    assert.deepEqual(a.units.filter((u) => u.key).map((u) => u.display), [key], starred);
+  }
+});
+
+test('of two opening stars the later one counts, so a stray star never swallows a keyword', () => {
+  assert.deepEqual(words('*Note: prices vary. Then *key* word.').map((w) => [w.display, w.spoken, !!w.key]), [
+    ['*Note:', '*Note:', false], ['prices', 'prices', false], ['vary.', 'vary.', false], ['Then', 'Then', false], ['key', 'key', true], ['word.', 'word.', false],
+  ]);
+});
+
 test('a star that opens or closes nothing stays as it is', () => {
   for (const [text, shown] of [
     ['2 * 3 is six.', ['2', '*', '3', 'is', 'six.']],

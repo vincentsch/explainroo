@@ -100,6 +100,13 @@ test('scripts that are not a language of the video are left alone, and check say
   ]);
 });
 
+test('a subtitle word that is too long names the language file', async (t) => {
+  const { subtitleCues } = await import('../src/subtitles.js');
+  const timeline = { scenes: [{ start: 0, words: [{ text: 'x'.repeat(50), start: 0, end: 1 }] }] };
+  assert.throws(() => subtitleCues(timeline, { script: 'script.es.md' }), /Shorten its shown text in script\.es\.md\./);
+  assert.throws(() => subtitleCues(timeline), /Shorten its shown text in script\.md\./);
+});
+
 test('script errors name the language file', (t) => {
   const dir = project(t, { 'script.es.md': '# Pan\n\n## intro\nUn {error sin cerrar\n' });
   assert.throws(() => loadProject(dir, { lang: 'es' }), (e) => e instanceof ScriptError && e.message.startsWith('script.es.md line 4: '));
@@ -129,6 +136,32 @@ test('languages holds settings for one language, with the same checks as the mai
   ]) {
     assert.throws(() => normalizeConfig({ languages }), (e) => e instanceof ProjectError && message.test(e.message), JSON.stringify(languages));
   }
+});
+
+test('--size, --no-watermark and a package\'s settings win over the settings of a language', (t) => {
+  const dir = project(t, { 'script.es.md': SPANISH, 'video.json': { languages: { es: { size: 'tiktok', watermark: 'ejemplo.com' } } } });
+  const es = loadProject(dir, { lang: 'es' });
+  assert.equal(es.config.size, 'tiktok');
+  assert.equal(es.config.watermark, 'ejemplo.com');
+  const run = loadProject(dir, { lang: 'es', size: 'youtube', watermark: false });
+  assert.equal(run.config.size, 'youtube');
+  assert.equal(run.config.width, 1920);
+  assert.equal(run.config.watermark, false);
+  assert.equal(outputPath(run, 'video', '.mp4'), path.join(dir, 'out', 'es', 'video-youtube-no-watermark.mp4'));
+  assert.equal(normalizeConfig({ languages: { es: { watermark: 'ejemplo.com' } } }, '.', { language: 'es', overrides: { watermark: false } }).watermark, false);
+});
+
+test('a mistake in the main settings is blamed on the main settings', () => {
+  assert.throws(() => normalizeConfig({ fps: 31, languages: { es: {} } }), (e) => e instanceof ProjectError && e.message === 'fps must be 24, 25, 30, 50 or 60');
+  assert.throws(() => normalizeConfig({ fps: 31, languages: { es: {} } }, '.', { language: 'es' }), (e) => e instanceof ProjectError && e.message === 'fps must be 24, 25, 30, 50 or 60');
+  assert.throws(() => normalizeConfig({ languages: { es: { fps: 31 } } }), (e) => e instanceof ProjectError && e.message === 'languages.es: fps must be 24, 25, 30, 50 or 60');
+});
+
+test('images bought before the project record count for every language', (t) => {
+  const dir = project(t, { 'script.es.md': SPANISH });
+  fs.mkdirSync(path.join(dir, 'build', 'images'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'build', 'images', 'usage.jsonl'), `${JSON.stringify({ time: '2026-10-01T10:00:00Z', file: 'assets/loaf.png', model: 'some/image-model', cost_usd: 0.1 })}\n`);
+  for (const lang of [undefined, 'es']) assert.deepEqual(postWords(loadProject(dir, { lang }), 'tiktok').ai_reasons, ['voice: Kokoro', 'image: some/image-model'], lang);
 });
 
 test('strings files hold the on-screen text, with nested groups as dotted keys', (t) => {

@@ -25,7 +25,8 @@ function lines(words, language = 'en') {
   return best?.text ?? null;
 }
 
-export function subtitleCues(timeline, { from = 0, to = Infinity } = {}) {
+// `script` names the script file in the error about a word that is too long.
+export function subtitleCues(timeline, { from = 0, to = Infinity, script = 'script.md' } = {}) {
   const language = timeline.language || 'en';
   const cjk = ['ja', 'zh'].includes(language);
   const limit = cjk ? 18 : 42;
@@ -37,7 +38,7 @@ export function subtitleCues(timeline, { from = 0, to = Infinity } = {}) {
     const words = scene.words || [];
     let i = 0;
     while (i < words.length) {
-      if (words[i].text.length > limit) throw new Error(`subtitle word "${words[i].text}" is longer than ${limit} characters. Shorten its shown text in script.md.`);
+      if (words[i].text.length > limit) throw new Error(`subtitle word "${words[i].text}" is longer than ${limit} characters. Shorten its shown text in ${script}.`);
       let j = i + 1;
       while (j < words.length) {
         if (endSentence.test(words[j - 1].text) || words[j].start - words[j - 1].end > 0.6 + 1e-9) break;

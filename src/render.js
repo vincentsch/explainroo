@@ -8,7 +8,7 @@ import { frameEncoder, ffmpeg, normalizeLoudness } from './ffmpeg.js';
 import { subtitleCues, toSrt, toVtt } from './subtitles.js';
 import { buildChapters, toChaptersText, toChapterMetadata } from './chapters.js';
 import { resolveTimes } from './qa.js';
-import { outputPath } from './project.js';
+import { outputPath, scriptName } from './project.js';
 import { recordVersion, relativeFile, sha256File } from './history.js';
 
 export function renderFormat({ format = 'mp4', out, transparent = false } = {}) {
@@ -200,7 +200,7 @@ export function versionLine(project, video) {
 // out the chapter list. Work it out before rendering, because a bad setting throws.
 export function planExtras(project, timeline, { range = { from: 0, to: timeline.frames / timeline.fps }, full = true, chapters = true } = {}) {
   return {
-    cues: subtitleCues(timeline, range),
+    cues: subtitleCues(timeline, { ...range, script: scriptName(project) }),
     chapters: full && chapters ? buildChapters(timeline, project.script.title || project.config.title) : [],
     coverTime: full ? resolveTimes(timeline, [project.config.cover === 'auto' ? `${timeline.scenes[0].id}@end` : project.config.cover])[0] : null,
   };

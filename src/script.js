@@ -127,46 +127,58 @@ export function tokenizeNarration(text, line = 0, language = 'en') {
 
 const STAR_OPEN = /^([(\[{"'“‘«¿¡「『（]*)\*+(?=[^*])/u;
 const STAR_CLOSE = /([^*])\*+([.,;:!?…।)\]}"'’”»。！？、，；：」』）]*)$/u;
+// Stars with nothing but punctuation around them, like "*" or "*。".
+const STARS = /^([^\p{L}\p{N}*]*)\*+([^\p{L}\p{N}*]*)$/u;
 const hasText = (word) => /[\p{L}\p{N}]/u.test(word);
 
 // *Stars* around a word, or around several words, mark keywords for bold
 // captions. They come off the shown and the spoken word, which gets `key`, so
 // the voice, the captions and the cues never see them. A star that opens or
-// closes nothing stays as it is, like the one in "2 * 3". A star on its own
-// opens the word right after it or closes the word right before it, as it does
-// between Japanese or Chinese words.
+// closes nothing stays as it is, like the one in "2 * 3", and of two opening
+// stars the later one counts. Stars on their own open the word right after
+// them or close the word right before them, as they do between Japanese or
+// Chinese words, and their punctuation joins that word, as it would without them.
 function markKeywords(units) {
-  const openers = new Set();
-  const closers = new Set();
+  const drop = new Set();
   let start = null;
   let opener = null;
+  const finish = (to) => {
+    mark(units, start, to);
+    if (opener !== null) {
+      const [, before, after] = STARS.exec(units[opener].display);
+      units[start].display = before + after + units[start].display;
+      units[start].spoken = before + after + units[start].spoken;
+      units[start].space = units[opener].space;
+      drop.add(opener);
+    }
+    start = null;
+    opener = null;
+  };
   units.forEach((u, i) => {
     if (u.type !== 'word') return;
-    if (/^\*+$/.test(u.display)) {
+    const stars = STARS.exec(u.display);
+    if (stars) {
       const next = units[i + 1];
       if (start !== null && !u.space) {
-        mark(units, start, i - 1);
-        closers.add(i);
-        if (opener !== null) openers.add(opener);
-        start = null;
-        opener = null;
-      } else if (start === null && next?.type === 'word' && !next.space && hasText(next.display)) {
+        let last = i - 1;
+        while (last > start && units[last].type !== 'word') last--;
+        units[last].display += stars[1] + stars[2];
+        units[last].spoken += stars[1] + stars[2];
+        drop.add(i);
+        finish(last);
+      } else if (next?.type === 'word' && !next.space && hasText(next.display)) {
         start = i + 1;
         opener = i;
       }
       return;
     }
-    if (start === null && STAR_OPEN.test(u.display) && hasText(u.display)) start = i;
-    if (start !== null && STAR_CLOSE.test(u.display) && hasText(u.display)) {
-      mark(units, start, i);
-      if (opener !== null) openers.add(opener);
-      start = null;
+    if (STAR_OPEN.test(u.display) && hasText(u.display)) {
+      start = i;
       opener = null;
     }
+    if (start !== null && STAR_CLOSE.test(u.display) && hasText(u.display)) finish(i);
   });
-  // A star that opened a word carried the space in front of that word.
-  for (const i of openers) units[i + 1].space = units[i].space;
-  return openers.size || closers.size ? units.filter((u, i) => !openers.has(i) && !closers.has(i)) : units;
+  return drop.size ? units.filter((u, i) => !drop.has(i)) : units;
 }
 
 function mark(units, from, to) {

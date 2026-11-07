@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { cacheRoot } from './models.js';
 import { languageFonts, subsetFont } from './fonts.js';
 import { prepare, makeState } from './pipeline.js';
+import { scriptName } from './project.js';
 import { startServer, projectFile, ROOT } from './server.js';
 import { launch, openEngine } from './browser.js';
 import { ffmpeg, normalizeLoudness } from './ffmpeg.js';
@@ -92,7 +93,7 @@ export function copyPlayer(project, timeline, used, out) {
   state.assets = used.assets.filter(a => !/\.(woff2?|ttf|otf)$/i.test(a));
   fs.writeFileSync(path.join(out, 'state.json'), JSON.stringify(state));
   fs.writeFileSync(path.join(out, 'math.json'), JSON.stringify(used.math));
-  fs.writeFileSync(path.join(out, 'subtitles.vtt'), toVtt(subtitleCues(timeline)));
+  fs.writeFileSync(path.join(out, 'subtitles.vtt'), toVtt(subtitleCues(timeline, { script: scriptName(project) })));
 }
 
 export async function exportPlayer(project, { out, log = () => {} } = {}) {

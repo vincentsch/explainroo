@@ -76,6 +76,8 @@ test('a Cartesia voice takes an id and a model, and speaks every language at spe
   assert.throws(() => normalizeConfig({ voice: { provider: 'cartesia' } }), /voice\.id is required/);
   assert.throws(() => normalizeConfig({ voice: { provider: 'cartesia', id: 'x', language: 'de' } }), /voice has unknown setting\(s\): language/);
   assert.equal(cartesia.speed(1.8), 1.5);
+  // A speed inside the range comes back as it is, so voice prints no note about the range.
+  assert.equal(cartesia.speed(0.9 * 1.1), 0.9 * 1.1);
   assert.equal(cartesia.speed(0.5), 0.6);
   assert.equal(cartesia.language('pt-br'), 'pt-BR');
   assert.equal(cartesia.language('es'), 'es');
@@ -99,7 +101,7 @@ test('it reads from pause to pause, and every other voice keeps its sentence chu
 });
 
 test('each request carries the text, the voice, the model, the language and the speed, and is saved under its key', async (t) => {
-  const { dir, voiceRun, sent } = await setup(t, { settings: { pace: 1.2 } });
+  const { dir, voiceRun, sent } = await setup(t, { settings: { speed: 0.9, pace: 1.1 } });
   await voiceRun();
   const requests = sent();
   assert.deepEqual(requests.map((r) => r.body.transcript), ['Bread needs four things. Flour comes first.', 'Then water.', 'Salt goes in last.']);
@@ -110,7 +112,7 @@ test('each request carries the text, the voice, the model, the language and the 
     assert.equal(r.body.model_id, 'sonic-3.6');
     assert.equal(r.body.language, 'en');
     assert.deepEqual(r.body.output_format, { container: 'raw', encoding: 'pcm_s16le', sample_rate: 24000 });
-    assert.equal(r.body.generation_config.speed, 1.2);
+    assert.equal(r.body.generation_config.speed, 0.99);
   }
   const project = loadProject(dir);
   const jobs = listJobs(dir);

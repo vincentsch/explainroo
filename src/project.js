@@ -196,10 +196,11 @@ export function languageSettings(raw, language) {
 }
 
 // "languages": { "es": { "voice": "ef_dora" } } holds the settings of one
-// language. They get the same checks as the main settings.
-function checkLanguages(raw, dir) {
+// language. Their shape is checked first, because the settings of a language
+// are made from them.
+function checkLanguages(raw) {
   const { languages } = raw;
-  if (languages === undefined || languages === null) return;
+  if (languages === undefined || languages === null) return [];
   if (typeof languages !== 'object' || Array.isArray(languages)) fail('languages must be an object like { "es": { "voice": "ef_dora" } }');
   const main = raw.language ?? DEFAULTS.language;
   for (const [code, own] of Object.entries(languages)) {
@@ -208,21 +209,34 @@ function checkLanguages(raw, dir) {
     if (!own || typeof own !== 'object' || Array.isArray(own)) fail(`languages.${code} must be an object with the settings of that language, like { "voice": "${LANGUAGES[code]}" }`);
     const bad = Object.keys(own).filter((k) => (!(k in DEFAULTS) && !k.startsWith('_')) || k === 'language' || k === 'languages');
     if (bad.length) fail(`languages.${code} has setting(s) that can't be set for one language: ${bad.join(', ')}`);
+  }
+  return Object.keys(languages);
+}
+
+// `language` picks one language of a video in several languages, and its
+// settings come from languageSettings. `overrides` are the settings of one run,
+// like --size, which win over the settings of any language. The result holds no
+// "languages". The settings of every other language get the same checks once the
+// settings asked for are good, so that a mistake is blamed on the right place.
+export function normalizeConfig(input, dir = '.', { language: version, overrides = {} } = {}) {
+  if (typeof (input.language ?? DEFAULTS.language) !== 'string' || !Object.hasOwn(LANGUAGES, input.language ?? DEFAULTS.language)) fail(`language must be one of ${Object.keys(LANGUAGES).join(', ')}`);
+  const others = checkLanguages(input);
+  const raw = { ...(version === undefined ? input : languageSettings(input, version)), ...overrides };
+  const cfg = settingsOf(raw, input, dir);
+  for (const code of others) {
+    if (code === cfg.language) continue;
     try {
-      normalizeConfig(languageSettings(raw, code), dir);
+      settingsOf(languageSettings(input, code), input, dir);
     } catch (e) {
       if (e instanceof ProjectError) fail(`languages.${code}: ${e.message}`);
       throw e;
     }
   }
+  return cfg;
 }
 
-// `language` picks one language of a video in several languages. Its settings
-// come from languageSettings, and the result holds no "languages".
-export function normalizeConfig(input, dir = '.', { language: version } = {}) {
-  if (typeof (input.language ?? DEFAULTS.language) !== 'string' || !Object.hasOwn(LANGUAGES, input.language ?? DEFAULTS.language)) fail(`language must be one of ${Object.keys(LANGUAGES).join(', ')}`);
-  checkLanguages(input, dir);
-  const raw = version === undefined ? input : languageSettings(input, version);
+// The checked settings of one language. `input` is the whole of video.json.
+function settingsOf(raw, input, dir) {
   const cfg = { ...DEFAULTS, ...raw };
   delete cfg.languages;
   if (typeof cfg.language !== 'string' || !Object.hasOwn(LANGUAGES, cfg.language)) fail(`language must be one of ${Object.keys(LANGUAGES).join(', ')}`);
@@ -476,7 +490,7 @@ export function loadProject(arg, overrides = {}) {
     fail(`this video has no ${lang} version. Add script.${lang}.md for it. The languages it has: ${languages.join(', ')}`);
   }
   const language = lang ?? main;
-  const config = normalizeConfig({ ...raw, ...settings }, dir, { language });
+  const config = normalizeConfig(raw, dir, { language, overrides: settings });
   for (const f of [...config.fonts.map((x) => x.src), ...(config.brand?.logo ? [config.brand.logo] : []), ...(config.music?.src ? [config.music.src] : [])]) {
     if (!fs.existsSync(path.join(dir, f))) fail(`${f} is listed in video.json but the file is missing`);
   }

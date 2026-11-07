@@ -20,7 +20,7 @@ export function cartesiaLanguage(language) {
 }
 
 function cartesiaSpeed(speed) {
-  return Math.max(SPEED_RANGE[0], Math.min(SPEED_RANGE[1], Math.round(speed * 1000) / 1000));
+  return Math.max(SPEED_RANGE[0], Math.min(SPEED_RANGE[1], speed));
 }
 
 function apiKey(dir) {
@@ -76,7 +76,7 @@ async function speak(project, scene, text) {
     voice: { id: voice.id },
     language: cartesiaLanguage(language),
     output_format: { container: 'raw', encoding: 'pcm_s16le', sample_rate: SAMPLE_RATE },
-    generation_config: { speed: cartesiaSpeed(speed * pace) },
+    generation_config: { speed: Math.round(cartesiaSpeed(speed * pace) * 1000) / 1000 },
   });
   let buffer;
   try { buffer = await res.arrayBuffer(); }
