@@ -1,6 +1,7 @@
 // explainroo connect <service>: walks through setting a service up. A key comes
 // from a hidden prompt or from stdin, and never from the command line, because
 // arguments end up in shell history and agent logs.
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { ProjectError, rememberSecret } from './errors.js';
@@ -84,6 +85,8 @@ export async function connect(args, flags, { print, log, notice }) {
   const lookIn = project ?? process.cwd();
   // A project's .env can be a link to a file that git tracks, in a stranger's project too.
   if (project && fs.lstatSync(file, { throwIfNoEntry: false })?.isSymbolicLink()) throw new ProjectError(`${file} is a link, so a key saved there could end up anywhere. Remove the link, or leave out --project.`);
+  // Ignoring a file does nothing once git tracks it, so the next commit would hold the key.
+  if (project && spawnSync('git', ['ls-files', '--error-unmatch', '.env'], { cwd: project, stdio: 'ignore' }).status === 0) throw new ProjectError(`git tracks ${file}, so a key saved there would end up in a commit. Leave out --project to save it in the settings folder.`);
 
   let key;
   // A terminal shows what is typed on stdin, so there the hidden prompt takes over.

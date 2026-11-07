@@ -190,6 +190,25 @@ test('--project refuses a .env that is a link, because the key could end up in a
   assert.ok(!r.text.includes(GOOD_KEY));
 });
 
+test('--project refuses a .env that git tracks, because ignoring it would not keep the key out of a commit', { skip: spawnSync('git', ['--version']).status !== 0 && 'needs git' }, async (t) => {
+  const { cli } = await setup(t);
+  const dir = projectFolder(t);
+  fs.writeFileSync(path.join(dir, '.env'), 'OTHER=1\n');
+  const git = (...args) => assert.equal(spawnSync('git', args, { cwd: dir }).status, 0, args.join(' '));
+  git('init', '-q');
+  // Not tracked yet, so it saves, and the .gitignore keeps it out.
+  const first = await cli(['connect', 'openrouter', '--project', dir, '--key-stdin'], GOOD_KEY);
+  assert.equal(first.code, 0, first.text);
+  fs.rmSync(path.join(dir, '.gitignore'));
+  git('add', '.env');
+  const before = fs.readFileSync(path.join(dir, '.env'), 'utf8');
+  const r = await cli(['connect', 'openrouter', '--project', dir, '--key-stdin'], GOOD_KEY);
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /git tracks .*\.env/);
+  assert.equal(fs.readFileSync(path.join(dir, '.env'), 'utf8'), before);
+  assert.ok(!r.text.includes(GOOD_KEY));
+});
+
 test('a source checkout saves in its own folder, and an installed copy in the settings folder', (t) => {
   const checkout = temp(t);
   const installed = temp(t);
