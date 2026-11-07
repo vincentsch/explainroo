@@ -365,6 +365,47 @@ const steps = [
       return r.post.link;
     },
   },
+  {
+    args: ['connect', 'cartesia', '--key-stdin', '--json'],
+    input: `${GOOD_KEY}\n`,
+    check: (r, { settings, fake }, raw) => {
+      expect(r.connected && fs.readFileSync(path.join(settings, '.env'), 'utf8').includes(`CARTESIA_API_KEY=${GOOD_KEY}\n`), 'the Cartesia key was not saved');
+      expect(fake.count('cartesia', 'GET /voices') === 1 && fake.count('cartesia', 'POST /tts/bytes') === 0, 'connect did not test the key with the free voice list');
+      expect(!raw.includes(GOOD_KEY), 'connect printed the key');
+    },
+  },
+  {
+    args: ['voices', '--provider', 'cartesia', '--language', 'es', '--json'],
+    check: (r) => {
+      expect(r.voices.length === 1 && r.voices[0].id === 'voz-clara', `voices lists ${JSON.stringify(r.voices)}`);
+      return `${r.voices[0].name} (${r.voices[0].id})`;
+    },
+  },
+  {
+    // A video in English and Spanish. The Spanish voice comes from the Cartesia fake.
+    args: ['init', 'bilingual', '--size', 'tiktok', '--json'],
+    check: (r) => {
+      const write = (name, text) => fs.writeFileSync(path.join(r.dir, name), typeof text === 'string' ? text : JSON.stringify(text));
+      write('video.json', { title: 'Fresh bread', size: 'tiktok', captions: 'bold', languages: { es: { voice: { provider: 'cartesia', id: 'voz-clara' } } } });
+      write('script.md', '# Fresh bread\n\n## tip\nKeep bread in a [#bag] *paper bag*.\n');
+      write('script.es.md', '# Pan fresco\n\n## tip\nGuarda el pan en una [#bag] *bolsa de papel*.\n');
+      write('strings.json', { tip: { title: 'Fresh bread' } });
+      write('strings.es.json', { tip: { title: 'Pan fresco' } });
+      write('scenes.js', "export default { tip(s) { s.title(s.str('tip.title'), { y: s.safe.y + s.safe.h * 0.3, enter: 'none' }); s.icon('shopping-bag', { y: s.safe.y + s.safe.h * 0.6, size: 220, at: '#bag' }); } };\n");
+    },
+  },
+  {
+    // The fake's sound is no Spanish speech, so the speech check may warn here.
+    args: ['check', 'bilingual', '--lang', 'es', '--json'],
+    check: (r, { temp, fake }) => {
+      const errors = r.issues.filter((i) => i.level === 'error');
+      expect(!errors.length, `check --lang es found errors: ${errors.map((e) => e.message).join('; ')}`);
+      const sent = fake.requests('cartesia', 'POST /tts/bytes').map((q) => q.body);
+      expect(sent.length === 1 && sent[0].language === 'es' && sent[0].transcript === 'Guarda el pan en una bolsa de papel.' && sent[0].voice.id === 'voz-clara', `Cartesia got ${JSON.stringify(sent)}`);
+      expect(fs.existsSync(path.join(temp, 'bilingual/build/es/voice/tip.wav')) && !fs.existsSync(path.join(temp, 'bilingual/build/voice')), 'the Spanish narration is not in build/es/');
+      return `${r.issues.length} finding(s), ${sent.length} request to the Cartesia fake`;
+    },
+  },
 ];
 
 async function runSteps(paths, env) {
@@ -404,7 +445,7 @@ async function main() {
     console.log(`installed in ${((Date.now() - started) / 1000).toFixed(1)}s`);
     const settings = path.join(temp, 'settings');
     // Keys from this computer's own settings have no place in this test.
-    const env = { ...outside, ...fake.env, NODE_OPTIONS: `--import=${GUARD}`, EXPLAINROO_CONFIG: settings, OPENROUTER_API_KEY: '', ELEVENLABS_API_KEY: '', EXPLAINROO_CLOUD_KEY: '', EXPLAINROO_CLIP_POLL_MS: '50',
+    const env = { ...outside, ...fake.env, NODE_OPTIONS: `--import=${GUARD}`, EXPLAINROO_CONFIG: settings, OPENROUTER_API_KEY: '', ELEVENLABS_API_KEY: '', CARTESIA_API_KEY: '', EXPLAINROO_CLOUD_KEY: '', EXPLAINROO_CLIP_POLL_MS: '50',
       YOUTUBE_CLIENT_ID: '', YOUTUBE_CLIENT_SECRET: '', YOUTUBE_REFRESH_TOKEN: '', BUFFER_CLIENT_ID: '', BUFFER_ACCESS_TOKEN: '', BUFFER_REFRESH_TOKEN: '', BUFFER_TOKEN_EXPIRES: '', BLOTATO_API_KEY: '', EXPLAINROO_PUBLISH_POLL_MS: '50', EXPLAINROO_PUBLISH_WAIT_MS: '2000' };
     await runSteps({ temp, settings, fake, closedPort: await closedPort(), installed: path.join(temp, 'node_modules', pkg.name) }, env);
     console.log('pack test passed');
