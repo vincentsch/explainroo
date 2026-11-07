@@ -13,6 +13,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { ProjectError, hideSecrets } from './errors.js';
+import { findService } from './services.js';
 
 const BIN = fileURLToPath(new URL('../bin/explainroo.js', import.meta.url));
 const JOB_FILE = /^([0-9a-f]+)(?:\.(\d+))?\.json$/;
@@ -119,11 +120,17 @@ function writeAtomic(file, data) {
   fs.renameSync(temp, file);
 }
 
+// A job file can arrive with a stranger's project, so its paths are not trusted.
+function insideProject(rel) {
+  return typeof rel === 'string' && rel !== '' && !path.isAbsolute(rel) && !path.win32.isAbsolute(rel) && !rel.split(/[\\/]/).includes('..');
+}
+
 // Where a job's output is now, but only if it is still the file that was
 // bought. A job never hands out a file with another hash.
 export function goodOutput(dir, job) {
   if (job.status !== 'done' || !job.output) return null;
   const { file, name, sha256 } = job.output;
+  if (![file, name].every((rel) => rel === undefined || insideProject(rel))) return null;
   for (const rel of new Set([file, name, replacedFile(name ?? file, sha256)])) {
     if (rel && fs.existsSync(path.join(dir, rel)) && sha256File(path.join(dir, rel)) === sha256) return rel;
   }
@@ -170,13 +177,18 @@ function when(iso) {
   return `${String(iso).slice(0, 16).replace('T', ' ')} UTC`;
 }
 
+// Text from a job file stays on one line, so it can't pose as another line of output.
+function oneLine(text, length) {
+  return String(text ?? '').replace(/[\s\p{Cc}]+/gu, ' ').slice(0, length);
+}
+
 function saidBy(job) {
-  return job.error ? ` (${job.error.replace(/\.$/, '')})` : '';
+  return job.error ? ` (${oneLine(job.error, 300).replace(/\.$/, '')})` : '';
 }
 
 // One or two sentences that say what happened to a job that has no good output.
 export function stopSentence(job, reason) {
-  const name = job.output?.name ?? job.output?.file;
+  const name = oneLine(job.output?.name ?? job.output?.file, 200);
   switch (reason) {
     case 'unknown': return `The request went out on ${when(job.created)} and no answer was saved. Another run may still be working on it, or an earlier run stopped before it got an answer, and that request may have cost money.`;
     case 'lost': return `No answer came back on ${when(job.updated)}${saidBy(job)}, so that request may have cost money.`;
@@ -323,9 +335,9 @@ export function continueCommand(dir, job, reason) {
 
 function jobLabel(job) {
   const r = job.request || {};
-  if (job.kind === 'speech') return `scene ${job.scene ?? '?'}: "${String(r.text ?? '').slice(0, 60)}"`;
-  if (job.kind === 'image') return `${r.name ?? '?'}: "${String(r.prompt ?? '').slice(0, 60)}"`;
-  return job.kind ?? 'unknown';
+  if (job.kind === 'speech') return `scene ${oneLine(job.scene ?? '?', 60)}: "${oneLine(r.text, 60)}"`;
+  if (job.kind === 'image') return `${oneLine(r.name ?? '?', 60)}: "${oneLine(r.prompt, 60)}"`;
+  return oneLine(job.kind ?? 'unknown', 60);
 }
 
 // What history prints. `current` says whether a job is still wanted: a sentence
@@ -334,7 +346,7 @@ export function historyReport(dir, { current = () => true, otherSpend = [] } = {
   const jobs = listJobs(dir);
   const newest = new Map();
   for (const job of jobs) if (job.attempt >= (newest.get(job.key)?.attempt ?? 0)) newest.set(job.key, job);
-  const open = [...newest.values()].filter((job) => CONTINUE[job.kind] && current(job) && !goodOutput(dir, job)).map((job) => {
+  const open = [...newest.values()].filter((job) => Object.hasOwn(CONTINUE, job.kind ?? '') && current(job) && !goodOutput(dir, job)).map((job) => {
     const reason = stopReason(dir, job);
     return { id: shortId(job), kind: job.kind, provider: job.provider, status: job.status, reason, what: jobLabel(job), created: job.created, updated: job.updated, message: stopSentence(job, reason), command: continueCommand(dir, job, reason) };
   });
@@ -350,4 +362,21 @@ export function historyReport(dir, { current = () => true, otherSpend = [] } = {
   spend.usd = Math.round(spend.usd * 10000) / 10000;
   spend.may_have_cost_usd = Math.round(spend.may_have_cost_usd * 10000) / 10000;
   return { open, spend, versions: readVersions(dir), jobs: jobs.map((job) => ({ id: shortId(job), ...job })) };
+}
+
+function versionLine(v) {
+  const kind = [v.draft ? 'draft' : 'final', v.full ? 'full video' : `${v.range.from}s to ${v.range.to}s`, ...(v.scale === 1 ? [] : [`scale ${v.scale}`]), `watermark ${v.watermark ? 'on' : 'off'}`];
+  const checked = v.verify ? `verify ${v.verify.ok ? 'passed' : 'found errors'}${v.verify.understood === null ? '' : `, ${Math.round(v.verify.understood * 100)}% understood`}` : 'not verified';
+  return `  ${when(v.time)}  ${v.file}  ${v.format} ${v.width}x${v.height}, ${v.duration.toFixed(1)}s, ${kind.join(', ')}, ${checked}`;
+}
+
+export function formatHistory({ open, spend, versions }) {
+  const parts = [];
+  parts.push(open.length ? ['Open jobs', ...open.flatMap((o) => [`  ${o.id}  ${o.kind}  ${o.what}`, `    ${o.message}`, `    To continue: ${o.command}`])].join('\n') : 'No open jobs.');
+  const paid = spend.usd || !Object.keys(spend.characters).length ? [`  $${spend.usd.toFixed(4)} in known prices`] : [];
+  for (const [provider, characters] of Object.entries(spend.characters)) paid.push(`  ${findService(provider)?.name ?? provider}: ${characters} characters`);
+  if (spend.unknown_price) paid.push(`  ${spend.unknown_price} attempt${spend.unknown_price === 1 ? ' has' : 's have'} no known price and may have cost money${spend.may_have_cost_usd ? `, about $${spend.may_have_cost_usd.toFixed(2)} at the usual price` : ''}.`);
+  parts.push(spend.attempts ? [`Spend so far, across ${spend.attempts} attempt${spend.attempts === 1 ? '' : 's'}`, ...paid].join('\n') : 'Nothing bought yet.');
+  parts.push(versions.length ? ['Rendered versions', ...versions.map(versionLine)].join('\n') : 'Nothing rendered yet.');
+  return parts.join('\n\n');
 }

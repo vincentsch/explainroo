@@ -218,7 +218,7 @@ test('no error text in the record can hold a key', (t) => {
 
 test('printed commands name how this copy runs, and paths are safe to paste', () => {
   assert.equal(selfCommand({ npm_command: 'exec', PATH: '' }), 'npx --yes explainroo');
-  assert.match(selfCommand({ PATH: '' }), /^node .*explainroo\.js$/);
+  assert.match(selfCommand({ PATH: '' }), /^node .*explainroo\.js"?$/);
   assert.equal(shellWord('videos/my-video_1.2'), 'videos/my-video_1.2');
   if (process.platform !== 'win32') assert.equal(shellWord("it's a test"), "'it'\\''s a test'");
 });
