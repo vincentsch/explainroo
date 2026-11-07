@@ -24,25 +24,46 @@ export function renderOutput(project, opts = {}) {
 
 export async function render(project, opts = {}) {
   const log = opts.log || (() => {});
-  const format = renderFormat(opts);
+  // A bad flag stops here, before anything is built.
+  const out = renderOutput(project, opts);
   const t0 = Date.now();
   const { timeline } = await prepare(project, { log });
+  const { from, to, partial } = frameRange(project, timeline, opts);
+  // A cover at a scene that isn't there, or a caption word that is too long, stops
+  // the render here, before any frame is drawn.
+  const plan = planExtras(project, timeline, { range: { from: from / project.config.fps, to: to / project.config.fps }, full: !partial });
+  const video = await encodeVideo(project, timeline, { ...opts, out, log });
+  const files = await writeExtras(project, timeline, video.out.slice(0, -path.extname(video.out).length), { plan, log });
+  recordVersion(project.dir, versionLine(project, video));
+  const secs = (Date.now() - t0) / 1000;
+  log(`wrote ${path.relative(process.cwd(), video.out) || video.out} in ${secs.toFixed(1)}s`);
+  return { out: video.out, ...files, duration: video.duration, frames: video.frames, seconds: secs, width: video.width, height: video.height, sha256: video.sha256, identity: video.identity };
+}
+
+// The frames that --from and --to ask for.
+function frameRange(project, timeline, opts) {
+  const fps = project.config.fps;
+  const total = timeline.frames;
+  const from = Math.max(0, Math.floor((opts.from ?? 0) * fps));
+  const to = Math.min(total, opts.to !== undefined ? Math.ceil(opts.to * fps) : total);
+  if (to <= from) throw new Error('nothing to render: --from must be before --to');
+  return { from, to, partial: from > 0 || to < total };
+}
+
+// Draws the frames and writes the video file at `out`, without the files that go
+// next to it.
+export async function encodeVideo(project, timeline, opts) {
+  const log = opts.log || (() => {});
+  const format = renderFormat(opts);
   const identity = renderIdentity(project, timeline);
   const draft = !!opts.draft;
   const transparent = !!opts.transparent;
   const segmentFormat = format === 'gif' ? 'mp4' : format;
   const scale = opts.scale ?? (draft ? 0.5 : 1);
   const fps = project.config.fps;
-  const total = timeline.frames;
-  const from = Math.max(0, Math.floor((opts.from ?? 0) * fps));
-  const to = Math.min(total, opts.to !== undefined ? Math.ceil(opts.to * fps) : total);
-  if (to <= from) throw new Error('nothing to render: --from must be before --to');
-  const partial = from > 0 || to < total;
-  const out = renderOutput(project, opts);
-  const base = out.slice(0, -path.extname(out).length);
-  const cues = subtitleCues(timeline, { from: from / fps, to: to / fps });
+  const { from, to, partial } = frameRange(project, timeline, opts);
+  const out = opts.out;
   const chapters = partial ? [] : buildChapters(timeline, project.script.title || project.config.title);
-  const coverTime = partial ? null : resolveTimes(timeline, [project.config.cover === 'auto' ? `${timeline.scenes[0].id}@end` : project.config.cover])[0];
   const workers = Math.max(1, Math.min(opts.workers ?? Math.min(8, Math.max(1, Math.floor(os.cpus().length / 2))), to - from));
   const quality = draft ? 0.82 : 0.93;
   // Final renders get motion blur. Drafts, GIFs and transparent videos skip it.
@@ -132,6 +153,64 @@ export async function render(project, opts = {}) {
     await ffmpeg(['-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', listFile, ...audioArgs, ...metadataArgs, '-map', '0:v', '-map', '1:a', '-c:v', 'copy', ...audioCodec, ...containerArgs, '-shortest', out]);
   }
   fs.rmSync(segDir, { recursive: true, force: true });
+  return {
+    out,
+    format,
+    draft,
+    transparent,
+    scale,
+    range: { from: from / fps, to: to / fps },
+    full: !partial,
+    width,
+    height,
+    fps: format === 'gif' ? 15 : fps,
+    duration: (to - from) / fps,
+    frames: to - from,
+    sha256: sha256File(out),
+    identity,
+  };
+}
+
+// The line in the project record for a finished video.
+export function versionLine(project, video) {
+  return {
+    time: new Date().toISOString(),
+    file: relativeFile(project.dir, video.out),
+    format: video.format,
+    draft: video.draft,
+    transparent: video.transparent,
+    scale: video.scale,
+    range: video.range,
+    full: video.full,
+    width: video.width,
+    height: video.height,
+    fps: video.fps,
+    size: project.config.size,
+    watermark: project.config.watermark !== false,
+    duration: video.duration,
+    sha256: video.sha256,
+    version: VERSION,
+    identity: video.identity,
+  };
+}
+
+// What goes next to a video: its caption cues, its chapters and the time of its
+// cover. Only a full video gets chapters and a cover, and `chapters: false` leaves
+// out the chapter list. Work it out before rendering, because a bad setting throws.
+export function planExtras(project, timeline, { range = { from: 0, to: timeline.frames / timeline.fps }, full = true, chapters = true } = {}) {
+  return {
+    cues: subtitleCues(timeline, range),
+    chapters: full && chapters ? buildChapters(timeline, project.script.title || project.config.title) : [],
+    coverTime: full ? resolveTimes(timeline, [project.config.cover === 'auto' ? `${timeline.scenes[0].id}@end` : project.config.cover])[0] : null,
+  };
+}
+
+// The files that go next to a video, named after `base`: subtitles when there is
+// narration, chapters when scenes name them, and the cover. A file that no longer
+// applies goes, so nothing old stays next to a new video. `plan` comes from
+// planExtras, and without it the other options make one.
+export async function writeExtras(project, timeline, base, { plan, log = () => {}, ...options } = {}) {
+  const { cues, chapters, coverTime } = plan ?? planExtras(project, timeline, options);
   const files = { subtitles: null, chapters: null, cover: null };
   if (timeline.scenes.some((s) => s.words.length)) {
     files.subtitles = { srt: `${base}.srt`, vtt: `${base}.vtt` };
@@ -152,27 +231,5 @@ export async function render(project, opts = {}) {
       fs.copyFileSync(temp, files.cover);
     } finally { fs.rmSync(temp, { force: true }); }
   } else fs.rmSync(`${base}.cover.jpg`, { force: true });
-  const sha256 = sha256File(out);
-  recordVersion(project.dir, {
-    time: new Date().toISOString(),
-    file: relativeFile(project.dir, out),
-    format,
-    draft,
-    transparent,
-    scale,
-    range: { from: from / fps, to: to / fps },
-    full: !partial,
-    width,
-    height,
-    fps: format === 'gif' ? 15 : fps,
-    size: project.config.size,
-    watermark: project.config.watermark !== false,
-    duration: (to - from) / fps,
-    sha256,
-    version: VERSION,
-    identity,
-  });
-  const secs = (Date.now() - t0) / 1000;
-  log(`wrote ${path.relative(process.cwd(), out) || out} in ${secs.toFixed(1)}s`);
-  return { out, ...files, duration: (to - from) / fps, frames: to - from, seconds: secs, width, height, sha256, identity };
+  return files;
 }

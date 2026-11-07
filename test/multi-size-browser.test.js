@@ -13,6 +13,8 @@ import { speechChunks } from '../src/script.js';
 import { sceneHash, voicePaths } from '../src/voice.js';
 import { writeWav } from '../src/wav.js';
 import { probe } from '../src/ffmpeg.js';
+import { prepare } from '../src/pipeline.js';
+import { writeExtras } from '../src/render.js';
 
 const bin = fileURLToPath(new URL('../bin/explainroo.js', import.meta.url));
 let chrome;
@@ -118,6 +120,46 @@ test('--no-watermark works on still, sheet, check and render under names of its 
   const settings = path.join(dir, 'video.json');
   fs.writeFileSync(settings, JSON.stringify({ ...JSON.parse(fs.readFileSync(settings, 'utf8')), watermark: false }));
   assert.deepEqual(fs.readFileSync(run('still', dir).stills[0].file), fs.readFileSync(bare));
+});
+
+test('render stops before it draws a frame when the cover names no scene or a caption word is too long, and keeps the last video', { timeout: 120000 }, t => {
+  const dir = fixture(t);
+  fs.mkdirSync(path.join(dir, 'out'));
+  fs.writeFileSync(path.join(dir, 'out/video.mp4'), 'the last video');
+  const settings = path.join(dir, 'video.json');
+  const raw = JSON.parse(fs.readFileSync(settings, 'utf8'));
+  const fails = (message) => {
+    const r = spawnSync(process.execPath, [bin, 'render', dir, '--workers', '1'], { encoding: 'utf8', timeout: 60000 });
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, message);
+    assert.doesNotMatch(r.stderr, /^rendering /m);
+    assert.equal(fs.readFileSync(path.join(dir, 'out/video.mp4'), 'utf8'), 'the last video');
+    assert.equal(fs.existsSync(path.join(dir, 'history/versions.jsonl')), false);
+  };
+  fs.writeFileSync(settings, JSON.stringify({ ...raw, cover: 'nosuch@end' }));
+  fails(/no scene "nosuch"/);
+  fs.writeFileSync(settings, JSON.stringify(raw));
+  const voice = voicePaths(loadProject(dir), 'intro').json;
+  fs.writeFileSync(voice, JSON.stringify({ ...JSON.parse(fs.readFileSync(voice, 'utf8')), words: [{ text: 'https://example.com/an/address/far/too/long/for/a/caption', spoken: 'link', start: 0, end: 0.25, matched: true }] }));
+  fails(/longer than 42 characters/);
+});
+
+test('the files next to a video are written on their own, the same as render writes them, and one that no longer applies goes', { skip: !chrome, timeout: 180000 }, async t => {
+  const dir = fixture(t);
+  const rendered = run('render', dir, ['--scale', '0.1', '--workers', '1']);
+  const project = loadProject(dir);
+  const { timeline } = await prepare(project);
+  const base = path.join(dir, 'out/elsewhere/video');
+  fs.mkdirSync(path.dirname(base), { recursive: true });
+  const files = await writeExtras(project, timeline, base);
+  assert.deepEqual(files, { subtitles: { srt: `${base}.srt`, vtt: `${base}.vtt` }, chapters: `${base}.chapters.txt`, cover: `${base}.cover.jpg` });
+  for (const [mine, theirs] of [[files.subtitles.srt, rendered.subtitles.srt], [files.subtitles.vtt, rendered.subtitles.vtt], [files.chapters, rendered.chapters], [files.cover, rendered.cover]]) {
+    assert.deepEqual(fs.readFileSync(mine), fs.readFileSync(theirs), mine);
+  }
+  const again = await writeExtras(project, timeline, base, { chapters: false });
+  assert.equal(again.chapters, null);
+  assert.equal(fs.existsSync(`${base}.chapters.txt`), false);
+  assert.ok(fs.statSync(`${base}.cover.jpg`).size > 0);
 });
 
 test('preview keeps the size override after settings change', { timeout: 15000 }, async t => {
