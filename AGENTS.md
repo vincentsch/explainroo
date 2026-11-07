@@ -836,60 +836,15 @@ With `--out`, the file ending must match the format. A render of part of the
 video (`--from`, `--to`) skips the chapters and the cover. A video without
 narration gets no subtitle files.
 
-### Transparent video for editors
-
 To put a diagram or a lower third over camera footage, render with an alpha
-channel: `render --transparent --format mov` for video editors (ProRes 4444)
-or `--format webm` for the web (VP9). The look's background texture is left
-out. Everything the scene paints stays, including `s.bg()` and
-`s.ui.backdrop()`, and cards, captions and the watermark keep their own
-backgrounds. Keep elements readable on footage: use cards or the `bg` option
-of text.
-
-The files are `out/video.mov` or `out/video.webm` (`draft.*` with
-`--draft`), and the cover stays an opaque JPEG. `slide`, `wipe` and `brush`
-transitions become `fade` in a transparent video. Check frames with
-`still --transparent`, which keeps the alpha, and the file with
-`verify --file out/video.mov`, which skips the black-frame check for
-transparent video. Without `--transparent`, WebM and MOV are ordinary opaque
-videos.
+channel: `render --transparent --format mov` or `--format webm`. Run
+`explainroo docs transparent-video` first.
 
 ## Web player
 
-Use `export` for a video on a docs site or in an iframe. The canvas draws
-at the screen's resolution, so text stays sharp when the player grows.
-The folder has its own engine, fonts, assets, soundtrack, cover and subtitles.
-It needs no explainroo server. The voice is made first if needed.
-
-```bash
-explainroo export videos/my-video
-```
-
-Serve `out/player/` with any static web server. Opening `index.html` as a
-local file does not work. Copy the folder to your site, keeping its files
-together. It works in a subfolder too.
-
-For a 1920 x 1080 video, embed it like this. Change the aspect ratio to
-match your video's width and height.
-
-```html
-<div style="aspect-ratio: 1920 / 1080; width: 100%">
-  <iframe src="/videos/my-video/index.html" title="My video"
-    style="width: 100%; height: 100%; border: 0"
-    allow="autoplay; fullscreen" allowfullscreen></iframe>
-</div>
-```
-
-`index.html?autoplay=1&muted=1` starts muted playback, subject to the
-browser's autoplay rules. `index.html?t=12.5` starts at 12.5 seconds.
-The player has the usual keys and a CC button for text captions.
-
-Clips use the browser's video decoder. Use a format the browser can play.
-Their timing can differ a little from the MP4. Math formulas are included
-as typeset paths. Project modules must use relative local imports. Dotfiles,
-JSON and text files from the project are kept out of the export.
-
-The MP4 remains the file to upload to video platforms.
+`export` writes a web player for a docs site or an iframe, with its own
+engine, fonts, soundtrack and subtitles. `explainroo docs web-player` says how
+to serve and embed it. The MP4 remains the file to upload to video platforms.
 
 ## Scene API
 
