@@ -88,8 +88,8 @@ export async function connect(args, flags, { print, log, notice }) {
     key = await readStdin();
   } else if (process.stdin.isTTY) {
     notice(explain(service));
-    if (findEnv(env, lookIn)) notice(`A key for ${service.name} is already set up. A new one replaces it in ${file}.`);
-    key = await readHidden(`Paste your ${service.name} key (it will not show): `);
+    if (findEnv(env, lookIn)) notice(`A key for ${connector.name} is already set up. A new one replaces it in ${file}.`);
+    key = await readHidden(`Paste your ${connector.name} key (it will not show): `);
   } else {
     const self = selfCommand();
     const target = project ? ` --project ${shellWord(path.relative(process.cwd(), project) || '.')}` : '';
@@ -114,6 +114,6 @@ export async function connect(args, flags, { print, log, notice }) {
   // The lookup order can put another value first, and the user should know.
   const shadowed = findEnv(env, lookIn) !== key;
   const note = shadowed ? `\nNote: a different ${env} is set in the environment or in a .env file that is read first, so that one is still used.` : '';
-  print(`The key works, and it is saved in ${file}.\n${service.name} is connected. ${service.setup.use}${note}`, { service: service.id, connected: true, file, env, use: service.setup.use, ...(shadowed ? { shadowed: true } : {}) });
+  print(`The key works, and it is saved in ${file}.\n${connector.name} is connected. ${service.setup.use}${note}`, { service: service.id, connected: true, file, env, use: service.setup.use, ...(shadowed ? { shadowed: true } : {}) });
   return 0;
 }

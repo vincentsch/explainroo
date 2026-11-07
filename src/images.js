@@ -56,7 +56,7 @@ function jobEntry(job) {
     name: r.name,
     file: job.output?.name ?? `assets/${r.name}`,
     provider: job.provider,
-    model: r.model,
+    model: r.model ?? '?',
     served_by: job.served_by ?? r.model,
     aspect: r.aspect,
     prompt: r.prompt,
