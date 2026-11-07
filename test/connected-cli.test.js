@@ -216,6 +216,22 @@ test('history leaves out an image someone gave up on, so a new session doesn\'t 
   assert.equal(purchases(), 2);
 });
 
+test('a repeat after a --new with no answer returns the earlier file, and says so', async (t) => {
+  const { dir, cli, image, purchases, fake } = await setup(t);
+  await cli(image('hero', PROMPT_A));
+  const first = read(dir, 'assets/hero.png');
+  fake.plan('openrouter', PAID, { drop: true });
+  assert.equal((await cli([...image('hero', PROMPT_A), '--new'])).code, 1);
+  const repeat = await cli(image('hero', PROMPT_A));
+  assert.equal(repeat.code, 0, repeat.text);
+  assert.match(repeat.stdout, /A newer try, job \w+\.2, has no good answer, so this is the earlier one/);
+  assert.equal(read(dir, 'assets/hero.png'), first);
+  assert.equal(purchases(), 2);
+  // The newer try may have cost money, so history keeps showing it, with what it would buy.
+  const [open] = JSON.parse((await cli(['history', dir, '--json'])).stdout).open;
+  assert.match(open.what, /with openai\//);
+});
+
 test('after a refused --new, history prints nothing that would do nothing', async (t) => {
   const { dir, cli, image, purchases, fake } = await setup(t);
   await cli(image('hero', PROMPT_A));

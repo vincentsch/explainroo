@@ -202,6 +202,31 @@ test('a link under a public name is removed and never copied, so a key can\'t re
   assert.equal(fs.readFileSync(path.join(dir, '.env'), 'utf8'), 'OPENROUTER_API_KEY=a-real-key\n');
 });
 
+test('a damaged copy in history/replaced never costs the original', (t) => {
+  const dir = temp(t);
+  fs.mkdirSync(path.join(dir, 'assets'));
+  fs.writeFileSync(path.join(dir, 'assets/hero.png'), 'the original');
+  fs.mkdirSync(historyDir(dir, 'replaced'), { recursive: true });
+  const saved = historyDir(dir, 'replaced', `${sha('the original')}.png`);
+  fs.writeFileSync(saved, 'the orig');
+  moveAside(dir, 'assets/hero.png');
+  assert.equal(fs.readFileSync(saved, 'utf8'), 'the original');
+  assert.deepEqual(fs.readdirSync(historyDir(dir, 'replaced')), [path.basename(saved)]);
+});
+
+test('a lock with a time in the future can\'t hold anyone up', (t) => {
+  const dir = temp(t);
+  const job = updateJob(dir, createJob(dir, 'abcd1234', { kind: 'image', request: { name: 'hero' } }), { status: 'done', output: saveOutput(dir, 'assets/hero.png', Buffer.from('bytes')) });
+  fs.mkdirSync(historyDir(dir, 'locks'));
+  const lock = historyDir(dir, 'locks', `${sha('abcd1234').slice(0, 16)}.lock`);
+  fs.writeFileSync(lock, '');
+  const future = new Date(Date.now() + 3600000);
+  fs.utimesSync(lock, future, future);
+  const started = Date.now();
+  assert.equal(placeOutput(dir, job).job.output.file, 'assets/hero.png');
+  assert.ok(Date.now() - started < 5000);
+});
+
 test('a lock that a dead run left behind does not stop the next one for long', (t) => {
   const dir = temp(t);
   const job = updateJob(dir, createJob(dir, 'abcd1234', { kind: 'image', request: { name: 'hero' } }), { status: 'done', output: saveOutput(dir, 'assets/hero.png', Buffer.from('bytes')) });
@@ -277,12 +302,14 @@ test('the report lists open jobs first with a working command, adds up spend and
   fs.writeFileSync(historyDir(dir, 'voice', 'ffff6666.wav'), 'wav');
   updateJob(dir, speech, { status: 'done', output: { file: 'history/voice/ffff6666.wav', sha256: sha('wav'), bytes: 3 } });
 
-  const gone = createJob(dir, 'abab1111', { kind: 'image', request: { name: 'gone', prompt: 'a file someone deleted' } });
-  updateJob(dir, gone, { status: 'done', cost_usd: 0, output: { file: 'assets/gone.png', name: 'assets/gone.png', sha256: sha('x') } });
+  // A deleted image is no reason to buy, also when something else needs a sentence.
+  const gone = createJob(dir, 'abab1111', { kind: 'speech', provider: 'made-up', characters: 3, request: { text: 'Gone.' } });
+  updateJob(dir, gone, { status: 'refused' });
 
-  const report = historyReport(dir, { current: (job) => job.key !== 'eeee5555', otherSpend: [{ cost_usd: 0.5 }] });
+  const report = historyReport(dir, { current: (job) => job.key !== 'eeee5555', needed: () => true, otherSpend: [{ cost_usd: 0.5 }] });
   const open = Object.fromEntries(report.open.map((o) => [o.id, o]));
-  assert.deepEqual(Object.keys(open).toSorted(), ['bbbb2222', 'cccc3333', 'dddd4444']);
+  assert.deepEqual(Object.keys(open).toSorted(), ['abab1111', 'bbbb2222', 'cccc3333', 'dddd4444']);
+  assert.match(open.bbbb2222.what, /late: "a late one" with \?/);
   assert.match(open.bbbb2222.command, /image \. --resume bbbb2222 --new$|image .* --resume bbbb2222 --new$/);
   assert.match(open.bbbb2222.message, /Another run may still be working on it, or an earlier run stopped/);
   assert.match(open.cccc3333.command, / voice .* --new$/);
@@ -314,6 +341,11 @@ test('a job is open only when someone would want to continue it', (t) => {
   // The same failure under another name still is open.
   image('cccc3333', 'other', 'lost', '2026-01-01T10:00:00.000Z');
   assert.deepEqual(ids(), ['cccc3333']);
+  // A refused sentence is only worth continuing if a scene has to be built from it.
+  const refused = createJob(dir, 'dddd4444', { kind: 'speech', status: 'refused', request: { text: 'Hello.' } });
+  assert.deepEqual(ids(), ['cccc3333']);
+  assert.deepEqual(ids({ needed: (job) => job.key === refused.key }), ['cccc3333', 'dddd4444']);
+  fs.rmSync(historyDir(dir, 'jobs', 'dddd4444.json'));
   // A refusal after a good attempt cost nothing and leaves nothing to do.
   updateJob(dir, createJob(dir, 'bbbb2222', { kind: 'image', attempt: 2, request: { name: 'hero' } }), { status: 'refused' });
   assert.deepEqual(ids(), ['cccc3333']);

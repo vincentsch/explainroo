@@ -177,7 +177,7 @@ export function unsettled(dir, key) {
 }
 
 function when(iso) {
-  return `${String(iso).slice(0, 16).replace('T', ' ')} UTC`;
+  return `${oneLine(iso, 16).replace('T', ' ')} UTC`;
 }
 
 // Text from a job file stays on one line, so it can't pose as another line of output.
@@ -216,8 +216,14 @@ export function moveAside(dir, rel) {
   }
   const sha256 = sha256File(from);
   const to = replacedFile(rel, sha256);
+  const saved = path.join(dir, to);
   fs.mkdirSync(historyDir(dir, 'replaced'), { recursive: true });
-  if (!fs.existsSync(path.join(dir, to))) fs.copyFileSync(from, path.join(dir, to));
+  // The original only goes once a whole copy is there, also if a run dies halfway.
+  if (!fs.existsSync(saved) || sha256File(saved) !== sha256) {
+    const temp = `${saved}.${process.pid}.tmp`;
+    fs.copyFileSync(from, temp);
+    fs.renameSync(temp, saved);
+  }
   fs.rmSync(from, { force: true });
   const owners = listJobs(dir).filter((job) => job.output?.sha256 === sha256 && job.output.file === rel);
   for (const job of owners) updateJob(dir, job, { output: { ...job.output, file: to } });
@@ -234,7 +240,7 @@ export function saveOutput(dir, name, bytes) {
 }
 
 // One run at a time moves files under a public name. Moving a file takes far less
-// than the 30 seconds after which a lock counts as left behind by a dead run.
+// than the 15 seconds after which a lock counts as left behind by a dead run.
 function withNameLock(dir, name, fn) {
   fs.mkdirSync(historyDir(dir, 'locks'), { recursive: true });
   const lock = historyDir(dir, 'locks', `${crypto.createHash('sha256').update(name).digest('hex').slice(0, 16)}.lock`);
@@ -246,7 +252,7 @@ function withNameLock(dir, name, fn) {
     } catch (e) {
       if (e.code !== 'EEXIST') throw e;
       const stat = fs.statSync(lock, { throwIfNoEntry: false });
-      if (stat && Date.now() - stat.mtimeMs > 30000) fs.rmSync(lock, { force: true });
+      if (stat && Math.abs(Date.now() - stat.mtimeMs) > 15000) fs.rmSync(lock, { force: true });
       Atomics.wait(pause, 0, 0, 50);
     }
   }
@@ -357,17 +363,19 @@ export function continueCommand(dir, job, reason) {
 function jobLabel(job) {
   const r = job.request || {};
   if (job.kind === 'speech') return `scene ${oneLine(job.scene ?? '?', 60)}: "${oneLine(r.text, 60)}"`;
-  if (job.kind === 'image') return `${oneLine(r.name ?? '?', 60)}: "${oneLine(r.prompt, 60)}"`;
+  if (job.kind === 'image') return `${oneLine(r.name ?? '?', 60)}: "${oneLine(r.prompt, 60)}" with ${oneLine(r.model ?? '?', 60)}`;
   return oneLine(job.kind ?? 'unknown', 60);
 }
 
 // A job is open when someone would want to continue it. A bought file that was
 // later deleted or changed is no reason to spend money, unless a scene still needs
 // it (`needed`). A refusal cost nothing, so it doesn't matter once an earlier attempt
-// is good. And a newer purchase under the same name means someone moved on.
+// is good, or for a sentence no scene has to be built from. And a newer purchase
+// under the same name means someone moved on.
 function isOpen(dir, job, jobs, current, needed) {
   if (!Object.hasOwn(CONTINUE, job.kind ?? '') || !current(job) || goodOutput(dir, job)) return false;
   if (job.status === 'done') return needed(job);
+  if (job.status === 'refused' && job.kind === 'speech' && !needed(job)) return false;
   if (job.status === 'refused' && jobs.some((other) => other.key === job.key && goodOutput(dir, other))) return false;
   return !(job.kind === 'image' && jobs.some((other) => other.kind === job.kind && other.key !== job.key && other.status === 'done' && other.request?.name === job.request?.name && other.created > job.created));
 }

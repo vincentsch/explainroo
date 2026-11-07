@@ -217,7 +217,7 @@ export async function main(argv) {
         const lines = r.reused
           ? [`${r.file}  already bought on ${r.time.slice(0, 10)} (job ${r.job}), so nothing was spent. To buy it again, add --new.`]
           : [`${r.file}  ${r.model}  ${r.cost_usd !== null ? '$' + r.cost_usd.toFixed(4) : 'cost unknown'}  (images so far: $${r.total_usd.toFixed(4)})`];
-        if (r.newer_attempt) lines.push(`A newer try, job ${r.newer_attempt}, has no good answer. "explainroo history" shows it.`);
+        if (r.newer_attempt) lines.push(`A newer try, job ${r.newer_attempt}, has no good answer, so this is the earlier one.`);
         for (const m of r.moved) lines.push(m.to ? `The file that was at ${m.from} moved to ${m.to}.${m.known ? ' Asking for its request again brings it back.' : ''}` : `The link that was at ${m.from} is gone. What it pointed at was not touched.`);
         if (!r.reused) lines.push('Open the image and check it before you use it.');
         print(lines.join('\n'), r);

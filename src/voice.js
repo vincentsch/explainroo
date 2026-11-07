@@ -122,7 +122,7 @@ function addFinishedScene(project, speech, scene, chunks, cached, hash, log, not
   if (!Array.isArray(cached?.chunks) || !cached.chunks.length || !fs.existsSync(file)) return;
   if (cached.chunks.every((c) => speech.knows(c.text))) return;
   if (!sameTake(chunks, cached, hash, project.config)) {
-    notice(`voice ${scene.id}: the finished scene can't be matched to today's voice settings, so its new sentences are bought.`);
+    notice(`voice ${scene.id}: the finished scene can't be matched to today's voice settings, so any of its sentences that aren't saved yet are bought.`);
     return;
   }
   let samples, sampleRate;

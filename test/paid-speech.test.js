@@ -278,6 +278,16 @@ test('a refused --force leaves nothing that history would print and that would d
   assert.equal(spoken().length, 2);
 });
 
+test('a refused --new on a sentence whose saved file was deleted leaves nothing open while its scene is built', async (t) => {
+  const { dir, fake, voiceRun } = await setup(t, { script: '# Test\n## first\nIt answers fast.\n## silent\n## second\n' });
+  await voiceRun();
+  fs.rmSync(path.join(dir, listJobs(dir)[0].output.file));
+  fake.plan('elevenlabs', SPEAK, { status: 402, body: { detail: { status: 'quota_exceeded' } } });
+  await assert.rejects(voiceRun({ fresh: true }), /no characters left/);
+  assert.deepEqual(historyReport(dir).open, []);
+  assert.equal(historyReport(dir, { needed: () => true }).open.length, 1);
+});
+
 test('a scene made with another voice, model or speed is not added under today\'s settings', async (t) => {
   for (const [settings, label] of [[{ voice: { provider: 'elevenlabs', id: 'other-voice' } }, 'voice'], [{ voice: { provider: 'elevenlabs', id: 'fake-voice', model: 'other-model' } }, 'model'], [{ speed: 0.8 }, 'speed']]) {
     const { dir, spoken, voiceRun } = await setup(t);
