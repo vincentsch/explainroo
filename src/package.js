@@ -178,7 +178,7 @@ export async function packageVideo(arg, { platform, size, title, description, ha
     width: video.width,
     height: video.height,
     fps: video.fps,
-    duration: video.duration,
+    duration: Math.round(video.duration * 1000) / 1000,
     watermark,
     file: 'video.mp4',
     sha256: video.sha256,
