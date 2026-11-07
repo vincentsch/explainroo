@@ -139,7 +139,7 @@ test('the publishing page says why the TikTok file has no watermark, with TikTok
   const why = page.slice(page.indexOf('## Why the TikTok file has no watermark'), page.indexOf('## The words'));
   assert.ok(why.includes('[Content Sharing Guidelines](https://developers.tiktok.com/doc/content-sharing-guidelines)'));
   assert.ok(why.replace(/\s+/g, ' ').includes('"should not superimpose or otherwise include any brand name, logo, watermark, other promotional branding, link or promotional text, on or in any content which is shared to TikTok"'));
-  assert.match(why, /the TikTok file has no "explainroo\.com"/);
+  assert.match(why, /its file has no "explainroo\.com" in the\s+corner/);
   assert.match(why, /--size tiktok --no-watermark/);
 });
 

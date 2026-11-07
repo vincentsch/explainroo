@@ -49,9 +49,10 @@ other's way.
 TikTok's [Content Sharing Guidelines](https://developers.tiktok.com/doc/content-sharing-guidelines)
 say that apps and integrations "should not superimpose or otherwise include any
 brand name, logo, watermark, other promotional branding, link or promotional
-text, on or in any content which is shared to TikTok". explainroo is such an
-app, so the TikTok file has no "explainroo.com" in its corner. The same rule is
-why credits never go into the text of a post by themselves.
+text, on or in any content which is shared to TikTok". A TikTok package is
+made to be posted by such an app, so its file has no "explainroo.com" in the
+corner. The same rule is why credits never go into the text of a post by
+themselves.
 
 Without the watermark, `s.safe` starts a little higher on TikTok. To look at the
 frames as they will be packaged, run:
@@ -134,8 +135,9 @@ The credits name these:
 Add more with `credits` in `post.json`. Credits stay in `post.json` and
 `credits.txt`. They never go into the description by themselves.
 
-Both read the project record, so a clip or an image that you bought still
-counts when no scene uses it. Change it in `post.json` if that is wrong.
+Both read the project record, so a clip or an image that you bought counts
+for the label and the credits even when no scene uses it. If the label is then
+wrong, set `ai_label` in `post.json`.
 
 ## What package checks
 
@@ -182,8 +184,9 @@ yourself. explainroo keeps it in `history/private/`, which git leaves out. With 
 key from an account in `EXPLAINROO_CLOUD_KEY`, the link belongs to that account
 and does not expire.
 
-Sharing the same file again prints the link it already has and uploads nothing.
-`--new` uploads it again.
+Sharing the same file again from this project folder prints the link it already
+has and uploads nothing. `--new` uploads it again. A copy of the project made
+with git has no `history/private/`, so it shares on its own.
 
 | What happens | What `share` says | Run it again |
 | --- | --- | --- |
