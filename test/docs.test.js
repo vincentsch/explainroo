@@ -4,6 +4,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { LANGUAGES, LANGUAGE_NAMES } from '../src/models.js';
+import { SERVICES, needsKey } from '../src/services.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const bin = path.join(root, 'bin', 'explainroo.js');
@@ -55,41 +57,121 @@ test('an unknown topic is an error that lists the real ones, and a path is no to
   assert.match(JSON.parse(json.stdout).error, /there is no docs topic/);
 });
 
-// Agents pay for every token of AGENTS.md. New features get a page in docs/ and
-// a few lines here. The ceiling leaves room for the services rule and those lines.
-const AGENTS_CEILING = 66000;
-const agents = fs.readFileSync(path.join(root, 'AGENTS.md'), 'utf8');
+// The start page is what `explainroo docs` prints, and the skill carries it too.
+// Agents' tools cut off a long page, so it stays short enough to read in one go,
+// and the rest is one topic away. Each topic stays short enough to read whole.
+const START_CEILING = 12000;
+const TOPIC_CEILING = 24000;
+// A Windows checkout may have CRLF line ends, and the checks read lines.
+const read = (file) => fs.readFileSync(path.join(root, file), 'utf8').replace(/\r\n/g, '\n');
+const start = read('AGENTS.md');
+const page = (topic) => read(`docs/${topic}.md`);
+const oneLine = (text) => text.replace(/\s+/g, ' ');
 
-test('AGENTS.md stays under its size ceiling', () => {
-  const size = Buffer.byteLength(agents);
-  assert.ok(size <= AGENTS_CEILING, `AGENTS.md is ${size} bytes. Move long parts to docs/ and keep it under ${AGENTS_CEILING}.`);
+// The parts of the start page: each "## " heading outside a fenced block, with
+// the text up to the next one.
+const parts = new Map();
+{
+  let fenced = false;
+  let current = null;
+  for (const line of start.split('\n')) {
+    if (/^\s*```/.test(line)) fenced = !fenced;
+    if (!fenced && line.startsWith('## ')) parts.set(current = line.slice(3), []);
+    else if (current) parts.get(current).push(line);
+  }
+}
+function part(heading) {
+  assert.ok(parts.has(heading), `the start page has no part "${heading}"`);
+  return parts.get(heading).join('\n');
+}
+
+// The topics in the table at the end of the start page.
+const listed = [...part('Topics').matchAll(/^\| `([^`]+)` \| (.*) \|$/gm)].map((m) => m[1]);
+
+test('the start page stays under 12,000 bytes, and every topic under 24,000', () => {
+  const size = Buffer.byteLength(start);
+  assert.ok(size < START_CEILING, `AGENTS.md is ${size} bytes. Keep it under ${START_CEILING}, and move details to a topic in docs/.`);
+  for (const topic of topics) {
+    const bytes = Buffer.byteLength(page(topic));
+    assert.ok(bytes < TOPIC_CEILING, `docs/${topic}.md is ${bytes} bytes. Keep it under ${TOPIC_CEILING}, or split it into two topics.`);
+  }
 });
 
-test('AGENTS.md starts by saying how to run the tool, and writes plain explainroo after that', () => {
-  const [opening, ...rest] = agents.split('\n\n').slice(1);
+test('the start page has its parts in order', () => {
+  assert.deepEqual([...parts.keys()], [
+    'What explainroo does', 'The hard limits', 'Before you start', 'When to ask the user', 'From a brief to a finished video', 'Topics',
+  ]);
+});
+
+test('the start page starts by saying how to run the tool, and writes plain explainroo after that', () => {
+  const [opening, ...rest] = start.split('\n\n').slice(1);
   assert.ok(opening.startsWith('Run explainroo with `npx --yes explainroo`.'));
   for (const words of ['node bin/explainroo.js', 'source checkout', 'plain `explainroo`', 'PATH']) assert.ok(opening.includes(words), words);
-  const below = rest.join('\n\n');
-  // One note for people who change explainroo itself, at the very end.
-  assert.equal(below.split('node bin/explainroo.js').length, 2);
-  assert.ok(below.indexOf('node bin/explainroo.js') > below.indexOf('## Working on explainroo itself'));
-  assert.equal(below.split('git clone').length, 2);
-  assert.ok(below.indexOf('git clone') > below.indexOf('## Working on explainroo itself'));
-  assert.doesNotMatch(agents, /the explainroo folder|Git ignores that folder/);
+  assert.ok(!rest.join('\n\n').includes('node bin/explainroo.js'));
+  // The skill carries this text, so it names no file of the checkout.
+  assert.doesNotMatch(start, /git clone|AGENTS\.md/);
+  for (const text of [start, ...topics.map(page)]) assert.doesNotMatch(text, /the explainroo folder|Git ignores that folder/);
 });
 
-test('every docs topic named in AGENTS.md exists, and every page is named there', () => {
-  const named = new Set([...agents.matchAll(/`(?:npx --yes )?explainroo docs ([^`\s]+)`/g)].map((m) => m[1]).filter((t) => !/^[-<]/.test(t)));
-  assert.ok(named.has('product-demos') && named.has('japanese-and-chinese'));
-  for (const topic of named) assert.ok(topics.includes(topic), `AGENTS.md names the topic "${topic}", and docs/${topic}.md does not exist`);
-  for (const topic of topics) assert.ok(named.has(topic), `nothing in AGENTS.md leads to docs/${topic}.md`);
+test('people who change explainroo itself find their topic from the start page', () => {
+  assert.ok(listed.includes('contributing'));
+  const contributing = page('contributing');
+  for (const words of ['git clone https://github.com/vincentsch/explainroo.git', 'node bin/explainroo.js', 'npm test', 'npm run test:pack', 'AGENTS.md', 'SKILL.md']) assert.ok(contributing.includes(words), words);
 });
 
-test('AGENTS.md has the rule about outside services near when to ask the user', () => {
+test('the start page lists every topic once, and only topics that exist', () => {
+  assert.equal(new Set(listed).size, listed.length, `a topic is listed twice: ${listed.join(', ')}`);
+  for (const topic of listed) assert.ok(topics.includes(topic), `the start page lists the topic "${topic}", and docs/${topic}.md does not exist`);
+  for (const topic of topics) assert.ok(listed.includes(topic), `the start page does not list docs/${topic}.md`);
+  assert.ok(part('Topics').includes('npx --yes explainroo docs <topic>'));
+});
+
+test('every "explainroo docs <topic>" in the docs, the README and the messages names a topic', () => {
+  const named = (text, pattern) => [...text.matchAll(pattern)].map((m) => m[1]).filter((t) => !/^[-<]/.test(t));
+  const pages = ['AGENTS.md', 'README.md', 'skills/explainroo/SKILL.md', ...topics.map((t) => `docs/${t}.md`)];
+  for (const file of pages) {
+    const text = fs.readFileSync(path.join(root, file), 'utf8');
+    for (const topic of named(text, /`(?:npx --yes )?explainroo docs ([^`\s]+)`/g)) assert.ok(topics.includes(topic), `${file} names the topic "${topic}", and docs/${topic}.md does not exist`);
+  }
+  // Messages quote the command, like "explainroo docs publishing" says more.
+  const code = ['src/services.json', 'templates/starter/scenes.js', ...fs.readdirSync(path.join(root, 'src'), { recursive: true }).filter((f) => f.endsWith('.js')).map((f) => `src/${f}`)];
+  for (const file of code) {
+    const text = fs.readFileSync(path.join(root, file), 'utf8');
+    for (const topic of named(text, /explainroo docs ([a-z][a-z0-9-]*)/g)) assert.ok(topics.includes(topic), `${file} names the topic "${topic}", and docs/${topic}.md does not exist`);
+  }
+  // Each step of the start page names the topic with its details.
+  assert.ok(named(part('From a brief to a finished video'), /`explainroo docs ([^`\s]+)`/g).length >= 8);
+});
+
+test('the hard limits name every language and every service that needs a key or a sign-in', () => {
+  const limits = part('The hard limits');
+  for (const code of new Set([...Object.keys(LANGUAGES), ...Object.keys(LANGUAGE_NAMES)])) {
+    assert.ok(LANGUAGE_NAMES[code], `${code} has no name in LANGUAGE_NAMES`);
+    assert.ok(limits.includes(`\`${code}\``), `the hard limits on the start page don't name the language code ${code}`);
+    assert.ok(limits.includes(LANGUAGE_NAMES[code]), `the hard limits on the start page don't name ${LANGUAGE_NAMES[code]}`);
+  }
+  // Services that share a key count once, like the two OpenRouter entries.
+  const groups = new Map();
+  for (const service of SERVICES.filter(needsKey)) groups.set(service.setup.env[0], [...(groups.get(service.setup.env[0]) ?? []), service.id]);
+  assert.ok(groups.size >= 6);
+  for (const ids of groups.values()) {
+    assert.ok(ids.some((id) => new RegExp(`(^|[^\\w-])${id}(?![\\w-])`, 'i').test(limits)), `the hard limits on the start page don't name ${ids.join(' or ')}`);
+  }
+  for (const words of ['No other language works yet', 'espeak-ng', 'misaki', 'creating the key starts its paid plan', 'Nothing else leaves the computer']) assert.ok(oneLine(limits).includes(words), words);
+});
+
+test('the start page has the rule about outside services where it says when to ask the user', () => {
   const rule = 'Explainroo makes the whole video for free. When the user asks for something that can use an outside service, run `explainroo services <step> --json` and tell the user the options, free ones first. Say which cost money and which are paid partners. Let the user choose. Never pick a paid service for them and never call a partner the best.';
-  const section = agents.slice(agents.indexOf('### When to ask the user'), agents.indexOf('### Where keys go'));
-  assert.ok(section.replace(/\s+/g, ' ').includes(rule));
-  assert.match(section, /explainroo connect openrouter|connect openrouter/);
+  const section = part('When to ask the user');
+  assert.ok(oneLine(section).includes(rule));
+  assert.match(section, /explainroo connect openrouter/);
+});
+
+test('the start page says how to set up a key, and the settings page says where it goes', () => {
+  const before = oneLine(part('Before you start'));
+  for (const words of ['npx --yes explainroo doctor --fetch', '`ready`', '`missing`', '`not needed`', 'npx --yes explainroo docs <topic>', 'explainroo connect <service>', 'Never print a key', '`explainroo docs settings`']) assert.ok(before.includes(words), words);
+  const keys = oneLine(page('settings').slice(page('settings').indexOf('## Where keys go')));
+  for (const words of ['--key-stdin', 'A key never goes on the command line', '$EXPLAINROO_CONFIG/.env', '%APPDATA%\\explainroo\\.env', '$XDG_CONFIG_HOME/explainroo/.env', '~/.config/explainroo/.env', 'then the settings folder', 'Never print a key']) assert.ok(keys.includes(words), words);
 });
 
 test('the page about adding a service says what it takes, and implies nothing about payment', () => {
@@ -116,22 +198,22 @@ test('the page about music describes files, s.sound and Soundroo, with public li
   for (const url of page.match(/https?:\/\/[^\s)"]+/g)) assert.ok(['https://www.soundroo.com', 'https://github.com/vincentsch/soundroo.git'].includes(url), url);
 });
 
-test('AGENTS.md has a few lines on clips and music, and points at their pages', () => {
-  const start = agents.indexOf('## AI video clips');
-  const section = agents.slice(start, agents.indexOf('\n## ', start));
-  for (const words of ['explainroo docs clips', '--dry-run', '--max-cost', 'assets/clips/<name>.mp4', 'never buys twice']) assert.ok(section.includes(words), words);
-  assert.ok(section.split('\n').length < 16, 'keep it short: the rest is on the page');
-  assert.match(agents, /^\| `music` .*`\{ "src", "volume", "credit", "loop" \}`.*`explainroo docs music`/m);
-  assert.match(agents, /^`s\.sound\('assets\/door\.mp3', \{ at, out, volume \}\)`/m);
-  assert.match(agents, /^\| `clip \[project\] "<prompt>"` \|/m);
+test('clips and music are one topic away, with the setting, s.sound and the command where they belong', () => {
+  for (const topic of ['clips', 'music']) assert.ok(listed.includes(topic), topic);
+  const clips = page('clips');
+  for (const words of ['--dry-run', '--max-cost', 'assets/clips/<name>.mp4', 'never buys twice']) assert.ok(clips.includes(words), words);
+  assert.match(page('settings'), /^\| `music` .*`\{ "src", "volume", "credit", "loop" \}`.*`explainroo docs music`/m);
+  assert.match(page('scene-api'), /^`s\.sound\('assets\/door\.mp3', \{ at, out, volume \}\)`/m);
+  assert.match(page('commands'), /^\| `clip \[project\] "<prompt>"` \|/m);
 });
 
-test('AGENTS.md says what history/ is, and no longer calls paid work safe to delete', () => {
-  const files = agents.slice(agents.indexOf('## Project files and settings'), agents.indexOf('`video.json` settings'));
+test('the settings page says what history/ is, and no page calls paid work safe to delete', () => {
+  const files = page('settings').slice(0, page('settings').indexOf('`video.json` settings'));
   assert.match(files, /history\/ {6}what was paid for and rendered/);
   assert.match(files, /safe to delete,\s+because paid speech and paid images stay in history\//);
-  assert.doesNotMatch(agents, /elevenlabs-usage\.jsonl/);
-  for (const row of ['`services [step]`', '`connect <service>`', '`history [project]`', '`--new`', '`--resume <id>`', '`--force`', '`--key-stdin`']) assert.ok(agents.includes(row), row);
+  for (const text of [start, ...topics.map(page)]) assert.doesNotMatch(text, /elevenlabs-usage\.jsonl/);
+  const commands = page('commands');
+  for (const row of ['`services [step]`', '`connect <service>`', '`history [project]`', '`--new`', '`--resume <id>`', '`--force`', '`--key-stdin`']) assert.ok(commands.includes(row), row);
 });
 
 test('the publishing page says why the TikTok file has no watermark, with TikTok\'s own words', () => {
@@ -155,18 +237,20 @@ test('the publishing page covers the platforms, post.json, the folder, the limit
   for (const words of ['The video file and its title leave your computer', 'only when you run this command', 'MP4 and WebM', 'claim link', 'history/private/', 'EXPLAINROO_CLOUD_KEY', 'EXPLAINROO_CLOUD_URL', 'The server may have received the video', 'Only with `--new`', '--new']) assert.ok(share.replace(/\s+/g, ' ').includes(words), words);
 });
 
-test('AGENTS.md has a few lines on posting, the pointer, the TikTok sentence and every new flag', () => {
-  const start = agents.indexOf('## Posting a video');
-  const section = agents.slice(start, agents.indexOf('\n## ', start));
-  for (const words of ['explainroo package', '--platform tiktok', 'post.json', 'explainroo docs publishing', 'explainroo share', 'explainroo publish', 'only commands that upload a video', 'Run `publish` with `--dry-run` first and show the user the plan.', 'Add `--yes` only after the user said yes.']) assert.ok(section.replace(/\s+/g, ' ').includes(words), words);
-  assert.ok(section.split('\n').length < 18, 'keep it short: the rest is on the page');
-  const watermark = agents.slice(agents.indexOf('## The watermark'), agents.indexOf('## Project files and settings'));
-  assert.match(watermark.replace(/\s+/g, ' '), /A TikTok package has no watermark/);
-  assert.match(agents, /^\| `package \[project\]` \|.*`--platform`.*`--title`.*`--description`.*`--hashtags`.*`--size` for x/m);
-  assert.match(agents, /^\| `share \[project\]` \|.*`--platform`.*`--file`.*`--title`.*`--new`/m);
-  assert.match(agents, /^\| `publish \[project\]` \|.*`--yes`.*`--via`.*`--platform`.*`--privacy`.*`--media-url`.*`--channel`.*`--account`.*`--dry-run`.*`--new`/m);
-  assert.match(agents, /^\| `connect <service>` \|.*`--key-stdin`.*`--callback-url`.*`--project`/m);
-  for (const command of ['preview', 'still', 'sheet', 'check', 'render']) assert.match(agents, new RegExp(`^\\| \`${command} \\[project\\][^|]*\\|.*\`--no-watermark\``, 'm'), command);
+test('the start page says that a post needs a yes, and the topics have the pointer, the TikTok sentence and every new flag', () => {
+  const ask = oneLine(part('When to ask the user'));
+  for (const words of ['`share` and `publish` are the only commands that upload a video', 'run them only when the user asks', 'Run `publish` with `--dry-run` first and show the user the plan.', 'Add `--yes` only after the user said yes.']) assert.ok(ask.includes(words), words);
+  assert.ok(part('From a brief to a finished video').includes('`explainroo docs publishing`'));
+  const publishing = oneLine(page('publishing'));
+  for (const words of ['explainroo package videos/<name> --platform tiktok', 'post.json', 'explainroo share', 'explainroo publish', 'only commands that upload a video']) assert.ok(publishing.includes(words), words);
+  const sizes = page('sizes');
+  assert.match(oneLine(sizes.slice(sizes.indexOf('## The watermark'))), /A TikTok package has no watermark/);
+  const commands = page('commands');
+  assert.match(commands, /^\| `package \[project\]` \|.*`--platform`.*`--title`.*`--description`.*`--hashtags`.*`--size` for x/m);
+  assert.match(commands, /^\| `share \[project\]` \|.*`--platform`.*`--file`.*`--title`.*`--new`/m);
+  assert.match(commands, /^\| `publish \[project\]` \|.*`--yes`.*`--via`.*`--platform`.*`--privacy`.*`--media-url`.*`--channel`.*`--account`.*`--dry-run`.*`--new`/m);
+  assert.match(commands, /^\| `connect <service>` \|.*`--key-stdin`.*`--callback-url`.*`--project`/m);
+  for (const command of ['preview', 'still', 'sheet', 'check', 'render']) assert.match(commands, new RegExp(`^\\| \`${command} \\[project\\][^|]*\\|.*\`--no-watermark\``, 'm'), command);
 });
 
 test('the publishing page covers each route, the logins, the pairs, privacy, the yes and why nothing is sent twice', () => {
@@ -191,6 +275,8 @@ test('the instructions link to examples on GitHub, because the package has none'
     const links = /\[[^\]]*\]\(https:\/\/github\.com\/vincentsch\/explainroo\/tree\/main\/examples[^)]*\)/g;
     assert.doesNotMatch(text.replace(links, ''), /\bexamples\//, file);
   }
+  const all = [start, ...topics.map(page)].join('\n');
+  for (const example of ['examples)', 'examples/merge-vs-rebase)', 'examples/unspar-demo)']) assert.ok(all.includes(`https://github.com/vincentsch/explainroo/tree/main/${example}`), example);
 });
 
 // The anchor GitHub gives a heading.

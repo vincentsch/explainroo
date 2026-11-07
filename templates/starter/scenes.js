@@ -1,7 +1,7 @@
 // One function per scene in script.md. Each function draws one frame of its
 // scene, and s.t is the time in seconds since the scene started. Give elements
 // an `at` time (seconds, a spoken word or "#marker") and the look animates
-// them in. Run "npx --yes explainroo docs" to read the full scene API.
+// them in. Run "npx --yes explainroo docs scene-api" to read the full scene API.
 
 export default {
   hook(s) {

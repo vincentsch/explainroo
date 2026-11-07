@@ -3,43 +3,177 @@ name: explainroo
 description: Make an explainer video (MP4) with a voice-over using explainroo. The voice is made on this computer and no API key is needed. Use when the user asks for an explainer, how-to, walkthrough, launch or tutorial video, an animated diagram with a voice-over, or a short for YouTube, Reels or TikTok.
 ---
 
-# Make an explainer video with explainroo
+# explainroo for coding agents
 
-explainroo makes an MP4 video from two files: a script with the words the
-voice says, and a small JavaScript file that draws the pictures. A voice
-model on this computer reads the script. explainroo writes down when each
-word is spoken, Chrome draws the frames, and explainroo adds music and sound
-effects.
+Run explainroo with `npx --yes explainroo`. `--yes` stops `npx` from waiting
+on its install question. In a source checkout, run `node bin/explainroo.js`
+instead. The command examples below shorten this to plain `explainroo`, so type
+the full form when you run them. Running through `npx` does not install a
+permanent `explainroo` command on `PATH`.
 
-## Set it up
+This page tells you, the coding agent, how to make a video with explainroo.
+The user usually gives you a topic, and maybe a length or a style. You write
+the words and the pictures. explainroo makes the video.
 
-It needs Node.js 20.11 or newer, ffmpeg, and Chrome or Chromium. You do not
-need to clone anything. Run this once. It checks the computer and downloads
-the speech models the first time, about 400 MB.
+## What explainroo does
+
+explainroo turns two files into an MP4 video with narration. `script.md`
+holds what the voice says. `scenes.js` draws what the viewer sees. Every
+drawing can appear on a word the voice says. A voice model (Kokoro) reads
+the script on this computer, or the narration comes from ElevenLabs,
+Cartesia or your own recording. Whisper listens to the narration and writes
+down when each word is spoken. Chrome draws the frames in the background.
+explainroo adds music and sound effects, and ffmpeg makes the MP4. Kokoro,
+Whisper, Chrome and ffmpeg run on this computer, so a video needs no account
+and no key. The full documentation for people is at
+https://www.explainroo.com/docs/.
+
+## The hard limits
+
+Check these before you start. When a request runs into one, tell the user
+before you make anything.
+
+**Languages.** Set `language` in `video.json` to one of these codes. No other
+language works yet, with any voice.
+
+| Language | Code | Kokoro, the free voice, also needs |
+| --- | --- | --- |
+| English | `en` | nothing more |
+| Spanish, French, Italian, Brazilian Portuguese, Hindi | `es`, `fr`, `it`, `pt-br`, `hi` | the espeak-ng program |
+| Japanese, Mandarin Chinese | `ja`, `zh` | Python 3 with misaki |
+
+ElevenLabs, Cartesia and a recording of the user's voice work in the same
+languages, and they need neither program. `explainroo docs languages` has the
+details.
+
+**Keys, money and data.** These services need a key or a sign-in. They run on
+the user's own account, and only when you run a command that uses them.
+
+| Service | Used for | Needs | Costs money | What it gets |
+| --- | --- | --- | --- | --- |
+| OpenRouter | AI images (`image`) and AI clips (`clip`) | a key | yes, per image and per second of clip | the prompt and any reference images, also for the company that runs the model |
+| ElevenLabs, Cartesia | a paid voice | a key | yes, per character | the narration text, when narration is made |
+| Blotato | posting with `publish` | a key | yes, creating the key starts its paid plan | the video, its title and its text |
+| YouTube | posting with `publish` | a sign-in with the user's own Google client | no | the video, its title and its description |
+| Buffer | posting with `publish` | a sign-in | no, on Buffer's free plan | the title, the text and a link to the video |
+
+`connect`, `voices --provider` and `publish --dry-run` send only the key or
+the sign-in to that service. `clip --dry-run` reads OpenRouter's public price
+list, without the prompt. `share` uploads the video and its title to
+explainroo.com, where the hosted service is coming. `capture` loads the page
+you name. The models and fonts download the first time, and nothing of the
+user's goes along. Nothing else leaves the computer, and everything else is
+free.
+
+## Before you start
+
+You only need to clone explainroo to change explainroo itself. It needs
+Node.js 20.11 or newer, ffmpeg, and Chrome or Chromium. Run this once, in any
+folder:
 
 ```bash
 npx --yes explainroo doctor --fetch
 ```
 
-## Read the instructions
+`doctor` checks Node, ffmpeg and Chrome, and the extra programs some
+languages need. It also downloads the English speech models, about 400 MB,
+the first time only. Each part is `ready`, `missing` with how to get it, or
+`not needed` for this setup. `doctor videos/<name>` checks what that
+project's languages and voices need. Commands that work on a video take the
+project folder first, and every command accepts `--json`.
 
-```bash
-npx --yes explainroo docs
-```
+`npx --yes explainroo docs` prints this page, and
+`npx --yes explainroo docs <topic>` prints one of the topics listed at the end.
 
-This prints the steps, the writing rules, the settings and the Scene API,
-which is the list of everything `scenes.js` can draw. Read it before you
-start. In those instructions, `explainroo` is short for
-`npx --yes explainroo`.
+`explainroo connect <service>` sets up a key or a sign-in. It tests it and
+saves it in the settings folder, so every project can use it. Never print a
+key, and never put it in a script, a commit or a log. `explainroo docs settings`
+says where keys go and how explainroo finds them.
 
-## Make the video
+## When to ask the user
 
-Create the project where the user wants it, for example `./video`:
+Decide the normal things yourself, like the look, the length, the voice, the
+layout and the wording. Ask only when you cannot go on without an answer.
+When you ask, put everything you need in one message. Typical reasons to ask:
 
-```bash
-npx --yes explainroo init video --theme paper --title "..."
-```
+- The topic is unclear, or you need a fact you cannot check.
+- The user chose AI images, clips or a paid voice and has no key for it. Run
+  `explainroo connect openrouter`, `elevenlabs` or `cartesia` and show the
+  user what it prints.
+- The user wants a post and has no login. Run `explainroo connect youtube`,
+  `buffer` or `blotato` and show the user what it prints.
+- The user wants something explainroo cannot do, like video shot with a
+  camera.
 
-Then follow the steps from `docs`. When the video is done, tell the user
-where `video/out/video.mp4` is, how long it is, and what
-`npx --yes explainroo verify video` said.
+Explainroo makes the whole video for free. When the user asks for something
+that can use an outside service, run `explainroo services <step> --json` and
+tell the user the options, free ones first. Say which cost money and which are
+paid partners. Let the user choose. Never pick a paid service for them and
+never call a partner the best.
+
+`share` and `publish` are the only commands that upload a video, so run them
+only when the user asks. Run `publish` with `--dry-run` first and show the
+user the plan. Add `--yes` only after the user said yes.
+
+## From a brief to a finished video
+
+`explainroo docs making-a-video` has each step in full.
+
+1. **Learn the subject.** Read what the user points to, and write down the
+   facts you will use. Never make up numbers, quotes or claims.
+2. **Create the project** with
+   `explainroo init videos/<name> --theme paper --title "..."`. Pick the look
+   for the audience, and the size for the platform (`explainroo docs sizes`).
+3. **Write `script.md`.** The narration comes first, because it sets the
+   timing for everything else (`explainroo docs writing`).
+4. **Make the voice** with `explainroo voice videos/<name>`. Fix a word the
+   speech check did not confirm with `{shown|spoken}`, and run it again
+   (`explainroo docs voices`).
+5. **Plan the pictures.** Decide what appears on each cue, what leaves and
+   what stays in place (`explainroo docs pictures`).
+6. **Make images**, if the video needs them and the user agrees
+   (`explainroo docs images`).
+7. **Write `scenes.js`**, one function per scene, with each picture tied to a
+   spoken word or a `[#marker]` (`explainroo docs scene-api`).
+8. **Check** with `explainroo check videos/<name>`, and fix every error and
+   every warning (`explainroo docs troubleshooting`).
+9. **Look at the frames** with `explainroo still videos/<name>` and
+   `explainroo sheet videos/<name>`. Open the images and judge them like a
+   viewer would.
+10. **Make the video** with `explainroo render videos/<name> --draft`, then
+    `explainroo render videos/<name>`. Check the file with
+    `explainroo verify videos/<name>`. It fails when the sound clips above
+    0 dBTP, and it warns when the loudness is off, frames are black or the
+    voice is hard to understand over the music.
+11. **Tell the user** where the video, its subtitles, chapters and cover are,
+    how long it is, what `verify` said and what you could not check. To post
+    it, read `explainroo docs publishing`.
+
+## Topics
+
+`npx --yes explainroo docs <topic>` prints one of these. Read the topic of the
+step you are on.
+
+| Topic | Read it when |
+| --- | --- |
+| `making-a-video` | you want each step above in full |
+| `writing` | you write `script.md`: the style, the length and the script syntax |
+| `pictures` | you plan the scenes, with four layouts to start from and how the camera moves |
+| `scene-api` | you write `scenes.js`: everything a scene can draw, with its options |
+| `troubleshooting` | a scene breaks, or before you write the first one |
+| `voices` | you pick a voice, or the user wants a paid voice or their own recording |
+| `languages` | the video isn't in English, or comes in several languages |
+| `japanese-and-chinese` | the video is in Japanese or Mandarin Chinese |
+| `images` | the user wants AI images |
+| `clips` | the user wants AI video clips |
+| `music` | the user wants their own music, a sound file or original music from Soundroo |
+| `sizes` | the video is for a platform: sizes, captions, pace and the watermark |
+| `short-video` | you make a Short, a TikTok or a Reel |
+| `product-demos` | the user wants a product demo of an app or a website |
+| `settings` | you change `video.json`, make a look of your own or set up a key |
+| `commands` | you need a command or a flag that this page doesn't show |
+| `publishing` | the user wants a package for a platform, a link or a post |
+| `web-player` | the video goes on a website, in an iframe |
+| `transparent-video` | the video goes over camera footage in a video editor |
+| `connectors` | you add an outside service to explainroo |
+| `contributing` | you change explainroo itself |

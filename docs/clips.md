@@ -2,7 +2,8 @@
 
 `explainroo clip` buys a short video clip that an AI model makes from a text
 prompt. It goes through OpenRouter, on the same key as images. The clip lands in
-`assets/clips/` as an MP4 and plays through `s.clip`.
+`assets/clips/` as an MP4 and plays through `s.clip`. The same command run again
+never buys twice, so it is safe after a crash or a timeout.
 
 Clips cost money, so the user decides. Run `explainroo services clips --json` and
 tell the user the options, free ones first. Their own footage is free.

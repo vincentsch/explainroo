@@ -63,12 +63,18 @@ test('skills.sh finds one SKILL.md', { skip: !inGit && 'not a git checkout' }, (
   assert.deepEqual(tracked.stdout.trim().split('\n'), [SKILL]);
 });
 
-test('the skill is short, says when to use it, and is written for npx and the docs command', () => {
-  const text = fs.readFileSync(path.join(root, SKILL), 'utf8');
-  const [, front] = text.match(/^---\n([\s\S]*?)\n---\n/);
-  assert.match(front, /^name: explainroo$/m);
-  assert.match(front, /^description: .*Use when /m);
+// The skill carries the start page that "explainroo docs" prints, so an agent
+// with the plugin reads the same text as one that runs the command.
+test('the skill says when to use it, and carries the start page below its front matter', () => {
+  // A Windows checkout may have CRLF line ends.
+  const read = (file) => fs.readFileSync(path.join(root, file), 'utf8').replace(/\r\n/g, '\n');
+  const text = read(SKILL);
+  const head = text.match(/^---\n([\s\S]*?)\n---\n/);
+  assert.ok(head, 'SKILL.md starts with its front matter');
+  assert.match(head[1], /^name: explainroo$/m);
+  assert.match(head[1], /^description: .*Use when /m);
+  const body = text.slice(head[0].length).replace(/^\n/, '');
+  assert.ok(body === read('AGENTS.md'), `${SKILL} has to carry AGENTS.md word for word below its front matter. Copy AGENTS.md into it.`);
   assert.ok(text.includes('npx --yes explainroo docs'));
   assert.doesNotMatch(text, /git clone|AGENTS\.md/);
-  assert.ok(Buffer.byteLength(text) < 2500);
 });

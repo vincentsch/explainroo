@@ -2,8 +2,8 @@
 
 Use `export` for a video on a docs site or in an iframe. The canvas draws
 at the screen's resolution, so text stays sharp when the player grows.
-The folder holds everything the player needs, so it needs no explainroo
-server. The voice is made first if needed.
+The folder holds the player's own engine, fonts, soundtrack and subtitles,
+so it needs no explainroo server. The voice is made first if needed.
 
 ```bash
 explainroo export videos/my-video

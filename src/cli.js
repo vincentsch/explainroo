@@ -94,7 +94,7 @@ Reference
   icons <word…>         search the 1,800+ built-in icons
   doctor [project]      check ffmpeg, Chrome, espeak-ng, misaki and models: each is ready, not needed or missing.
                         With a project, for its languages and voices (--fetch downloads the English models)
-  docs [topic]          print the instructions for coding agents, or one extra page (--list shows the pages)
+  docs [topic]          print the start page for coding agents, or one topic (--list shows the topics)
   version               print the version (--version works too)
 
 Options: --size <size> and --no-watermark override video.json for preview, still, sheet, check and render.

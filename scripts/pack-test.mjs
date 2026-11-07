@@ -119,7 +119,11 @@ const steps = [
     args: ['docs', '--json'],
     check: (r, { installed }) => {
       expect(r.file === path.join(installed, 'AGENTS.md'), `docs read ${r.file}, not the installed AGENTS.md`);
-      expect(r.text.includes('npx --yes explainroo'), 'the installed AGENTS.md does not say how to run the tool');
+      expect(r.text === fs.readFileSync(path.join(ROOT, 'AGENTS.md'), 'utf8'), 'the installed copy prints another start page than AGENTS.md in the checkout');
+      expect(r.text.includes('npx --yes explainroo'), 'the installed start page does not say how to run the tool');
+      const bytes = Buffer.byteLength(r.text);
+      expect(bytes < 12000, `the installed start page is ${bytes} bytes, and agents' tools cut off a page over 12,000`);
+      return `start page, ${bytes} bytes`;
     },
   },
   {
@@ -131,6 +135,7 @@ const steps = [
     check: (r, { installed }) => {
       expect(r.file === path.join(installed, 'docs', `${topic}.md`), `docs ${topic} read ${r.file}, not the installed page`);
       expect(r.text.length > 0, `the installed page for ${topic} is empty`);
+      expect(Buffer.byteLength(r.text) < 24000, `the installed page for ${topic} is ${Buffer.byteLength(r.text)} bytes, over 24,000`);
     },
   })),
   {
