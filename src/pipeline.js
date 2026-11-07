@@ -10,9 +10,9 @@ import { listAssets, loadProject } from './project.js';
 import { startServer } from './server.js';
 import { launch, openEngine } from './browser.js';
 
-export async function prepare(project, { log = () => {}, force = false } = {}) {
+export async function prepare(project, { log = () => {}, ...voice } = {}) {
   await ensureFonts(project.config.language, { log });
-  const voices = await synthesize(project, { log, force });
+  const voices = await synthesize(project, { log, ...voice });
   const timeline = buildTimeline(project, voices);
   fs.mkdirSync(project.paths.build, { recursive: true });
   fs.writeFileSync(path.join(project.paths.build, 'timeline.json'), JSON.stringify(timeline, null, 2));

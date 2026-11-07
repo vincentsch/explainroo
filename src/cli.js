@@ -16,8 +16,15 @@ import { writeWav } from './wav.js';
 import { ffmpegVersion } from './ffmpeg.js';
 import { findChrome } from './browser.js';
 import { generateImage, imageLog, imageSpend, IMAGE_MODELS } from './images.js';
-import { elevenVoices, elevenUsage, elevenSpeed } from './connectors/elevenlabs.js';
 import { capture } from './capture.js';
+import { CONNECTORS } from './connectors/index.js';
+import { hideSecrets } from './errors.js';
+import { formatHistory, historyReport } from './history.js';
+import { boughtCharacters, speechConnector } from './paid-speech.js';
+import { currentSpeechKeys } from './voice.js';
+
+// Paid voices that can list what a key may use, each with its own flag.
+const LISTS_VOICES = CONNECTORS.filter((c) => c.voices);
 
 const VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
 
@@ -27,7 +34,8 @@ Usage: explainroo <command> [project] [options]
 
 Make a video
   init <dir>            create a project (--theme, --size, --pace, --language en|es|fr|it|pt-br|hi|ja|zh, --voice, --title)
-  voice [project]       make the narration (Kokoro, ElevenLabs or a recording) and word timings
+  voice [project]       make the narration and word timings (--force makes every scene again,
+                        --new buys again only the paid sentences with no good saved answer)
   preview [project]     live preview in your browser, reloads on save (--port, --size)
   still [project] [t…]  PNG stills: "12.5", "scene", "scene@2.4" (default: end of every scene; --size, --transparent)
   sheet [project]       contact sheet of the whole video (--scene id, --every s, --size)
@@ -45,8 +53,11 @@ Images (optional, needs an OpenRouter API key)
                         (--model best|cheap, --aspect 16:9, --ref assets/a.png,assets/b.png, --no-style)
   images [project]      list generated images and what they cost
 
+Outside services (optional)
+  history [project]     open paid jobs with the command that continues each one, spend and renders
+
 Reference
-  voices [project]      list Kokoro voices (--language es for one language, --elevenlabs for your ElevenLabs key)
+  voices [project]      list Kokoro voices (--language es for one language, ${LISTS_VOICES.map((c) => `--${c.id} for your ${c.name} key`).join(', ')})
   say "text"            hear a Kokoro voice (--voice am_michael, --speed 1, --out sample.wav)
   themes                list looks
   formats               list sizes for YouTube, Shorts, TikTok, Reels, Instagram, LinkedIn
@@ -75,7 +86,7 @@ function parseArgs(argv) {
   }
   return { pos, flags };
 }
-const BOOL = new Set(['json', 'draft', 'transparent', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'elevenlabs', 'mobile', 'list']);
+const BOOL = new Set(['json', 'draft', 'transparent', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'mobile', 'list', 'new', ...LISTS_VOICES.map((c) => c.id)]);
 
 function num(v, name) {
   if (v === undefined) return undefined;
@@ -90,6 +101,8 @@ export async function main(argv) {
   const cmd = pos.shift();
   const json = !!flags.json;
   const log = json || flags.quiet ? () => {} : (m) => process.stderr.write(`${m}\n`);
+  // What must be said also with --json, such as money about to be spent.
+  const notice = (m) => process.stderr.write(`${m}\n`);
   const print = (human, data) => {
     if (json) process.stdout.write(JSON.stringify(data, null, 2) + '\n');
     else if (human) process.stdout.write(human + '\n');
@@ -116,9 +129,10 @@ export async function main(argv) {
       }
       case 'voice': {
         const project = loadProject(pos[0]);
-        const before = elevenUsage(project).length;
-        const { voices, timeline } = await prepare(project, { log, force: !!flags.force });
-        const characters = elevenUsage(project).slice(before).reduce((n, e) => n + e.characters, 0);
+        const paid = speechConnector(project.config);
+        const before = paid ? boughtCharacters(project.dir) : 0;
+        const { voices, timeline } = await prepare(project, { log, notice, force: !!flags.force, fresh: !!flags.new });
+        const characters = paid ? boughtCharacters(project.dir) - before : 0;
         const rows = project.script.scenes.map((s) => {
           const v = voices[s.id];
           return { scene: s.id, voice: v.duration, confirmed: v.matchRate, unconfirmed: v.unmatched, marks: v.marks,
@@ -126,12 +140,11 @@ export async function main(argv) {
         });
         const mismatch = project.config.voice.provider === 'recording' && rows.some((r) => r.confirmed < 0.85)
           ? '\nThe recording does not match script.md in those scenes. Make script.md say what was actually said.' : '';
-        const isEleven = project.config.voice.provider === 'elevenlabs';
         const wanted = project.config.speed * project.config.pace;
-        const speed = elevenSpeed(wanted);
-        const speedNote = isEleven && speed !== wanted ? `\nElevenLabs speed ${wanted.toFixed(2)} is outside 0.7 to 1.2; using ${speed}.` : '';
-        const usage = isEleven ? `\nElevenLabs: ${characters} characters used` : '';
-        print(rows.map((r) => `${r.scene.padEnd(18)} ${r.voice.toFixed(1).padStart(5)}s  ${Math.round(r.confirmed * 100)}% confirmed${r.unconfirmed.length ? '  unconfirmed: ' + r.unconfirmed.slice(0, 6).join(', ') : ''}`).join('\n') + `\ntotal ${timeline.duration.toFixed(1)}s` + mismatch + usage + speedNote, { scenes: rows, duration: timeline.duration, ...(isEleven ? { characters, speed, ...(speed !== wanted ? { requested_speed: wanted } : {}) } : {}) });
+        const speed = paid ? paid.speed(wanted) : wanted;
+        const speedNote = paid && speed !== wanted ? `\n${paid.name} speed ${wanted.toFixed(2)} is outside ${paid.speedRange.join(' to ')}; using ${speed}.` : '';
+        const usage = paid ? `\n${paid.name}: ${characters} characters used` : '';
+        print(rows.map((r) => `${r.scene.padEnd(18)} ${r.voice.toFixed(1).padStart(5)}s  ${Math.round(r.confirmed * 100)}% confirmed${r.unconfirmed.length ? '  unconfirmed: ' + r.unconfirmed.slice(0, 6).join(', ') : ''}`).join('\n') + `\ntotal ${timeline.duration.toFixed(1)}s` + mismatch + usage + speedNote, { scenes: rows, duration: timeline.duration, ...(paid ? { characters, speed, ...(speed !== wanted ? { requested_speed: wanted } : {}) } : {}) });
         return 0;
       }
       case 'preview': return await preview(pos[0], flags, log);
@@ -207,12 +220,13 @@ export async function main(argv) {
       case 'voices': {
         const language = textFlag(flags, 'language');
         if (language !== undefined) normalizeConfig({ language });
-        if (flags.elevenlabs) {
-          const voices = await elevenVoices(path.resolve(pos[0] || '.'));
+        const paid = LISTS_VOICES.find((c) => flags[c.id]);
+        if (paid) {
+          const voices = await paid.voices(path.resolve(pos[0] || '.'));
           print(voices.map((v) => `${v.name}  ${v.id}  ${Object.entries(v.labels).map(([k, x]) => `${k}: ${x}`).join(', ')}`).join('\n'), { voices });
         } else {
           const voices = Object.fromEntries(Object.entries(VOICES).filter(([id]) => language === undefined || voiceLanguage(id) === language));
-          print(Object.entries(voices).map(([k, v]) => `${k.padEnd(12)} ${voiceLanguage(k).padEnd(6)} ${v}`).join('\n') + '\nUse voices --elevenlabs for ElevenLabs, or set voice to { "provider": "recording", "src": "assets/narration.wav" } in video.json.', { voices, languages: Object.fromEntries(Object.keys(voices).map(id => [id, voiceLanguage(id)])) });
+          print(Object.entries(voices).map(([k, v]) => `${k.padEnd(12)} ${voiceLanguage(k).padEnd(6)} ${v}`).join('\n') + `\nUse ${LISTS_VOICES.map((c) => `voices --${c.id} for ${c.name}`).join(', ')}, or set voice to { "provider": "recording", "src": "assets/narration.wav" } in video.json.`, { voices, languages: Object.fromEntries(Object.keys(voices).map(id => [id, voiceLanguage(id)])) });
         }
         return 0;
       }
@@ -244,19 +258,27 @@ export async function main(argv) {
       case 'icons': return icons(pos, print);
       case 'doctor': return await doctor(flags, log, print);
       case 'docs': return docs(pos[0], flags, print);
+      case 'history': {
+        const project = loadProject(pos[0]);
+        const wanted = currentSpeechKeys(project);
+        const report = historyReport(project.dir, { current: (job) => job.kind !== 'speech' || wanted.has(job.key), otherSpend: imageLog(project) });
+        print(formatHistory(report), report);
+        return 0;
+      }
       default:
         process.stderr.write(`unknown command "${cmd}"\n\n${HELP}\n`);
         return 2;
     }
   } catch (e) {
+    const message = hideSecrets(e.message);
     if (e instanceof ProjectError || e instanceof ScriptError) {
-      if (json) print(null, { error: e.message });
-      else process.stderr.write(`error: ${e.message}\n`);
+      if (json) print(null, { error: message });
+      else process.stderr.write(`error: ${message}\n`);
       return 1;
     }
-    if (json) print(null, { error: e.message, stack: e.stack });
-    else process.stderr.write(`error: ${e.message}\n`);
-    if (process.env.EXPLAINROO_DEBUG) process.stderr.write(`${e.stack}\n`);
+    if (json) print(null, { error: message, stack: hideSecrets(e.stack) });
+    else process.stderr.write(`error: ${message}\n`);
+    if (process.env.EXPLAINROO_DEBUG) process.stderr.write(`${hideSecrets(e.stack)}\n`);
     return 1;
   }
 }

@@ -1,6 +1,7 @@
 // Turns each scene's narration into a WAV file plus word timings.
 // Results are cached per scene in build/voice/<scene>.json and only
 // regenerated when the words, markers, voice, speed or pacing change.
+// Paid voices also save each response in the project record, see paid-speech.js.
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -9,7 +10,7 @@ import { alignWords, readAlike } from './align.js';
 import { loadTTS, transcribeWords, TTS_MODEL, TTS_SAMPLE_RATE, ttsDtype, asrModel } from './models.js';
 import { phonemize, generateSpeech } from './phonemes.js';
 import { writeWav, readWav, resample, trimSilence } from './wav.js';
-import { elevenSpeech } from './connectors/elevenlabs.js';
+import { openSpeech, speechConnector, speechKey } from './paid-speech.js';
 import { recordingFiles, decodeRecording, saveRecording, recordingCuts } from './recordings.js';
 
 const PIPELINE = 7;
@@ -50,16 +51,91 @@ export function readVoice(project, id) {
   }
 }
 
+// The chunks of one scene with the project's gaps and pace.
+export function sceneChunks(project, scene) {
+  const { config } = project;
+  return speechChunks(scene.units, { sentenceGap: config.sentenceGap, paragraphGap: config.paragraphGap, pace: config.pace, language: config.language });
+}
+
+// The paid requests of the current script, for telling open jobs from old ones.
+export function currentSpeechKeys(project) {
+  const paid = speechConnector(project.config);
+  if (!paid) return new Set();
+  return new Set(project.script.scenes.flatMap((scene) => sceneChunks(project, scene).map((chunk) => speechKey(paid, project.config, chunk.text))));
+}
+
+const SENTENCE_END = /[.!?…।。！？]["'’)\]」』）]*$/;
+
+// A scene's JSON doesn't say which voice made it, and its hash does. The hash
+// also covers the words, markers and gaps of that time, and those are in the JSON.
+// So this rebuilds them and asks whether today's voice settings give the saved hash.
+function sameTake(chunks, cached, hash, config) {
+  if (cached.hash === hash) return true;
+  if (!Array.isArray(cached.words)) return false;
+  const sentenceGap = config.sentenceGap / config.pace;
+  const gaps = [sentenceGap, config.paragraphGap / config.pace, ...chunks.map((c) => c.gapBefore)];
+  const old = cached.chunks.map((c, i) => {
+    const measured = i ? c.start - cached.chunks[i - 1].end : null;
+    return { text: c.text, start: c.start, gapBefore: i ? gaps.find((g) => Math.abs(g - measured) < 0.002) ?? round(measured) : chunks[0]?.gapBefore ?? 0 };
+  });
+  const paused = (i) => (i ? old[i].gapBefore !== sentenceGap || !SENTENCE_END.test(old[i - 1].text) : old[0].gapBefore > 0);
+  // A marker's time is the start of the word after it, or the end of the last word.
+  const marks = new Map();
+  for (const [name, time] of Object.entries(cached.marks || {})) {
+    const at = cached.words.findIndex((w) => w.start === time);
+    const index = at === -1 ? cached.words.length : at;
+    marks.set(index, [...(marks.get(index) || []), { type: 'mark', name }]);
+  }
+  // The JSON doesn't say on which side of a pause a marker stood, so both are tried.
+  return ['after', 'before'].some((side) => {
+    const units = [];
+    let next = 0;
+    for (let i = 0; i <= cached.words.length; i++) {
+      const word = cached.words[i];
+      const pause = [];
+      if (word && next < old.length && word.start >= old[next].start) {
+        if (paused(next)) pause.push({ type: 'pause' });
+        next++;
+      }
+      const here = marks.get(i) || [];
+      units.push(...(side === 'after' ? [...pause, ...here] : [...here, ...pause]));
+      if (word) units.push({ type: 'word', display: word.text });
+    }
+    return sceneHash({ units }, old, config) === cached.hash;
+  });
+}
+
+// A paid scene from before the record, or with its record removed: its WAV is
+// cut into requests using the times in its JSON, so a later rebuild costs nothing.
+function addFinishedScene(project, speech, scene, chunks, cached, hash, log) {
+  const file = voicePaths(project, scene.id).wav;
+  if (!Array.isArray(cached?.chunks) || !cached.chunks.length || !fs.existsSync(file)) return;
+  const unknown = cached.chunks.filter((c) => !speech.knows(c.text));
+  if (!unknown.length || !sameTake(chunks, cached, hash, project.config)) return;
+  let samples, sampleRate;
+  try {
+    ({ samples, sampleRate } = readWav(file));
+  } catch {
+    return;
+  }
+  for (const c of unknown) speech.add(scene.id, c.text, samples.subarray(Math.round(c.start * sampleRate), Math.round(c.end * sampleRate)), sampleRate);
+  log(`voice ${scene.id}: saved ${unknown.length} paid request${unknown.length === 1 ? '' : 's'} from the finished scene in history/voice/`);
+}
+
 // Returns { [sceneId]: voiceInfo } and generates whatever is missing or stale.
-export async function synthesize(project, { force = false, log = () => {}, only = null } = {}) {
+// `fresh` buys again only the paid requests that have no good answer. `transcribe`
+// replaces Whisper in tests.
+export async function synthesize(project, { force = false, fresh = false, log = () => {}, notice = log, only = null, transcribe = transcribeWords } = {}) {
   fs.mkdirSync(project.paths.voice, { recursive: true });
   const { config } = project;
   const provider = config.voice.provider || 'kokoro';
+  const paid = speechConnector(config);
+  const speech = paid ? openSpeech(project, paid, { force, fresh, log, notice }) : null;
   const recordings = provider === 'recording' ? recordingFiles(project) : null;
   const result = {};
   const todo = [];
   for (const scene of project.script.scenes) {
-    const chunks = speechChunks(scene.units, { sentenceGap: config.sentenceGap, paragraphGap: config.paragraphGap, pace: config.pace, language: config.language });
+    const chunks = sceneChunks(project, scene);
     const recording = recordings?.files[scene.id];
     const hash = sceneHash(scene, chunks, config, recording ? {
       content: recording.hash,
@@ -67,7 +143,8 @@ export async function synthesize(project, { force = false, log = () => {}, only 
     } : null);
     const cached = readVoice(project, scene.id);
     const hasAudio = !chunks.length || fs.existsSync(voicePaths(project, scene.id).wav);
-    if (!force && cached && cached.hash === hash && hasAudio) {
+    if (speech && chunks.length) addFinishedScene(project, speech, scene, chunks, cached, hash, log);
+    if (!force && cached && cached.hash === hash && hasAudio && !speech?.needsNew(chunks)) {
       result[scene.id] = cached;
     } else if (only && !only.includes(scene.id) && cached) {
       result[scene.id] = cached;
@@ -76,6 +153,7 @@ export async function synthesize(project, { force = false, log = () => {}, only 
     }
   }
   if (!todo.length) return result;
+  speech?.check(todo);
 
   const needsSpeech = todo.some((t) => t.chunks.length);
   const tts = needsSpeech && provider === 'kokoro' ? await loadTTS({ log }) : null;
@@ -86,14 +164,14 @@ export async function synthesize(project, { force = false, log = () => {}, only 
   if (needsSpeech && recordings && !recordings.folder) {
     log('transcribing the recording and finding scene boundaries');
     take = await decodeRecording(Object.values(recordings.files)[0].file, project.paths.build, wanted);
-    heardTake = await transcribeWords(resample(take.samples, take.sampleRate, 16000), { log, language: config.language });
+    heardTake = await transcribe(resample(take.samples, take.sampleRate, 16000), { log, language: config.language });
     cuts = recordingCuts(project.script.scenes, heardTake.words, take.samples.length / take.sampleRate, config.language);
   }
   for (const { scene, chunks, hash } of todo) {
     const t0 = Date.now();
     const info = recordings && chunks.length
-      ? await recordingScene(project, scene, hash, recordings.files[scene.id], take, cuts.find((c) => c.scene.id === scene.id), heardTake, log)
-      : await synthesizeScene(project, scene, chunks, hash, tts, log);
+      ? await recordingScene(project, scene, hash, recordings.files[scene.id], take, cuts.find((c) => c.scene.id === scene.id), heardTake, log, transcribe)
+      : await synthesizeScene(project, scene, chunks, hash, tts, speech, log, transcribe);
     result[scene.id] = info;
     if (chunks.length) {
       const warn = info.matchRate < 0.85 ? (recordings
@@ -105,7 +183,7 @@ export async function synthesize(project, { force = false, log = () => {}, only 
   return result;
 }
 
-async function synthesizeScene(project, scene, chunks, hash, tts, log) {
+async function synthesizeScene(project, scene, chunks, hash, tts, speech, log, transcribe) {
   const { config } = project;
   const files = voicePaths(project, scene.id);
   if (!chunks.length) {
@@ -124,7 +202,7 @@ async function synthesizeScene(project, scene, chunks, hash, tts, log) {
   let matchedTokens = 0;
   let totalTokens = 0;
 
-  const phonemes = config.voice.provider !== 'elevenlabs' && config.language !== 'en'
+  const phonemes = !speech && config.language !== 'en'
     ? await phonemize(chunks.map(c => c.text), config.language) : null;
   for (let ci = 0; ci < chunks.length; ci++) {
     const chunk = chunks[ci];
@@ -133,8 +211,8 @@ async function synthesizeScene(project, scene, chunks, hash, tts, log) {
       pieces.push(new Float32Array(Math.round(gap * sr)));
       cursor += Math.round(gap * sr);
     }
-    const audio = config.voice.provider === 'elevenlabs'
-      ? await elevenSpeech(project, scene.id, chunk.text, { previous: chunks[ci - 1]?.text, next: chunks[ci + 1]?.text })
+    const audio = speech
+      ? await speech.get(scene.id, chunks, ci)
       : await generateSpeech(tts, chunk.text, { language: config.language, voice: config.voice, speed: config.speed * config.pace, phonemes: phonemes?.[ci] });
     const samples = trimSilence(audio.audio, audio.sampling_rate || sr);
     const start = cursor / sr;
@@ -142,7 +220,7 @@ async function synthesizeScene(project, scene, chunks, hash, tts, log) {
     pieces.push(samples);
     cursor += samples.length;
 
-    const heard = await transcribeWords(resample(samples, sr, 16000), { log, language: config.language });
+    const heard = await transcribe(resample(samples, sr, 16000), { log, language: config.language });
     transcripts.push(heard.text);
     const alike = await readAlike(chunk.words, heard.words, config.language);
     const aligned = alignWords(alike.words, alike.heard, dur, config.language);
@@ -185,7 +263,7 @@ async function synthesizeScene(project, scene, chunks, hash, tts, log) {
   return info;
 }
 
-async function recordingScene(project, scene, hash, source, take, cut, heardTake, log) {
+async function recordingScene(project, scene, hash, source, take, cut, heardTake, log, transcribe) {
   const { config } = project;
   const audio = take || await decodeRecording(source.file, project.paths.build, project.config.speed * project.config.pace);
   const sr = audio.sampleRate;
@@ -208,7 +286,7 @@ async function recordingScene(project, scene, hash, source, take, cut, heardTake
   };
   const heard = heardTake ? {
     words: heardTake.words.filter((w) => w.start >= cut.start && w.start < cut.end).map(local),
-  } : await transcribeWords(resample(samples, sr, 16000), { log, language: config.language });
+  } : await transcribe(resample(samples, sr, 16000), { log, language: config.language });
   const units = scene.units.filter((u) => u.type === 'word');
   const alike = await readAlike(units, heard.words, config.language);
   const aligned = alignWords(alike.words, alike.heard, duration, config.language);
