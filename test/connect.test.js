@@ -56,6 +56,23 @@ test('a free service needs nothing and says how to use it', async (t) => {
   assert.equal(fake.count('openrouter', KEY_CHECK.openrouter), 0);
 });
 
+test('the entry for video clips uses the OpenRouter connector and the same key', async (t) => {
+  const { fake, cli, env } = await setup(t);
+  const steps = await cli(['connect', 'openrouter-video']);
+  assert.equal(steps.code, 0, steps.text);
+  assert.match(steps.stdout, /OpenRouter video/);
+  assert.match(steps.stdout, /Paid per second/);
+  assert.match(steps.stdout, /connect openrouter-video --key-stdin/);
+  const r = await cli(['connect', 'openrouter-video', '--key-stdin'], `${GOOD_KEY}\n`);
+  assert.equal(r.code, 0, r.text);
+  assert.equal(fake.count('openrouter', KEY_CHECK.openrouter), 1);
+  assert.equal(fs.readFileSync(env, 'utf8'), `OPENROUTER_API_KEY=${GOOD_KEY}\n`);
+  assert.match(r.stdout, /OpenRouter is connected\. See the price with: explainroo clip/);
+  assert.doesNotMatch(r.text, new RegExp(GOOD_KEY));
+  const listed = JSON.parse((await cli(['services', 'clips', '--json'])).stdout).services.find((s) => s.id === 'openrouter-video');
+  assert.equal(listed.connected, true);
+});
+
 test('an unknown service is an error that lists the real ones, and no service prints the usage', async (t) => {
   const { cli } = await setup(t);
   const r = await cli(['connect', 'nope']);

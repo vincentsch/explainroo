@@ -46,12 +46,12 @@ test('within each step free entries come first, and the first entry of every ste
 });
 
 test('the first list holds what exists today', () => {
-  assert.deepEqual(SERVICES.map((s) => s.id), ['kokoro', 'recording', 'elevenlabs', 'whisper', 'own-images', 'openrouter', 'own-footage', 'built-in-music', 'web-player', 'upload-by-hand']);
+  assert.deepEqual(SERVICES.map((s) => s.id), ['kokoro', 'recording', 'elevenlabs', 'whisper', 'own-images', 'openrouter', 'own-footage', 'openrouter-video', 'built-in-music', 'own-music', 'soundroo', 'web-player', 'upload-by-hand']);
 });
 
 test('a service with a key has a connector with a free key test, and a connector has an entry', () => {
   for (const s of SERVICES.filter(needsKey)) {
-    const connector = findConnector(s.id);
+    const connector = findConnector(s.connector ?? s.id);
     assert.ok(connector, s.id);
     assert.equal(typeof connector.test, 'function', s.id);
     assert.ok(/^https:\/\//.test(s.setup.url), s.id);
@@ -67,6 +67,24 @@ test('a service with a key has a connector with a free key test, and a connector
     assert.equal(connector.speedRange.length, 2);
     assert.ok(findService(connector.id).voice, connector.id);
   }
+});
+
+test('the entries for clips and music say what they cost, what leaves the computer and how to use them', () => {
+  const video = findService('openrouter-video');
+  assert.equal(video.step, 'clips');
+  assert.equal(video.connector, 'openrouter');
+  assert.deepEqual(video.setup.env, findService('openrouter').setup.env);
+  assert.match(video.cost, /per second/);
+  assert.match(video.cost, /cents a second/);
+  assert.match(video.cost, /--dry-run/);
+  assert.match(video.cost, /failed try may cost money/);
+  assert.match(video.data_leaves, /prompt goes to OpenRouter and to the company that runs/);
+  assert.match(findService('own-music').setup.use, /"src": "assets\/track\.mp3"/);
+  const soundroo = findService('soundroo');
+  assert.equal(soundroo.free, true);
+  assert.match(soundroo.data_leaves, /Nothing leaves your computer unless you run Soundroo's own share command/);
+  assert.equal(soundroo.setup.url, 'https://www.soundroo.com');
+  assert.match(soundroo.setup.steps.join(' '), /Node 22/);
 });
 
 test('the label "paid partner" appears only when the flag is true', () => {
@@ -173,7 +191,7 @@ test('the code that makes the voice and the command line name no paid service', 
 test('the help is made from the data, and names every new command', () => {
   const help = run(['--help']).stdout;
   assert.match(help, /--elevenlabs for your ElevenLabs key/);
-  for (const words of [/^ {2}services \[step\]/m, /^ {2}connect <service>/m, /^ {2}history \[project\]/m, /--new/, /--resume <id>/, /--key-stdin/]) assert.match(help, words);
+  for (const words of [/^ {2}services \[step\]/m, /^ {2}connect <service>/m, /^ {2}history \[project\]/m, /--new/, /--resume <id>/, /--key-stdin/, /^ {2}clip \[project\]/m, /--dry-run/, /--max-cost/, /--seconds/, /--aspect/, /--model cheap\|quality/, /--resolution/, /--audio/, /--name/, /--no-wait/]) assert.match(help, words);
 });
 
 test('the data names no paid partner, and it has no ranking words', () => {

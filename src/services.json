@@ -115,7 +115,7 @@
           "Open openrouter.ai/keys and make a new key.",
           "Copy the key."
         ],
-        "use": "Make an image with: explainroo image <project> <name> \"<what to draw>\""
+        "use": "Make an image with: explainroo image <project> <name> \"<what to draw>\". The same key makes video clips."
       }
     },
     {
@@ -135,6 +135,28 @@
       }
     },
     {
+      "id": "openrouter-video",
+      "connector": "openrouter",
+      "step": "clips",
+      "name": "OpenRouter video",
+      "about": "The same OpenRouter account that makes illustrations can make short AI video clips from a text prompt.",
+      "free": false,
+      "partner": false,
+      "status": "available",
+      "cost": "Paid per second on your OpenRouter account. On 2026-11-07 the rates it can price ran from about half a cent to 60 cents a second, and six silent seconds at 720p on the default model came to about 18 cents. \"explainroo clip <project> \"<what it shows>\" --seconds 6 --dry-run\" gives today's price. A failed try may cost money too.",
+      "data_leaves": "The prompt goes to OpenRouter and to the company that runs the video model. Video jobs are not covered by OpenRouter's zero data retention.",
+      "setup": {
+        "env": ["OPENROUTER_API_KEY"],
+        "url": "https://openrouter.ai/keys",
+        "steps": [
+          "Make an account at openrouter.ai and add some credit.",
+          "Open openrouter.ai/keys and make a new key. An image key works too.",
+          "Copy the key."
+        ],
+        "use": "See the price with: explainroo clip <project> \"<what it shows>\" --seconds 6 --dry-run. Run \"explainroo docs clips\" for what clips are good and bad at."
+      }
+    },
+    {
       "id": "built-in-music",
       "step": "music",
       "name": "Built-in music",
@@ -148,6 +170,39 @@
         "env": [],
         "steps": ["Nothing to set up."],
         "use": "It is on by default. Set \"music\" in video.json to pick a style or to turn it off."
+      }
+    },
+    {
+      "id": "own-music",
+      "step": "music",
+      "name": "Your own music file",
+      "about": "Any music file you are allowed to use plays under the voice, at the same level as the built-in music.",
+      "free": true,
+      "partner": false,
+      "status": "available",
+      "cost": "Free.",
+      "data_leaves": "Nothing leaves your computer.",
+      "setup": {
+        "env": [],
+        "steps": ["Nothing to set up. Put the file in assets/."],
+        "use": "Set \"music\": { \"src\": \"assets/track.mp3\", \"credit\": \"Who made it\" } in video.json. Run \"explainroo docs music\" for more."
+      }
+    },
+    {
+      "id": "soundroo",
+      "step": "music",
+      "name": "Soundroo",
+      "about": "A free, open-source tool at soundroo.com. Your agent writes original music as a score, and its engine renders that to a WAV file on this computer.",
+      "free": true,
+      "partner": false,
+      "status": "available",
+      "cost": "Free.",
+      "data_leaves": "Nothing leaves your computer unless you run Soundroo's own share command.",
+      "setup": {
+        "env": [],
+        "url": "https://www.soundroo.com",
+        "steps": ["It needs Node 22 or newer, which is newer than explainroo needs. Run \"explainroo docs music\" for the steps."],
+        "use": "Render a track with Soundroo, copy the WAV file to assets/, and set \"music\": { \"src\": \"assets/track.wav\" } in video.json."
       }
     },
     {

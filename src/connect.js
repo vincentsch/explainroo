@@ -77,7 +77,7 @@ export async function connect(args, flags, { print, log, notice }) {
     return 0;
   }
   if (service.status === 'coming') throw new ProjectError(`${service.name} is not available yet.`);
-  const connector = findConnector(service.id);
+  const connector = findConnector(service.connector ?? service.id);
   const env = service.setup.env[0];
   if (flags.project === true) throw new ProjectError('--project needs a value');
   const project = flags.project === undefined ? null : findProjectDir(flags.project);

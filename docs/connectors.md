@@ -38,6 +38,8 @@ Add an entry to `src/services.json`. The website can read the same file later.
 - Write `about` for someone who has never heard of the company.
 - `voice` only appears on a voice provider. It lists the settings `video.json`
   may give, and `normalizeConfig` checks them.
+- `connector` is for a second entry that uses the same account and key as another
+  one. `openrouter-video` has `"connector": "openrouter"`, and needs no file of its own.
 
 ## 2. The connector
 
@@ -95,5 +97,6 @@ Anything that costs money goes through the project record in `src/history.js`.
 `decide` says what to do with a request: buy it, use what was bought, or stop and
 explain. `createJob` claims the request with an exclusive open before anything is
 sent, so of two commands running at once, only one can buy. `src/images.js` is the
-short example to copy. A new kind of job also says where its output may be, in
-`outputPlaces`, and how it continues, in `CONTINUE`.
+short example to copy, and `src/ai-clips.js` shows a job that keeps running at the
+service. A new kind of job also says where its output may be, in `outputPlaces`,
+and how it continues, in `CONTINUE`.
