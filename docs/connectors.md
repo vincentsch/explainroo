@@ -15,7 +15,7 @@ Add an entry to `src/services.json`. The website can read the same file later.
   "id": "elevenlabs",
   "step": "voice",
   "name": "ElevenLabs",
-  "about": "A company that turns text into speech. It has its own voices and can clone one.",
+  "about": "A company that turns text into speech. It has its own voices and can clone one. It speaks every language explainroo has, German included.",
   "free": false,
   "partner": false,
   "status": "available",

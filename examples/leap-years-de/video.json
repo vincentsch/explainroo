@@ -1,0 +1,16 @@
+{
+  "title": "Warum es Schaltjahre gibt",
+  "theme": "editorial",
+  "size": "youtube",
+  "language": "de",
+  "voice": { "provider": "recording", "src": "assets/narration.m4a" },
+  "music": {
+    "style": "calm",
+    "volume": 0.1
+  },
+  "captions": false,
+  "sfx": "minimal",
+  "cover": "hook@end",
+  "transition": "fade",
+  "end": 1.0
+}

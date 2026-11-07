@@ -75,6 +75,7 @@ speech check reports a mismatch, make script.md say what was actually said.
 Replacing a scene recording makes that scene again. Replacing a whole take
 makes all its scenes again.
 
-ElevenLabs, Cartesia and recordings work in every supported language.
-Run `voice`, `check` and `render` as usual with any source.
-`explainroo docs languages` lists the languages.
+ElevenLabs, Cartesia and recordings work in every supported language,
+German included. Kokoro has no German voice, so a German video needs one of
+these three. Run `voice`, `check` and `render` as usual with any source.
+`explainroo docs languages` lists the languages and says how German works.

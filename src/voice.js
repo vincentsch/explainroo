@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { speechChunks, resolveMarks, normWord } from './script.js';
-import { alignWords, readAlike } from './align.js';
+import { alignWords, nearList, readAlike } from './align.js';
 import { loadTTS, transcribeWords, TTS_MODEL, TTS_SAMPLE_RATE, ttsDtype, asrModel } from './models.js';
 import { phonemize, generateSpeech } from './phonemes.js';
 import { writeWav, readWav, resample, trimSilence } from './wav.js';
@@ -40,6 +40,39 @@ export function sceneHash(scene, chunks, config, recording = null) {
 
 export function voicePaths(project, id) {
   return { wav: path.join(project.paths.voice, `${id}.wav`), json: path.join(project.paths.voice, `${id}.json`) };
+}
+
+// How long the voice speaks in a scene: its spoken pieces added up, without the
+// silences between them. A recorded scene is one piece.
+export function narrationTime(info) {
+  return round((info.chunks || []).reduce((sum, c) => sum + (c.end - c.start), 0));
+}
+
+// The words of a scene that only nearly matched, as [{ word, heard }]. A scene
+// made before they were saved gets them by aligning its saved transcript again,
+// so no voice is made again. Japanese and Chinese compare characters, which
+// match exactly or not at all.
+export function nearMatches(info, language) {
+  if (Array.isArray(info.nearly)) return info.nearly;
+  const again = realign(info, language);
+  // Only words that the scene confirmed when it was made can have nearly matched.
+  return again ? nearList(again.words, again.aligned.map((a, k) => (info.words[k].matched ? a : { ...a, nearly: false }))) : [];
+}
+
+// What was heard in place of each word of a scene that wasn't confirmed, as
+// { [index of the word]: text }, from its saved transcript.
+export function heardInstead(info, language) {
+  const again = realign(info, language);
+  return again ? Object.fromEntries(again.aligned.flatMap((a, k) => (a.heard && !info.words[k].matched ? [[k, a.heard]] : []))) : {};
+}
+
+// A scene's words aligned again with its saved transcript. Its times are made up
+// and never used.
+function realign(info, language) {
+  if (['ja', 'zh'].includes(language) || !info.duration || !info.transcript || !Array.isArray(info.words)) return null;
+  const words = info.words.map((w) => ({ spoken: w.spoken ?? w.text, display: w.text }));
+  const heard = info.transcript.split(/\s+/).filter(Boolean).map((text, i) => ({ text, start: i, end: i + 1 }));
+  return { words, aligned: alignWords(words, heard, heard.length, language).words };
 }
 
 export function readVoice(project, id) {
@@ -145,6 +178,15 @@ function addFinishedScene(project, speech, scene, chunks, cached, hash, log, not
   log(`voice ${scene.id}: saved ${added} paid request${added === 1 ? '' : 's'} from the finished scene in history/voice/`);
 }
 
+// What the voice line says about a scene it made, like "intro: 10.1 s of
+// narration (13.0 s with pauses), made in 13.1 s". A recorded scene has its
+// pauses in the recording, so it says how long its cut is.
+export function voiceLine(id, info, seconds, recorded = false) {
+  const made = `made in ${seconds.toFixed(1)} s`;
+  if (recorded) return `${id}: a ${info.duration.toFixed(1)} s cut of the recording, pauses included, ${made}`;
+  return `${id}: ${narrationTime(info).toFixed(1)} s of narration (${info.duration.toFixed(1)} s with pauses), ${made}`;
+}
+
 // Returns { [sceneId]: voiceInfo } and generates whatever is missing or stale.
 // `fresh` buys again only the paid requests that have no good answer. `transcribe`
 // replaces Whisper in tests.
@@ -168,9 +210,9 @@ export async function synthesize(project, { force = false, fresh = false, log = 
     const hasAudio = !chunks.length || fs.existsSync(voicePaths(project, scene.id).wav);
     if (speech && chunks.length) addFinishedScene(project, speech, scene, chunks, cached, hash, log, notice);
     if (!force && cached && cached.hash === hash && hasAudio && !speech?.needsNew(chunks)) {
-      result[scene.id] = cached;
+      result[scene.id] = { ...cached, nearly: nearMatches(cached, config.language) };
     } else if (only && !only.includes(scene.id) && cached) {
-      result[scene.id] = cached;
+      result[scene.id] = { ...cached, nearly: nearMatches(cached, config.language) };
     } else {
       todo.push({ scene, chunks, hash });
     }
@@ -200,7 +242,7 @@ export async function synthesize(project, { force = false, fresh = false, log = 
       const warn = info.matchRate < 0.85 ? (recordings
         ? `, recording does not match ${scriptName(project)} here (${Math.round(info.matchRate * 100)}% of words confirmed). Make ${scriptName(project)} say what was actually said.`
         : `, check pronunciation (${Math.round(info.matchRate * 100)}% of words confirmed)`) : '';
-      log(`voice ${scene.id}: ${info.duration.toFixed(1)}s in ${((Date.now() - t0) / 1000).toFixed(1)}s${warn}`);
+      log(`voice ${voiceLine(scene.id, info, (Date.now() - t0) / 1000, !!recordings)}${warn}`);
     }
   }
   return result;
@@ -210,7 +252,7 @@ async function synthesizeScene(project, scene, chunks, hash, tts, speech, log, t
   const { config } = project;
   const files = voicePaths(project, scene.id);
   if (!chunks.length) {
-    const info = { hash, id: scene.id, duration: 0, words: [], marks: resolveMarks(scene.units, []), chunks: [], transcript: '', matchRate: 1, unmatched: [] };
+    const info = { hash, id: scene.id, duration: 0, words: [], marks: resolveMarks(scene.units, []), chunks: [], transcript: '', matchRate: 1, unmatched: [], nearly: [] };
     if (fs.existsSync(files.wav)) fs.rmSync(files.wav);
     fs.writeFileSync(files.json, JSON.stringify(info, null, 2));
     return info;
@@ -222,6 +264,7 @@ async function synthesizeScene(project, scene, chunks, hash, tts, speech, log, t
   const wordTimes = [];
   const transcripts = [];
   const unmatched = [];
+  const nearly = [];
   let matchedTokens = 0;
   let totalTokens = 0;
 
@@ -252,6 +295,7 @@ async function synthesizeScene(project, scene, chunks, hash, tts, speech, log, t
       wordTimes[w.unitIndex] = { start: start + a.start, end: start + a.end, matched: a.matched };
       if (!a.matched) unmatched.push(w.display);
     });
+    nearly.push(...nearList(chunk.words, aligned.words));
     const tokens = chunk.words.reduce((n, w) => n + (['ja', 'zh'].includes(config.language) ? Array.from(normWord(w.spoken).normalize('NFC')).length : w.spoken.split(/\s+/).length), 0);
     totalTokens += tokens;
     matchedTokens += aligned.matchRate * tokens;
@@ -281,6 +325,7 @@ async function synthesizeScene(project, scene, chunks, hash, tts, speech, log, t
     transcript: transcripts.join(' '),
     matchRate: totalTokens ? Math.round((matchedTokens / totalTokens) * 1000) / 1000 : 1,
     unmatched,
+    nearly,
   };
   fs.writeFileSync(files.json, JSON.stringify(info, null, 2));
   return info;
@@ -326,6 +371,7 @@ async function recordingScene(project, scene, hash, source, take, cut, heardTake
     chunks: [{ start: 0, end: round(duration), text: scene.spoken }],
     transcript: heard.words.map((w) => w.text).join(' '),
     matchRate: round(aligned.matchRate), unmatched: units.filter((u, i) => !aligned.words[i].matched).map((u) => u.display),
+    nearly: nearList(units, aligned.words),
   };
   fs.writeFileSync(files.json, JSON.stringify(info, null, 2));
   return info;

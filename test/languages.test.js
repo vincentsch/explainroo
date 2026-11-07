@@ -38,7 +38,8 @@ test('sentence boundaries include danda and Spanish question and exclamation mar
 
 test('each language picks its default and rejects every voice from a different language', () => {
   assert.equal(normalizeConfig({}).language, 'en');
-  for (const [language, id] of Object.entries(LANGUAGES)) {
+  // German has no Kokoro voice. Its own tests are in german.test.js.
+  for (const [language, id] of Object.entries(LANGUAGES).filter(([, id]) => id)) {
     assert.equal(normalizeConfig({ language }).voice, id);
     assert.equal(normalizeConfig({ language, voice: { provider: 'kokoro', id } }).voice, id);
     for (const voice of Object.keys(VOICES)) {

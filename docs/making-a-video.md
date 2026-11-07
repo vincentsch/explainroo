@@ -34,10 +34,16 @@ user. Read it first.
    explainroo voice videos/<name>
    ```
 
-   The command prints how long each scene is and how many words the speech
-   check confirmed. If a word is not confirmed, the voice probably said it
-   wrong. Fix it with `{shown|spoken}` in the script and run the command
-   again. For a recording, make script.md say what was actually said.
+   The command prints how long the voice speaks in each scene, how long the
+   scene's narration is with its pauses, and how many words the speech check
+   confirmed. If a word is not confirmed, the voice probably said it wrong.
+   Fix it with `{shown|spoken}` in the script and run the command again. If
+   the word already has `{shown|spoken}`, `check` says so and quotes what was
+   heard. Then try another spoken spelling, or reword the sentence. For a
+   recording, make script.md say what was actually said. `check` also lists
+   the words that only nearly matched, like "Soundroo" heard as "Soundru".
+   They count as understood, and names the speech model doesn't know often
+   end up there.
    Only the scenes you changed are made again. `check`, `still`, `sheet`,
    `render` and `preview` also make missing narration, so start them after
    `voice` has finished, not at the same time.
@@ -106,7 +112,8 @@ user. Read it first.
     black frames and silence. `render` keeps the true peak at -1 dBTP or
     lower. `verify` warns above that and fails above 0 dBTP, where the sound
     clips. It also runs the speech check on the finished sound to make sure
-    the voice is still clear over the music.
+    the voice is still clear over the music, and it lists the words that only
+    nearly matched next to the share it understood.
 
 11. **Tell the user** where the video and its subtitle files, chapters and
     cover are, how long the video is, what verify said, and what you could

@@ -20,6 +20,9 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const GUARD = new URL('../test/helpers/guard.js', import.meta.url).href;
 const STEP_TIMEOUT = 20 * 60 * 1000;
 const MIN_NARRATION_UNDERSTOOD = 0.85;
+// The German example: a recording that voice has to confirm for each scene.
+const GERMAN = 'leap-years-de';
+const MIN_GERMAN_CONFIRMED = 0.9;
 const CLIP_PROMPT = 'A busy street at dusk in the rain';
 
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
@@ -94,9 +97,10 @@ function postingChanges(fake) {
 
 // Each step runs "explainroo <args>" and must exit with `status` (0 unless it says
 // otherwise). args can be a function of the paths, for a value an earlier step
-// found. input goes to stdin, and env(paths) adds to the environment. check
-// gets the parsed --json output and a few paths, and the raw output after that.
-// It throws on a problem and can return a short note for the report.
+// found. setup(paths) runs first, like copying an example. input goes to stdin,
+// and env(paths) adds to the environment. check gets the parsed --json output and
+// a few paths, and the raw output after that. It throws on a problem and can
+// return a short note for the report.
 const steps = [
   {
     args: ['--version', '--json'],
@@ -463,6 +467,48 @@ const steps = [
       return `${r.issues.length} finding(s), ${sent.length} request to the Cartesia fake`;
     },
   },
+  {
+    // The German example from the checkout, narrated by its recording.
+    setup: ({ temp }) => fs.cpSync(path.join(ROOT, 'examples', GERMAN), path.join(temp, 'german'), { recursive: true, filter: (from) => !/[\\/](build|out|history)$/.test(from) }),
+    args: ['doctor', 'german', '--json'],
+    check: (r) => {
+      const state = (name) => r.checks.find((c) => c.name === name)?.state;
+      expect(JSON.stringify(r.setup) === JSON.stringify([{ language: 'de', voice: 'recording' }]), `doctor judged ${JSON.stringify(r.setup)}`);
+      expect(state('language model') === 'ready', `the language model is missing. Run "node bin/explainroo.js voice examples/${GERMAN}" once in the checkout, which downloads it, so this test can reuse it.`);
+      expect(['espeak-ng', 'misaki ja', 'misaki zh', 'voice model'].every((name) => state(name) === 'not needed'), `doctor says ${r.checks.map((c) => `${c.name}: ${c.state}`).join(', ')}`);
+    },
+  },
+  {
+    args: ['voice', 'german', '--json'],
+    check: (r) => {
+      const low = r.scenes.filter((s) => s.confirmed < MIN_GERMAN_CONFIRMED);
+      expect(r.scenes.length > 0 && !low.length, `voice confirmed too few words in ${low.map((s) => `${s.scene} (${s.confirmed})`).join(', ')}`);
+      return `${r.duration.toFixed(1)}s, ${r.scenes.map((s) => `${s.scene} ${Math.round(s.confirmed * 100)}%`).join(', ')}`;
+    },
+  },
+  {
+    args: ['check', 'german', '--json'],
+    check: (r) => {
+      const errors = r.issues.filter((i) => i.level === 'error');
+      expect(!errors.length, `check found errors in the German example: ${errors.map((e) => e.message).join('; ')}`);
+      expect(r.speech.length === r.scenes, `check has the speech check of ${r.speech.length} of ${r.scenes} scenes`);
+      return `${r.issues.length} finding(s)`;
+    },
+  },
+  {
+    args: ['render', 'german', '--json'],
+    check: (r, { temp }) => expect(r.out.startsWith(temp) && fs.statSync(r.out).size > 0, `the German video went to ${r.out}`),
+  },
+  {
+    args: ['verify', 'german', '--json'],
+    check: (r) => {
+      const errors = r.issues.filter((i) => i.level === 'error');
+      expect(!errors.length, `verify found errors in the German video: ${errors.map((e) => e.message).join('; ')}`);
+      expect(r.speech?.matchRate >= MIN_NARRATION_UNDERSTOOD, `only ${r.speech?.matchRate} of the German narration was understood, and ${MIN_NARRATION_UNDERSTOOD} is the minimum`);
+      expect(r.loudness.truePeak <= -1 && !r.issues.some((i) => /true peak/.test(i.message)), `the true peak is ${r.loudness.truePeak} dBTP`);
+      return `${r.duration}s, ${r.loudness.integrated} LUFS, ${r.loudness.truePeak} dBTP, ${Math.round(r.speech.matchRate * 100)}% of the narration understood, ${r.speech.nearly.length} word(s) only nearly`;
+    },
+  },
 ];
 
 async function runSteps(paths, env) {
@@ -470,6 +516,7 @@ async function runSteps(paths, env) {
     const args = typeof step.args === 'function' ? step.args(paths) : step.args;
     const name = args.filter((a) => a !== '--json').map((a) => (/^https?:/.test(a) ? '<address>' : a)).join(' ');
     const started = Date.now();
+    await step.setup?.(paths);
     // Without the "--", npx reads a flag like --version as its own.
     const r = await run('npx', ['--no', '--', 'explainroo', ...args], { cwd: paths.temp, env: { ...env, ...step.env?.(paths) }, input: step.input });
     if (r.status !== (step.status ?? 0)) throw new Error(`explainroo ${name} exited with ${r.status ?? r.signal}:\n${outputOf(r)}`);

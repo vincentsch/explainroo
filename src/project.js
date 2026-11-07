@@ -10,7 +10,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseScript } from './script.js';
-import { VOICES, LANGUAGES, voiceLanguage } from './models.js';
+import { VOICES, LANGUAGES, LANGUAGE_NAMES, voiceLanguage } from './models.js';
 import { ProjectError } from './errors.js';
 import { voiceProviders, oneOf } from './services.js';
 import { THEMES as LOOKS } from '../engine/themes.js';
@@ -185,6 +185,41 @@ function musicFileSetting(music) {
   return file;
 }
 
+// Every voice but Kokoro speaks every language explainroo has. They come from
+// services.json, a recording first because it is free.
+const otherVoices = () => Object.entries(voiceProviders()).filter(([id]) => id !== 'kokoro');
+
+// Those voices as they go in video.json. A version in "languages" needs a
+// recording of its own.
+function voiceLines(language, version) {
+  return otherVoices().map(([id, { name, keys }]) => {
+    const voice = keys.includes('src')
+      ? `{ "provider": "${id}", "src": "${version ? `assets/narration-${language}.m4a` : 'assets/narration.m4a'}" }`
+      : `{ "provider": "${id}", "id": "<voice id>" }`;
+    return `  ${name}: ${version ? `"languages": { "${language}": { "voice": ${voice} } }` : `"voice": ${voice}`}`;
+  });
+}
+
+// A language without a Kokoro voice has no default voice. This one message
+// answers every place that would need one. `place` is "main" for the language at
+// the top of video.json, "version" for another language of the video, "init"
+// and "voices" for those commands.
+export function noKokoroVoice(language, place = 'main') {
+  const name = LANGUAGE_NAMES[language];
+  const lists = otherVoices().filter(([, { keys }]) => keys.includes('id')).map(([id]) => `"explainroo voices --provider ${id} --language ${language}"`);
+  const next = {
+    main: 'Set "voice" in video.json to one of these:',
+    version: `Give the ${name} version its own voice in video.json with one of these:`,
+    init: `init can only set up a Kokoro voice, so create the project without --language. Then set "language": "${language}" and one of these in video.json:`,
+    voices: `${oneOf(lists)} lists the ${name} voices of that service. Set one in video.json like this:`,
+  }[place];
+  return [
+    `Kokoro, the free voice, has no ${name} voice. ${name} narration needs your own recording or a paid voice. ${next}`,
+    ...voiceLines(language, place === 'version'),
+    'Run "explainroo services voice" to see what each one costs and what leaves your computer.',
+  ].join('\n');
+}
+
 // The settings of one language: the general ones, with that language's own from
 // "languages" on top. The main voice speaks the main language, so another
 // language without a voice of its own gets its default voice.
@@ -206,7 +241,8 @@ function checkLanguages(raw) {
   for (const [code, own] of Object.entries(languages)) {
     if (!Object.hasOwn(LANGUAGES, code)) fail(`languages: "${code}" is not a language explainroo speaks. Use ${oneOf(Object.keys(LANGUAGES))}.`);
     if (code === main) fail(`languages: ${code} is the main language, so its settings go at the top of video.json`);
-    if (!own || typeof own !== 'object' || Array.isArray(own)) fail(`languages.${code} must be an object with the settings of that language, like { "voice": "${LANGUAGES[code]}" }`);
+    const voice = LANGUAGES[code] ? `"${LANGUAGES[code]}"` : `{ "provider": "recording", "src": "assets/narration-${code}.m4a" }`;
+    if (!own || typeof own !== 'object' || Array.isArray(own)) fail(`languages.${code} must be an object with the settings of that language, like { "voice": ${voice} }`);
     const bad = Object.keys(own).filter((k) => (!(k in DEFAULTS) && !k.startsWith('_')) || k === 'language' || k === 'languages');
     if (bad.length) fail(`languages.${code} has setting(s) that can't be set for one language: ${bad.join(', ')}`);
   }
@@ -219,7 +255,7 @@ function checkLanguages(raw) {
 // "languages". The settings of every other language get the same checks once the
 // settings asked for are good, so that a mistake is blamed on the right place.
 export function normalizeConfig(input, dir = '.', { language: version, overrides = {} } = {}) {
-  if (typeof (input.language ?? DEFAULTS.language) !== 'string' || !Object.hasOwn(LANGUAGES, input.language ?? DEFAULTS.language)) fail(`language must be one of ${Object.keys(LANGUAGES).join(', ')}`);
+  checkLanguage(input.language ?? DEFAULTS.language);
   const others = checkLanguages(input);
   const raw = { ...(version === undefined ? input : languageSettings(input, version)), ...overrides };
   const cfg = settingsOf(raw, input, dir);
@@ -235,12 +271,22 @@ export function normalizeConfig(input, dir = '.', { language: version, overrides
   return cfg;
 }
 
+// A language code that explainroo speaks, like "es".
+export function checkLanguage(language) {
+  if (typeof language !== 'string' || !Object.hasOwn(LANGUAGES, language)) fail(`language must be one of ${Object.keys(LANGUAGES).join(', ')}`);
+}
+
 // The checked settings of one language. `input` is the whole of video.json.
 function settingsOf(raw, input, dir) {
   const cfg = { ...DEFAULTS, ...raw };
   delete cfg.languages;
-  if (typeof cfg.language !== 'string' || !Object.hasOwn(LANGUAGES, cfg.language)) fail(`language must be one of ${Object.keys(LANGUAGES).join(', ')}`);
-  if (raw.voice === undefined) cfg.voice = LANGUAGES[cfg.language];
+  checkLanguage(cfg.language);
+  // A language without a Kokoro voice needs a voice of its own, and never falls back to Kokoro.
+  const noKokoro = () => fail(noKokoroVoice(cfg.language, cfg.language === (input.language ?? DEFAULTS.language) ? 'main' : 'version'));
+  if (raw.voice === undefined) {
+    if (!LANGUAGES[cfg.language]) noKokoro();
+    cfg.voice = LANGUAGES[cfg.language];
+  }
   const unknown = Object.keys(raw).filter((k) => !(k in DEFAULTS) && !k.startsWith('_'));
   if (unknown.length) fail(`video.json has unknown setting(s): ${unknown.join(', ')}. Known: ${Object.keys(DEFAULTS).join(', ')}`);
   if (!THEMES.includes(cfg.theme) && !lookPath(cfg.theme)) fail(`theme must be one of ${THEMES.join(', ')} or a relative path to a .json look file, not "${cfg.theme}"`);
@@ -263,6 +309,7 @@ function settingsOf(raw, input, dir) {
     else if (spec.defaults) cfg.voice = { ...v, ...Object.fromEntries(Object.entries(spec.defaults).map(([k, d]) => [k, v[k] ?? d])) };
   }
   if (typeof cfg.voice === 'string') {
+    if (!LANGUAGES[cfg.language]) noKokoro();
     if (!Object.hasOwn(VOICES, cfg.voice)) fail(`voice "${cfg.voice}" does not exist. Run "explainroo voices" for the list.`);
     if (voiceLanguage(cfg.voice) !== cfg.language) fail(`voice "${cfg.voice}" does not speak ${cfg.language}. Use ${Object.keys(VOICES).filter(id => voiceLanguage(id) === cfg.language).join(', ')}.`);
   } else if (!cfg.voice || typeof cfg.voice !== 'object') fail('voice must be a Kokoro id or an object with provider');
@@ -491,6 +538,12 @@ export function loadProject(arg, overrides = {}) {
   }
   const language = lang ?? main;
   const config = normalizeConfig(raw, dir, { language, overrides: settings });
+  // A version in a language without a Kokoro voice, like German, has no default
+  // voice to fall back on. So every command stops until it has one, also when it
+  // only has its script.<lang>.md.
+  for (const code of languages) {
+    if (code !== language && !LANGUAGES[code]) normalizeConfig(raw, dir, { language: code });
+  }
   for (const f of [...config.fonts.map((x) => x.src), ...(config.brand?.logo ? [config.brand.logo] : []), ...(config.music?.src ? [config.music.src] : [])]) {
     if (!fs.existsSync(path.join(dir, f))) fail(`${f} is listed in video.json but the file is missing`);
   }

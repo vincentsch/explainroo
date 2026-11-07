@@ -87,16 +87,16 @@ test('script.<lang>.md adds a language that builds into build/<lang>/ and out/<l
 test('a language with no script is an error that lists the languages the video has', (t) => {
   const dir = project(t, { 'script.es.md': SPANISH });
   assert.throws(() => loadProject(dir, { lang: 'fr' }), (e) => e instanceof ProjectError && /no fr version/.test(e.message) && /script\.fr\.md/.test(e.message) && /en, es/.test(e.message));
-  assert.throws(() => loadProject(dir, { lang: 'de' }), (e) => e instanceof ProjectError && /--lang must be one of en, es, fr, it, pt-br, hi, ja or zh/.test(e.message));
+  assert.throws(() => loadProject(dir, { lang: 'nl' }), (e) => e instanceof ProjectError && /--lang must be one of en, es, fr, it, pt-br, hi, ja, zh or de/.test(e.message));
 });
 
 test('scripts that are not a language of the video are left alone, and check says so', (t) => {
-  const dir = project(t, { 'script.en.md': 'old notes', 'script.de.md': 'Notizen', 'script.old.md': 'old' });
+  const dir = project(t, { 'script.en.md': 'old notes', 'script.nl.md': 'Aantekeningen', 'script.old.md': 'old' });
   const p = loadProject(dir);
   assert.deepEqual(p.languages, ['en']);
   assert.deepEqual(languageIssues(p).map((i) => i.message).sort(), [
-    'script.de.md is not used: explainroo speaks en, es, fr, it, pt-br, hi, ja or zh, and not de',
     'script.en.md is not used: en is the main language, and its narration is script.md',
+    'script.nl.md is not used: explainroo speaks en, es, fr, it, pt-br, hi, ja, zh or de, and not nl',
   ]);
 });
 
@@ -126,7 +126,7 @@ test('languages holds settings for one language, with the same checks as the mai
   assert.equal(normalizeConfig({ voice: { provider: 'elevenlabs', id: 'abc' } }, '.', { language: 'it' }).voice, 'if_sara');
   for (const [languages, message] of [
     [[], /languages must be an object/],
-    [{ de: {} }, /languages: "de" is not a language explainroo speaks/],
+    [{ nl: {} }, /languages: "nl" is not a language explainroo speaks/],
     [{ en: { voice: 'af_heart' } }, /en is the main language/],
     [{ es: 'ef_dora' }, /languages\.es must be an object/],
     [{ es: { language: 'fr' } }, /can't be set for one language: language/],

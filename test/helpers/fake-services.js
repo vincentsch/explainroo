@@ -77,6 +77,7 @@ export const CARTESIA_VOICES = [
   { id: 'warm-teacher', name: 'Warm Teacher', gender: 'masculine', accents: [{ accent: 'gb', locale: 'en-GB', is_native: true }], is_owner: false },
   { id: 'voz-clara', name: 'Voz Clara', gender: 'feminine', accents: [{ accent: 'es', locale: 'es-ES', is_native: true }], is_owner: false },
   { id: 'my-own-voice', name: 'My Own Voice', gender: null, accents: [{ accent: 'br', locale: 'pt-BR', is_native: true }], is_owner: true },
+  { id: 'klare-stimme', name: 'Klare Stimme', gender: 'feminine', accents: [{ accent: 'de', locale: 'de-DE', is_native: true }], is_owner: false },
 ];
 
 function cartesiaAllowed(req, res) {

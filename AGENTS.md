@@ -36,10 +36,11 @@ language works yet, with any voice.
 | English | `en` | nothing more |
 | Spanish, French, Italian, Brazilian Portuguese, Hindi | `es`, `fr`, `it`, `pt-br`, `hi` | the espeak-ng program |
 | Japanese, Mandarin Chinese | `ja`, `zh` | Python 3 with misaki |
+| German | `de` | Kokoro has no German voice |
 
-ElevenLabs, Cartesia and a recording of the user's voice work in the same
-languages, and they need neither program. `explainroo docs languages` has the
-details.
+ElevenLabs, Cartesia and a recording of the user's voice work in all of these
+languages, and they need neither program. German works only with one of these
+three. `explainroo docs languages` has the details.
 
 **Keys, money and data.** These services need a key or a sign-in. They run on
 the user's own account, and only when you run a command that uses them.
@@ -122,7 +123,8 @@ user the plan. Add `--yes` only after the user said yes.
 3. **Write `script.md`.** The narration comes first, because it sets the
    timing for everything else (`explainroo docs writing`).
 4. **Make the voice** with `explainroo voice videos/<name>`. Fix a word the
-   speech check did not confirm with `{shown|spoken}`, and run it again
+   speech check did not confirm with `{shown|spoken}`, and run it again. When
+   the word already has one, try another spoken spelling
    (`explainroo docs voices`).
 5. **Plan the pictures.** Decide what appears on each cue, what leaves and
    what stays in place (`explainroo docs pictures`).

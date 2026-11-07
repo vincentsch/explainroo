@@ -3,6 +3,7 @@
 import { createRequire } from 'node:module';
 import { normWord } from './script.js';
 import { japaneseReadings } from './phonemes.js';
+import { isScale, readGerman, saysOne } from './german.js';
 
 const require = createRequire(import.meta.url);
 
@@ -126,8 +127,10 @@ function ordinalWords(n) {
 // Turns one written word into the tokens a voice would say, in canonical form.
 // Whisper writes "$1,050" and "5%" where the voice said "one thousand and
 // fifty dollars" and "five percent", and "example.com" or "1.1.1.1" where it
-// said words joined by "dot". Both sides are expanded the same way.
+// said words joined by "dot". Both sides are expanded the same way. German has
+// rules of its own in german.js, which read a word together with its neighbours.
 export function expand(word, language = 'en') {
+  if (language === 'de') return readGerman([word], normWord)[0];
   if (language !== 'en') {
     const n = normWord(word).replace(/[०-९]/g, d => String(d.charCodeAt(0) - 0x0966));
     const digits = /^[\p{N}%$€£+.]+$/u.test(n) ? n.replace(/[^\p{N}]/gu, '') : '';
@@ -189,36 +192,67 @@ export function similar(a, b) {
   return editDistance(a, b) / len <= 0.34;
 }
 
+// A written or heard word without the punctuation around it, for messages.
+export function bareWord(text) {
+  return String(text).trim().replace(/^[^\p{L}\p{N}$€£]+|[^\p{L}\p{N}%$€£]+$/gu, '');
+}
+
+// The words that only nearly matched, as [{ word, heard }]. `words` are the
+// script words that `aligned` came from, with their shown text in `display`.
+export function nearList(words, aligned) {
+  return aligned.flatMap((a, k) => (a.nearly ? [{ word: bareWord(words[k].display ?? words[k].spoken), heard: a.heard ?? '' }] : []));
+}
+
 // words: [{ spoken, display? }] in order. heard: [{ text, start, end }] from Whisper.
 // Returns per-word { start, end, matched } and the share of spoken tokens matched.
 // A word also counts as heard when Whisper writes its shown form, so
 // {SQL|sequel} or {async|a sink} is confirmed by "SQL" or "async".
+// A confirmed word that `similar` had to accept, like "Soundroo" heard as
+// "Soundru", also has `nearly: true`. Such a word, and a word that wasn't
+// confirmed, has what was heard in its place in `heard`. Neither changes a time
+// or the rate: the alignment takes the same path as without them.
 export function alignWords(words, heard, duration, language = 'en') {
   const cjk = ['ja', 'zh'].includes(language);
   const chars = word => normWord(word).normalize('NFC');
   const partsOf = word => cjk ? Array.from(language === 'zh' ? simplified(chars(word)) : chars(word)) : expand(word, language);
-  const same = (a, b) => a === b || (language === 'zh' && soundsAlike(a, b));
-  const matches = (a, b) => cjk ? same(a, b) : language !== 'en' && (/\p{N}/u.test(a) || /\p{N}/u.test(b)) ? a === b : similar(a, b);
+  // The tokens of each word in a list. German reads a word with its neighbours,
+  // like the two halves of "z. B.".
+  const read = list => language === 'de' ? readGerman(list, normWord) : list.map(partsOf);
+  // 2 when a token is the same as what was heard, 1 when `similar` had to accept
+  // it, and 0 when it doesn't match.
+  const compare = (a, b) => {
+    if (!a || !b) return 0;
+    if (a === b) return 2;
+    if (cjk) return language === 'zh' && soundsAlike(a, b) ? 2 : 0;
+    if (language !== 'en' && (/\p{N}/u.test(a) || /\p{N}/u.test(b))) return language === 'de' && saysOne(a, b) ? 2 : 0;
+    // German large numbers like "Millionen" are numbers too.
+    if (language === 'de' && (isScale(a) || isScale(b))) return 0;
+    return similar(a, b) ? 1 : 0;
+  };
   const tokens = [];
+  const pieces = words.map((w) => String(w.spoken).split(/\s+/));
+  const spoken = read(pieces.flat());
+  let at = 0;
   words.forEach((w, wi) => {
-    const parts = String(w.spoken).split(/\s+/).flatMap(partsOf);
+    const parts = spoken.slice(at, at += pieces[wi].length).flat();
     (parts.length ? parts : ['']).forEach((p, k) => {
       // "and" inside a spoken number ("one thousand and fifty") is optional.
       const prev = tokens[tokens.length - 1];
       const optional = language === 'en' && p === 'and' && prev && isNumberToken(prev.norm);
       tokens.push({ wi, norm: p, first: k === 0, last: k === parts.length - 1 || !parts.length, optional });
     });
-    const shown = w.display === undefined ? '' : String(w.display).split(/\s+/).flatMap(partsOf).join('');
+    const shown = w.display === undefined ? '' : read(String(w.display).split(/\s+/)).flat().join('');
     const first = tokens.findIndex((t) => t.wi === wi);
     if (shown && shown !== parts.join('')) tokens[first].shown = shown;
   });
   // Whisper splits numbers into pieces ("$1", ",000" and "5", "%" and "1",
-  // ".1"). Join them back before comparing.
+  // ".1", and in German "19", "-hundert"). Join them back before comparing.
   const joined = [];
   for (const h of heard) {
     const prev = joined[joined.length - 1];
     const t = String(h.text).trim();
-    const glue = prev && ((/^[,.]\d/.test(t) && /\d$/.test(prev.text)) || (/^%/.test(t) && /\d$/.test(prev.text)) || (/^\d/.test(t) && /^[$€£]$/.test(prev.text)));
+    const glue = prev && ((/^[,.]\d/.test(t) && /\d$/.test(prev.text)) || (/^%/.test(t) && /\d$/.test(prev.text)) || (/^\d/.test(t) && /^[$€£]$/.test(prev.text))
+      || (language === 'de' && /^-(hundert|tausend)/i.test(t) && /\d$/.test(prev.text)));
     if (glue) {
       prev.text += t;
       prev.end = h.end;
@@ -227,20 +261,23 @@ export function alignWords(words, heard, duration, language = 'en') {
     }
   }
   const H = [];
-  for (const h of joined) {
-    const parts = partsOf(h.text);
+  read(joined.map((h) => h.text)).forEach((parts, source) => {
+    const h = joined[source];
     const step = (h.end - h.start) / Math.max(1, parts.length);
-    parts.forEach((p, k) => H.push({ text: p, norm: p, start: h.start + k * step, end: h.start + (k + 1) * step }));
-  }
+    parts.forEach((p, k) => H.push({ text: p, norm: p, start: h.start + k * step, end: h.start + (k + 1) * step, source }));
+  });
   const T = tokens.length;
   const N = H.length;
 
   // Dynamic programming over (token i, heard j). Moves:
   //  match 1:1, skip a token, skip a heard word, a whole multi-token word to one
   //  heard word ("D N S" vs "DNS"), and one token to two heard words.
+  // `near` notes a match that only `similar` accepted. It never changes a cost,
+  // so the path is the same with or without it.
   const INF = 1e9;
   const cost = Array.from({ length: T + 1 }, () => new Float64Array(N + 1).fill(INF));
   const move = Array.from({ length: T + 1 }, () => new Int8Array(N + 1));
+  const near = Array.from({ length: T + 1 }, () => new Uint8Array(N + 1));
   const shownLength = cjk ? Array.from({ length: T + 1 }, () => new Int32Array(N + 1)) : null;
   cost[0][0] = 0;
   const groupEnd = new Int32Array(T);
@@ -256,28 +293,35 @@ export function alignWords(words, heard, duration, language = 'en') {
       if (i < T && c + (tokens[i].optional ? 0 : 1) < cost[i + 1][j]) { cost[i + 1][j] = c + (tokens[i].optional ? 0 : 1); move[i + 1][j] = 2; }
       if (j < N && c + 1 < cost[i][j + 1]) { cost[i][j + 1] = c + 1; move[i][j + 1] = 3; }
       if (i < T && j < N) {
-        const ok = matches(tokens[i].norm, H[j].norm);
-        const v = c + (ok ? 0 : 1.6);
-        if (v < cost[i + 1][j + 1]) { cost[i + 1][j + 1] = v; move[i + 1][j + 1] = ok ? 1 : 4; }
+        const how = compare(tokens[i].norm, H[j].norm);
+        const v = c + (how ? 0 : 1.6);
+        if (v < cost[i + 1][j + 1]) { cost[i + 1][j + 1] = v; move[i + 1][j + 1] = how ? 1 : 4; near[i + 1][j + 1] = how === 1 ? 1 : 0; }
       }
       if (i < T && j < N && tokens[i].first && (groupEnd[i] > i || tokens[i].shown)) {
         const e = groupEnd[i];
-        const joined = tokens.slice(i, e + 1).map((t) => t.norm).join('');
-        const ok = (groupEnd[i] > i && matches(joined, H[j].norm)) || (tokens[i].shown && matches(tokens[i].shown, H[j].norm));
-        if (ok && c < cost[e + 1][j + 1]) { cost[e + 1][j + 1] = c; move[e + 1][j + 1] = 5; }
+        const group = tokens.slice(i, e + 1).map((t) => t.norm).join('');
+        const how = Math.max(groupEnd[i] > i ? compare(group, H[j].norm) : 0, tokens[i].shown ? compare(tokens[i].shown, H[j].norm) : 0);
+        if (how && c < cost[e + 1][j + 1]) { cost[e + 1][j + 1] = c; move[e + 1][j + 1] = 5; near[e + 1][j + 1] = how === 1 ? 1 : 0; }
+        // The shown form heard as it is, like "SQL" for {SQL|sequel}, is exact also
+        // when the spoken form nearly matched the same word first.
+        else if (how === 2 && e === i && move[e + 1][j + 1] === 1 && cost[e + 1][j + 1] === c) near[e + 1][j + 1] = 0;
       }
       if (cjk && i < T && tokens[i].first && tokens[i].shown) {
         const length = Array.from(tokens[i].shown).length;
         const e = groupEnd[i];
-        if (j + length <= N && same(tokens[i].shown, H.slice(j, j + length).map(h => h.norm).join('')) && c < cost[e + 1][j + length]) {
+        if (j + length <= N && compare(tokens[i].shown, H.slice(j, j + length).map(h => h.norm).join('')) && c < cost[e + 1][j + length]) {
           cost[e + 1][j + length] = c;
           move[e + 1][j + length] = 7;
           shownLength[e + 1][j + length] = length;
         }
       }
-      if (i < T && j + 1 < N && matches(tokens[i].norm, H[j].norm + H[j + 1].norm) && c < cost[i + 1][j + 2]) {
-        cost[i + 1][j + 2] = c;
-        move[i + 1][j + 2] = 6;
+      if (i < T && j + 1 < N && c < cost[i + 1][j + 2]) {
+        const how = compare(tokens[i].norm, H[j].norm + H[j + 1].norm);
+        if (how) {
+          cost[i + 1][j + 2] = c;
+          move[i + 1][j + 2] = 6;
+          near[i + 1][j + 2] = how === 1 ? 1 : 0;
+        }
       }
     }
   }
@@ -285,25 +329,33 @@ export function alignWords(words, heard, duration, language = 'en') {
   const spans = words.map(() => null);
   const hits = words.map(() => 0);
   const need = words.map(() => 0);
+  // The heard words that each word was paired with, and whether one only nearly matched.
+  const sources = words.map(() => new Set());
+  const nearly = words.map(() => false);
   for (const t of tokens) if (!t.optional) need[t.wi]++;
   const add = (wi, s, e, n = 1) => {
     hits[wi] += n;
     const cur = spans[wi];
     spans[wi] = cur ? { start: Math.min(cur.start, s), end: Math.max(cur.end, e) } : { start: s, end: e };
   };
+  const pair = (wi, from, to, isNear = false) => {
+    for (let k = from; k <= to; k++) sources[wi].add(H[k].source);
+    if (isNear) nearly[wi] = true;
+  };
   let matched = 0;
   let i = T;
   let j = N;
   while (i > 0 || j > 0) {
     const m = move[i][j];
-    if (m === 1) { add(tokens[i - 1].wi, H[j - 1].start, H[j - 1].end); matched++; i--; j--; }
-    else if (m === 4) { i--; j--; }
+    if (m === 1) { add(tokens[i - 1].wi, H[j - 1].start, H[j - 1].end); pair(tokens[i - 1].wi, j - 1, j - 1, near[i][j]); matched++; i--; j--; }
+    else if (m === 4) { pair(tokens[i - 1].wi, j - 1, j - 1); i--; j--; }
     else if (m === 2) { i--; }
     else if (m === 3) { j--; }
     else if (m === 5) {
       let s = i - 1;
       while (s > 0 && tokens[s - 1].wi === tokens[i - 1].wi) s--;
       add(tokens[i - 1].wi, H[j - 1].start, H[j - 1].end, i - s);
+      pair(tokens[i - 1].wi, j - 1, j - 1, near[i][j]);
       matched += i - s;
       i = s;
       j--;
@@ -312,10 +364,11 @@ export function alignWords(words, heard, duration, language = 'en') {
       let s = i - 1;
       while (s > 0 && tokens[s - 1].wi === tokens[i - 1].wi) s--;
       add(tokens[i - 1].wi, H[j - length].start, H[j - 1].end, i - s);
+      pair(tokens[i - 1].wi, j - length, j - 1);
       matched += i - s;
       i = s;
       j -= length;
-    } else if (m === 6) { add(tokens[i - 1].wi, H[j - 2].start, H[j - 1].end); matched++; i--; j -= 2; }
+    } else if (m === 6) { add(tokens[i - 1].wi, H[j - 2].start, H[j - 1].end); pair(tokens[i - 1].wi, j - 2, j - 1, near[i][j]); matched++; i--; j -= 2; }
     else break;
   }
 
@@ -352,6 +405,33 @@ export function alignWords(words, heard, duration, language = 'en') {
     if (out[q].start < out[q - 1].start) out[q].start = out[q - 1].start;
     if (out[q].end < out[q].start) out[q].end = out[q].start + 0.05;
   }
+  // A path that cost the same may have matched a word nearly where it was heard
+  // exactly, like "But" to "but" and part of "2000". A word whose own tokens, or
+  // shown form, are a run of the heard tokens it was paired with is exact.
+  const exactAmong = (wi) => {
+    const own = tokens.filter((t) => t.wi === wi);
+    const forms = [own.map((t) => t.norm).join(''), own.filter((t) => !t.optional).map((t) => t.norm).join(''), own[0].shown ?? ''].filter(Boolean);
+    const from = Math.min(...sources[wi]);
+    const to = Math.max(...sources[wi]);
+    const run = H.filter((h) => h.source >= from && h.source <= to).map((h) => h.norm);
+    for (let a = 0; a < run.length; a++) {
+      let said = '';
+      for (let b = a; b < run.length; b++) {
+        said += run[b];
+        if (forms.some((form) => compare(form, said) === 2)) return true;
+      }
+    }
+    return false;
+  };
+  words.forEach((w, wi) => {
+    if (out[wi].matched && nearly[wi] && exactAmong(wi)) nearly[wi] = false;
+  });
+  out.forEach((word, wi) => {
+    if (word.matched && !nearly[wi]) return;
+    const said = [...sources[wi]].sort((a, b) => a - b).map((s) => bareWord(joined[s].text)).filter(Boolean).join(' ');
+    if (word.matched) word.nearly = true;
+    if (said) word.heard = said;
+  });
   const counted = tokens.filter((t) => !t.optional).length;
   return { words: out, matchRate: counted ? Math.min(1, matched / counted) : 1 };
 }

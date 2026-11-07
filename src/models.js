@@ -10,13 +10,15 @@ export const ASR_MODEL = 'onnx-community/whisper-base.en_timestamped';
 export const MULTILINGUAL_ASR_MODEL = 'onnx-community/whisper-small_timestamped';
 export const TTS_SAMPLE_RATE = 24000;
 
+// Each language with its default Kokoro voice. Kokoro has no German voice, so
+// German has none, and a German video speaks with a paid voice or a recording.
 export const LANGUAGES = {
-  en: 'af_heart', es: 'ef_dora', fr: 'ff_siwis', it: 'if_sara', 'pt-br': 'pf_dora', hi: 'hf_alpha', ja: 'jf_alpha', zh: 'zf_xiaobei',
+  en: 'af_heart', es: 'ef_dora', fr: 'ff_siwis', it: 'if_sara', 'pt-br': 'pf_dora', hi: 'hf_alpha', ja: 'jf_alpha', zh: 'zf_xiaobei', de: null,
 };
 
 // The languages by name, for messages.
 export const LANGUAGE_NAMES = {
-  en: 'English', es: 'Spanish', fr: 'French', it: 'Italian', 'pt-br': 'Brazilian Portuguese', hi: 'Hindi', ja: 'Japanese', zh: 'Chinese',
+  en: 'English', es: 'Spanish', fr: 'French', it: 'Italian', 'pt-br': 'Brazilian Portuguese', hi: 'Hindi', ja: 'Japanese', zh: 'Chinese', de: 'German',
 };
 
 export function voiceLanguage(id) {

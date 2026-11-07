@@ -1,19 +1,18 @@
 // explainroo command line.
 import fs from 'node:fs';
 import path from 'node:path';
-import { loadProject, ProjectError, THEMES, MUSIC_STYLES, FORMATS, resolveSize, normalizeConfig, scriptName } from './project.js';
+import { loadProject, ProjectError, THEMES, MUSIC_STYLES, FORMATS, resolveSize, normalizeConfig, scriptName, checkLanguage, noKokoroVoice } from './project.js';
 import { layoutAreas } from '../engine/layout.js';
 import { ScriptError } from './script.js';
 import { prepare, makeState, VERSION } from './pipeline.js';
 import { render } from './render.js';
 import { exportPlayer } from './export.js';
-import { check, stills, sheet, verify } from './qa.js';
+import { check, formatVerify, stills, sheet, verify } from './qa.js';
 import { startServer, ROOT } from './server.js';
 import { VOICES, LANGUAGES, voiceLanguage, loadTTS, TTS_SAMPLE_RATE } from './models.js';
 import { phonemize, generateSpeech } from './phonemes.js';
 import { writeWav } from './wav.js';
 import { doctor, formatDoctor } from './doctor.js';
-import { dbtp } from './ffmpeg.js';
 import { generateImage, jobRequest, imageLog, imageSpend, oldImageLog, IMAGE_MODELS } from './images.js';
 import { buyClip, clipJobRequest, clipRequest, formatClip } from './ai-clips.js';
 import { capture } from './capture.js';
@@ -23,7 +22,7 @@ import { hideSecrets } from './errors.js';
 import { formatHistory, historyReport, selfCommand } from './history.js';
 import { boughtCharacters, speechConnector } from './paid-speech.js';
 import { formatServices, findService, needsKey, SERVICES, STEPS } from './services.js';
-import { speechKeys } from './voice.js';
+import { narrationTime, speechKeys } from './voice.js';
 import { findEnv } from './env.js';
 import { formatPackage, packageVideo } from './package.js';
 import { formatShare, share } from './share.js';
@@ -37,7 +36,8 @@ const HELP = `explainroo ${VERSION}: narrated explainer videos from code
 Usage: explainroo <command> [project] [options]
 
 Make a video
-  init <dir>            create a project (--theme, --size, --pace, --language en|es|fr|it|pt-br|hi|ja|zh, --voice, --title)
+  init <dir>            create a project (--theme, --size, --pace, --language en|es|fr|it|pt-br|hi|ja|zh, --voice, --title).
+                        German works with a paid voice or a recording, see "explainroo docs languages"
   voice [project]       make the narration and word timings (--force makes every scene again,
                         --new buys again only the paid sentences with no good saved answer)
   preview [project]     live preview in your browser, reloads on save (--port, --size, --no-watermark)
@@ -170,18 +170,21 @@ export async function main(argv) {
         const before = paid ? boughtCharacters(project.dir) : 0;
         const { voices, timeline } = await prepare(project, { log, notice, force: !!flags.force, fresh: !!flags.new });
         const characters = paid ? boughtCharacters(project.dir) - before : 0;
+        const recorded = project.config.voice.provider === 'recording';
         const rows = project.script.scenes.map((s) => {
           const v = voices[s.id];
-          return { scene: s.id, voice: v.duration, confirmed: v.matchRate, unconfirmed: v.unmatched, marks: v.marks,
-            ...(project.config.voice.provider === 'recording' && v.matchRate < 0.85 ? { message: `The recording does not match ${scriptName(project)} here. Make ${scriptName(project)} say what was actually said.` } : {}) };
+          return { scene: s.id, voice: v.duration, narration: narrationTime(v), confirmed: v.matchRate, unconfirmed: v.unmatched, marks: v.marks,
+            ...(recorded && v.matchRate < 0.85 ? { message: `The recording does not match ${scriptName(project)} here. Make ${scriptName(project)} say what was actually said.` } : {}) };
         });
-        const mismatch = project.config.voice.provider === 'recording' && rows.some((r) => r.confirmed < 0.85)
+        // How long the voice speaks, and the narration with its pauses. A recording has its pauses in it.
+        const length = (r) => (recorded ? `${r.voice.toFixed(1).padStart(5)} s of the recording` : `${r.narration.toFixed(1).padStart(5)} s of narration (${r.voice.toFixed(1)} s with pauses)`);
+        const mismatch = recorded && rows.some((r) => r.confirmed < 0.85)
           ? `\nThe recording does not match ${scriptName(project)} in those scenes. Make ${scriptName(project)} say what was actually said.` : '';
         const wanted = project.config.speed * project.config.pace;
         const speed = paid ? paid.speed(wanted) : wanted;
         const speedNote = paid && speed !== wanted ? `\n${paid.name} speed ${wanted.toFixed(2)} is outside ${paid.speedRange.join(' to ')}; using ${speed}.` : '';
         const usage = paid ? `\n${paid.name}: ${characters} characters used` : '';
-        print(rows.map((r) => `${r.scene.padEnd(18)} ${r.voice.toFixed(1).padStart(5)}s  ${Math.round(r.confirmed * 100)}% confirmed${r.unconfirmed.length ? '  unconfirmed: ' + r.unconfirmed.slice(0, 6).join(', ') : ''}`).join('\n') + `\ntotal ${timeline.duration.toFixed(1)}s` + mismatch + usage + speedNote, { scenes: rows, duration: timeline.duration, ...(paid ? { characters, speed, ...(speed !== wanted ? { requested_speed: wanted } : {}) } : {}) });
+        print(rows.map((r) => `${r.scene.padEnd(18)} ${length(r)}  ${Math.round(r.confirmed * 100)}% confirmed${r.unconfirmed.length ? '  unconfirmed: ' + r.unconfirmed.slice(0, 6).join(', ') : ''}`).join('\n') + `\ntotal ${timeline.duration.toFixed(1)}s` + mismatch + usage + speedNote, { scenes: rows, duration: timeline.duration, ...(paid ? { characters, speed, ...(speed !== wanted ? { requested_speed: wanted } : {}) } : {}) });
         return 0;
       }
       case 'preview': return await preview(pos[0], flags, log);
@@ -248,12 +251,7 @@ export async function main(argv) {
       case 'verify': {
         const project = loadProject(pos[0], langOverride(flags));
         const r = await verify(project, { file: flags.file, log });
-        const lines = [
-          `${r.file}: ${r.duration}s, ${r.video ? `${r.video.width}x${r.video.height}` : 'no video'}, loudness ${r.loudness?.integrated ?? '?'} LUFS, true peak ${dbtp(r.loudness?.truePeak)}`,
-          r.speech ? `narration understood: ${Math.round(r.speech.matchRate * 100)}%` : '',
-          ...r.issues.map((i) => `${i.level.toUpperCase().padEnd(5)} ${i.message}`),
-        ].filter(Boolean);
-        print(lines.join('\n'), r);
+        print(formatVerify(r), r);
         return r.issues.some((i) => i.level === 'error') ? 1 : 0;
       }
       case 'image': {
@@ -302,11 +300,12 @@ export async function main(argv) {
       }
       case 'voices': {
         const language = textFlag(flags, 'language');
-        if (language !== undefined) normalizeConfig({ language });
+        if (language !== undefined) checkLanguage(language);
         const provider = textFlag(flags, 'provider');
         if (provider !== undefined && provider !== 'kokoro' && !LISTS_VOICES.some((c) => c.id === provider)) throw new ProjectError(`--provider must be kokoro, ${LISTS_VOICES.map((c) => c.id).join(' or ')}`);
         // A flag named after the provider is the older way to say --provider.
         const paid = provider !== undefined ? LISTS_VOICES.find((c) => c.id === provider) : LISTS_VOICES.find((c) => flags[c.id]);
+        if (!paid && language !== undefined && !LANGUAGES[language]) throw new ProjectError(noKokoroVoice(language, 'voices'));
         if (paid) {
           const voices = await paid.voices(path.resolve(pos[0] || '.'), { language });
           print(voices.map((v) => `${v.name}  ${v.id}  ${Object.entries(v.labels).map(([k, x]) => `${k}: ${x}`).join(', ')}`).join('\n'), { voices });
@@ -437,7 +436,9 @@ function init(dir, flags, print) {
   const theme = textFlag(flags, 'theme') || 'paper';
   if (!THEMES.includes(theme)) throw new ProjectError(`theme must be one of ${THEMES.join(', ')}`);
   const language = textFlag(flags, 'language') ?? 'en';
-  normalizeConfig({ language });
+  checkLanguage(language);
+  // init sets a Kokoro voice, so it can't set up a language that Kokoro doesn't speak.
+  if (!LANGUAGES[language]) throw new ProjectError(noKokoroVoice(language, 'init'));
   const voice = textFlag(flags, 'voice') || LANGUAGES[language];
   if (!VOICES[voice]) throw new ProjectError(`voice "${voice}" does not exist. Run "explainroo voices".`);
   const title = textFlag(flags, 'title') || path.basename(target).replace(/[-_]+/g, ' ').replace(/^\w/, (c) => c.toUpperCase());

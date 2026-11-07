@@ -6,6 +6,7 @@
 //   and {DNS|D N S} shows "DNS" on screen but speaks "D N S". *Stars* mark
 //   keywords for bold captions, and nobody hears them.
 //   > director notes and <!-- comments --> are ignored.
+import { periodGoesOn } from './german.js';
 
 const ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 const ATTR_NUMBERS = new Set(['hold', 'min', 'lead', 'gap', 'max']);
@@ -297,7 +298,9 @@ function parseLines(source, language) {
 // which keeps every request well under the model's context limit and gives
 // exact control over the silence between sentences. With `chunks: 'pauses'` a
 // chunk runs from one pause or paragraph to the next, for a voice that reads
-// several sentences in one go and pauses between them by itself.
+// several sentences in one go and pauses between them by itself. In German, a
+// period of an ordinal or a short form inside a sentence, like "am 3. Mai" or
+// "z. B.", doesn't end it.
 export function speechChunks(units, { sentenceGap = 0.3, paragraphGap = 0.55, pace = 1, language = 'en', chunks: by = 'sentences' } = {}) {
   const cjk = ['ja', 'zh'].includes(language);
   const sentenceEnd = cjk ? /[.!?…।。！？]["'’)\]」』）]*$/ : /[.!?…।]["'’)\]]*$/;
@@ -308,6 +311,15 @@ export function speechChunks(units, { sentenceGap = 0.3, paragraphGap = 0.55, pa
     if (cur && cur.words.length) chunks.push(cur);
     cur = null;
   };
+  // The next word that is spoken without a pause, past any [#marker].
+  const after = (index) => {
+    for (let k = index + 1; k < units.length; k++) {
+      if (units[k].type === 'word') return units[k].spoken;
+      if (units[k].type === 'pause') return null;
+    }
+    return null;
+  };
+  const goesOn = (u, index) => language === 'de' && periodGoesOn(u.spoken, cur.words.at(-2)?.spoken ?? null, after(index));
   units.forEach((u, index) => {
     if (u.type === 'pause') {
       close();
@@ -321,7 +333,7 @@ export function speechChunks(units, { sentenceGap = 0.3, paragraphGap = 0.55, pa
     }
     cur.text += (cur.words.length && !cjk ? ' ' : '') + u.spoken;
     cur.words.push({ unitIndex: index, display: u.display, spoken: u.spoken });
-    if (by !== 'pauses' && sentenceEnd.test(u.spoken)) {
+    if (by !== 'pauses' && sentenceEnd.test(u.spoken) && !goesOn(u, index)) {
       close();
       gapBefore = sentenceGap / pace;
     }

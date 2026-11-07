@@ -196,7 +196,7 @@ test('connect cartesia tests the key with the free voice list, and voices --prov
 
   const all = await runCli(['voices', '--provider', 'cartesia', '--json'], env);
   assert.equal(all.code, 0, all.text);
-  assert.deepEqual(JSON.parse(all.stdout).voices.map((v) => v.id), ['calm-reader', 'warm-teacher', 'voz-clara', 'my-own-voice']);
+  assert.deepEqual(JSON.parse(all.stdout).voices.map((v) => v.id), ['calm-reader', 'warm-teacher', 'voz-clara', 'my-own-voice', 'klare-stimme']);
   assert.deepEqual(JSON.parse(all.stdout).voices[3], { name: 'My Own Voice', id: 'my-own-voice', labels: { accent: 'pt-BR', owner: 'you' } });
   const spanish = await runCli(['voices', '--provider', 'cartesia', '--language', 'pt-br', '--json'], env);
   assert.deepEqual(JSON.parse(spanish.stdout).voices.map((v) => v.id), ['my-own-voice']);

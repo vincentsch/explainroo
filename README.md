@@ -27,7 +27,7 @@ https://github.com/user-attachments/assets/6dd5dc32-c975-4e0e-8cd4-2ef3ccc11e61
 
 ## News
 
-- **Nov 2026 (draft)**: explainroo 0.5 runs with npx, so you don't have to clone it. It can also use outside services on your own key, like AI video clips and posting through YouTube, Buffer or Blotato.
+- **Nov 2026 (draft)**: explainroo 0.5 runs with npx, so you don't have to clone it. It can also use outside services on your own key, like AI video clips and posting through YouTube, Buffer or Blotato. German narration works with a paid voice or your own recording.
 - **Oct 20, 2026**: [explainroo 0.4.1](https://www.explainroo.com/news/explainroo-0-4-1/) keeps arrow and chart labels whole while a shot holds.
 - **Oct 15, 2026**: [explainroo 0.4](https://www.explainroo.com/news/explainroo-0-4/) films each scene with a camera that follows the narration.
 - **Oct 13, 2026**: [explainroo 0.3](https://www.explainroo.com/news/explainroo-0-3/) narrates in Japanese and Mandarin Chinese, and adds the editorial look.
@@ -65,8 +65,9 @@ explainroo does the rest:
   Brazilian Portuguese, Hindi, Japanese or Mandarin Chinese. It has 54 voices
   and needs no account or API key. You can also use an
   [ElevenLabs](https://elevenlabs.io) or [Cartesia](https://cartesia.ai) voice,
-  or record the narration yourself. One project can make the same video in
-  several languages, with a script for each.
+  or record the narration yourself. German works with one of these, because
+  Kokoro has no German voice. One project can make the same video in several
+  languages, with a script for each.
 - **Timing.** [Whisper](https://github.com/openai/whisper) listens to the
   narration and notes when each word is spoken.
 - **Pictures.** Chrome runs in the background and draws the frames. The lines
@@ -281,6 +282,8 @@ For narration in Spanish, French, Italian, Portuguese or Hindi, also install
 `sudo apt install espeak-ng` or `brew install espeak-ng`. Japanese and
 Chinese need Python with [misaki](https://github.com/hexgrad/misaki) instead,
 as described in [docs/japanese-and-chinese.md](docs/japanese-and-chinese.md).
+German narration needs neither, and it works with ElevenLabs, Cartesia or your
+own recording, as [docs/languages.md](docs/languages.md) describes.
 
 Then ask your agent for a video in any folder, for example "Make a 60 second
 video about how HTTPS keeps a password secret. Use explainroo: run
