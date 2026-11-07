@@ -22,6 +22,7 @@ export function buildTimeline(project, voices) {
   let t = 0;
   script.scenes.forEach((scene, index) => {
     const v = voices[scene.id] || { duration: 0, words: [], marks: {}, chunks: [] };
+    const shown = scene.units.filter((u) => u.type === 'word');
     const a = scene.attrs;
     const lead = v.duration ? (a.lead ?? config.lead) / pace : 0;
     const isLast = index === script.scenes.length - 1;
@@ -40,7 +41,10 @@ export function buildTimeline(project, voices) {
       text: scene.text,
       transition,
       voice: v.duration ? { url: `${voiceDir}/${scene.id}.wav`, start: start + lead, dur: v.duration } : null,
-      words: v.words.map((w) => ({ text: w.text, start: lead + w.start, end: lead + w.end })),
+      // A keyword for bold captions is display information. It always comes from
+      // the current script and never from a voice cache, matched to the cached
+      // words by position, so adding or removing *stars* needs no new voice.
+      words: v.words.map((w, k) => ({ text: w.text, start: lead + w.start, end: lead + w.end, ...(shown[k]?.key && shown[k].display === w.text ? { key: true } : {}) })),
       marks: Object.fromEntries(Object.entries(v.marks || {}).map(([k, m]) => [k, lead + m])),
       attrs: a,
     });

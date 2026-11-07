@@ -2,6 +2,7 @@
 // phrase is shown; words light up as they are spoken.
 import { fontString } from './themes.js';
 import { clamp, ease } from './util.js';
+import { BOLD_CAPTION_SIZE } from './layout.js';
 
 // Some words belong to the word before them, so a phrase or line should not
 // start with one: Japanese particles and verb endings (short hiragana pieces
@@ -125,6 +126,156 @@ export function drawCaptions(ctx, phrases, T, theme, W, H, area = null) {
       ctx.fillStyle = T >= w.start ? theme.caption.active : theme.caption.fg;
       ctx.fillText(w.text, x, y);
       x += widths[i] + space;
+    }
+  });
+  ctx.restore();
+}
+
+// ---------- bold captions ----------
+// "captions": "bold" shows two to four big words at a time, white with a dark
+// outline. Words marked with *stars* in the script, numbers and money get the
+// keyword color. A chunk pops in as its first word is spoken.
+
+export const BOLD_CAPTIONS = { font: 'Inter', weight: 900, fill: '#ffffff', key: '#ffd43b', stroke: '#0b0b10' };
+
+const SENTENCE_END = /[.!?;:…।]["'’”)\]]*$/;
+const COMMA = /[,–—]["'’”)\]]*$/;
+
+// A word with *stars* in the script, a number or an amount of money.
+export function isKeyword(word) {
+  return Boolean(word.key) || /\p{Nd}/u.test(word.text) || /^[$€£¥₹]/.test(word.text);
+}
+
+// Splits timed words into chunks of at most four words and about 18 letters.
+// A chunk never runs across a sentence end or a long pause, a comma after two
+// words or more ends one, and a lonely last word joins the chunk before it.
+// A chunk shows until the next one starts, or a moment after its last word.
+export function boldChunks(words, { maxWords = 4, maxChars = 18, pause = 0.35, hold = 0.45 } = {}) {
+  const runs = [];
+  let run = [];
+  words.forEach((w, i) => {
+    run.push(w);
+    const next = words[i + 1];
+    if (!next || SENTENCE_END.test(w.text) || next.start - w.end > pause) {
+      runs.push(run);
+      run = [];
+    }
+  });
+  const chunks = [];
+  for (const list of runs) {
+    const groups = [];
+    let cur = [];
+    let chars = 0;
+    for (const w of list) {
+      if (cur.length && (cur.length >= maxWords || chars + 1 + w.text.length > maxChars)) {
+        groups.push(cur);
+        cur = [];
+        chars = 0;
+      }
+      cur.push(w);
+      chars += (cur.length > 1 ? 1 : 0) + w.text.length;
+      if (cur.length >= 2 && COMMA.test(w.text)) {
+        groups.push(cur);
+        cur = [];
+        chars = 0;
+      }
+    }
+    if (cur.length) groups.push(cur);
+    const last = groups.length - 1;
+    if (last > 0 && groups[last].length === 1) {
+      if (groups[last - 1].length >= 3) groups[last].unshift(groups[last - 1].pop());
+      else groups[last - 1].push(...groups.pop());
+    }
+    for (const g of groups) chunks.push({ words: g, start: g[0].start, end: g[g.length - 1].end });
+  }
+  chunks.forEach((c, i) => {
+    const next = chunks[i + 1];
+    c.until = next && next.start - c.end < 0.6 ? next.start : c.end + hold;
+    if (next) c.until = Math.min(c.until, next.start);
+  });
+  return chunks;
+}
+
+// The chunks of the whole video, scene by scene. A chunk leaves when the next one comes.
+export function buildChunks(timeline) {
+  const chunks = [];
+  for (const sc of timeline.scenes) chunks.push(...boldChunks(sc.words.map((w) => ({ text: w.text, key: isKeyword(w), start: sc.start + w.start, end: sc.start + w.end }))));
+  chunks.forEach((c, i) => {
+    if (chunks[i + 1]) c.until = Math.min(c.until, chunks[i + 1].start);
+  });
+  return chunks;
+}
+
+// A caption shows a word without a comma or a period after it.
+export function boldText(text) {
+  return String(text).replace(/[,.;:]+(["'’”)\]]*)$/, '$1');
+}
+
+// `area` ({ cx, cy, bottom, maxWidth }) is the band from layoutAreas.
+export function drawBoldCaptions(ctx, chunks, T, W, H, area, style = BOLD_CAPTIONS) {
+  const ch = chunks.find((c) => T >= c.start - 0.05 && T < c.until);
+  if (!ch) return;
+  const words = ch.words.map((w) => ({ key: w.key, show: boldText(w.text) })).filter((w) => w.show);
+  if (!words.length) return;
+  const base = H > W ? BOLD_CAPTION_SIZE.tall : BOLD_CAPTION_SIZE.wide;
+  const maxW = area.maxWidth - 24;
+  const maxH = 2 * (area.bottom - area.cy);
+  ctx.save();
+  const measure = (size) => {
+    ctx.font = `${style.weight} ${size}px "${style.font}", sans-serif`;
+    // The outline takes part of each space, so words get a little more room.
+    const space = ctx.measureText(' ').width + size * 0.14;
+    const widths = words.map((w) => ctx.measureText(w.show).width);
+    return { size, space, widths, total: widths.reduce((a, b) => a + b, 0) + space * (words.length - 1) };
+  };
+  // A long chunk shrinks to fit one line, down to 62% of the size.
+  let m = measure(base);
+  if (m.total > maxW) m = measure(Math.max(base * 0.62, (base * maxW) / m.total));
+  // Still too wide: more lines.
+  const lines = [[]];
+  let lw = 0;
+  words.forEach((w, i) => {
+    const line = lines[lines.length - 1];
+    if (line.length && lw + m.space + m.widths[i] > maxW) {
+      lines.push([i]);
+      lw = m.widths[i];
+    } else {
+      line.push(i);
+      lw += (line.length > 1 ? m.space : 0) + m.widths[i];
+    }
+  });
+  const lineWidth = (l) => l.reduce((a, i, n) => a + m.widths[i] + (n ? m.space : 0), 0);
+  const lh = m.size * 1.08;
+  // A word wider than the band, or a third line, scales the whole chunk down to fit.
+  const fit = Math.min(1, maxW / Math.max(...lines.map(lineWidth)), maxH / (lines.length * lh + m.size * 0.2));
+  const k = clamp((T - (ch.start - 0.05)) / 0.14);
+  const pop = 1 + 2.70158 * Math.pow(k - 1, 3) + 1.70158 * Math.pow(k - 1, 2);
+  const fade = 1 - clamp((T - (ch.until - 0.06)) / 0.06);
+  ctx.globalAlpha = Math.min(1, k * 3) * fade;
+  ctx.translate(area.cx, area.cy);
+  ctx.scale((0.78 + 0.22 * pop) * fit, (0.78 + 0.22 * pop) * fit);
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'left';
+  ctx.lineJoin = 'round';
+  ctx.miterLimit = 2;
+  // Shadows are measured in pixels of the canvas, so they follow the scale.
+  const px = Math.hypot(ctx.getTransform().a, ctx.getTransform().b);
+  const y0 = -((lines.length - 1) * lh) / 2;
+  lines.forEach((l, li) => {
+    let x = -lineWidth(l) / 2;
+    const y = y0 + li * lh;
+    for (const i of l) {
+      // A soft shadow, then a thick outline, then the fill.
+      ctx.shadowColor = 'rgba(0,0,0,0.45)';
+      ctx.shadowBlur = m.size * 0.22 * px;
+      ctx.shadowOffsetY = m.size * 0.07 * px;
+      ctx.strokeStyle = style.stroke;
+      ctx.lineWidth = m.size * 0.2;
+      ctx.strokeText(words[i].show, x, y);
+      ctx.shadowColor = 'transparent';
+      ctx.fillStyle = words[i].key ? style.key : style.fill;
+      ctx.fillText(words[i].show, x, y);
+      x += m.widths[i] + m.space;
     }
   });
   ctx.restore();

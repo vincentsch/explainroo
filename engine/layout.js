@@ -7,13 +7,19 @@
 // `s.safe` never sits under a caption.
 const LINES = 2;
 
+// Bold captions ("captions": "bold") are one line of big words, in a band of
+// their own. A chunk too wide for one line shrinks first, and then fits in two
+// lines inside the same band.
+export const BOLD_CAPTION_SIZE = { tall: 74, wide: 58 };
+
 export function layoutAreas(config, W, H) {
   const m = Math.round(Math.min(W, H) * 0.07);
   const f = config.safe;
   const wmSize = Math.round(Math.min(W, H) * 0.028);
   const wmBox = Math.round(wmSize * 1.6);
+  const bold = config.captions === 'bold';
   const capSize = H > W ? 58 : 44;
-  const capBoxH = Math.round(capSize * 1.3 * LINES + capSize * 0.55);
+  const capBoxH = bold ? Math.round((H > W ? BOLD_CAPTION_SIZE.tall : BOLD_CAPTION_SIZE.wide) * 1.3 + 20) : Math.round(capSize * 1.3 * LINES + capSize * 0.55);
 
   let left;
   let right;
@@ -30,7 +36,7 @@ export function layoutAreas(config, W, H) {
     app = { left, top: appTop, right, bottom: appBottom };
     top = config.watermark ? appTop + wmBox + 16 : appTop;
     bottom = appBottom;
-    if (config.captions) captions = { cx: (left + right) / 2, bottom: appBottom - 10, maxWidth: right - left };
+    if (config.captions) captions = { cx: (left + right) / 2, bottom: appBottom - (bold ? 24 : 10), maxWidth: right - left };
   } else {
     left = m;
     right = W - m;
@@ -49,6 +55,8 @@ export function layoutAreas(config, W, H) {
     }
   }
 
+  // Bold captions sit in the middle of their band.
+  if (captions && bold) captions.cy = captions.bottom - capBoxH / 2;
   let band = null;
   if (captions) {
     band = {

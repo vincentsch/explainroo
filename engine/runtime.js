@@ -5,7 +5,7 @@ import { Stage, SceneError, boundsRecorder } from './stage.js';
 import { getTheme, makeBackground, fontString, colorOf } from './themes.js';
 import { Pen } from './pen.js';
 import { drawTransition } from './transitions.js';
-import { buildPhrases, drawCaptions } from './captions.js';
+import { buildPhrases, drawCaptions, buildChunks, drawBoldCaptions } from './captions.js';
 import { AUDIO_FILE, hashStr, mulberry32, suggest, suggestColor, contrast, opaque, withAlpha, parseColor, rgba } from './util.js';
 import { layoutAreas } from './layout.js';
 import { loadClips, soundURL, ClipFrames } from './clips.js';
@@ -104,7 +104,9 @@ export class Engine {
     canvas.height = 2 * Math.round((this.H * scale) / 2);
     this.ctx = canvas.getContext('2d', { alpha: transparent });
     this.background = transparent ? null : makeBackground(this.theme, this.W, this.H, config.seed);
-    this.phrases = config.captions ? buildPhrases(timeline, this.H > this.W ? 28 : 46) : [];
+    // "bold": two to four big words at a time. Any other true value: phrases.
+    this.phrases = config.captions && config.captions !== 'bold' ? buildPhrases(timeline, this.H > this.W ? 28 : 46) : [];
+    this.chunks = config.captions === 'bold' ? buildChunks(timeline) : [];
     this.buffers = [0, 1].map(() => {
       const c = document.createElement('canvas');
       c.width = canvas.width;
@@ -398,6 +400,10 @@ export class Engine {
     if (captions && this.phrases.length) {
       ctx.setTransform(this.scale, 0, 0, this.scale, 0, 0);
       drawCaptions(ctx, this.phrases, T, this.theme, this.W, this.H, this.captionArea);
+    }
+    if (captions && this.chunks.length) {
+      ctx.setTransform(this.scale, 0, 0, this.scale, 0, 0);
+      drawBoldCaptions(ctx, this.chunks, T, this.W, this.H, this.captionArea);
     }
     if (this.config.watermark) {
       ctx.setTransform(this.scale, 0, 0, this.scale, 0, 0);

@@ -3,7 +3,8 @@
 //   # Title                      (optional, not spoken)
 //   ## scene-id {hold=1 min=4}   (starts a scene; attributes are optional)
 //   Narration text. [#mark] Markers name a moment, [pause 0.6] adds silence,
-//   and {DNS|D N S} shows "DNS" on screen but speaks "D N S".
+//   and {DNS|D N S} shows "DNS" on screen but speaks "D N S". *Stars* mark
+//   keywords for bold captions, and nobody hears them.
 //   > director notes and <!-- comments --> are ignored.
 
 const ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
@@ -121,7 +122,67 @@ export function tokenizeNarration(text, line = 0, language = 'en') {
     } else pushWord(word, word);
     i = j;
   }
-  return units;
+  return markKeywords(units);
+}
+
+const STAR_OPEN = /^([(\[{"'“‘«¿¡「『（]*)\*+(?=[^*])/u;
+const STAR_CLOSE = /([^*])\*+([.,;:!?…।)\]}"'’”»。！？、，；：」』）]*)$/u;
+const hasText = (word) => /[\p{L}\p{N}]/u.test(word);
+
+// *Stars* around a word, or around several words, mark keywords for bold
+// captions. They come off the shown and the spoken word, which gets `key`, so
+// the voice, the captions and the cues never see them. A star that opens or
+// closes nothing stays as it is, like the one in "2 * 3". A star on its own
+// opens the word right after it or closes the word right before it, as it does
+// between Japanese or Chinese words.
+function markKeywords(units) {
+  const openers = new Set();
+  const closers = new Set();
+  let start = null;
+  let opener = null;
+  units.forEach((u, i) => {
+    if (u.type !== 'word') return;
+    if (/^\*+$/.test(u.display)) {
+      const next = units[i + 1];
+      if (start !== null && !u.space) {
+        mark(units, start, i - 1);
+        closers.add(i);
+        if (opener !== null) openers.add(opener);
+        start = null;
+        opener = null;
+      } else if (start === null && next?.type === 'word' && !next.space && hasText(next.display)) {
+        start = i + 1;
+        opener = i;
+      }
+      return;
+    }
+    if (start === null && STAR_OPEN.test(u.display) && hasText(u.display)) start = i;
+    if (start !== null && STAR_CLOSE.test(u.display) && hasText(u.display)) {
+      mark(units, start, i);
+      if (opener !== null) openers.add(opener);
+      start = null;
+      opener = null;
+    }
+  });
+  // A star that opened a word carried the space in front of that word.
+  for (const i of openers) units[i + 1].space = units[i].space;
+  return openers.size || closers.size ? units.filter((u, i) => !openers.has(i) && !closers.has(i)) : units;
+}
+
+function mark(units, from, to) {
+  const strip = (text, first, last) => {
+    let t = text;
+    if (first) t = t.replace(STAR_OPEN, '$1');
+    if (last) t = t.replace(STAR_CLOSE, '$1$2');
+    return t;
+  };
+  for (let i = from; i <= to; i++) {
+    const u = units[i];
+    if (u.type !== 'word') continue;
+    u.display = strip(u.display, i === from, i === to);
+    u.spoken = strip(u.spoken, i === from, i === to);
+    u.key = true;
+  }
 }
 
 // `file` names the script in error messages, like script.es.md.

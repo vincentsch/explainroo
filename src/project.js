@@ -261,7 +261,13 @@ export function normalizeConfig(input, dir = '.', { language: version } = {}) {
   if (!['auto', 'still'].includes(cfg.camera)) fail('camera must be "auto" (the camera follows the narration) or "still"');
   if (typeof cfg.motionBlur !== 'boolean') fail('motionBlur must be true or false');
   if (![true, false, 'minimal'].includes(cfg.sfx)) fail('sfx must be true, false or "minimal"');
-  if (![true, false, 'auto'].includes(cfg.captions)) fail('captions must be true, false or "auto"');
+  if (![true, false, 'auto', 'bold'].includes(cfg.captions)) fail('captions must be true, false, "auto" or "bold"');
+  // Bold captions break between words, and Japanese and Chinese have no spaces to break at.
+  if (cfg.captions === 'bold' && ['ja', 'zh'].includes(cfg.language)) {
+    const name = cfg.language === 'ja' ? 'Japanese' : 'Chinese';
+    const own = cfg.language !== (input.language ?? DEFAULTS.language) ? ` For a ${name} version of a video with bold captions, add "languages": { "${cfg.language}": { "captions": true } } to video.json.` : '';
+    fail(`"captions": "bold" does not work for ${name}, whose words have no spaces between them to break at. Use "captions": true.${own}`);
+  }
   const cover = cfg.cover;
   const [scene, at, extra] = typeof cover === 'string' ? cover.split('@') : [];
   const coverTime = typeof cover === 'number' && Number.isFinite(cover) && cover >= 0;

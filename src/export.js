@@ -11,6 +11,7 @@ import { ffmpeg, normalizeLoudness } from './ffmpeg.js';
 import { resolveTimes } from './qa.js';
 import { subtitleCues, toVtt } from './subtitles.js';
 import { projectUrl } from './timeline.js';
+import { BOLD_CAPTIONS } from '../engine/captions.js';
 
 export function localModules(dir, entry = 'scenes.js') {
   const files = new Map();
@@ -172,6 +173,8 @@ export async function exportPlayer(project, { out, log = () => {} } = {}) {
     }, [cover, build]);
     if (outside) throw new Error('the project uses an outside URL. Use local files before exporting.');
     used.modules = [...projectModules];
+    // Bold captions draw in their own font, also at moments the export never drew.
+    if (project.config.captions === 'bold' && !used.fonts.includes(BOLD_CAPTIONS.font)) used.fonts.push(BOLD_CAPTIONS.font);
     for (const f of project.config.fonts) if (used.fonts.includes(f.family)) used.assets.push(f.src);
     copyPlayer(project, timeline, used, temp);
     const mix = path.join(project.paths.build, 'player-mix.wav');
