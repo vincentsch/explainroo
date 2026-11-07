@@ -26,6 +26,14 @@ const pollMs = () => Number(process.env.EXPLAINROO_CLIP_POLL_MS) || 30 * 1000;
 const DOWNLOAD_TRIES = 3;
 // A partial download older than this was left by a run that died.
 const STALE_DOWNLOAD_MS = 60 * 60 * 1000;
+// The paid request gets its answer within this time, or the run records that none came.
+const SEND_MS = 2 * 60 * 1000;
+
+// True while the run that claimed this attempt may still be waiting for the answer
+// to its paid request. Only an older claim was left by a run that died.
+function beingSent(job) {
+  return job?.status === 'requesting' && !job.job_id && Date.now() - Date.parse(job.created) < SEND_MS + 30 * 1000;
+}
 
 function usd(value) {
   return `$${value.toFixed(4).replace(/0{1,2}$/, '')}`;
@@ -90,6 +98,9 @@ function clipSpend(project) {
 }
 
 function stopped(job, reason) {
+  if (reason === 'unknown' && beingSent(job)) {
+    return new ProjectError(`The clip "${job.request?.name}" with this prompt is job ${shortId(job)}. Another run sent its request less than three minutes ago and may still be waiting for the answer. Run the same command again in a minute or two, without --new. Once that run has the job id, this picks the job up and buys nothing.`);
+  }
   const parts = [`The clip "${job.request?.name}" with this prompt is job ${shortId(job)}. ${stopSentence(job, reason)}`];
   if (reason === 'unknown') parts.push('So the request may or may not have gone through. The activity page of your OpenRouter account shows what was charged.');
   parts.push('To buy it again anyway, run the same command with --new.');
@@ -255,6 +266,7 @@ function dryRun(project, request, { model, price }, decision, maxCost) {
     would: decision.action,
     ...(decision.job ? { job: shortId(decision.job) } : {}),
     ...(decision.reason ? { reason: decision.reason } : {}),
+    ...(decision.action === 'stop' && beingSent(decision.job) ? { sending: true } : {}),
   };
 }
 
@@ -262,14 +274,23 @@ export async function buyClip(project, request, { fresh = false, maxCost, dryRun
   const { dir } = project;
   if (!/^[\w-]+$/.test(request.name)) throw new ProjectError('the clip name may only use letters, digits, "-" and "_" (it becomes assets/clips/<name>.mp4)');
   const key = clipKey(request);
-  const decision = decide(dir, key, { fresh });
+  let decision = decide(dir, key, { fresh });
+  // --new never buys another while the last try of this request is still running or
+  // being sent. That try was paid for, and a command with --new that is run again
+  // after a timeout has to pick up its own job.
+  const last = fresh ? listAttempts(dir, key).at(-1) : null;
+  if (last?.status === 'running') decision = { action: 'resume', job: last, instead: true };
+  else if (beingSent(last)) decision = { action: 'stop', job: last, reason: 'unknown' };
   if (dry) return dryRun(project, request, await quote(request), decision, maxCost);
   if (decision.action === 'use') {
     const placed = placeOutput(dir, decision.job, [publicName(request)]);
     return finished(project, placed.job, { reused: true, moved: placed.moved, newer: decision.newer });
   }
-  // With --no-wait it looks once, so the same command repeated still gets the file.
-  if (decision.action === 'resume') return followJob(project, decision.job, { log, ...(noWait ? { wait: 0 } : {}) });
+  if (decision.action === 'resume') {
+    if (decision.instead) notice(`Job ${shortId(decision.job)} with this request is still running, so --new picks it up instead of buying another. Once it has finished, --new buys another.`);
+    // With --no-wait it looks once, so the same command repeated still gets the file.
+    return followJob(project, decision.job, { log, ...(noWait ? { wait: 0 } : {}) });
+  }
   if (decision.action === 'stop') throw stopped(decision.job, decision.reason);
 
   // Nothing is written to the record until the request can really go out.
@@ -296,7 +317,7 @@ export async function buyClip(project, request, { fresh = false, maxCost, dryRun
   };
   let started;
   try {
-    started = await openrouter.startVideo(dir, body);
+    started = await openrouter.startVideo(dir, body, { timeout: SEND_MS });
   } catch (e) {
     const outcome = e instanceof ServiceError ? e.outcome : 'lost';
     updateJob(dir, job, { status: outcome, error: e.message });
@@ -327,7 +348,7 @@ export function formatClip(r) {
     if (r.within_cap === false) lines.push(`This is above the cap of ${usd(r.max_cost_usd)}, so the real run would refuse.`);
     if (r.would === 'use') lines.push(`This request is already bought (job ${r.job}), so the real run returns its file for free.`);
     if (r.would === 'resume') lines.push(`This request is already running (job ${r.job}), so the real run picks it up and buys nothing.`);
-    if (r.would === 'stop') lines.push(`An earlier try of this request (job ${r.job}) has no good result, so the real run stops and asks for --new.`);
+    if (r.would === 'stop') lines.push(r.sending ? `Another run is sending this request (job ${r.job}) right now, so the real run stops and asks you to wait for it.` : `An earlier try of this request (job ${r.job}) has no good result, so the real run stops and asks for --new.`);
     lines.push(r.would === 'buy' ? 'Nothing was spent. To buy it, run the same command without --dry-run and with --max-cost. Ask the user how much they want to spend.' : 'Nothing was spent.');
     return lines.join('\n');
   }

@@ -573,6 +573,15 @@ const clip = (dir, prompt, ...flags) => ['clip', dir, prompt, '--seconds', '6', 
 const bought = (dir, prompt, ...flags) => clip(dir, prompt, '--max-cost', '2', ...flags);
 const running = { status: 200, body: { status: 'in_progress' } };
 const ended = (status, more = {}) => ({ status: 200, body: { status, ...more } });
+// Makes every job look `minutes` older, like one left by a run that died that long ago.
+const ageJobs = (dir, minutes) => {
+  for (const name of fs.readdirSync(path.join(dir, 'history/jobs'))) {
+    const file = path.join(dir, 'history/jobs', name);
+    const job = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const shift = (iso) => new Date(Date.parse(iso) - minutes * 60000).toISOString();
+    fs.writeFileSync(file, JSON.stringify({ ...job, created: shift(job.created), updated: shift(job.updated) }, null, 2));
+  }
+};
 const clipFiles = (dir) => (fs.existsSync(path.join(dir, 'assets/clips')) ? fs.readdirSync(path.join(dir, 'assets/clips')) : []);
 const runPrinted = (command, env) => new Promise((resolve) => {
   const child = spawn(command, { shell: true, env, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -881,6 +890,17 @@ test('a crash before the job id is saved stops and explains, and --new buys agai
   assert.equal(jobs(dir)[0].status, 'requesting');
   assert.equal(jobs(dir)[0].job_id, null);
 
+  // Right after, another run may still be waiting for the answer, so neither command buys.
+  for (const flags of [[], ['--new']]) {
+    const soon = await cli(bought(dir, STREET, ...flags));
+    assert.equal(soon.code, 1);
+    assert.match(soon.stderr, /Another run sent its request less than three minutes ago/);
+    assert.match(soon.stderr, /without --new/);
+  }
+  assert.equal(fake.count('openrouter', CLIP_POST), 1);
+  assert.equal(jobs(dir).length, 1);
+  ageJobs(dir, 10);
+
   const again = await cli(bought(dir, STREET));
   assert.equal(again.code, 1);
   assert.equal(fake.count('openrouter', CLIP_POST), 1);
@@ -989,7 +1009,9 @@ test('two identical commands at once buy once', async (t) => {
   const runs = [start(bought(dir, STREET)).result, start(bought(dir, STREET)).result];
   const loser = await Promise.race(runs);
   assert.equal(loser.code, 1, loser.text);
-  assert.match(loser.stderr, /Another run may still be working on it/);
+  assert.match(loser.stderr, /Another run sent its request less than three minutes ago/);
+  assert.match(loser.stderr, /Run the same command again in a minute or two, without --new/);
+  assert.doesNotMatch(loser.stderr, /To buy it again anyway/);
   await fake.until('openrouter', CLIP_POST);
   fake.release();
   const results = await Promise.all(runs);
@@ -1060,6 +1082,51 @@ test('--new makes a new attempt, the earlier one keeps its cost, and a repeat re
   assert.equal(noCap.code, 1);
   assert.match(noCap.stderr, /--max-cost/);
   assert.equal(fake.count('openrouter', CLIP_POST), 2);
+});
+
+test('--new while the last try is still running picks that job up, so a command with --new can be run again', async (t) => {
+  const { dir, cli, fake } = await setup(t);
+  fake.plan('openrouter', CLIP_STATUS, ...Array(30).fill(running));
+  const command = bought(dir, STREET, '--new');
+  const first = await cli(command, { EXPLAINROO_CLIP_WAIT_MS: '100' });
+  assert.equal(first.code, 0, first.text);
+  assert.match(first.stderr, /If this stops, run the same command again\. It will not buy again\./);
+  assert.match(first.stdout, /Running the same command again will not buy again/);
+  // The same command, --new and all, the way an agent runs it again after a timeout.
+  const second = await cli(command, { EXPLAINROO_CLIP_WAIT_MS: '100' });
+  assert.equal(second.code, 0, second.text);
+  assert.match(second.stderr, /is still running, so --new picks it up instead of buying another/);
+  assert.match((await cli([...command, '--dry-run'])).stdout, /already running \(job \w+\), so the real run picks it up and buys nothing/);
+  const third = await cli(command);
+  assert.equal(third.code, 0, third.text);
+  assert.equal(fake.count('openrouter', CLIP_POST), 1);
+  assert.equal(jobs(dir).length, 1);
+  assert.equal(jobs(dir)[0].status, 'done');
+  assert.equal(clipFiles(dir).length, 1);
+  // Once it has finished, --new buys another.
+  assert.equal((await cli(command)).code, 0);
+  assert.equal(fake.count('openrouter', CLIP_POST), 2);
+});
+
+test('the command history prints after a failure buys once, also when it is run again after a timeout', async (t) => {
+  const { dir, cli, fake, env } = await setup(t);
+  fake.plan('openrouter', CLIP_STATUS, ended('failed', { error: 'provider error' }));
+  assert.equal((await cli(bought(dir, STREET))).code, 1);
+  const [open] = JSON.parse((await cli(['history', dir, '--json'])).stdout).open;
+  assert.match(open.command, /--resume \w+ --new --max-cost 2$/);
+  fake.plan('openrouter', CLIP_STATUS, ...Array(20).fill(running));
+  for (let run = 0; run < 2; run++) {
+    const printed = await runPrinted(open.command, { ...env, EXPLAINROO_CLIP_WAIT_MS: '100' });
+    assert.equal(printed.code, 0, printed.text);
+  }
+  assert.equal(fake.count('openrouter', CLIP_POST), 2);
+  // The running attempt is the one history shows, and fetching it buys nothing.
+  const [running2] = JSON.parse((await cli(['history', dir, '--json'])).stdout).open;
+  assert.equal(running2.reason, 'running');
+  assert.equal((await runPrinted(running2.command, env)).code, 0);
+  assert.equal(fake.count('openrouter', CLIP_POST), 2);
+  assert.equal(clipFiles(dir).length, 1);
+  assert.deepEqual(JSON.parse((await cli(['history', dir, '--json'])).stdout).open, []);
 });
 
 test('two runs that fetch the same finished job leave one file, and the record says where it is', async (t) => {

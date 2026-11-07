@@ -69,7 +69,7 @@ anything inside a clip.
 | `--audio` | Asks for sound. Sound is off by default, because `s.clip` plays silent unless you set `volume`, and sound often costs more. |
 | `--name` | The file name. By default it is a short name from the prompt. |
 | `--no-wait` | Returns right after the request. The same command looks at the job again later. |
-| `--new` | Buys it again, as a new attempt. It needs a cap. |
+| `--new` | Buys it again, as a new attempt. It needs a cap. While the last try of the same request is still running, it picks that one up instead. |
 | `--resume <id>` | Continues a job with the short id that `explainroo history` prints. |
 
 The length, the aspect and the resolution are checked against the model's own list
@@ -102,7 +102,8 @@ agents run often time out, and that is fine here.
 
 | What happened | What to do | Can it cost more? |
 | --- | --- | --- |
-| The command stopped or timed out while the job was running | Run the same command again, or `clip <project> --resume <id>` | No. It only reads the job and downloads the file. |
+| The command stopped or timed out while the job was running | Run the same command again, also if it has `--new`, or `clip <project> --resume <id>` | No. It only reads the job and downloads the file. |
+| Another run is sending the same request right now | The command says so. Run the same command again a minute later, without `--new`. It picks up that job. | No |
 | It waited about ten minutes and the job is still running | The same | No |
 | The same command runs again after the file is there | It returns the file | No |
 | The request went out and no answer was saved | The command stops and says so. It may or may not have gone through, and your OpenRouter activity page shows what was charged. `--new` buys it again. | Yes, with `--new` |
