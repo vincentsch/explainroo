@@ -15,7 +15,7 @@ import { espeakVersion, misakiAvailable, phonemize, generateSpeech } from './pho
 import { writeWav } from './wav.js';
 import { ffmpegVersion } from './ffmpeg.js';
 import { findChrome } from './browser.js';
-import { generateImage, imageLog, imageSpend, IMAGE_MODELS } from './images.js';
+import { generateImage, jobRequest, imageLog, imageSpend, oldImageLog, IMAGE_MODELS } from './images.js';
 import { capture } from './capture.js';
 import { CONNECTORS } from './connectors/index.js';
 import { hideSecrets } from './errors.js';
@@ -51,6 +51,8 @@ Product demos
 Images (optional, needs an OpenRouter API key)
   image [project] <name> "<what to draw>"   save an illustration as assets/<name>.png
                         (--model best|cheap, --aspect 16:9, --ref assets/a.png,assets/b.png, --no-style)
+                        The same request returns the file it already bought (--new buys it again,
+                        --resume <id> runs a job from history again)
   images [project]      list generated images and what they cost
 
 Outside services (optional)
@@ -198,23 +200,30 @@ export async function main(argv) {
         const isProject = pos[0] && fs.existsSync(path.join(pos[0], 'video.json'));
         const project = loadProject(isProject ? pos.shift() : undefined);
         const [name, ...rest] = pos;
-        const r = await generateImage(project, {
+        const resume = textFlag(flags, 'resume');
+        const request = resume !== undefined ? jobRequest(project, resume) : {
           name,
           prompt: rest.join(' '),
           model: flags.model,
           aspect: flags.aspect,
           refs: flags.ref ? String(flags.ref).split(',').map((x) => x.trim()).filter(Boolean) : [],
           style: flags['no-style'] ? false : flags.style,
-          log,
-        });
-        print(`${r.file}  ${r.model}  ${r.cost_usd !== null ? '$' + r.cost_usd.toFixed(4) : 'cost unknown'}  (images so far: $${r.total_usd.toFixed(4)})\nOpen the image and check it before you use it.`, r);
+        };
+        const r = await generateImage(project, { ...request, fresh: !!flags.new, log });
+        const lines = r.reused
+          ? [`${r.file}  already bought on ${r.time.slice(0, 10)} (job ${r.job}), so nothing was spent. To buy it again, add --new.`]
+          : [`${r.file}  ${r.model}  ${r.cost_usd !== null ? '$' + r.cost_usd.toFixed(4) : 'cost unknown'}  (images so far: $${r.total_usd.toFixed(4)})`];
+        if (r.newer_attempt) lines.push(`A newer try, job ${r.newer_attempt}, has no good answer. "explainroo history" shows it.`);
+        for (const m of r.moved) lines.push(`The file that was at ${m.from} moved to ${m.to}.${m.known ? ' Asking for its request again brings it back.' : ''}`);
+        if (!r.reused) lines.push('Open the image and check it before you use it.');
+        print(lines.join('\n'), r);
         return 0;
       }
       case 'images': {
         const project = loadProject(pos[0]);
         const list = imageLog(project);
         const total = imageSpend(project);
-        print(list.length ? list.map((e) => `${e.time.slice(0, 16)}  ${e.file.padEnd(28)} ${e.model.padEnd(32)} ${e.cost_usd !== null ? '$' + e.cost_usd.toFixed(4) : '?'}`).join('\n') + `\n${list.length} image request(s), $${total.toFixed(4)}` : 'no images generated yet', { images: list, total_usd: total, models: IMAGE_MODELS });
+        print(list.length ? list.map((e) => `${e.time.slice(0, 16)}  ${e.file.padEnd(28)} ${e.model.padEnd(32)} ${e.cost_usd !== null ? '$' + e.cost_usd.toFixed(4) : '?'}${e.status && e.status !== 'done' ? `  ${e.status}` : ''}`).join('\n') + `\n${list.length} image request(s), $${total.toFixed(4)}` : 'no images generated yet', { images: list, total_usd: total, models: IMAGE_MODELS });
         return 0;
       }
       case 'voices': {
@@ -261,7 +270,7 @@ export async function main(argv) {
       case 'history': {
         const project = loadProject(pos[0]);
         const wanted = currentSpeechKeys(project);
-        const report = historyReport(project.dir, { current: (job) => job.kind !== 'speech' || wanted.has(job.key), otherSpend: imageLog(project) });
+        const report = historyReport(project.dir, { current: (job) => job.kind !== 'speech' || wanted.has(job.key), otherSpend: oldImageLog(project) });
         print(formatHistory(report), report);
         return 0;
       }
