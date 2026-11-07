@@ -13,7 +13,7 @@ test('render, package and verify make no outside requests, and nothing reaches t
   const fake = await startFakeServices();
   t.after(fake.close);
   const dir = tinyProject(t);
-  for (const args of [['render', dir, '--workers', '2'], ['package', dir, '--platform', 'tiktok', '--workers', '2'], ['package', dir, '--platform', 'youtube', '--workers', '2'], ['verify', dir]]) {
+  for (const args of [['render', dir, '--workers', '1'], ['package', dir, '--platform', 'tiktok', '--workers', '1'], ['package', dir, '--platform', 'youtube', '--workers', '1'], ['verify', dir]]) {
     // The hosted service and every other service point at the fake here.
     const r = await runCli([...args, '--json'], fake.env);
     assert.equal(r.code, 0, r.text);

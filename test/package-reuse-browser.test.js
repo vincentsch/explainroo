@@ -14,7 +14,7 @@ const skip = !chrome && 'no browser here';
 const narrated = skip || (!speechCheckModel && 'the speech check model is not downloaded');
 
 async function pack(dir, platform, ...flags) {
-  const r = await cli(['package', dir, '--platform', platform, '--workers', '2', '--json', ...flags]);
+  const r = await cli(['package', dir, '--platform', platform, '--workers', '1', '--json', ...flags]);
   assert.equal(r.code, 0, r.text);
   assert.doesNotMatch(r.stderr, /test guard: blocked/);
   return JSON.parse(r.stdout);
@@ -24,7 +24,7 @@ const read = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
 
 test('a full render is copied and all the files next to it are written again, and an earlier verify of the same file counts', { skip: narrated, timeout: 300000 }, async (t) => {
   const dir = tiny(t, { size: '16:9' });
-  const rendered = await cli(['render', dir, '--workers', '2', '--json']);
+  const rendered = await cli(['render', dir, '--workers', '1', '--json']);
   assert.equal(rendered.code, 0, rendered.text);
   const verified = await cli(['verify', dir, '--json']);
   assert.equal(verified.code, 0, verified.text);
@@ -45,7 +45,7 @@ test('a full render is copied and all the files next to it are written again, an
   assert.equal(line.source, 'out/video.mp4');
   assert.match((await cli(['history', dir])).stdout, /out\/package\/youtube\/video\.mp4 .*final, full video, watermark on, package for youtube, verify passed/);
   // What the agent looked at with --size tiktok --no-watermark is reused for TikTok.
-  const look = await cli(['render', dir, '--size', 'tiktok', '--no-watermark', '--workers', '2', '--json']);
+  const look = await cli(['render', dir, '--size', 'tiktok', '--no-watermark', '--workers', '1', '--json']);
   assert.equal(look.code, 0, look.text);
   const tiktok = await pack(dir, 'tiktok');
   assert.deepEqual(tiktok.source, { how: 'copied', file: 'out/video-tiktok-no-watermark.mp4' });
@@ -54,13 +54,13 @@ test('a full render is copied and all the files next to it are written again, an
 
 test('a --from/--to render and a --scale render are never reused, so package renders the whole video', { skip, timeout: 300000 }, async (t) => {
   const dir = tiny(t, { size: '16:9' }, { narrated: false });
-  const part = await cli(['render', dir, '--from', '0', '--to', '0.5', '--workers', '2']);
+  const part = await cli(['render', dir, '--from', '0', '--to', '0.5', '--workers', '1']);
   assert.equal(part.code, 0, part.text);
   const first = await pack(dir, 'youtube');
   assert.equal(first.source.how, 'rendered');
   assert.equal(first.post.duration, 1);
   fs.rmSync(path.join(dir, 'out/package'), { recursive: true });
-  const small = await cli(['render', dir, '--scale', '0.5', '--workers', '2']);
+  const small = await cli(['render', dir, '--scale', '0.5', '--workers', '1']);
   assert.equal(small.code, 0, small.text);
   const second = await pack(dir, 'youtube');
   assert.equal(second.source.how, 'rendered');

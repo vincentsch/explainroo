@@ -15,7 +15,7 @@ const skip = !chrome && 'no browser here';
 const narrated = skip || (!speechCheckModel && 'the speech check model is not downloaded');
 
 async function pack(dir, platform, ...flags) {
-  const r = await cli(['package', dir, '--platform', platform, '--workers', '2', '--json', ...flags]);
+  const r = await cli(['package', dir, '--platform', platform, '--workers', '1', '--json', ...flags]);
   assert.equal(r.code, 0, r.text);
   assert.doesNotMatch(r.stderr, /test guard: blocked/);
   return JSON.parse(r.stdout);
