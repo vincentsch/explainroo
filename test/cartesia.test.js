@@ -225,7 +225,9 @@ test('the voice list follows every page', async (t) => {
 test('without a key nothing is sent, and the error points at connect', async (t) => {
   const { voiceRun, sent } = await setup(t);
   setEnv(t, 'CARTESIA_API_KEY', '');
-  setEnv(t, 'EXPLAINROO_CONFIG', fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-empty-settings-')));
+  const settings = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-empty-settings-'));
+  t.after(() => fs.rmSync(settings, { recursive: true, force: true }));
+  setEnv(t, 'EXPLAINROO_CONFIG', settings);
   await assert.rejects(voiceRun(), (e) => e instanceof ProjectError && /explainroo connect cartesia/.test(e.message));
   assert.equal(sent().length, 0);
 });
