@@ -7,7 +7,7 @@ import { normalizeConfig, loadProject, ProjectError } from '../src/project.js';
 import { parseScript, speechChunks } from '../src/script.js';
 import { findEnv, readEnvFile } from '../src/env.js';
 import { findKey } from '../src/images.js';
-import { elevenSpeech, elevenSpeed, decodePCM, elevenVoices, elevenUsage } from '../src/elevenlabs.js';
+import { elevenSpeech, elevenSpeed, decodePCM, elevenVoices, elevenUsage } from '../src/connectors/elevenlabs.js';
 import { recordingCuts, recordingFiles, decodeRecording, saveRecording } from '../src/recordings.js';
 import { sceneHash } from '../src/voice.js';
 import { readWav, writeWav } from '../src/wav.js';

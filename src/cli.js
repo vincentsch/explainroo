@@ -16,7 +16,7 @@ import { writeWav } from './wav.js';
 import { ffmpegVersion } from './ffmpeg.js';
 import { findChrome } from './browser.js';
 import { generateImage, imageLog, imageSpend, IMAGE_MODELS } from './images.js';
-import { elevenVoices, elevenUsage, elevenSpeed } from './elevenlabs.js';
+import { elevenVoices, elevenUsage, elevenSpeed } from './connectors/elevenlabs.js';
 import { capture } from './capture.js';
 
 const VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;

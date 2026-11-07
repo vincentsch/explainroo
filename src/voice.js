@@ -9,7 +9,7 @@ import { alignWords, readAlike } from './align.js';
 import { loadTTS, transcribeWords, TTS_MODEL, TTS_SAMPLE_RATE, ttsDtype, asrModel } from './models.js';
 import { phonemize, generateSpeech } from './phonemes.js';
 import { writeWav, readWav, resample, trimSilence } from './wav.js';
-import { elevenSpeech } from './elevenlabs.js';
+import { elevenSpeech } from './connectors/elevenlabs.js';
 import { recordingFiles, decodeRecording, saveRecording, recordingCuts } from './recordings.js';
 
 const PIPELINE = 7;
