@@ -26,6 +26,7 @@ import { boughtCharacters, speechConnector } from './paid-speech.js';
 import { formatServices, findService, needsKey, SERVICES, STEPS } from './services.js';
 import { speechKeys } from './voice.js';
 import { findEnv } from './env.js';
+import { formatPackage, packageVideo } from './package.js';
 
 // Paid voices that can list what a key may use, each with its own flag.
 const LISTS_VOICES = CONNECTORS.filter((c) => c.voices);
@@ -47,6 +48,11 @@ Make a video
                         --transparent, --size, --no-watermark, --draft, --from s, --to s, --workers n, --out file)
   verify [project]      check the video: loudness, black frames, narration (--file)
   export [project]      write a web player folder (--out dir, default: out/player/)
+
+Post a video
+  package [project]     write a folder for one platform: the sized video, its words, captions, cover, AI label
+                        and credits (--platform youtube|shorts|tiktok|reels|linkedin|x, --title, --description,
+                        --hashtags, --size for x, --workers n). The words come from post.json, see "docs publishing"
 
 Product demos
   capture [project] <url>  save screenshots, wording, colors, fonts and logo of a live site (--mobile)
@@ -190,6 +196,11 @@ export async function main(argv) {
         const r = await render(project, { log, draft: !!flags.draft, transparent: !!flags.transparent, from: num(flags.from, 'from'), to: num(flags.to, 'to'), workers: num(flags.workers, 'workers'), scale: num(flags.scale, 'scale'), out: textFlag(flags, 'out'), format: textFlag(flags, 'format') });
         print([r.out, r.subtitles?.srt, r.subtitles?.vtt, r.chapters, r.cover].filter(Boolean).map((f) => path.relative(process.cwd(), f) || f).join('\n'), r);
         return 0;
+      }
+      case 'package': {
+        const r = await packageVideo(pos[0], { platform: textFlag(flags, 'platform'), size: textFlag(flags, 'size'), title: textFlag(flags, 'title'), description: textFlag(flags, 'description'), hashtags: textFlag(flags, 'hashtags'), workers: num(flags.workers, 'workers'), log });
+        print(formatPackage(r), r);
+        return r.ok ? 0 : 1;
       }
       case 'export': {
         const project = loadProject(pos[0]);

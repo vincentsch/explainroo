@@ -282,7 +282,7 @@ function withNameLock(dir, name, fn) {
 }
 
 // All at once, so a run that dies never leaves half a file under a public name.
-function moveFile(from, to) {
+export function moveFile(from, to) {
   try {
     fs.renameSync(from, to);
   } catch (e) {
@@ -318,15 +318,20 @@ export function recordVersion(dir, line) {
   fs.appendFileSync(historyDir(dir, 'versions.jsonl'), JSON.stringify(line) + '\n');
 }
 
+// Every line of versions.jsonl, oldest first.
+export function versionLines(dir) {
+  const file = historyDir(dir, 'versions.jsonl');
+  if (!fs.existsSync(file)) return [];
+  return fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).flatMap((text) => {
+    try { return [JSON.parse(text)]; } catch { return []; }
+  });
+}
+
 // The renders, oldest first. A verify result is its own line, so that a run can
 // append it without rewriting the file, and here it joins the render with the
 // same file hash.
 export function readVersions(dir) {
-  const file = historyDir(dir, 'versions.jsonl');
-  if (!fs.existsSync(file)) return [];
-  const lines = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).flatMap((text) => {
-    try { return [JSON.parse(text)]; } catch { return []; }
-  });
+  const lines = versionLines(dir);
   const results = new Map();
   for (const line of lines) if (line.event === 'verify') results.set(line.sha256, line);
   return lines.filter((line) => line.event !== 'verify').map((line) => (results.has(line.sha256) ? { ...line, verify: results.get(line.sha256) } : line));
@@ -445,7 +450,7 @@ export function historyReport(dir, { current = () => true, needed = () => false,
 }
 
 function versionLine(v) {
-  const kind = [v.draft ? 'draft' : 'final', v.full ? 'full video' : `${v.range?.from}s to ${v.range?.to}s`, ...(v.scale === 1 ? [] : [`scale ${v.scale}`]), `watermark ${v.watermark ? 'on' : 'off'}`];
+  const kind = [v.draft ? 'draft' : 'final', v.full ? 'full video' : `${v.range?.from}s to ${v.range?.to}s`, ...(v.scale === 1 ? [] : [`scale ${v.scale}`]), `watermark ${v.watermark ? 'on' : 'off'}`, ...(v.event === 'package' ? [`package for ${v.platform}`] : [])];
   const checked = v.verify ? `verify ${v.verify.ok ? 'passed' : 'found errors'}${v.verify.understood == null ? '' : `, ${Math.round(v.verify.understood * 100)}% understood`}` : 'not verified';
   return `  ${oneLine(`${when(v.time)}  ${v.file}  ${v.format} ${v.width}x${v.height}, ${Number(v.duration).toFixed(1)}s, ${kind.join(', ')}, ${checked}`, 400)}`;
 }
