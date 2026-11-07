@@ -8,6 +8,7 @@ import path from 'node:path';
 import { parseScript } from './script.js';
 import { VOICES, LANGUAGES, voiceLanguage } from './models.js';
 import { ProjectError } from './errors.js';
+import { voiceProviders, oneOf } from './services.js';
 import { THEMES as LOOKS } from '../engine/themes.js';
 import { parseColor } from '../engine/util.js';
 
@@ -171,20 +172,20 @@ export function normalizeConfig(raw, dir = '.') {
   if (typeof cfg.voice === 'object') {
     const v = cfg.voice;
     if (!v || Array.isArray(v)) fail('voice must be a Kokoro id or an object with provider');
-    const keys = { kokoro: ['provider', 'id'], elevenlabs: ['provider', 'id', 'model'], recording: ['provider', 'src'] };
-    if (typeof v.provider !== 'string' || !Object.hasOwn(keys, v.provider)) fail('voice.provider must be kokoro, elevenlabs or recording');
-    const extra = Object.keys(v).filter((k) => !keys[v.provider].includes(k));
-    if (extra.length) fail(`voice has unknown setting(s): ${extra.join(', ')}. Known: ${keys[v.provider].join(', ')}`);
-    if (v.provider === 'recording') {
+    const providers = voiceProviders();
+    if (typeof v.provider !== 'string' || !Object.hasOwn(providers, v.provider)) fail(`voice.provider must be ${oneOf(Object.keys(providers))}`);
+    const spec = providers[v.provider];
+    const known = ['provider', ...spec.keys];
+    const extra = Object.keys(v).filter((k) => !known.includes(k));
+    if (extra.length) fail(`voice has unknown setting(s): ${extra.join(', ')}. Known: ${known.join(', ')}`);
+    if (spec.keys.includes('src')) {
       if (!(typeof v.src === 'string' && /^assets\/.+/.test(v.src) && !v.src.split('/').includes('..') && !v.src.includes('\\'))) {
         fail('voice.src must be a file or folder inside assets/, with no ..');
       }
     } else if (!(typeof v.id === 'string' && v.id.trim())) fail('voice.id is required');
+    if (spec.keys.includes('model') && v.model !== undefined && !(typeof v.model === 'string' && v.model.trim())) fail(`voice.model must be ${/^[aeiou]/i.test(spec.name) ? 'an' : 'a'} ${spec.name} model id`);
     if (v.provider === 'kokoro') cfg.voice = v.id;
-    if (v.provider === 'elevenlabs') {
-      if (v.model !== undefined && !(typeof v.model === 'string' && v.model.trim())) fail('voice.model must be an ElevenLabs model id');
-      cfg.voice = { ...v, model: v.model ?? 'eleven_multilingual_v2' };
-    }
+    else if (spec.defaults) cfg.voice = { ...v, ...Object.fromEntries(Object.entries(spec.defaults).map(([k, d]) => [k, v[k] ?? d])) };
   }
   if (typeof cfg.voice === 'string') {
     if (!Object.hasOwn(VOICES, cfg.voice)) fail(`voice "${cfg.voice}" does not exist. Run "explainroo voices" for the list.`);

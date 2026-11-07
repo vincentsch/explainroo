@@ -1,0 +1,186 @@
+{
+  "steps": [
+    { "id": "voice", "name": "Voice", "what": "Who reads the narration aloud." },
+    { "id": "timing", "name": "Timing", "what": "What notes when each word is spoken, so that pictures can appear on a word." },
+    { "id": "images", "name": "Images", "what": "Where the pictures in a scene come from." },
+    { "id": "clips", "name": "Clips", "what": "Where short pieces of video come from." },
+    { "id": "music", "name": "Music", "what": "What plays under the voice." },
+    { "id": "sharing", "name": "Sharing", "what": "How other people get to watch the video." },
+    { "id": "posting", "name": "Posting", "what": "How the video gets onto a platform." }
+  ],
+  "services": [
+    {
+      "id": "kokoro",
+      "step": "voice",
+      "name": "Kokoro",
+      "about": "A voice model that runs on this computer. It is the default voice.",
+      "free": true,
+      "partner": false,
+      "status": "available",
+      "cost": "Free.",
+      "data_leaves": "Nothing leaves your computer.",
+      "setup": {
+        "env": [],
+        "steps": ["Nothing to set up. The model downloads the first time it is needed."],
+        "use": "Run \"explainroo voices\" to see the voices, then set \"voice\" in video.json."
+      },
+      "voice": { "keys": ["id"] }
+    },
+    {
+      "id": "recording",
+      "step": "voice",
+      "name": "Your own recording",
+      "about": "You read the script yourself, and explainroo uses that sound.",
+      "free": true,
+      "partner": false,
+      "status": "available",
+      "cost": "Free.",
+      "data_leaves": "Nothing leaves your computer.",
+      "setup": {
+        "env": [],
+        "steps": ["Nothing to set up. Record the narration in a quiet room and put the file in assets/."],
+        "use": "Set \"voice\": { \"provider\": \"recording\", \"src\": \"assets/narration.m4a\" } in video.json."
+      },
+      "voice": { "keys": ["src"] }
+    },
+    {
+      "id": "elevenlabs",
+      "step": "voice",
+      "name": "ElevenLabs",
+      "about": "A company that turns text into speech. It offers premium and cloned voices.",
+      "free": false,
+      "partner": false,
+      "status": "available",
+      "cost": "Paid per character on your ElevenLabs account.",
+      "data_leaves": "The narration text goes to ElevenLabs.",
+      "setup": {
+        "env": ["ELEVENLABS_API_KEY"],
+        "url": "https://elevenlabs.io",
+        "steps": [
+          "Make an account at elevenlabs.io.",
+          "Open the API keys page in your account settings.",
+          "Make a key that may read voices and make speech, and copy it."
+        ],
+        "use": "Run \"explainroo voices --elevenlabs\" to see the voices, then set \"voice\": { \"provider\": \"elevenlabs\", \"id\": \"<voice id>\" } in video.json."
+      },
+      "voice": { "keys": ["id", "model"], "defaults": { "model": "eleven_multilingual_v2" } }
+    },
+    {
+      "id": "whisper",
+      "step": "timing",
+      "name": "Whisper",
+      "about": "A speech model that runs on this computer. It listens to the narration and notes when each word is spoken.",
+      "free": true,
+      "partner": false,
+      "status": "available",
+      "cost": "Free.",
+      "data_leaves": "Nothing leaves your computer.",
+      "setup": {
+        "env": [],
+        "steps": ["Nothing to set up. The model downloads the first time it is needed."],
+        "use": "It always runs. Cue a picture on a spoken word with at: 'word' in scenes.js."
+      }
+    },
+    {
+      "id": "own-images",
+      "step": "images",
+      "name": "Built-in icons and your own image files",
+      "about": "More than 1,800 icons come with explainroo, and any image you put in assets/ works too.",
+      "free": true,
+      "partner": false,
+      "status": "available",
+      "cost": "Free.",
+      "data_leaves": "Nothing leaves your computer.",
+      "setup": {
+        "env": [],
+        "steps": ["Nothing to set up."],
+        "use": "Search the icons with \"explainroo icons <word>\". Draw them with s.icon, and your own files with s.image."
+      }
+    },
+    {
+      "id": "openrouter",
+      "step": "images",
+      "name": "OpenRouter images",
+      "about": "A company that gives one account access to many AI models. explainroo uses it to make illustrations.",
+      "free": false,
+      "partner": false,
+      "status": "available",
+      "cost": "Paid per image on your OpenRouter account, roughly 7 to 13 cents.",
+      "data_leaves": "The prompt and any reference images go to OpenRouter and to the company that runs the image model.",
+      "setup": {
+        "env": ["OPENROUTER_API_KEY"],
+        "url": "https://openrouter.ai/keys",
+        "steps": [
+          "Make an account at openrouter.ai and add some credit.",
+          "Open openrouter.ai/keys and make a new key.",
+          "Copy the key."
+        ],
+        "use": "Make an image with: explainroo image <project> <name> \"<what to draw>\""
+      }
+    },
+    {
+      "id": "own-footage",
+      "step": "clips",
+      "name": "Your own footage",
+      "about": "Any video file you put in assets/ can play in a scene.",
+      "free": true,
+      "partner": false,
+      "status": "available",
+      "cost": "Free.",
+      "data_leaves": "Nothing leaves your computer.",
+      "setup": {
+        "env": [],
+        "steps": ["Nothing to set up. Put the video file in assets/."],
+        "use": "Play it in a scene with s.clip('assets/name.mp4')."
+      }
+    },
+    {
+      "id": "built-in-music",
+      "step": "music",
+      "name": "Built-in music",
+      "about": "explainroo makes music on this computer while it renders, and each look has its own style.",
+      "free": true,
+      "partner": false,
+      "status": "available",
+      "cost": "Free.",
+      "data_leaves": "Nothing leaves your computer.",
+      "setup": {
+        "env": [],
+        "steps": ["Nothing to set up."],
+        "use": "It is on by default. Set \"music\" in video.json to pick a style or to turn it off."
+      }
+    },
+    {
+      "id": "web-player",
+      "step": "sharing",
+      "name": "Web player for your own site",
+      "about": "\"explainroo export\" writes a folder with a player, and you put that folder on your own website.",
+      "free": true,
+      "partner": false,
+      "status": "available",
+      "cost": "Free.",
+      "data_leaves": "Nothing leaves your computer until you copy the folder to your site.",
+      "setup": {
+        "env": [],
+        "steps": ["Nothing to set up."],
+        "use": "Run \"explainroo export <project>\" and copy out/player/ to your site."
+      }
+    },
+    {
+      "id": "upload-by-hand",
+      "step": "posting",
+      "name": "Uploading by hand",
+      "about": "You upload the finished MP4 to the platform yourself.",
+      "free": true,
+      "partner": false,
+      "status": "available",
+      "cost": "Free.",
+      "data_leaves": "Nothing leaves your computer until you upload the file.",
+      "setup": {
+        "env": [],
+        "steps": ["Nothing to set up."],
+        "use": "Run \"explainroo render <project>\" and upload out/video.mp4. Its .srt file works as captions on YouTube and LinkedIn."
+      }
+    }
+  ]
+}
