@@ -17,8 +17,8 @@ the script on this computer, or the narration comes from ElevenLabs or your
 own recording. Whisper listens to the narration and writes down when each
 word is spoken. Chrome draws the frames in the background.
 explainroo adds music and sound effects, and ffmpeg makes the MP4. You need
-no API key for local voices or recordings. ElevenLabs, AI images and AI clips
-need keys.
+no API key for local voices or recordings. Paid voices, AI images, AI clips and
+posting need a key or a login.
 
 The full documentation for people is at https://www.explainroo.com/docs/.
 
@@ -47,10 +47,9 @@ layout and the wording. Ask only when you cannot go on without an answer.
 When you ask, put everything you need in one message. Typical reasons to ask:
 
 - The topic is unclear, or you need a fact you cannot check.
-- The user chose AI images or clips and there is no OpenRouter key. Run
-  `explainroo connect openrouter` and show the user what it prints.
-- The user chose ElevenLabs and there is no ElevenLabs key. Run
-  `explainroo connect elevenlabs` and show the user what it prints.
+- The user chose AI images, clips or a paid voice and has no key for it. Run
+  `explainroo connect openrouter`, `elevenlabs` or `cartesia` and show the
+  user what it prints.
 - The user wants a post and has no login. Run `explainroo connect youtube`,
   `buffer` or `blotato` and show the user what it prints.
 - The user wants something explainroo cannot do, like video shot with a
@@ -135,7 +134,7 @@ never put it in a script, a commit or a log.
    on each cue? What stays in the same place in the next scene? "Layouts that
    work" below has four layouts to start from.
 
-6. **Make images, if the video needs them.** Icons and diagrams cover most
+6. **Make images, if the video needs them and the user agrees.** Icons and diagrams cover most
    technical topics. Everyday how-to topics like cooking, cars or gardening
    work better with pictures. See "Images" below.
 
@@ -385,10 +384,9 @@ cue. Highlighted code lines and terminal commands get close-ups of their own
 when they are small in the shot. `s.focus` points the camera at any part of
 the picture.
 
-`s.camera([...])` in a scene takes over that scene's camera, and
-`s.camera([])` keeps the scene still. `"camera": "still"` in `video.json`
-turns the camera off for the whole video. `check` checks the layout as you
-wrote it, without the camera. Stills, sheets and renders show the camera.
+`"camera": "still"` in `video.json` turns the camera off for the whole video.
+`check` checks the layout as you wrote it, without the camera. Stills, sheets
+and renders show the camera.
 
 The final render adds motion blur to frames where something moves, like a
 film camera. Drafts skip it. `"motionBlur": false` turns it off.
@@ -404,7 +402,7 @@ Kokoro runs on this computer and needs no key. Pick a voice with
 
 `{ "provider": "kokoro", "id": "af_heart" }` means the same thing.
 
-ElevenLabs offers premium and cloned voices. It costs money on the user's
+ElevenLabs has its own voices and can clone one. It costs money on the user's
 account and receives the script text. If the user wants it and there is no
 key, run `explainroo connect elevenlabs`, as "Where keys go" says.
 
@@ -508,7 +506,7 @@ with `sudo apt install espeak-ng`, or on macOS with `brew install espeak-ng`.
 On Windows, use the installer from the
 [espeak-ng releases page](https://github.com/espeak-ng/espeak-ng/releases).
 If the program is in another place, set `EXPLAINROO_ESPEAK` to its binary.
-English, Japanese, Chinese, ElevenLabs and recordings do not need it.
+English, Japanese, Chinese, paid voices and recordings do not need it.
 
 The first speech check in another language downloads multilingual Whisper
 small. `doctor --fetch` still fetches only the English models. `verify`
@@ -609,6 +607,7 @@ and hashtags in `post.json` next to `video.json`. Run
 `explainroo docs publishing` first.
 
 `explainroo share` uploads a finished video to explainroo.com for a page link.
+That service is coming, and until it runs, `share` makes no link.
 `explainroo publish videos/<name> --via youtube|buffer|blotato` posts a
 package. They are the only commands that upload a video, so run them only when
 the user asks. Run `publish` with `--dry-run` first and show the user the plan.
@@ -746,7 +745,7 @@ videos/<name>/
 | `language` | `en` | narration language: `en`, `es`, `fr`, `it`, `pt-br`, `hi`, `ja` or `zh`; see Videos in other languages |
 | `voice` | the language's voice | a Kokoro id or a provider object for Kokoro, ElevenLabs, Cartesia or a recording; English uses `af_heart`; see Voices |
 | `languages` | none | settings for one language, like `{ "es": { "voice": "ef_dora" } }`; see Videos in other languages |
-| `speed` | 0.9 for Kokoro, 1 otherwise | voice speed only, 0.6 to 1.6; ElevenLabs limits speed times pace to 0.7 through 1.2 |
+| `speed` | 0.9 for Kokoro, 1 otherwise | voice speed only, 0.6 to 1.6; paid voices limit speed times pace, see Voices |
 | `pace` | 1 | speed of the whole video (voice, pauses, animations), 0.7 to 1.6 |
 | `music` | `true` | `true` (the look's style), `warm`, `upbeat`, `calm`, `tech`, `playful`, `{ "style", "volume" }`, `false`, or your own file as `{ "src", "volume", "credit", "loop" }`, see `explainroo docs music` |
 | `sfx` | `true` | sound effects: `true`, `"minimal"` or `false` |
@@ -834,7 +833,7 @@ when `ink` or `muted` has too little contrast against `bg`.
 | `verify [project]` | checks the finished MP4, WebM or MOV: loudness, black frames, silence, clear voice (`--file` picks another file) |
 | `export [project]` | writes a web player folder (`--out dir`, `--json`), by default `out/player/` |
 | `package [project]` | a folder to post on one platform (`--platform`, `--title`, `--description`, `--hashtags`, `--size` for x, `--workers`) |
-| `share [project]` | uploads a video to explainroo.com for a page link (`--platform`, `--file`, `--title`, `--new`) |
+| `share [project]` | uploads a video to explainroo.com for a page link, once that service runs (`--platform`, `--file`, `--title`, `--new`) |
 | `publish [project]` | posts a package after a typed yes or `--yes` (`--via`, `--platform`, `--privacy`, `--media-url`, `--channel`, `--account`, `--dry-run`, `--new`) |
 | `capture [project] <url>` | saves screenshots, wording, colors, fonts and logos from a live site (`--mobile`, `--json`) |
 | `image [project] <name> "<prompt>"` | makes an illustration with OpenRouter (`--new` buys it again, `--resume <id>` runs a job from `history` again) |
@@ -849,8 +848,6 @@ when `ink` or `muted` has too little contrast against `bg`.
 | `doctor` | checks Node, ffmpeg, Chrome, the models, and espeak-ng and Python with misaki for other languages (`--fetch` downloads only English models) |
 | `docs [topic]` | prints this file, or one page from `docs/` (`--list` lists the pages) |
 | `version` | prints the version (`--version` also works) |
-
-`--lang es` picks a language of a video in several languages, from `voice` to `publish`.
 
 The extra files share the video's name, also with `--out`: `video.srt`,
 `video.vtt`, `video.cover.jpg` and `video.chapters.txt`. A GIF has no sound,
@@ -942,15 +939,15 @@ place the next thing below or beside them.
 | `exit` | `fade`, `pop`, `rise`, `drop`, `slide-left`, `slide-right`, `none` |
 | `dur` | length of the entrance in seconds (shortened by the pace) |
 | `outDur` | length of the exit in seconds (0.45) |
-
-`out` is when the exit starts, so an element is still fading while the next
-one comes in. To swap one label for another in the same place, give the old
-one `exit: 'none'` and the new one the same time as its `at`.
 | `id` | a name for arrows, `annotate` and `s.get` |
 | `color` | a color name (`blue`, `accent`, `ink`, `muted`, ...) or any CSS color |
 | `opacity`, `scale`, `rotate` | extra changes, `rotate` in degrees |
 | `float` | pixels of slow drift that keeps a still element alive |
 | `sfx` | the sound on entrance, or `false` |
+
+`out` is when the exit starts, so an element is still fading while the next
+one comes in. To swap one label for another in the same place, give the old
+one `exit: 'none'` and the new one the same time as its `at`.
 
 In `paper`, `chalk` and `blueprint`, shapes are drawn line by line and text
 is written out. In `clean` and `midnight`, shapes pop and text rises. In
@@ -1164,8 +1161,7 @@ Run `explainroo docs short-video` before you use it.
 - `s.focus(target, { at, out })` points the automatic camera at an element
   or a region on a cue, for example one row of a table. `target` is an `id`
   drawn earlier, `{ x, y, w, h }` (center and size) or `[x, y, w, h]`. It
-  draws nothing. Highlighted code lines and terminal commands get a
-  close-up on their own when they are small in the shot.
+  draws nothing.
 - `s.group({ x, y, scale, rotate, at, out, enter }, () => { ... })` moves a
   set of elements together. Inside the group, positions count from `x`, `y`.
 - `s.draw({ x, y, at, out }, (ctx, life) => { ... })` gives you the canvas 2D
