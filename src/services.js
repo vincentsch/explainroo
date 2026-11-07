@@ -69,6 +69,8 @@ export function serviceUrl({ id, name, baseUrl }) {
     throw new ProjectError(`${variable} must be an address like https://example.com`);
   }
   if (!/^https?:$/.test(url.protocol)) throw new ProjectError(`${variable} must be an address like https://example.com`);
+  // A password in the address would show in messages and in the record.
+  if (url.username || url.password) throw new ProjectError(`${variable} must not hold a user name or password`);
   if (!announced.has(variable)) {
     announced.add(variable);
     process.stderr.write(`${variable} is set, so ${name} requests go to ${url.origin}${url.pathname.replace(/\/+$/, '')} instead of ${baseUrl}.\n`);

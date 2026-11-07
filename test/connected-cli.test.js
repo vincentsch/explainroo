@@ -38,7 +38,7 @@ async function setup(t) {
   const fake = await startFakeServices();
   t.after(fake.close);
   const dir = makeProject(t);
-  const env = { ...process.env, ...fake.env, OPENROUTER_API_KEY: GOOD_KEY, EXPLAINROO_CLIP_POLL_MS: '20' };
+  const env = { ...process.env, ...fake.env, OPENROUTER_API_KEY: GOOD_KEY, EXPLAINROO_CLOUD_KEY: '', EXPLAINROO_CLIP_POLL_MS: '20' };
   const start = (args, extra = {}) => {
     const child = spawn(process.execPath, [bin, ...args], { env: { ...env, ...extra }, stdio: ['ignore', 'pipe', 'pipe'] });
     const result = new Promise((resolve) => {
@@ -1490,6 +1490,17 @@ test('share sends the video and its title as the exact multipart form, and an ex
   assert.match(again.stdout, /claim link .* keep it to yourself:\nhttps:\/\/www\.explainroo\.com\/claim\/share1-secret$/m);
   assert.equal(uploads(), 1);
   // --new makes another.
+  // Another title is no reason to upload again, and the output says how to.
+  const titled = await cli(['share', dir, '--title', 'A new title']);
+  assert.match(titled.stdout, /It was shared as "Test"\. To share it as "A new title", run the same command with --new\./);
+  // A package that holds the very same file says which name it went out under.
+  const folder = path.join(dir, 'out/package/youtube');
+  fs.mkdirSync(folder, { recursive: true });
+  fs.copyFileSync(path.join(dir, 'out/video.mp4'), path.join(folder, 'video.mp4'));
+  fs.writeFileSync(path.join(folder, 'post.json'), JSON.stringify({ title: 'Test', sha256: crypto.createHash('sha256').update(fs.readFileSync(path.join(folder, 'video.mp4'))).digest('hex') }));
+  const same = await cli(['share', dir, '--platform', 'youtube']);
+  assert.match(same.stdout, /^out\/package\/youtube\/video\.mp4 was already shared on .*, as the same file out\/video\.mp4, so nothing was uploaded\./);
+  assert.equal(uploads(), 1);
   const fresh = JSON.parse((await cli(['share', dir, '--new', '--json'])).stdout);
   assert.equal(fresh.id, 'share2');
   assert.equal(uploads(), 2);
@@ -1504,7 +1515,7 @@ test('with an account key the link does not expire, and the key goes only in the
   const r = await cli(['share', dir, '--title', 'My own title'], { EXPLAINROO_CLOUD_KEY: GOOD_KEY });
   assert.equal(r.code, 0, r.text);
   assert.match(r.stdout, /^Shared out\/video\.mp4 as "My own title"\./);
-  assert.match(r.stdout, /It belongs to your account, so the link does not expire\./);
+  assert.match(r.stdout, /It belongs to the account of the key in EXPLAINROO_CLOUD_KEY, so the link does not expire\./);
   assert.doesNotMatch(r.text, /claim|expires on/);
   assert.doesNotMatch(r.text, new RegExp(GOOD_KEY));
   const [request] = fake.requests('cloud', SHARE);
@@ -1555,12 +1566,18 @@ test('a 404 page, a 405, an HTML page and an answer without a link all mean no s
 
 test('a rejected key, a refused file, too many uploads and a check that took too long each say so, and may run again', async (t) => {
   const { dir, cli, fake, uploads } = await sharing(t);
+  // A server that wants a key, when none was sent, isn't told it rejected one.
+  fake.plan('cloud', SHARE, { status: 401, body: { message: 'Unauthenticated.' } });
+  const unkeyed = await cli(['share', dir]);
+  assert.equal(unkeyed.code, 1);
+  assert.match(unkeyed.stderr, /wants a key \(HTTP 401: Unauthenticated\.\)\. No share link was made\. Put a key from your explainroo\.com account in EXPLAINROO_CLOUD_KEY/);
+  assert.doesNotMatch(unkeyed.stderr, /rejected/);
   const bad = await cli(['share', dir], { EXPLAINROO_CLOUD_KEY: 'not-the-key' });
   assert.equal(bad.code, 1);
   assert.match(bad.stderr, /rejected the key in EXPLAINROO_CLOUD_KEY \(HTTP 401: Unauthenticated\.\)\. No share link was made, and the video was not shared without the key\./);
   assert.doesNotMatch(bad.text, /not-the-key/);
-  assert.equal(uploads(), 1, 'it never tries again without the key');
-  assert.equal(fake.requests('cloud', SHARE)[0].headers.authorization, 'Bearer not-the-key');
+  assert.equal(uploads(), 2, 'it never tries again without the key');
+  assert.equal(fake.requests('cloud', SHARE)[1].headers.authorization, 'Bearer not-the-key');
 
   fs.writeFileSync(path.join(dir, 'out/video.mp4'), 'not a video at all');
   const refused = await cli(['share', dir]);
@@ -1584,10 +1601,14 @@ test('a rejected key, a refused file, too many uploads and a check that took too
     assert.equal(r.code, 1);
     assert.doesNotMatch(r.stderr, /may have received/);
   }
+  // An error page that isn't the service's JSON comes from something else at the address.
+  fake.plan('cloud', SHARE, { status: 413, html: '<html><body>413 Request Entity Too Large</body></html>' });
+  const page = await cli(['share', dir]);
+  assert.match(page.stderr, /isn't running at .* yet \(it answered with HTTP 413\)\. No share link was made\./);
   // None of these can have published anything, so the next run uploads without --new.
   const ok = await cli(['share', dir]);
   assert.equal(ok.code, 0, ok.text);
-  assert.equal(uploads(), 7);
+  assert.equal(uploads(), 9);
 });
 
 test('a connection that drops during the upload says the server may have the video, and only --new uploads it again', async (t) => {
@@ -1668,11 +1689,16 @@ test('share picks the final video, a package with --platform or any file with --
     assert.match(r.stderr, new RegExp(`takes MP4 and WebM files only, and out/${name.replace('.', '\\.')} is neither\\. Nothing was sent\\.`));
   }
   assert.match((await cli(['share', dir, '--file', path.join(dir, 'nope.mp4')])).stderr, /nope\.mp4 does not exist/);
+  // A file from outside the project goes in the record by its name only.
+  const outside = fakeMp4(path.join(temp(t), 'from-elsewhere.mp4'));
+  assert.equal((await cli(['share', dir, '--file', outside])).code, 0);
+  assert.equal(jobs(dir).find((j) => j.request.file === 'from-elsewhere.mp4')?.status, 'done');
+  assert.ok(!fs.readdirSync(path.join(dir, 'history/jobs')).some((f) => read(dir, `history/jobs/${f}`).includes(path.dirname(outside))));
   const webm = path.join(dir, 'out/video.webm');
   fs.writeFileSync(webm, Buffer.concat([Buffer.from([0x1a, 0x45, 0xdf, 0xa3]), crypto.randomBytes(512)]));
   assert.equal((await cli(['share', dir, '--file', webm])).code, 0);
   assert.equal((await formFields(fake.requests('cloud', SHARE).at(-1))).get('video').type, 'video/webm');
-  assert.equal(uploads(), 2);
+  assert.equal(uploads(), 3);
 
   // A package: its own file and its own title, and only while it is the file its post.json describes.
   assert.match((await cli(['share', dir, '--platform', 'tiktok'])).stderr, /there is no tiktok package to share yet\. Run ".* package .* --platform tiktok" first\./);
@@ -1688,7 +1714,7 @@ test('share picks the final video, a package with --platform or any file with --
   fakeMp4(packaged);
   assert.match((await cli(['share', dir, '--platform', 'tiktok'])).stderr, /out\/package\/tiktok\/video\.mp4 is not the video its post\.json describes/);
   assert.match((await cli(['share', dir, '--platform', 'tiktok', '--file', packaged])).stderr, /--platform or --file, not both/);
-  assert.equal(uploads(), 3);
+  assert.equal(uploads(), 4);
 });
 
 test('a copy of the project with the same file shares on its own, and never takes the other copy\'s link', async (t) => {
@@ -1727,9 +1753,26 @@ test('two shares of the same file at once upload it once', async (t) => {
   assert.deepEqual(jobs(dir).map((j) => j.status), ['done']);
 });
 
+test('a key or an address that can\'t be sent stops before anything is recorded or sent', async (t) => {
+  const { dir, cli, fake } = await sharing(t);
+  const key = await cli(['share', dir], { EXPLAINROO_CLOUD_KEY: 'two words…' });
+  assert.equal(key.code, 1);
+  assert.match(key.stderr, /EXPLAINROO_CLOUD_KEY has spaces or unusual characters, so it can't be sent\..*Nothing was sent\./);
+  assert.doesNotMatch(key.text, /two words/);
+  const address = await cli(['share', dir], { EXPLAINROO_CLOUD_URL: `${fake.base.replace('//', '//user:secret@')}/cloud` });
+  assert.equal(address.code, 1);
+  assert.match(address.stderr, /EXPLAINROO_CLOUD_URL must not hold a user name or password/);
+  assert.doesNotMatch(address.text, /secret/);
+  assert.equal(fake.total(), 0);
+  assert.deepEqual(jobs(dir), []);
+});
+
 test('a request that threw is told apart by its code: nothing sent, or maybe sent', () => {
-  for (const code of ['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'UND_ERR_CONNECT_TIMEOUT']) assert.equal(failedRequest(Object.assign(new TypeError('fetch failed'), { cause: { code } })), 'unreachable', code);
-  for (const code of ['ECONNRESET', 'EPIPE', 'UND_ERR_SOCKET', undefined]) assert.equal(failedRequest(Object.assign(new TypeError('fetch failed'), { cause: { code } })), 'dropped', String(code));
+  const thrown = (code) => Object.assign(new TypeError('fetch failed'), { cause: { code } });
+  for (const code of ['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'UND_ERR_CONNECT_TIMEOUT', 'EHOSTUNREACH', 'ENETUNREACH']) assert.equal(failedRequest(thrown(code)), 'unreachable', code);
+  for (const code of ['DEPTH_ZERO_SELF_SIGNED_CERT', 'SELF_SIGNED_CERT_IN_CHAIN', 'UNABLE_TO_GET_ISSUER_CERT_LOCALLY', 'CERT_HAS_EXPIRED', 'ERR_TLS_CERT_ALTNAME_INVALID', 'ERR_SSL_WRONG_VERSION_NUMBER']) assert.equal(failedRequest(thrown(code)), 'insecure', code);
+  for (const code of ['ECONNRESET', 'EPIPE', 'UND_ERR_SOCKET', undefined]) assert.equal(failedRequest(thrown(code)), 'dropped', String(code));
+  assert.equal(failedRequest(new TypeError('Headers.append: "x" is an invalid header value.')), 'not-sent');
   assert.equal(failedRequest(Object.assign(new Error('timed out'), { name: 'TimeoutError' })), 'timeout');
   assert.equal(shareAnswer({ id: 1, url: 'https://x.example/v/1' }).id, '1');
   assert.equal(shareAnswer({ id: 1, url: 'javascript:alert(1)' }), null);

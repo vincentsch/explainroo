@@ -8,14 +8,17 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { findEnv } from '../env.js';
-import { ServiceError, rememberSecret, thrownOutcome } from '../errors.js';
+import { ProjectError, ServiceError, rememberSecret, thrownOutcome } from '../errors.js';
 import { serviceUrl } from '../services.js';
 
 export const SHARE_TYPES = { '.mp4': 'video/mp4', '.webm': 'video/webm' };
 
-// A key from an account is optional. Without one, the link expires.
+// A key from an account is optional. Without one, the link expires. A key that
+// can't go in a header stops here, before anything is recorded or sent.
 function key(dir) {
-  return rememberSecret(findEnv('EXPLAINROO_CLOUD_KEY', dir));
+  const found = rememberSecret(findEnv('EXPLAINROO_CLOUD_KEY', dir));
+  if (found && !/^[\x21-\x7e]+$/.test(found)) throw new ProjectError('EXPLAINROO_CLOUD_KEY has spaces or unusual characters, so it can\'t be sent. Check that you copied all of the key and nothing else. Nothing was sent.');
+  return found;
 }
 
 // The server checks the file before it answers, so this is generous: ten minutes,
@@ -24,11 +27,19 @@ function timeout(bytes) {
   return Number(process.env.EXPLAINROO_SHARE_TIMEOUT_MS) || 10 * 60 * 1000 + Math.ceil(bytes / 100000) * 1000;
 }
 
-// What a request that threw means. A refused connection or an unknown name means
-// that nothing was sent. Anything after that may have reached the server.
+const UNREACHABLE = new Set(['EHOSTUNREACH', 'ENETUNREACH', 'ENETDOWN', 'EAI_FAIL']);
+
+// What a request that threw means. Nothing was sent when nothing answered, the name
+// or the network couldn't be reached, the connection failed its security check, or
+// fetch refused the request before it connected. Anything else may have reached
+// the server.
 export function failedRequest(error) {
   if (error?.name === 'TimeoutError') return 'timeout';
-  return thrownOutcome(error) === 'refused' ? 'unreachable' : 'dropped';
+  const code = error?.cause?.code;
+  if (typeof code === 'string' && (/CERT/.test(code) || /^ERR_(TLS|SSL)_/.test(code))) return 'insecure';
+  if (thrownOutcome(error) === 'refused' || UNREACHABLE.has(code)) return 'unreachable';
+  if (error?.name === 'TypeError' && !error.cause) return 'not-sent';
+  return 'dropped';
 }
 
 function link(value) {
@@ -89,7 +100,8 @@ async function share(dir, { file, title }) {
     const reason = failedRequest(e);
     const ms = timeout(size);
     const limit = ms >= 120000 ? `${Math.round(ms / 60000)} minutes` : `${Math.round(ms / 1000)} seconds`;
-    throw new ServiceError(reason === 'unreachable' ? 'nothing answered' : reason === 'timeout' ? `the upload did not finish in ${limit}` : 'the connection dropped during the upload', reason === 'unreachable' ? 'refused' : 'lost', details(reason, { code: e?.cause?.code ?? e?.code ?? null }));
+    const said = { unreachable: 'nothing answered', insecure: 'the connection failed its security check', 'not-sent': `the request could not be made (${e?.message})`, timeout: `the upload did not finish in ${limit}`, dropped: 'the connection dropped during the upload' }[reason];
+    throw new ServiceError(said, reason === 'timeout' || reason === 'dropped' ? 'lost' : 'refused', details(reason, { code: e?.cause?.code ?? e?.code ?? null }));
   }
   let json = null;
   try { json = JSON.parse(text); } catch {}
@@ -100,12 +112,14 @@ async function share(dir, { file, title }) {
     if (answer) return answer;
     throw new ServiceError(`HTTP ${status} with no share link`, 'refused', details('not-running', { status }));
   }
+  if (status >= 500 && status !== 503) throw new ServiceError(`HTTP ${status}`, 'lost', details('server', { status }));
+  if (status === 429) throw new ServiceError('HTTP 429', 'refused', details('busy', { status, retry_after: res.headers.get('retry-after') }));
+  // The service answers its errors as JSON. A web page or no answer at all comes
+  // from something else at that address.
+  if (!json || status === 404 || status === 405 || (status >= 300 && status < 400)) throw new ServiceError(`HTTP ${status}`, 'refused', details('not-running', { status }));
   if (status === 401) throw new ServiceError(`HTTP 401${words ? `: ${words}` : ''}`, 'refused', details('key', { status, said: words }));
   if ([413, 415, 422].includes(status)) throw new ServiceError(`HTTP ${status}${words ? `: ${words}` : ''}`, 'refused', details('file', { status, said: words }));
-  if (status === 429) throw new ServiceError('HTTP 429', 'refused', details('busy', { status, retry_after: res.headers.get('retry-after') }));
   if (status === 503) throw new ServiceError('HTTP 503', 'refused', details('checking', { status }));
-  if (status >= 500) throw new ServiceError(`HTTP ${status}`, 'lost', details('server', { status }));
-  if (status === 404 || status === 405 || (status >= 300 && status < 400) || !json) throw new ServiceError(`HTTP ${status}`, 'refused', details('not-running', { status }));
   throw new ServiceError(`HTTP ${status}${words ? `: ${words}` : ''}`, 'refused', details('said-no', { status, said: words }));
 }
 

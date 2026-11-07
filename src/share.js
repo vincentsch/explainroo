@@ -148,8 +148,12 @@ function failure(e, dir) {
   const heard = d.said ? `: ${d.said}` : '';
   switch (d.reason) {
     case 'unreachable': return `the hosted service doesn't answer at ${d.service} yet. The video was not sent. ${others}`;
+    case 'insecure': return `the connection to ${d.service} failed its security check (${d.code}). The video was not sent. Check the address and your network, and run the same command again.`;
+    case 'not-sent': return `${e.message}. The video was not sent.`;
     case 'not-running': return `the hosted service isn't running at ${d.service} yet (it answered with HTTP ${d.status}). No share link was made. ${others}`;
-    case 'key': return `the hosted service rejected the key in EXPLAINROO_CLOUD_KEY (HTTP 401${heard}). No share link was made, and the video was not shared without the key. Check the key and run the same command again.`;
+    case 'key': return d.keyed
+      ? `the hosted service rejected the key in EXPLAINROO_CLOUD_KEY (HTTP 401${heard}). No share link was made, and the video was not shared without the key. Check the key and run the same command again.`
+      : `the hosted service at ${d.service} wants a key (HTTP 401${heard}). No share link was made. Put a key from your explainroo.com account in EXPLAINROO_CLOUD_KEY and run the same command again.`;
     case 'file': return `the hosted service refused the file (HTTP ${d.status}${heard}). No share link was made. ${d.status === 413 ? 'The file is too large for it. A shorter video helps.' : d.status === 415 ? 'It takes MP4 and WebM files with a video stream.' : 'Change what it names and run the same command again.'}`;
     case 'busy': return `the hosted service has had too many uploads. Try again ${retryWords(d.retry_after)}. No share link was made.`;
     case 'checking': return 'the hosted service could not check the file in time and published nothing. Try again later.';
@@ -160,7 +164,9 @@ function failure(e, dir) {
   }
 }
 
-function result(dir, job, { reused, newer = null }) {
+// `asked` is what this run wanted to share. A link used again may have gone out
+// under another file name or title, and the result says so.
+function result(dir, job, { reused, newer = null, asked = job.request }) {
   const r = job.result;
   return {
     id: r.id,
@@ -168,11 +174,13 @@ function result(dir, job, { reused, newer = null }) {
     media_url: r.media_url,
     expires_at: r.expires_at,
     claim_url: reused ? claimUrl(dir, job) : r.claim_url,
-    file: job.request.file,
+    file: asked.file,
     sha256: job.request.sha256,
     title: job.request.title,
     shared: job.updated,
     reused,
+    ...(asked.file !== job.request.file ? { shared_file: job.request.file } : {}),
+    ...(asked.title !== job.request.title ? { asked_title: asked.title } : {}),
     ...(newer ? { newer_attempt: newer.attempt } : {}),
   };
 }
@@ -188,12 +196,15 @@ export async function share(project, { platform, file, title, fresh = false, log
   const recorded = readVersions(dir).filter((v) => v.sha256 === sha256);
   if (!target.chosen && recorded.some((v) => v.draft) && !recorded.some((v) => !v.draft)) fail(`${name} is a half-size draft, so share does not send it. Render the final video, or pass the file with --file to share it anyway.`);
   const service = serviceUrl(cloud);
+  cloud.key(dir);
   const key = shareKey(dir, sha256, service);
+  // A path outside the project stays out of the record, which git keeps.
+  const asked = { file: path.isAbsolute(name) ? path.basename(name) : name, title: title?.trim() ?? target.title };
   const decision = decide(dir, key, fresh);
-  if (decision.action === 'use') return result(dir, decision.job, { reused: true, newer: decision.newer });
+  if (decision.action === 'use') return result(dir, decision.job, { reused: true, newer: decision.newer, asked });
   if (decision.action === 'stop') throw stopped(decision.job);
   const bytes = fs.statSync(target.file).size;
-  const request = { file: name, sha256, bytes, title: title?.trim() ?? target.title, service };
+  const request = { ...asked, sha256, bytes, service };
   let job;
   try {
     job = createJob(dir, key, { kind: 'share', provider: cloud.id, attempt: decision.attempt, cost_usd: 0, request });
@@ -209,25 +220,27 @@ export async function share(project, { platform, file, title, fresh = false, log
   } catch (e) {
     // Nothing left this computer, so there is nothing to remember. An error that is
     // not from the request itself came before anything was sent, too.
-    if (!(e instanceof ServiceError) || e.details.reason === 'unreachable') forgetJob(dir, job);
+    if (!(e instanceof ServiceError) || ['unreachable', 'insecure', 'not-sent'].includes(e.details.reason)) forgetJob(dir, job);
     else updateJob(dir, job, { status: e.outcome, error: e.message, reason: e.details.reason });
     if (e instanceof ServiceError) throw new ProjectError(failure(e, dir));
     throw e;
   }
+  // A claim link acts like a password for the video, so it stays out of tracked
+  // files. It is saved first, so a run that stops now can't lose it.
+  if (answer.claim_url) writePrivate(dir, privateFile(job), { id: answer.id, claim_url: answer.claim_url });
   const done = updateJob(dir, job, { status: 'done', job_id: answer.id, result: { id: answer.id, url: answer.url, media_url: answer.media_url, expires_at: answer.expires_at } });
-  // A claim link acts like a password for the video, so it stays out of tracked files.
-  if (answer.claim_url) writePrivate(dir, privateFile(done), { id: answer.id, claim_url: answer.claim_url });
   return result(dir, { ...done, result: { ...done.result, claim_url: answer.claim_url } }, { reused: false });
 }
 
 export function formatShare(r) {
   const lines = [
-    r.reused ? `${r.file} was already shared on ${when(r.shared)}, so nothing was uploaded. To upload it again anyway, run the same command with --new.` : `Shared ${r.file} as "${r.title}".`,
+    r.reused ? `${r.file} was already shared on ${when(r.shared)}${r.shared_file ? `, as the same file ${r.shared_file}` : ''}, so nothing was uploaded.` : `Shared ${r.file} as "${r.title}".`,
+    ...(r.reused ? [r.asked_title !== undefined ? `It was shared as "${r.title}". To share it as "${r.asked_title}", run the same command with --new.` : 'To upload it again anyway, run the same command with --new.'] : []),
     ...(r.newer_attempt ? [`A newer upload of it, try ${r.newer_attempt}, got no link, so this is the earlier one.`] : []),
     `Page: ${r.url}`,
     ...(r.media_url ? [`Video file, for posting tools: ${r.media_url}`] : []),
   ];
-  if (r.expires_at === null) lines.push('It belongs to your account, so the link does not expire.');
+  if (r.expires_at === null) lines.push('It belongs to the account of the key in EXPLAINROO_CLOUD_KEY, so the link does not expire.');
   else {
     lines.push(`The link expires on ${when(r.expires_at)}.`);
     if (r.claim_url) lines.push(`To keep it, open this claim link and add the video to an account. Anyone with the claim link can take the video, so keep it to yourself:\n${r.claim_url}`);

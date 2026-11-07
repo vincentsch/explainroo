@@ -319,7 +319,7 @@ async function main() {
     console.log(`installed in ${((Date.now() - started) / 1000).toFixed(1)}s`);
     const settings = path.join(temp, 'settings');
     // Keys from this computer's own settings have no place in this test.
-    const env = { ...outside, ...fake.env, NODE_OPTIONS: `--import=${GUARD}`, EXPLAINROO_CONFIG: settings, OPENROUTER_API_KEY: '', ELEVENLABS_API_KEY: '', EXPLAINROO_CLIP_POLL_MS: '50' };
+    const env = { ...outside, ...fake.env, NODE_OPTIONS: `--import=${GUARD}`, EXPLAINROO_CONFIG: settings, OPENROUTER_API_KEY: '', ELEVENLABS_API_KEY: '', EXPLAINROO_CLOUD_KEY: '', EXPLAINROO_CLIP_POLL_MS: '50' };
     await runSteps({ temp, settings, fake, closedPort: await closedPort(), installed: path.join(temp, 'node_modules', pkg.name) }, env);
     console.log('pack test passed');
     return 0;

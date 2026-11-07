@@ -191,9 +191,10 @@ with git has no `history/private/`, so it shares on its own.
 | What happens | What `share` says | Run it again |
 | --- | --- | --- |
 | Nothing answers at the address | The video was not sent | Yes |
+| The connection fails its security check | The video was not sent | Yes, once the address or the network is fixed |
 | The address has no service yet, like a 404 or a web page | No share link was made | Yes |
 | The connection drops during the upload, it takes too long, or the server fails | The server may have received the video | Only with `--new` |
-| The key is wrong | No share link was made, and it never uploads without the key | Yes, after you fix the key |
+| The key is wrong, or the server wants one | No share link was made, and it never uploads without the key | Yes, after you fix the key |
 | The server refuses the file | The server's reason | Yes, after you change the file |
 | Too many uploads | When to try again | Yes, later |
 | The server could not check the file in time | Nothing was published | Yes, later |
