@@ -84,6 +84,25 @@ test('a package that fails check says which size failed and writes nothing, and 
   assert.ok(json.issues.some((i) => i.level === 'error'));
   // The same project fits YouTube.
   assert.equal((await pack(dir, 'youtube')).ok, true);
+  const folder = path.join(dir, 'out/package/youtube');
+  const lines = readVersions(dir).length;
+  // A cover at a scene that isn't there stops the package before anything is rendered or copied.
+  const settings = path.join(dir, 'video.json');
+  const raw = read(settings);
+  fs.writeFileSync(settings, JSON.stringify({ ...raw, cover: 'nosuch@end' }));
+  const cover = await cli(['package', dir, '--platform', 'youtube']);
+  assert.equal(cover.code, 1);
+  assert.match(cover.stderr, /no scene "nosuch"/);
+  assert.doesNotMatch(cover.stderr, /^rendering /m);
+  assert.equal(readVersions(dir).length, lines);
+  fs.writeFileSync(settings, JSON.stringify(raw));
+  // Once the project no longer passes check, the package from before is out of date.
+  fs.writeFileSync(path.join(dir, 'scenes.js'), "export default { intro(s) { s.text('Wide', { x: 2600, y: 540, size: 60, at: 0 }); } };");
+  const stale = await cli(['package', dir, '--platform', 'youtube']);
+  assert.equal(stale.code, 1);
+  assert.match(stale.stdout, /The youtube package from before is out of date, so its post\.json is removed until a package works again\./);
+  assert.equal(fs.existsSync(path.join(folder, 'post.json')), false);
+  assert.match((await cli(['share', dir, '--platform', 'youtube'])).stderr, /there is no youtube package to share yet/);
 
   for (const [flags, message] of [
     [[], /package needs --platform youtube, shorts, tiktok, reels, linkedin or x/],

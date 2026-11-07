@@ -75,7 +75,7 @@ test('a package for each of the six platforms: the sized video, its words, capti
     assert.equal(line.watermark, platform !== 'tiktok');
     assert.equal(line.verify.ok, true);
   }
-  // The TikTok frame has no watermark, and the free area starts higher without it.
+  // Only the TikTok file goes without the watermark. The layout without it is tested with the sizes.
   const tiktok = read(path.join(dir, 'out/package/tiktok/post.json'));
   const reels = read(path.join(dir, 'out/package/reels/post.json'));
   assert.equal(tiktok.watermark, false);

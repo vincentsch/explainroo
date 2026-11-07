@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { loadProject } from '../src/project.js';
 import { sha256File } from '../src/history.js';
-import { packageDir, packageOverrides, reusableRender } from '../src/package.js';
+import { packageDir, packageOverrides, reusableRender as reuse } from '../src/package.js';
 
 function project(t, settings = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-package-'));
@@ -42,6 +42,7 @@ test('each platform gets its size, TikTok loses the watermark, and a size with t
 
 test('only a final MP4 of the whole video at full scale, made from this exact setup and still unchanged, can be reused', (t) => {
   const dir = project(t);
+  const reusableRender = (where, lines, setup) => reuse({ dir: where, paths: { out: path.join(where, 'out') } }, lines, setup);
   fs.mkdirSync(path.join(dir, 'out'));
   const write = (name, text) => {
     fs.writeFileSync(path.join(dir, 'out', name), text);
@@ -78,4 +79,15 @@ test('only a final MP4 of the whole video at full scale, made from this exact se
   const older = { ...good, ...write('older.mp4', 'older') };
   const newer = { ...good, ...write('newer.mp4', 'newer') };
   assert.equal(reusableRender(dir, [older, newer, { ...good, draft: true }], setup).file, path.join(dir, 'out/newer.mp4'));
+});
+
+test('an out/ folder that links to another disk still has renders to reuse', (t) => {
+  const dir = project(t);
+  const elsewhere = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-out-elsewhere-'));
+  t.after(() => fs.rmSync(elsewhere, { recursive: true, force: true }));
+  fs.symlinkSync(elsewhere, path.join(dir, 'out'));
+  fs.writeFileSync(path.join(elsewhere, 'video.mp4'), 'one');
+  const setup = { width: 1080, height: 1920, fps: 30, size: 'tiktok', watermark: false, identity: 'abc' };
+  const line = { format: 'mp4', draft: false, transparent: false, full: true, scale: 1, ...setup, file: 'out/video.mp4', sha256: sha256File(path.join(elsewhere, 'video.mp4')) };
+  assert.equal(reuse({ dir, paths: { out: path.join(dir, 'out') } }, [line], setup).file, path.join(dir, 'out/video.mp4'));
 });

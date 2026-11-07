@@ -7,7 +7,7 @@ import path from 'node:path';
 import { loadProject, resolveSize, ProjectError } from './project.js';
 import { prepare, renderIdentity, VERSION } from './pipeline.js';
 import { check, verify } from './qa.js';
-import { encodeVideo, versionLine, writeExtras } from './render.js';
+import { encodeVideo, planExtras, versionLine, writeExtras } from './render.js';
 import { buildChapters, toChaptersText } from './chapters.js';
 import { moveFile, projectWord, readVersions, recordVersion, relativeFile, selfCommand, sha256File, versionLines } from './history.js';
 import { PLATFORMS, hashtagFlag, postWords, readPostFile } from './post.js';
@@ -34,11 +34,15 @@ export function packageOverrides(project, platform, size) {
 }
 
 // A file in versions.jsonl can be anywhere, also in a stranger's project. Only a
-// file inside this project is used.
-function insideProject(dir, file) {
+// file inside this project is used, or inside its out/ folder when that is a link
+// to another disk.
+function insideProject(project, file) {
   try {
-    const rel = path.relative(fs.realpathSync(dir), fs.realpathSync(file));
-    return !!rel && !rel.startsWith('..') && !path.isAbsolute(rel) && fs.statSync(file).isFile();
+    const real = fs.realpathSync(file);
+    return fs.statSync(real).isFile() && [project.dir, project.paths.out].some((folder) => {
+      const rel = path.relative(fs.realpathSync(folder), real);
+      return !!rel && !rel.startsWith('..') && !path.isAbsolute(rel);
+    });
   } catch {
     return false;
   }
@@ -49,23 +53,23 @@ function insideProject(dir, file) {
 // made with the current render identity, and whose file still has the hash it
 // was recorded with. Drafts, --scale renders and --from or --to renders never
 // qualify. The newest one wins.
-export function reusableRender(dir, lines, { width, height, fps, size, watermark, identity }) {
+export function reusableRender(project, lines, { width, height, fps, size, watermark, identity }) {
   for (const line of [...lines].reverse()) {
     if (line.format !== 'mp4' || line.draft !== false || line.transparent !== false || line.full !== true || line.scale !== 1) continue;
     if (line.width !== width || line.height !== height || line.fps !== fps || line.size !== size || line.watermark !== watermark || line.identity !== identity) continue;
     if (typeof line.file !== 'string' || typeof line.sha256 !== 'string') continue;
-    const file = path.resolve(dir, line.file);
-    if (insideProject(dir, file) && sha256File(file) === line.sha256) return { line, file };
+    const file = path.resolve(project.dir, line.file);
+    if (insideProject(project, file) && sha256File(file) === line.sha256) return { line, file };
   }
   return null;
 }
 
 // The report of an earlier verify of this exact file, if it is still there.
-function earlierReport(dir, sha256) {
-  for (const line of versionLines(dir).reverse()) {
+function earlierReport(project, sha256) {
+  for (const line of versionLines(project.dir).reverse()) {
     if (line.event !== 'verify' || line.sha256 !== sha256 || typeof line.report !== 'string') continue;
-    const file = path.resolve(dir, line.report);
-    if (!insideProject(dir, file)) continue;
+    const file = path.resolve(project.dir, line.report);
+    if (!insideProject(project, file)) continue;
     try {
       const report = JSON.parse(fs.readFileSync(file, 'utf8'));
       if (report.sha256 === sha256 && Array.isArray(report.issues)) return report;
@@ -104,19 +108,27 @@ export async function packageVideo(arg, { platform, size, title, description, ha
   log(`checking the ${spec.name} package at ${setup}`);
   const checked = await check(project, { log });
   const errors = checked.issues.filter((i) => i.level === 'error');
+  const folder = packageDir(project, platform);
   if (errors.length) {
     const command = `${selfCommand()} check ${projectWord(dir)}${overrides.size ? ` --size ${overrides.size}` : ''}${overrides.watermark === false ? ' --no-watermark' : ''}`;
     const moved = overrides.size ? ` A layout made for ${own.config.size} may not fit ${overrides.size}, so place things from s.safe.` : '';
-    return { ok: false, failed: 'check', platform, setup, command, issues: checked.issues, error: `the ${platform} package failed check at ${setup}, so nothing was packaged.${moved} To see the same findings, run: ${command}` };
+    // A package from before shows an older state of the project. Without its
+    // post.json, share and posting tools can't take it for the current one.
+    const stale = fs.existsSync(path.join(folder, 'post.json'));
+    if (stale) fs.rmSync(path.join(folder, 'post.json'));
+    const earlier = stale ? ` The ${platform} package from before is out of date, so its post.json is removed until a package works again.` : '';
+    return { ok: false, failed: 'check', platform, setup, command, issues: checked.issues, error: `the ${platform} package failed check at ${setup}, so nothing was packaged.${moved}${earlier} To see the same findings, run: ${command}` };
   }
 
   const { timeline } = await prepare(project, { log });
   const identity = renderIdentity(project, timeline);
-  const folder = packageDir(project, platform);
+  // A cover at a scene that isn't there, or a caption word that is too long, stops
+  // the package here, before anything is rendered or copied.
+  const plan = planExtras(project, timeline, { chapters: platform === 'youtube' });
   const target = path.join(folder, 'video.mp4');
   const { width, height, fps } = project.config;
   const watermark = project.config.watermark !== false;
-  const found = reusableRender(dir, readVersions(dir), { width, height, fps, size: project.config.size, watermark, identity });
+  const found = reusableRender(project, readVersions(dir), { width, height, fps, size: project.config.size, watermark, identity });
   fs.mkdirSync(folder, { recursive: true });
   let video;
   let source;
@@ -142,8 +154,8 @@ export async function packageVideo(arg, { platform, size, title, description, ha
     recordVersion(dir, { event: 'package', platform, ...versionLine(project, video), source: source.file });
   }
 
-  const extras = await writeExtras(project, timeline, path.join(folder, 'video'), { chapters: platform === 'youtube', log });
-  const earlier = earlierReport(dir, video.sha256);
+  const extras = await writeExtras(project, timeline, path.join(folder, 'video'), { plan, log });
+  const earlier = earlierReport(project, video.sha256);
   const reportFile = path.join(folder, 'report.json');
   let report;
   if (earlier) {
