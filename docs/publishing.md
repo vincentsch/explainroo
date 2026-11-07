@@ -2,8 +2,10 @@
 
 `explainroo package` makes a folder with everything needed to post a video on
 one platform. You upload it yourself, or a posting tool does. `explainroo share`
-uploads a finished video to explainroo.com and gives back a page link. It is the
-only command that uploads a video, and it runs only when you ask for it.
+uploads a finished video to explainroo.com and gives back a page link.
+`explainroo publish` posts a package through YouTube, Buffer or Blotato.
+`share` and `publish` are the only commands that upload a video, and they run
+only when you ask for them.
 
 ## Package a video for a platform
 
@@ -201,3 +203,190 @@ with git has no `history/private/`, so it shares on its own.
 
 `EXPLAINROO_CLOUD_URL` replaces the address, for example for a test server. It
 is read from the environment only, and never from a `.env` file.
+
+## Post a package
+
+```bash
+explainroo publish videos/<name> --via youtube --dry-run                    # the youtube package
+explainroo publish videos/<name> --via buffer --platform tiktok --dry-run
+explainroo publish videos/<name> --via blotato --platform reels --dry-run
+```
+
+`publish` posts the package that `explainroo package` made. It never renders.
+It stops when the package is missing, when `video.mp4` changed since, or when
+`verify` found errors in it. Without `--platform`, YouTube takes the `youtube`
+package. Buffer and Blotato take the one package they can post, and list them
+when there are more.
+
+It has no scheduler and no queue. A post goes out when the command runs, and
+`publish` refuses any flag it doesn't know, like a time for the post.
+
+### Nothing goes out without a yes
+
+Run it with `--dry-run` first. The dry run reads your account and channels when
+you are signed in, prints the exact post and sends nothing. It works without a
+login too, and then says what is missing. `--dry-run --json` prints the request
+itself, and a real run sends that same request.
+
+Read the plan as the person whose name the post goes out under. It shows:
+
+- the file, with its size and hash
+- the account and the channel
+- the title and the text, with the hashtags
+- the privacy
+- the AI label, and whether that place takes it
+- "made for kids", which only YouTube takes
+- the link to the video, when the service needs one
+
+A real run prints the same plan first. In a terminal, you have to type `yes`.
+Without a terminal it needs `--yes`, and without that it prints the plan, sends
+nothing and fails. A coding agent shows the plan to the user and adds `--yes`
+only after the user said yes.
+
+### Which package goes where
+
+This is the whole list. Any other pair stops before anything is uploaded or sent.
+
+| Package | `--via youtube` | `--via buffer` | `--via blotato` |
+| --- | --- | --- | --- |
+| `youtube`, `shorts` | yes | a YouTube channel | a YouTube account |
+| `tiktok` | no | a TikTok channel | a TikTok account |
+| `reels` | no | an Instagram channel, as a reel shared to the feed | an Instagram account, as a reel |
+| `linkedin` | no | a LinkedIn channel | your own LinkedIn profile |
+| `x` | no | an X channel | an X account |
+
+YouTube gets the title in its own field and the description with the hashtags
+as the text. `--via youtube` also sends `category` and `made_for_kids`. Every
+other place has one text field, and it gets `text` from the package. `publish`
+never adds the credits to a post.
+
+When your Buffer or Blotato account has one channel or account on that network,
+`publish` takes it. When it has more, the plan lists them, and `--channel <id>`
+for Buffer or `--account <id>` for Blotato picks one. Buffer channels that are
+locked or disconnected are never offered.
+
+### Privacy
+
+| Where it goes | Without `--privacy` | `--privacy` |
+| --- | --- | --- |
+| YouTube on all three routes | `private` | `private`, `unlisted` or `public` |
+| TikTok through Blotato | private, only you can see it | `private` or `public`. `unlisted` is refused |
+| TikTok, Instagram, LinkedIn and X through Buffer, and Instagram, LinkedIn and X through Blotato | public right away, because there is no such setting | refused |
+
+A value a place can't honour is refused before anything is sent, and never
+ignored. The plan says plainly when a post goes public right away. Posts to
+YouTube don't notify your subscribers.
+
+### Where the video comes from
+
+- **YouTube** gets the file from your computer, as an upload that can go on
+  after a break.
+- **Buffer** has no upload, so it needs a public https link to this exact
+  file, which must work until the post goes out. Run `explainroo share <project> --platform
+  tiktok` first, and `publish` takes the link from it, or pass your own with
+  `--media-url`. A link to `out/video.mp4` doesn't count for a TikTok package,
+  because the package has its own file. The plan warns when the link expires
+  within a day.
+- **Blotato** gets the file uploaded to its own storage first, unless you pass
+  `--media-url`. Blotato's reference says such links must be on its own
+  domain, and another page says any public link works. Without `--media-url` it
+  works either way.
+
+### Signing in
+
+**YouTube** uses a Google client that you make in your own Google Cloud project:
+
+1. Open console.cloud.google.com and make a project, or pick one of yours.
+2. Turn on the YouTube Data API v3 for that project.
+3. Set up the OAuth consent screen, and add your own Google account as a test
+   user.
+4. Under Credentials, make an OAuth client ID of the type Desktop app, and copy
+   its client id and client secret.
+5. Run `explainroo connect youtube` and paste them when it asks. Without a
+   terminal, send them on stdin as two lines with `--key-stdin`, the id first.
+
+Then it prints a link. Open it, sign in and approve. The browser then goes to
+`http://127.0.0.1:8976/callback` and shows an error page, because nothing runs
+there. That is expected. Copy the whole address from the address bar and run:
+
+```bash
+explainroo connect youtube --callback-url '<the address>'
+```
+
+That checks the sign-in, reads your channel and saves the login. While your
+Google project is in testing status, Google ends the login after 7 days, and
+`connect youtube` signs in again. On 2026-11-07 a Google project could upload
+100 videos a day through the API.
+
+**Buffer** signs in with a public client, which has no secret. explainroo has
+none built in yet, so for now you make your own. The free plan allows one.
+
+1. In Buffer, open Settings, then API, and pick the App Clients tab.
+2. Click New Client, give it a name, and make it a public client.
+3. Add the redirect address `https://localhost:8976/callback`, exactly as
+   written.
+4. Allow the permissions `account:read`, `posts:read`, `posts:write` and
+   `offline_access`.
+5. Save it, and put its client id in `BUFFER_CLIENT_ID`, in the settings `.env`
+   or in the environment.
+
+Then run `explainroo connect buffer`. It prints a link and works the same way
+as YouTube, with `connect buffer --callback-url '<the address>'` at the end.
+Buffer gives a new refresh token each time the login is renewed and ends the
+whole login when an old one comes back. `publish` saves each new one before it
+uses it, so don't put an older copy of the `.env` file back.
+
+**Blotato** uses an API key. Creating one ends Blotato's free trial and starts
+its paid Starter plan, so decide that first. Then run
+`explainroo connect blotato`. Some keys end in `=`, and that is part of the key.
+
+The link from `connect` is never opened for you. The address you paste back
+holds a code that works once, and only with what `connect` saved on this
+computer, so it is safe on a command line, unlike a key.
+
+### When something goes wrong
+
+Each post has a job in `history/` with a stage, so `publish` knows what went
+out. Running the same command again reads the stage:
+
+| Stage | What happened | Running it again |
+| --- | --- | --- |
+| `planned` | You approved it, and the post never went out | goes on after a yes, with the request you approved |
+| `media_uploaded` | Blotato has the file, and the post never went out | goes on after a yes, without uploading again |
+| `sending` | The post went out, and no answer was saved | stops, because the post may exist. Look at the channel, then `--new` posts again |
+| `accepted` | The service took the post | reads the status and posts nothing |
+| `finished` | The post is there | prints the status and the link, and posts nothing |
+| `failed` | The service says the post failed | stops. `--new` posts again |
+
+A YouTube upload that breaks off asks YouTube how much arrived and goes on from
+there, in the same run or the next one. That is a question, not a second
+upload. The upload address is kept in `history/private/`, which git leaves out.
+When YouTube no longer knows the upload, `publish` stops, and `--new` starts a
+new one.
+
+A request that makes a post is never sent again by itself, because nobody can
+tell whether the first one worked. Reading a status may try again. Uploading
+the file to Blotato again is safe, because that makes no post. When a service
+says it has had too many requests, `publish` stops and says when to try again.
+
+The same file can't go to the same channel twice by accident. Two channels are
+two places, so the same file can go to each of them once. `--new` posts the
+same file to the same place again on purpose.
+
+### After the post
+
+`publish` reads the status back and prints it with the link. On YouTube that is
+the upload status, the privacy and the processing. YouTube gets no cover and no
+captions from `publish`. They are in the package folder, as `video.cover.jpg`
+and `video.srt`, for you to add in YouTube Studio.
+
+For a test server, these replace the addresses. They are read from the
+environment only, and never from a `.env` file.
+
+| Variable | Replaces |
+| --- | --- |
+| `EXPLAINROO_YOUTUBE_URL` | `https://www.googleapis.com` |
+| `EXPLAINROO_YOUTUBE_AUTH_URL` | `https://oauth2.googleapis.com` |
+| `EXPLAINROO_BUFFER_URL` | `https://api.buffer.com` |
+| `EXPLAINROO_BUFFER_AUTH_URL` | `https://auth.buffer.com` |
+| `EXPLAINROO_BLOTATO_URL` | `https://backend.blotato.com/v2` |

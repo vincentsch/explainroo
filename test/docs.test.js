@@ -158,13 +158,31 @@ test('the publishing page covers the platforms, post.json, the folder, the limit
 test('AGENTS.md has a few lines on posting, the pointer, the TikTok sentence and every new flag', () => {
   const start = agents.indexOf('## Posting a video');
   const section = agents.slice(start, agents.indexOf('\n## ', start));
-  for (const words of ['explainroo package', '--platform tiktok', 'post.json', 'explainroo docs publishing', 'explainroo share', 'only command that uploads a video']) assert.ok(section.includes(words), words);
-  assert.ok(section.split('\n').length < 14, 'keep it short: the rest is on the page');
+  for (const words of ['explainroo package', '--platform tiktok', 'post.json', 'explainroo docs publishing', 'explainroo share', 'explainroo publish', 'only commands that upload a video', 'Run `publish` with `--dry-run` first and show the user the plan.', 'Add `--yes` only after the user said yes.']) assert.ok(section.replace(/\s+/g, ' ').includes(words), words);
+  assert.ok(section.split('\n').length < 18, 'keep it short: the rest is on the page');
   const watermark = agents.slice(agents.indexOf('## The watermark'), agents.indexOf('## Project files and settings'));
   assert.match(watermark.replace(/\s+/g, ' '), /A TikTok package has no watermark/);
   assert.match(agents, /^\| `package \[project\]` \|.*`--platform`.*`--title`.*`--description`.*`--hashtags`.*`--size` for x/m);
   assert.match(agents, /^\| `share \[project\]` \|.*`--platform`.*`--file`.*`--title`.*`--new`/m);
+  assert.match(agents, /^\| `publish \[project\]` \|.*`--yes`.*`--via`.*`--platform`.*`--privacy`.*`--media-url`.*`--channel`.*`--account`.*`--dry-run`.*`--new`/m);
+  assert.match(agents, /^\| `connect <service>` \|.*`--key-stdin`.*`--callback-url`.*`--project`/m);
   for (const command of ['preview', 'still', 'sheet', 'check', 'render']) assert.match(agents, new RegExp(`^\\| \`${command} \\[project\\][^|]*\\|.*\`--no-watermark\``, 'm'), command);
+});
+
+test('the publishing page covers each route, the logins, the pairs, privacy, the yes and why nothing is sent twice', () => {
+  const page = fs.readFileSync(path.join(root, 'docs/publishing.md'), 'utf8');
+  const post = page.slice(page.indexOf('## Post a package')).replace(/\s+/g, ' ');
+  for (const words of [
+    '--via youtube', '--via buffer', '--via blotato', '--dry-run', 'never renders', 'no scheduler',
+    'In a terminal, you have to type `yes`', 'Without a terminal it needs `--yes`', 'adds `--yes` only after the user said yes',
+    '| `youtube`, `shorts` | yes |', '| `tiktok` | no |', '| `reels` | no |', '| `linkedin` | no |', '| `x` | no |', 'Any other pair stops before anything is uploaded or sent',
+    '| YouTube on all three routes | `private` |', '`unlisted` is refused', 'public right away', 'never ignored',
+    'Desktop app', '`http://127.0.0.1:8976/callback`', '`https://localhost:8976/callback`', 'shows an error page', 'That is expected', "--callback-url '<the address>'",
+    'public client', 'BUFFER_CLIENT_ID', 'new refresh token', "Creating one ends Blotato's free trial", 'end in `=`',
+    'explainroo share <project> --platform tiktok', '--media-url', '`--channel <id>`', '`--account <id>`', 'locked or disconnected',
+    '| `planned` |', '| `media_uploaded` |', '| `sending` |', '| `accepted` |', '| `finished` |', '| `failed` |',
+    'never sent again by itself', 'history/private/', 'YouTube Studio', '`video.cover.jpg`', '`video.srt`', 'never adds the credits',
+  ]) assert.ok(post.includes(words), words);
 });
 
 test('the instructions link to examples on GitHub, because the package has none', () => {

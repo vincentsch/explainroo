@@ -51,6 +51,8 @@ When you ask, put everything you need in one message. Typical reasons to ask:
   `explainroo connect openrouter` and show the user what it prints.
 - The user chose ElevenLabs and there is no ElevenLabs key. Run
   `explainroo connect elevenlabs` and show the user what it prints.
+- The user wants a post and has no login. Run `explainroo connect youtube`,
+  `buffer` or `blotato` and show the user what it prints.
 - The user wants something explainroo cannot do, like video shot with a
   camera.
 
@@ -587,7 +589,10 @@ and hashtags in `post.json` next to `video.json`. Run
 `explainroo docs publishing` first.
 
 `explainroo share` uploads a finished video to explainroo.com for a page link.
-It is the only command that uploads a video, so run it only when the user asks.
+`explainroo publish videos/<name> --via youtube|buffer|blotato` posts a
+package. They are the only commands that upload a video, so run them only when
+the user asks. Run `publish` with `--dry-run` first and show the user the plan.
+Add `--yes` only after the user said yes.
 
 ## Product demos
 
@@ -655,19 +660,9 @@ the size you choose.
 Place things from `s.safe`, `s.cx`, `s.cy`, `s.row`, `s.col` and `s.grid`
 instead of fixed pixel positions. Use `s.portrait` to stack things in tall
 frames. Keep text sizes relative to the frame, for example `s.W * 0.05`.
+The `compare` layout above shows one way.
 [examples/merge-vs-rebase](https://github.com/vincentsch/explainroo/tree/main/examples/merge-vs-rebase)
-works in `9:16` and in `youtube`; its scenes.js shows one way to do it.
-
-```js
-intro(s) {
-  const cells = s.grid(s.portrait ? 1 : 2, s.portrait ? 2 : 1);
-  ['Question', 'Answer'].forEach((label, i) => {
-    const { x, y, w, h } = cells[i];
-    s.box(label, { x, y, w: w * 0.8, h: h * 0.6,
-      size: s.W * 0.05, at: i ? '#answer' : 0 });
-  });
-}
-```
+works in `9:16` and in `youtube`.
 
 For every size, run `check --size <size>` and look at
 `sheet --size <size>`. Fix cut-off text and overlaps. Then run
@@ -819,12 +814,13 @@ when `ink` or `muted` has too little contrast against `bg`.
 | `export [project]` | writes a web player folder (`--out dir`, `--json`), by default `out/player/` |
 | `package [project]` | a folder to post on one platform (`--platform`, `--title`, `--description`, `--hashtags`, `--size` for x, `--workers`) |
 | `share [project]` | uploads a video to explainroo.com for a page link (`--platform`, `--file`, `--title`, `--new`) |
+| `publish [project]` | posts a package after a typed yes or `--yes` (`--via`, `--platform`, `--privacy`, `--media-url`, `--channel`, `--account`, `--dry-run`, `--new`) |
 | `capture [project] <url>` | saves screenshots, wording, colors, fonts and logos from a live site (`--mobile`, `--json`) |
 | `image [project] <name> "<prompt>"` | makes an illustration with OpenRouter (`--new` buys it again, `--resume <id>` runs a job from `history` again) |
 | `images [project]` | lists the images and what they cost |
 | `clip [project] "<prompt>"` | buys a short AI video clip with OpenRouter (`--seconds`, `--max-cost`, `--dry-run`, `--aspect`, `--model`, `--resolution`, `--audio`, `--name`, `--no-wait`, `--new`, `--resume <id>`) |
 | `services [step]` | lists the choices for each step, free ones first, with what each costs and what data leaves (`--json`, `--project`) |
-| `connect <service>` | sets a service up: tests its key and saves it (`--key-stdin`, `--project`) |
+| `connect <service>` | sets a service up: tests its key or signs in through the browser, and saves it (`--key-stdin`, `--callback-url`, `--project`) |
 | `history [project]` | prints open paid jobs with the command that continues each one, then spend, then rendered versions |
 | `voices`, `say "text"` | lists Kokoro voices with their languages (`--language es`, `ja` or `zh` filters voices), or makes a sample in the chosen voice's language |
 | `voices [project] --elevenlabs` | lists the names, ids and labels available to the key (`--json` also works) |
@@ -886,10 +882,7 @@ match your video's width and height.
 
 `index.html?autoplay=1&muted=1` starts muted playback, subject to the
 browser's autoplay rules. `index.html?t=12.5` starts at 12.5 seconds.
-Click the picture to play or pause. Space or K does the same. The arrow
-keys seek five seconds. F opens fullscreen, and M mutes the sound.
-CC shows text captions above the controls. It starts off and remembers
-your choice in the browser. Captions drawn in the canvas stay as they are.
+The player has the usual keys and a CC button for text captions.
 
 Clips use the browser's video decoder. Use a format the browser can play.
 Their timing can differ a little from the MP4. Math formulas are included
