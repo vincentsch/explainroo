@@ -162,9 +162,9 @@ test('the files next to a video are written on their own, the same as render wri
   assert.ok(fs.statSync(`${base}.cover.jpg`).size > 0);
 });
 
-test('preview keeps the size override after settings change', { timeout: 15000 }, async t => {
+test('preview keeps the size and watermark overrides after settings change', { timeout: 15000 }, async t => {
   const dir = fixture(t);
-  const child = spawn(process.execPath, [bin, 'preview', dir, '--size', 'tiktok', '--port', '0'], { stdio: ['ignore', 'ignore', 'pipe'] });
+  const child = spawn(process.execPath, [bin, 'preview', dir, '--size', 'tiktok', '--no-watermark', '--port', '0'], { stdio: ['ignore', 'ignore', 'pipe'] });
   const exited = once(child, 'exit');
   let logs = '';
   child.stderr.on('data', chunk => { logs += chunk; });
@@ -181,12 +181,14 @@ test('preview keeps the size override after settings change', { timeout: 15000 }
     const state = async () => (await fetch(url + '/__state.json')).json();
     const first = await state();
     assert.equal(first.config.size, 'tiktok');
+    assert.equal(first.config.watermark, false);
     assert.equal(first.config.captions, true);
     assert.equal(first.timeline.height, 1920);
     const settings = path.join(dir, 'video.json');
-    fs.writeFileSync(settings, JSON.stringify({ ...JSON.parse(fs.readFileSync(settings, 'utf8')), size: 'square', title: 'Changed' }));
+    fs.writeFileSync(settings, JSON.stringify({ ...JSON.parse(fs.readFileSync(settings, 'utf8')), size: 'square', title: 'Changed', watermark: 'example.com' }));
     const changed = await until(async () => { const s = await state(); return s.title === 'Changed' && s; });
     assert.equal(changed.config.size, 'tiktok');
+    assert.equal(changed.config.watermark, false);
     assert.equal(changed.config.captions, true);
     assert.deepEqual(changed.config.safe, first.config.safe);
     assert.equal(changed.timeline.width, 1080);
