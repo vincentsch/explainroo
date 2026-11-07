@@ -159,7 +159,8 @@ numbers and marked words in color. For Shorts, TikTok and Reels, `s.short`
 draws the parts short videos often have, like a hook title that is there on the
 first frame (`explainroo docs short-video`). One project can render several
 sizes: `explainroo render videos/demo --size tiktok` writes the TikTok version
-next to the wide one.
+next to the wide one. `"sizes"` in `video.json` gives one size settings of its
+own, like bold captions and a quicker pace for TikTok only.
 
 ## More than an MP4
 

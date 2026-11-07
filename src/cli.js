@@ -40,16 +40,19 @@ Make a video
   init <dir>            create a project (--theme, --size, --pace, --language en|es|fr|it|pt-br|hi|ja|zh, --voice, --title).
                         German works with a paid voice or a recording, see "explainroo docs languages"
   voice [project]       make the narration and word timings (--force makes every scene again,
-                        --new buys again only the paid sentences with no good saved answer)
+                        --new buys again only the paid sentences with no good saved answer, --size makes
+                        the narration of a size whose block in "sizes" sets its own pace)
   preview [project]     live preview in your browser, reloads on save (--port, --size, --no-watermark)
   still [project] [t…]  PNG stills: "12.5", "scene", "scene@2.4" (default: end of every scene; --size,
                         --no-watermark, --transparent)
   sheet [project]       contact sheet of the whole video (--scene id, --every s, --size, --no-watermark)
   check [project]       find layout, timing and pronunciation problems (--view-width pixels, --size, --no-watermark)
   render [project]      write the video with subtitles, chapters and a cover (--format mp4|gif|webm|mov,
-                        --transparent, --size, --no-watermark, --draft, --from s, --to s, --workers n, --out file)
+                        --transparent, --size, --no-watermark, --draft, --quality final|fast, --from s, --to s,
+                        --workers n, --out file). A final draws 6 samples per frame for motion blur, and
+                        --quality fast makes a final without it
   verify [project]      check the video: loudness, black frames, narration (--file)
-  export [project]      write a web player folder (--out dir, default: out/player/)
+  export [project]      write a web player folder (--out dir, default: out/player/; --size, --no-watermark)
 
 Post a video
   package [project]     write a folder for one platform: the sized video, its words, captions, cover, AI label
@@ -94,15 +97,17 @@ Reference
                         voices your key may use)
   say "text"            hear a Kokoro voice (--voice am_michael, --speed 1, --out sample.wav)
   themes                list looks
-  formats               list sizes for YouTube, Shorts, TikTok, Reels, Instagram, LinkedIn
+  formats               list sizes for YouTube, Shorts, TikTok, Reels, Instagram, LinkedIn, and the content
+                        area of each, with the watermark and without it
   icons <word…>         search the 1,800+ built-in icons
   doctor [project]      check ffmpeg, Chrome, espeak-ng, misaki and models: each is ready, not needed or missing.
                         With a project, for its languages and voices (--fetch downloads the English models)
   docs [topic]          print the start page for coding agents, or one topic (--list shows the topics)
   version               print the version (--version works too)
 
-Options: --size <size> and --no-watermark override video.json for preview, still, sheet, check and render.
-         Their outputs get a suffix, like video-tiktok.mp4 or video-no-watermark.mp4. --out still wins.
+Options: --size <size> and --no-watermark override video.json for preview, still, sheet, check, render and export.
+         Their outputs get a suffix, like video-tiktok.mp4, player-tiktok/ or video-no-watermark.mp4. --out still wins.
+         "sizes" in video.json sets captions, cover, pace and watermark for one size, see "docs sizes".
          --lang es picks the version from script.es.md, for voice, preview, still, sheet, check, render, verify,
          export, package, share and publish. It builds into build/es/ and writes to out/es/.
          --json for machine-readable output. The project defaults to the current folder.
@@ -169,7 +174,8 @@ export async function main(argv) {
         return 0;
       }
       case 'voice': {
-        const project = loadProject(pos[0], langOverride(flags));
+        // A size whose block sets its own pace has narration of its own, so --size picks it.
+        const project = loadProject(pos[0], { size: textFlag(flags, 'size'), ...langOverride(flags) });
         const paid = speechConnector(project.config);
         const before = paid ? boughtCharacters(project.dir) : 0;
         const { voices, timeline } = await prepare(project, { log, notice, force: !!flags.force, fresh: !!flags.new });
@@ -216,7 +222,7 @@ export async function main(argv) {
         return errors ? 1 : 0;
       }
       case 'render': {
-        const project = loadProject(pos[0], runOverrides(flags));
+        const project = loadProject(pos[0], { ...runOverrides(flags), ...qualityOverride(flags) });
         const r = await render(project, { log, draft: !!flags.draft, transparent: !!flags.transparent, from: num(flags.from, 'from'), to: num(flags.to, 'to'), workers: num(flags.workers, 'workers'), scale: num(flags.scale, 'scale'), out: textFlag(flags, 'out'), format: textFlag(flags, 'format') });
         print([r.out, r.subtitles?.srt, r.subtitles?.vtt, r.chapters, r.cover].filter(Boolean).map((f) => path.relative(process.cwd(), f) || f).join('\n'), r);
         return 0;
@@ -247,7 +253,7 @@ export async function main(argv) {
         return r.stage === 'failed' ? 1 : 0;
       }
       case 'export': {
-        const project = loadProject(pos[0], langOverride(flags));
+        const project = loadProject(pos[0], runOverrides(flags));
         const r = await exportPlayer(project, { log, out: textFlag(flags, 'out') });
         print(`${r.out} (${r.duration.toFixed(1)}s)`, r);
         return 0;
@@ -338,15 +344,23 @@ export async function main(argv) {
         return 0;
       }
       case 'formats': {
-        // The free area for content with the defaults (watermark on, captions
-        // as "auto" decides), the same box scenes get as s.safe.
-        const info = Object.entries(FORMATS).map(([name, f]) => {
-          const cfg = normalizeConfig({ size: name });
+        // The free area for content with the defaults (captions as "auto"
+        // decides), the same box scenes get as s.safe: with the watermark, as
+        // "check --size <name>" uses it, and without, as "--no-watermark" and a
+        // TikTok package use it.
+        const content = (settings) => {
+          const cfg = normalizeConfig(settings);
           const { safe } = layoutAreas(cfg, cfg.width, cfg.height);
-          return { name, width: f.size[0], height: f.size[1], use: f.use, captions: cfg.captions, content: { x: safe.x, y: safe.y, w: safe.w, h: safe.h } };
-        });
-        const rows = info.map((r) => `${r.name.padEnd(10)} ${`${r.width}x${r.height}`.padEnd(10)} ${r.use}\n${''.padEnd(22)}content area ${r.content.w}x${r.content.h} at ${r.content.x},${r.content.y}${r.captions ? ', captions below it' : ''}`);
-        print(rows.join('\n') + '\n\nAlso: 16:9, 9:16, 1:1, 4:5 or WIDTHxHEIGHT. Set it with "size" in video.json or --size on init, preview, still, sheet, check or render.', { formats: info });
+          return { x: safe.x, y: safe.y, w: safe.w, h: safe.h };
+        };
+        const info = Object.entries(FORMATS).map(([name, f]) => ({
+          name, width: f.size[0], height: f.size[1], use: f.use, captions: normalizeConfig({ size: name }).captions,
+          content: content({ size: name }), content_without_watermark: content({ size: name, watermark: false }),
+        }));
+        const area = (a) => `${a.w}x${a.h} at ${a.x},${a.y}`;
+        const areas = (r) => (area(r.content) === area(r.content_without_watermark) ? `${area(r.content)} with or without the watermark` : `${area(r.content)} with the watermark, ${area(r.content_without_watermark)} without it`);
+        const rows = info.map((r) => `${r.name.padEnd(10)} ${`${r.width}x${r.height}`.padEnd(10)} ${r.use}\n${''.padEnd(22)}content area ${areas(r)}${r.captions ? ', captions below it' : ''}`);
+        print(rows.join('\n') + '\n\nAlso: 16:9, 9:16, 1:1, 4:5 or WIDTHxHEIGHT. Set it with "size" in video.json or --size on init, preview, still, sheet, check or render. "check --size <name>" uses the area with the watermark, and "check --size <name> --no-watermark" the one without it.', { formats: info });
         return 0;
       }
       case 'icons': return icons(pos, print);
@@ -383,23 +397,33 @@ export async function main(argv) {
   }
 }
 
-// The paid sentences of every language of the video, so that a sentence of one
-// language never looks like a leftover from an older script. A language whose
-// settings don't load has no sentences to continue yet.
+// The paid sentences of every language of the video, at the pace of each size
+// that has one of its own, so that a sentence of one language or size never looks
+// like a leftover from an older script. A language or size whose settings don't
+// load has no sentences to continue yet.
 function allSpeechKeys(project) {
   const current = new Set();
   const unbuilt = new Set();
+  // The project's own size, each size with a block, and a size without one, which
+  // speaks at the pace of the language. Each pace has its own voice folder.
+  const plain = [...Object.keys(FORMATS), '16:9', '9:16', '1:1', '4:5'].find((size) => !project.sizeBlocks.includes(size));
+  const sizes = project.sizeBlocks.length ? [undefined, ...project.sizeBlocks, plain] : [undefined];
   for (const lang of project.languages) {
-    let version;
-    try {
-      version = lang === project.language ? project : loadProject(project.dir, { lang });
-    } catch (e) {
-      if (e instanceof ProjectError || e instanceof ScriptError) continue;
-      throw e;
+    const seen = new Set();
+    for (const size of sizes) {
+      let version;
+      try {
+        version = lang === project.language && size === undefined ? project : loadProject(project.dir, { lang, size });
+      } catch (e) {
+        if (e instanceof ProjectError || e instanceof ScriptError) continue;
+        throw e;
+      }
+      if (seen.has(version.paths.voice)) continue;
+      seen.add(version.paths.voice);
+      const keys = speechKeys(version);
+      keys.current.forEach((key) => current.add(key));
+      keys.unbuilt.forEach((key) => unbuilt.add(key));
     }
-    const keys = speechKeys(version);
-    keys.current.forEach((key) => current.add(key));
-    keys.unbuilt.forEach((key) => unbuilt.add(key));
   }
   return { current, unbuilt };
 }
@@ -436,6 +460,17 @@ function runOverrides(flags) {
 
 function langOverride(flags) {
   return { lang: textFlag(flags, 'lang') };
+}
+
+// --quality fast makes a final without motion blur. That is the same video as one
+// with "motionBlur": false in video.json, so it is that setting for one run, and
+// its render identity says so.
+function qualityOverride(flags) {
+  const quality = textFlag(flags, 'quality');
+  if (quality === undefined || quality === 'final') return {};
+  if (quality !== 'fast') throw new ProjectError(`--quality must be final or fast, not "${quality}"`);
+  if (flags.draft) throw new ProjectError('--quality fast makes a final without motion blur, and a draft is already fast. Leave out one of them.');
+  return { motionBlur: false };
 }
 
 function init(dir, flags, print) {

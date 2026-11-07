@@ -13,6 +13,11 @@ Serve `out/player/` with any static web server. Opening `index.html` as a
 local file does not work. Copy the folder to your site, keeping its files
 together. It works in a subfolder too.
 
+`export --size tiktok` writes the player of that size to `out/player-tiktok/`,
+with the settings of its block in `"sizes"`. `--no-watermark` adds
+`-no-watermark` to the folder's name the same way. `--out` still sets the
+folder you choose.
+
 For a 1920 x 1080 video, embed it like this. Change the aspect ratio to
 match your video's width and height.
 

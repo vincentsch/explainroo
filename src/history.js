@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { ProjectError, hideSecrets } from './errors.js';
 import { findService } from './services.js';
 import { LANGUAGES } from './models.js';
+import { isSize } from './project.js';
 
 const BIN = fileURLToPath(new URL('../bin/explainroo.js', import.meta.url));
 const JOB_FILE = /^([0-9a-f]+)(?:\.(\d+))?\.json$/;
@@ -397,8 +398,9 @@ export function projectWord(dir, cwd = process.cwd()) {
 // user's. That number comes from a file that a stranger's project can bring.
 const CONTINUE = {
   image: (job, where, again) => `image ${where} --resume ${shortId(job)}${again}`,
-  // A job file can come with a stranger's project, so only a known language goes in the command.
-  speech: (job, where, again) => `voice ${where}${typeof job.lang === 'string' && Object.hasOwn(LANGUAGES, job.lang) ? ` --lang ${job.lang}` : ''}${again}`,
+  // A job file can come with a stranger's project, so only a known language and a
+  // real size go in the command. A sentence at the pace of a size continues at it.
+  speech: (job, where, again) => `voice ${where}${typeof job.lang === 'string' && Object.hasOwn(LANGUAGES, job.lang) ? ` --lang ${job.lang}` : ''}${typeof job.size === 'string' && isSize(job.size) ? ` --size ${job.size}` : ''}${again}`,
   clip: (job, where, again, reason) => {
     const cap = Number(job.max_cost_usd);
     return `clip ${where} --resume ${shortId(job)}${again}${reason !== 'running' && cap > 0 ? ` --max-cost ${cap}` : ''}`;
@@ -462,7 +464,7 @@ export function historyReport(dir, { current = () => true, needed = () => false,
 }
 
 function versionLine(v) {
-  const kind = [v.draft ? 'draft' : 'final', v.full ? 'full video' : `${v.range?.from}s to ${v.range?.to}s`, ...(v.scale === 1 ? [] : [`scale ${v.scale}`]), `watermark ${v.watermark ? 'on' : 'off'}`, ...(v.event === 'package' ? [`package for ${v.platform}`] : [])];
+  const kind = [v.draft ? 'draft' : 'final', ...(!v.draft && v.motionBlur === false ? ['no motion blur'] : []), v.full ? 'full video' : `${v.range?.from}s to ${v.range?.to}s`, ...(v.scale === 1 ? [] : [`scale ${v.scale}`]), `watermark ${v.watermark ? 'on' : 'off'}`, ...(v.event === 'package' ? [`package for ${v.platform}`] : [])];
   const checked = v.verify ? `verify ${v.verify.ok ? 'passed' : 'found errors'}${v.verify.understood == null ? '' : `, ${Math.round(v.verify.understood * 100)}% understood`}` : 'not verified';
   return `  ${oneLine(`${when(v.time)}  ${v.file}  ${v.format} ${v.width}x${v.height}, ${Number(v.duration).toFixed(1)}s, ${kind.join(', ')}, ${checked}`, 400)}`;
 }

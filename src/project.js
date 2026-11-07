@@ -39,6 +39,12 @@ export const FORMATS = {
   square: { size: [1080, 1080], use: 'square posts on X, LinkedIn and Facebook' },
 };
 
+// The tall formats, for apps that open on the first seconds of a video.
+export const TALL_FORMATS = ['shorts', 'tiktok', 'reels', 'vertical'];
+
+// What a block under "sizes" in video.json can set for one size.
+const SIZE_SETTINGS = ['captions', 'cover', 'pace', 'watermark'];
+
 export const DEFAULTS = {
   title: null,
   theme: 'paper',
@@ -46,6 +52,7 @@ export const DEFAULTS = {
   fps: 30,
   language: 'en',
   languages: null,
+  sizes: null,
   voice: 'af_heart',
   speed: 0.9,
   pace: 1,
@@ -157,8 +164,8 @@ export function loadLook(dir, file, fonts = []) {
 }
 
 export function resolveSize(size) {
-  if (FORMATS[size]) return { width: FORMATS[size].size[0], height: FORMATS[size].size[1], safe: FORMATS[size].safe || null };
-  if (ASPECTS[size]) return { width: ASPECTS[size][0], height: ASPECTS[size][1] };
+  if (Object.hasOwn(FORMATS, size)) return { width: FORMATS[size].size[0], height: FORMATS[size].size[1], safe: FORMATS[size].safe || null };
+  if (Object.hasOwn(ASPECTS, size)) return { width: ASPECTS[size][0], height: ASPECTS[size][1] };
   const m = /^(\d{3,4})x(\d{3,4})$/.exec(String(size));
   if (!m) fail(`size must be a format (${Object.keys(FORMATS).join(', ')}), a ratio (${Object.keys(ASPECTS).join(', ')}) or WIDTHxHEIGHT, not "${size}"`);
   const width = Number(m[1]);
@@ -243,30 +250,90 @@ function checkLanguages(raw) {
     if (code === main) fail(`languages: ${code} is the main language, so its settings go at the top of video.json`);
     const voice = LANGUAGES[code] ? `"${LANGUAGES[code]}"` : `{ "provider": "recording", "src": "assets/narration-${code}.m4a" }`;
     if (!own || typeof own !== 'object' || Array.isArray(own)) fail(`languages.${code} must be an object with the settings of that language, like { "voice": ${voice} }`);
-    const bad = Object.keys(own).filter((k) => (!(k in DEFAULTS) && !k.startsWith('_')) || k === 'language' || k === 'languages');
+    const bad = Object.keys(own).filter((k) => (!(k in DEFAULTS) && !k.startsWith('_')) || k === 'language' || k === 'languages' || k === 'sizes');
     if (bad.length) fail(`languages.${code} has setting(s) that can't be set for one language: ${bad.join(', ')}`);
   }
   return Object.keys(languages);
 }
 
+// Whether `size` is a size the way "size" and --size take one.
+export function isSize(size) {
+  try {
+    resolveSize(size);
+    return true;
+  } catch (e) {
+    if (e instanceof ProjectError) return false;
+    throw e;
+  }
+}
+
+// "sizes": { "tiktok": { "captions": "bold", "pace": 1.2 } } holds the settings
+// of one size. A block is named after a size the way "size" takes one, and it
+// applies only to that exact name: "youtube" and "16:9" are two names with two
+// blocks, although they give the same frame.
+function checkSizes(raw) {
+  const { sizes } = raw;
+  if (sizes === undefined || sizes === null) return [];
+  if (typeof sizes !== 'object' || Array.isArray(sizes)) fail('sizes must be an object like { "tiktok": { "captions": "bold", "pace": 1.2 } }');
+  for (const [name, own] of Object.entries(sizes)) {
+    if (!isSize(name)) fail(`sizes: "${name}" is not a size. Name each block after a size the way "size" takes one: a format (${Object.keys(FORMATS).join(', ')}), a ratio (${Object.keys(ASPECTS).join(', ')}) or WIDTHxHEIGHT in even numbers.`);
+    if (!own || typeof own !== 'object' || Array.isArray(own)) fail(`sizes.${name} must be an object with the settings of that size, like { "captions": "bold" }`);
+    const bad = Object.keys(own).filter((k) => !SIZE_SETTINGS.includes(k) && !k.startsWith('_'));
+    if (bad.length) fail(`sizes.${name} has setting(s) that can't be set for one size: ${bad.join(', ')}. A size can set ${SIZE_SETTINGS.slice(0, -1).join(', ')} and ${SIZE_SETTINGS.at(-1)}.`);
+  }
+  return Object.keys(sizes);
+}
+
+// The block of one size, with only the settings a size can have.
+function sizeBlock(raw, size) {
+  const own = raw.sizes && Object.hasOwn(raw.sizes, size) ? raw.sizes[size] : null;
+  return own ? Object.fromEntries(SIZE_SETTINGS.filter((k) => Object.hasOwn(own, k)).map((k) => [k, own[k]])) : null;
+}
+
+// The checked settings of one run: the settings of a language, then the block of
+// the size the run ends up at, then `overrides`, the settings of the run itself.
+// A mistake is blamed on the block only when the settings without it are good.
+function sizedSettings(settings, overrides, input, dir) {
+  const { sizes, ...general } = settings;
+  const size = overrides.size ?? general.size ?? DEFAULTS.size;
+  const block = sizeBlock(settings, size);
+  if (!block) return settingsOf({ ...general, ...overrides }, input, dir);
+  try {
+    return settingsOf({ ...general, ...block, ...overrides }, input, dir, block);
+  } catch (e) {
+    if (!(e instanceof ProjectError)) throw e;
+    settingsOf({ ...general, ...overrides }, input, dir);
+    fail(`sizes.${size}: ${e.message}`);
+  }
+}
+
 // `language` picks one language of a video in several languages, and its
-// settings come from languageSettings. `overrides` are the settings of one run,
-// like --size, which win over the settings of any language. The result holds no
-// "languages". The settings of every other language get the same checks once the
-// settings asked for are good, so that a mistake is blamed on the right place.
+// settings come from languageSettings. The block of the size in "sizes" goes on
+// top of them. `overrides` are the settings of one run, like --size, which win
+// over the settings of any language and any size. The result holds neither
+// "languages" nor "sizes", so editing the block of one size never changes the
+// settings of another. Once the settings asked for are good, the settings of
+// every other language and the block of every other size get the same checks, so
+// that a mistake is blamed on the right place. A block is checked with the main
+// language, so a block that doesn't suit another language only stops that
+// language at that size.
 export function normalizeConfig(input, dir = '.', { language: version, overrides = {} } = {}) {
   checkLanguage(input.language ?? DEFAULTS.language);
   const others = checkLanguages(input);
-  const raw = { ...(version === undefined ? input : languageSettings(input, version)), ...overrides };
-  const cfg = settingsOf(raw, input, dir);
+  const sizes = checkSizes(input);
+  const main = version === undefined || version === (input.language ?? DEFAULTS.language);
+  const cfg = sizedSettings(main ? input : languageSettings(input, version), overrides, input, dir);
   for (const code of others) {
     if (code === cfg.language) continue;
     try {
-      settingsOf(languageSettings(input, code), input, dir);
+      sizedSettings(languageSettings(input, code), {}, input, dir);
     } catch (e) {
       if (e instanceof ProjectError) fail(`languages.${code}: ${e.message}`);
       throw e;
     }
+  }
+  for (const size of sizes) {
+    if (!main || size !== cfg.size) sizedSettings(input, { size }, input, dir);
   }
   return cfg;
 }
@@ -276,10 +343,12 @@ export function checkLanguage(language) {
   if (typeof language !== 'string' || !Object.hasOwn(LANGUAGES, language)) fail(`language must be one of ${Object.keys(LANGUAGES).join(', ')}`);
 }
 
-// The checked settings of one language. `input` is the whole of video.json.
-function settingsOf(raw, input, dir) {
+// The checked settings of one language. `input` is the whole of video.json, and
+// `block` the block of the size that `raw` holds, if any.
+function settingsOf(raw, input, dir, block = null) {
   const cfg = { ...DEFAULTS, ...raw };
   delete cfg.languages;
+  delete cfg.sizes;
   checkLanguage(cfg.language);
   // A language without a Kokoro voice needs a voice of its own, and never falls back to Kokoro.
   const noKokoro = () => fail(noKokoroVoice(cfg.language, cfg.language === (input.language ?? DEFAULTS.language) ? 'main' : 'version'));
@@ -326,7 +395,10 @@ function settingsOf(raw, input, dir) {
   // Bold captions break between words, and Japanese and Chinese have no spaces to break at.
   if (cfg.captions === 'bold' && ['ja', 'zh'].includes(cfg.language)) {
     const name = cfg.language === 'ja' ? 'Japanese' : 'Chinese';
-    const own = cfg.language !== (input.language ?? DEFAULTS.language) ? ` For a ${name} version of a video with bold captions, add "languages": { "${cfg.language}": { "captions": true } } to video.json.` : '';
+    const version = cfg.language !== (input.language ?? DEFAULTS.language);
+    const own = !version ? ''
+      : block?.captions === 'bold' ? ` The block of a size comes after "languages", so the ${name} version gets the captions of the block too.`
+        : ` For a ${name} version of a video with bold captions, add "languages": { "${cfg.language}": { "captions": true } } to video.json.`;
     fail(`"captions": "bold" does not work for ${name}, whose words have no spaces between them to break at. Use "captions": true.${own}`);
   }
   const cover = cfg.cover;
@@ -515,6 +587,12 @@ export function langArg(project) {
   return project.languages && project.language !== project.languages[0] ? ` --lang ${project.language}` : '';
 }
 
+// " --size tiktok" when the block of the size gives the narration a pace of its
+// own, so that a command in a message makes the narration at that pace.
+export function sizeArg(project) {
+  return project.ownPace ? ` --size ${project.ownPace.size}` : '';
+}
+
 // `overrides` replace settings of video.json for one run, such as the size from
 // --size or the watermark from --no-watermark. The file itself stays as it is.
 // `lang` picks one language of a video in several languages.
@@ -558,7 +636,12 @@ export function loadProject(arg, overrides = {}) {
   if (!fs.existsSync(scenesPath)) fail(`${scenesPath} is missing`);
   const strings = readStrings(files.strings);
   const sub = language === main ? [] : [language];
-  const build = path.join(dir, 'build', ...sub);
+  // A size whose block gives another pace than the language's own has narration
+  // of its own, so it builds in build/pace-<pace>/, next to the normal build.
+  // Two paces never share a voice file, and switching sizes makes nothing again.
+  const pace = Number(config.pace);
+  const ownPace = pace === Number(languageSettings(raw, language).pace ?? DEFAULTS.pace) ? null : { size: config.size, pace };
+  const build = path.join(dir, 'build', ...sub, ...(ownPace ? [`pace-${pace}`] : []));
   const out = path.join(dir, 'out', ...sub);
   return {
     dir,
@@ -569,6 +652,9 @@ export function loadProject(arg, overrides = {}) {
     strings,
     overrides: set,
     sizeOverride: settings.size,
+    // The names of the sizes with a block in "sizes", for package and history.
+    sizeBlocks: raw.sizes ? Object.keys(raw.sizes) : [],
+    ownPace,
     paths: { build, out, voice: path.join(build, 'voice'), scenes: scenesPath, script: files.script, strings: files.strings, post: files.post, look: config.look ? path.resolve(dir, config.theme) : null },
   };
 }

@@ -8,7 +8,7 @@ import { AUDIO_CODECS, finishMix, frameEncoder, ffmpeg } from './ffmpeg.js';
 import { subtitleCues, toSrt, toVtt } from './subtitles.js';
 import { buildChapters, toChaptersText, toChapterMetadata } from './chapters.js';
 import { resolveTimes } from './qa.js';
-import { outputPath, scriptName } from './project.js';
+import { outputPath, scriptName, TALL_FORMATS } from './project.js';
 import { recordVersion, relativeFile, sha256File } from './history.js';
 
 export function renderFormat({ format = 'mp4', out, transparent = false } = {}) {
@@ -67,13 +67,25 @@ export async function encodeVideo(project, timeline, opts) {
   const chapters = partial ? [] : buildChapters(timeline, project.script.title || project.config.title);
   const workers = Math.max(1, Math.min(opts.workers ?? Math.min(8, Math.max(1, Math.floor(os.cpus().length / 2))), to - from));
   const quality = draft ? 0.82 : 0.93;
-  // Final renders get motion blur. Drafts, GIFs and transparent videos skip it.
+  // Final renders get motion blur. Drafts, GIFs and transparent videos skip it,
+  // and so does "motionBlur": false, which --quality fast sets for one run.
   const samples = draft || format === 'gif' || transparent || project.config.motionBlur === false ? 1 : 6;
   const segDir = path.join(project.paths.build, 'segments');
   fs.rmSync(segDir, { recursive: true, force: true });
   fs.mkdirSync(segDir, { recursive: true });
   fs.mkdirSync(path.dirname(out), { recursive: true });
-  log(`rendering ${((to - from) / fps).toFixed(1)}s (${to - from} frames at ${fps} fps, ${Math.round(project.config.width * scale)}x${Math.round(project.config.height * scale)}) with ${workers} worker${workers > 1 ? 's' : ''}`);
+  // The size of the file: frames have even sides for H.264, and a GIF is scaled
+  // down to 960 pixels on its long side.
+  let width = 2 * Math.round(project.config.width * scale / 2);
+  let height = 2 * Math.round(project.config.height * scale / 2);
+  if (format === 'gif') {
+    const ratio = Math.min(1, 960 / Math.max(width, height));
+    width = Math.max(2, 2 * Math.floor(width * ratio / 2));
+    height = Math.max(2, 2 * Math.floor(height * ratio / 2));
+  }
+  log(`rendering ${((to - from) / fps).toFixed(1)}s (${to - from} frames at ${fps} fps) to a ${width}x${height} ${format === 'gif' ? 'GIF' : 'video'} with ${workers} worker${workers > 1 ? 's' : ''}`);
+  // `withoutBlur` says how the caller leaves the blur out.
+  if (samples > 1) log(`motion blur: a final draws ${samples} samples per frame, which makes it several times slower than a draft. ${opts.withoutBlur ?? '--quality fast'} leaves the blur out.`);
 
   const mix = path.join(project.paths.build, 'mix.wav');
   const mixNorm = path.join(project.paths.build, 'mix-norm.wav');
@@ -130,14 +142,9 @@ export async function encodeVideo(project, timeline, opts) {
   const metadata = path.join(project.paths.build, 'chapters.ffmeta');
   if (chapters.length) fs.writeFileSync(metadata, toChapterMetadata(chapters));
   const metadataArgs = chapters.length ? ['-f', 'ffmetadata', '-i', metadata, '-map_metadata', '2', '-map_chapters', '2'] : [];
-  let width = 2 * Math.round(project.config.width * scale / 2);
-  let height = 2 * Math.round(project.config.height * scale / 2);
   if (format === 'gif') {
     const temp = path.join(project.paths.build, 'gif.mp4');
     const palette = path.join(project.paths.build, 'gif-palette.png');
-    const ratio = Math.min(1, 960 / Math.max(width, height));
-    width = Math.max(2, 2 * Math.floor(width * ratio / 2));
-    height = Math.max(2, 2 * Math.floor(height * ratio / 2));
     const filter = `fps=15,scale=${width}:${height}:flags=lanczos`;
     try {
       await ffmpeg(['-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', listFile, '-map', '0:v', '-c:v', 'copy', '-an', temp]);
@@ -166,6 +173,7 @@ export async function encodeVideo(project, timeline, opts) {
     fps: format === 'gif' ? 15 : fps,
     duration: (to - from) / fps,
     frames: to - from,
+    motionBlur: samples > 1,
     sha256: sha256File(out),
     identity,
   };
@@ -187,11 +195,22 @@ export function versionLine(project, video) {
     fps: video.fps,
     size: project.config.size,
     watermark: project.config.watermark !== false,
+    // Whether the frames have motion blur. A final with --quality fast has none.
+    motionBlur: video.motionBlur,
     duration: video.duration,
     sha256: video.sha256,
     version: VERSION,
     identity: video.identity,
   };
+}
+
+// The moment of the cover, as a still spec. "auto" takes the end of the first
+// scene, when it is fully built. Shorts, TikTok and Reels open on a hook title,
+// which may leave before then, so a tall video takes 1.0 second into its first
+// scene, or the scene's last frame when it is shorter.
+export function coverSpec(config, timeline) {
+  if (config.cover !== 'auto') return config.cover;
+  return `${timeline.scenes[0].id}@${TALL_FORMATS.includes(config.format) ? '1.0' : 'end'}`;
 }
 
 // What goes next to a video: its caption cues, its chapters and the time of its
@@ -201,7 +220,7 @@ export function planExtras(project, timeline, { range = { from: 0, to: timeline.
   return {
     cues: subtitleCues(timeline, { ...range, script: scriptName(project) }),
     chapters: full && chapters ? buildChapters(timeline, project.script.title || project.config.title) : [],
-    coverTime: full ? resolveTimes(timeline, [project.config.cover === 'auto' ? `${timeline.scenes[0].id}@end` : project.config.cover])[0] : null,
+    coverTime: full ? resolveTimes(timeline, [coverSpec(project.config, timeline)])[0] : null,
   };
 }
 

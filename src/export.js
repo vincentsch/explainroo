@@ -5,11 +5,12 @@ import { fileURLToPath } from 'node:url';
 import { cacheRoot } from './models.js';
 import { languageFonts, subsetFont } from './fonts.js';
 import { prepare, makeState } from './pipeline.js';
-import { scriptName } from './project.js';
+import { outputPath, scriptName } from './project.js';
 import { startServer, projectFile, ROOT } from './server.js';
 import { launch, openEngine } from './browser.js';
 import { AUDIO_CODECS, ffmpeg, finishMix } from './ffmpeg.js';
 import { resolveTimes } from './qa.js';
+import { coverSpec } from './render.js';
 import { subtitleCues, toVtt } from './subtitles.js';
 import { projectUrl } from './timeline.js';
 import { BOLD_CAPTION_FAMILIES } from '../engine/captions.js';
@@ -96,8 +97,10 @@ export function copyPlayer(project, timeline, used, out) {
   fs.writeFileSync(path.join(out, 'subtitles.vtt'), toVtt(subtitleCues(timeline, { script: scriptName(project) })));
 }
 
+// The folder is out/player/, or out/player-tiktok/ for --size tiktok, so a run
+// with another size or without the watermark never replaces the normal player.
 export async function exportPlayer(project, { out, log = () => {} } = {}) {
-  out = path.resolve(out || path.join(project.paths.out, 'player'));
+  out = outputPath(project, 'player', '', out);
   if (fs.existsSync(out) && fs.readdirSync(out).length && (!fs.existsSync(path.join(out, 'index.html')) || !fs.readFileSync(path.join(out, 'index.html'), 'utf8').includes('<meta name="generator" content="explainroo web player">'))) throw new Error('output folder is not an exported player. Choose an empty folder with --out.');
   localModules(project.dir);
   const { timeline } = await prepare(project, { log });
@@ -123,7 +126,7 @@ export async function exportPlayer(project, { out, log = () => {} } = {}) {
     });
     // openEngine uses browser.newPage, so keep its requests in this context.
     const page = await openEngine(context, server.url);
-    const cover = resolveTimes(timeline, [project.config.cover === 'auto' ? `${timeline.scenes[0].id}@end` : project.config.cover])[0].T;
+    const cover = resolveTimes(timeline, [coverSpec(project.config, timeline)])[0].T;
     const build = projectUrl(project, project.paths.build);
     const used = await page.evaluate(async ([cover, build]) => {
       const { boot } = await import('/engine/runtime.js');

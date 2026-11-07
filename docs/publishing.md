@@ -22,9 +22,13 @@ explainroo package videos/<name> --platform tiktok
 | `linkedin` | `linkedin`, 1080 x 1350 | as set in `video.json` |
 | `x` | `square`, 1080 x 1080, or another with `--size` | as set in `video.json` |
 
-When the project's own size gives the same frame and the same free area, the
-package keeps it. So a project in `16:9` goes to YouTube as it is, and the
-video that `render` made can be used.
+When `"sizes"` in `video.json` has a block for the platform's size, the
+package uses that size and its block. So the `linkedin` block counts for a
+LinkedIn package, also in an `instagram` project. Without such a block, a
+project whose own size gives the same frame and the same free area keeps its
+size. So a project in `16:9` goes to YouTube as it is, and the video that
+`render` made can be used. The rules of the platform come last, so a TikTok
+package has no watermark, whatever its block says.
 
 The folder is `out/package/<platform>/`:
 
@@ -34,7 +38,7 @@ The folder is `out/package/<platform>/`:
 | `post.json` | everything settled for this platform, see below |
 | `description.txt` | the words for the platform's text box, ready to paste |
 | `video.srt` and `video.vtt` | captions, when the video has narration |
-| `video.cover.jpg` | the cover picture |
+| `video.cover.jpg` | the cover picture. With `"cover": "auto"`, Shorts, TikTok and Reels take it 1.0 second into the first scene, where a hook title is, and the other platforms at the end of the first scene |
 | `video.chapters.txt` | chapters, on YouTube only, when scenes name them |
 | `credits.txt` | one credit per line |
 | `report.json` | the `verify` report of `video.mp4` |
@@ -56,13 +60,18 @@ made to be posted by such an app, so its file has no "explainroo.com" in the
 corner. The same rule is why credits never go into the text of a post by
 themselves.
 
-Without the watermark, `s.safe` starts a little higher on TikTok. To look at the
-frames as they will be packaged, run:
+Without the watermark, `s.safe` starts a little higher on TikTok.
+`explainroo formats` prints both areas. To look at the frames as they will be
+packaged, run:
 
 ```bash
 explainroo check videos/<name> --size tiktok --no-watermark
 explainroo still videos/<name> --size tiktok --no-watermark
 ```
+
+For settings that only the TikTok version should have, like bold captions, a
+quicker pace or another cover, add a `tiktok` block under `"sizes"` in
+`video.json`. `explainroo docs sizes` shows one.
 
 ## The words: post.json
 
@@ -150,17 +159,35 @@ wrong, set `ai_label` in `post.json`.
   are listed and kept in `post.json`.
 - **The video.** A video you already rendered is copied when it is this exact
   video. It has to be a final MP4 of the whole video at full scale, with the
-  same size and watermark. It also has to come from the same project and the
-  same version of explainroo, with its file unchanged since. A draft, a
-  `--scale` render and a `--from` or `--to` render never count. Otherwise
-  `package` renders. For TikTok,
-  `render --size tiktok --no-watermark` makes the file it needs.
+  same size and watermark. It also has to come from the same project, the same
+  settings and the same version of explainroo, with its file unchanged since. A
+  draft, a `--scale` render and a `--from` or `--to` render never count. A
+  `render --quality fast` counts only when `video.json` has
+  `"motionBlur": false`, because the package of any other project has motion
+  blur. Otherwise `package` renders, and it names the render command whose file
+  it could copy next time. Its JSON has that command in `source.command`.
 - **The file.** `verify` runs on the packaged file, unless this exact file was
   verified before. Its report goes in the folder, and its result goes in
   `post.json`. Fix any error before you post.
 
 Never upload `draft.mp4`. After you upload, look at the platform's lower quality
 copy as well as its full-size copy.
+
+### Look at a platform's version first
+
+Render the platform's version with the setup of its package, look at it, and
+then package it. The package copies that file instead of rendering the video
+again, and it says `copied from` with the file's name. For TikTok:
+
+```bash
+explainroo render videos/<name> --size tiktok --no-watermark
+explainroo package videos/<name> --platform tiktok
+```
+
+The other platforms keep the watermark that `video.json` sets, so leave out
+`--no-watermark` for them. A project whose own size suits the platform needs no
+`--size`, like a `16:9` project for YouTube. When `package` renders anyway, the
+command it names is the one to run next time.
 
 ## Share a link
 

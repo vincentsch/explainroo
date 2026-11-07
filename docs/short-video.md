@@ -6,7 +6,19 @@ payoff card at the end. It also gives camera keys for a punch-in or a slow
 drift, and a few short effects. Each part is described below.
 
 It works best with a platform size (`tiktok`, `shorts`, `reels` or `vertical`)
-and `"captions": "bold"`, which shows two to four big words at a time.
+and `"captions": "bold"`, which shows two to four big words at a time. When the
+same project also makes a 16:9 video, give the tall size its settings in a block
+of its own. Then the 16:9 version keeps the settings at the top of `video.json`:
+
+```json
+"sizes": {
+  "tiktok": { "captions": "bold", "pace": 1.2, "cover": "hook@0.5" }
+}
+```
+
+`render --size tiktok` and `package --platform tiktok` use that block.
+`explainroo docs sizes` says how blocks work, and that a size with a pace of its
+own gets narration of its own.
 
 ## The first frame
 
@@ -15,6 +27,12 @@ it as the cover. A title that draws itself in leaves that frame empty.
 `s.short.hook` is there on the first frame by default, with no entrance, so the
 frame says what the video is about. Give it a later `at` only when the scene
 starts with something else to look at.
+
+The cover that `render` and `package` write shows the hook too. With
+`"cover": "auto"`, a `shorts`, `tiktok`, `reels` or `vertical` video takes its
+cover 1.0 second into the first scene. A hook that leaves sooner needs a
+`cover` of its own, like `"hook@0.5"`, at the top of `video.json` or in the
+block of the size.
 
 ## The caption band
 

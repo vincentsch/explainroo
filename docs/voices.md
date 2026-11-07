@@ -43,7 +43,10 @@ editing a sentence buys only that sentence. If a run stops while a request is ou
 nobody can tell whether it was charged, so `voice` stops and explains. Then
 `explainroo voice <project> --new` buys only those sentences again. `voice --force`
 makes every scene again, so with a paid voice it buys every sentence again, and it
-says so first.
+says so first. A size whose block in `"sizes"` sets its own pace has narration of
+its own, which a paid voice buys once at that pace. A request at that pace
+continues with its size, like `explainroo voice <project> --size tiktok --new`,
+and `explainroo history` prints that command.
 
 You can also record the narration yourself. Use a quiet room and read
 script.md as written. Put one take for the whole video in `assets/`:

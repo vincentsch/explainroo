@@ -271,7 +271,7 @@ test('the start page says that a post needs a yes, and the topics have the point
   assert.match(commands, /^\| `share \[project\]` \|.*`--platform`.*`--file`.*`--title`.*`--new`/m);
   assert.match(commands, /^\| `publish \[project\]` \|.*`--yes`.*`--via`.*`--platform`.*`--privacy`.*`--media-url`.*`--channel`.*`--account`.*`--dry-run`.*`--new`/m);
   assert.match(commands, /^\| `connect <service>` \|.*`--key-stdin`.*`--callback-url`.*`--project`/m);
-  for (const command of ['preview', 'still', 'sheet', 'check', 'render']) assert.match(commands, new RegExp(`^\\| \`${command} \\[project\\][^|]*\\|.*\`--no-watermark\``, 'm'), command);
+  for (const command of ['preview', 'still', 'sheet', 'check', 'render', 'export']) assert.match(commands, new RegExp(`^\\| \`${command} \\[project\\][^|]*\\|.*\`--no-watermark\``, 'm'), command);
 });
 
 test('the publishing page covers each route, the logins, the pairs, privacy, the yes and why nothing is sent twice', () => {
@@ -354,4 +354,24 @@ test('the README marks the hosted link and partners as coming, and labels a part
   const partners = readme.slice(readme.indexOf('## Partners'), readme.indexOf('\n## ', readme.indexOf('## Partners')));
   for (const words of ['Partners are coming', 'There are none yet', '"paid partner"', 'free choices stay first', 'never to pick a paid service for you']) assert.ok(partners.replace(/\s+/g, ' ').includes(words), words);
   assert.match(readme, /`explainroo share`[^]*?That hosted service is coming\./);
+});
+
+test('the sizes, settings, short-video and publishing topics explain settings per size, the tall cover and reuse, and the help lists the flags', () => {
+  const sizes = oneLine(page('sizes'));
+  for (const words of ['"sizes": { "tiktok": { "captions": "bold", "pace": 1.2, "cover": "hook@0.5" } }', 'the 16:9 version stays as it is', 'A block follows its exact size name.', 'A package looks for the block of its platform\'s size first', '`build/pace-<pace>/`', 'A paid voice buys the narration at that pace once', 'explainroo voice videos/<name> --size tiktok', 'take it 1.0 second into the first scene', 'plain `9:16` included, takes the end of the first scene', 'with the watermark and without it']) assert.ok(sizes.includes(words), words);
+  assert.match(page('settings'), /^\| `sizes` \| none \| `captions`, `cover`, `pace` and `watermark` for one size/m);
+  assert.match(page('settings'), /^\| `cover` \| `"auto"` \| .*1\.0 second into it for `shorts`, `tiktok`, `reels` and `vertical`/m);
+  assert.match(page('settings'), /^\| `motionBlur` \| .*`render --quality fast` leaves it out for one run/m);
+  const short = oneLine(page('short-video'));
+  for (const words of ['"tiktok": { "captions": "bold", "pace": 1.2, "cover": "hook@0.5" }', 'takes its cover 1.0 second into the first scene']) assert.ok(short.includes(words), words);
+  const publishing = oneLine(page('publishing'));
+  for (const words of ['the package uses that size and its block', 'a TikTok package has no watermark, whatever its block says', 'Shorts, TikTok and Reels take it 1.0 second into the first scene', '### Look at a platform\'s version first', 'explainroo render videos/<name> --size tiktok --no-watermark', '`source.command`', '`"motionBlur": false`']) assert.ok(publishing.includes(words), words);
+  const commands = page('commands');
+  assert.match(commands, /^\| `voice \[project\]` \|.*`--size`/m);
+  assert.match(commands, /^\| `render \[project\]` \|.*`--quality final` or `fast`/m);
+  assert.ok(oneLine(commands).includes('`--quality fast` and `--draft` can\'t go together'));
+  assert.match(commands, /^\| `export \[project\]` \|.*`--size`.*`out\/player-tiktok\/` with `--size tiktok`/m);
+  assert.ok(oneLine(page('web-player')).includes('`export --size tiktok` writes the player of that size to `out/player-tiktok/`, with the settings of its block in `"sizes"`.'));
+  const help = oneLine(run('--help').stdout);
+  for (const words of ['--size makes the narration of a size whose block in "sizes" sets its own pace', '--quality final|fast', '--quality fast makes a final without it', '"sizes" in video.json sets captions, cover, pace and watermark for one size', 'export [project] write a web player folder (--out dir, default: out/player/; --size, --no-watermark)', 'override video.json for preview, still, sheet, check, render and export']) assert.ok(help.includes(words), words);
 });

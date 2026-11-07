@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import { fileURLToPath } from 'node:url';
 import { loadProject, normalizeConfig, ProjectError } from '../src/project.js';
@@ -37,7 +37,7 @@ function setEnv(t, name, value) {
   });
 }
 
-async function setup(t, { script = FOUR_SENTENCES, voice = { provider: 'elevenlabs', id: 'fake-voice' }, settings = {} } = {}) {
+async function setup(t, { script = FOUR_SENTENCES, voice = { provider: 'elevenlabs', id: 'fake-voice' }, settings = {}, files = {} } = {}) {
   const fake = await startFakeServices();
   t.after(fake.close);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-speech-'));
@@ -46,12 +46,14 @@ async function setup(t, { script = FOUR_SENTENCES, voice = { provider: 'elevenla
   fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ voice, ...settings }));
   fs.writeFileSync(path.join(dir, 'script.md'), script);
   fs.writeFileSync(path.join(dir, 'scenes.js'), 'export default { first() {}, silent() {}, second() {} };');
+  for (const [name, text] of Object.entries(files)) fs.writeFileSync(path.join(dir, name), text);
   setEnv(t, 'EXPLAINROO_ELEVENLABS_URL', fake.env.EXPLAINROO_ELEVENLABS_URL);
   setEnv(t, 'ELEVENLABS_API_KEY', GOOD_KEY);
   // Says the address override once, which would only clutter the test output.
   t.mock.method(process.stderr, 'write', () => true);
   const spoken = () => fake.requests('elevenlabs', SPEAK).map((r) => r.body.text);
-  const voiceRun = (options = {}) => synthesize(loadProject(dir), { transcribe: noWords, ...options });
+  // `overrides` picks a version of the video, like --size and --lang do.
+  const voiceRun = (options = {}, overrides = {}) => synthesize(loadProject(dir, overrides), { transcribe: noWords, ...options });
   const child = (...args) => spawn(process.execPath, [runner, dir, ...args], { env: { ...process.env, ...fake.env }, stdio: 'ignore' });
   return { fake, dir, spoken, voiceRun, child };
 }
@@ -136,6 +138,102 @@ test('a kill during a request: voice stops, says why, and --new buys only that s
   assert.deepEqual(historyReport(dir).open, []);
   await voiceRun();
   assert.equal(spoken().length, 3);
+});
+
+// The speed each request asked ElevenLabs for. Speed 1 sends no voice settings.
+const speeds = (fake) => fake.requests('elevenlabs', SPEAK).map((r) => r.body.voice_settings?.speed ?? 1);
+const TIKTOK_PACE = { sizes: { tiktok: { pace: 1.2 } } };
+
+test('a size with a pace of its own buys its narration once, into a folder of its own, and switching sizes buys nothing', async (t) => {
+  const { dir, fake, voiceRun } = await setup(t, { settings: TIKTOK_PACE });
+  const count = () => fake.count('elevenlabs', SPEAK);
+  await voiceRun();
+  assert.equal(count(), 4);
+  await voiceRun({}, { size: 'tiktok' });
+  assert.equal(count(), 8);
+  assert.deepEqual(speeds(fake), [1, 1, 1, 1, 1.2, 1.2, 1.2, 1.2]);
+  const wide = voicePaths(loadProject(dir), 'first').wav;
+  const tall = voicePaths(loadProject(dir, { size: 'tiktok' }), 'first').wav;
+  assert.equal(tall, path.join(dir, 'build/pace-1.2/voice/first.wav'));
+  const files = () => [wide, tall].map((file) => `${hashFile(file)} ${fs.statSync(file).mtimeMs}`);
+  const made = files();
+  for (const overrides of [{}, { size: 'tiktok' }, { size: 'youtube' }, { size: 'tiktok' }]) await voiceRun({}, overrides);
+  assert.equal(count(), 8);
+  assert.deepEqual(files(), made, 'switching sizes makes no narration again');
+  // The narration at that pace comes back from history/voice/ without a purchase.
+  fs.rmSync(path.join(dir, 'build/pace-1.2'), { recursive: true });
+  await voiceRun({}, { size: 'tiktok' });
+  assert.equal(count(), 8);
+  assert.equal(hashFile(tall), made[1].split(' ')[0]);
+});
+
+// Kills a voice run during its second request, at the pace of a size.
+async function killDuringRequest({ fake, child }, ...args) {
+  fake.plan('elevenlabs', SPEAK, {}, { hang: true });
+  const run = child(...args);
+  await fake.until('elevenlabs', SPEAK, 2);
+  run.kill('SIGKILL');
+  await once(run, 'close');
+}
+
+// The open jobs that the history command prints.
+function historyCli(dir, env) {
+  const r = spawnSync(process.execPath, [bin, 'history', dir, '--json'], { env: { ...process.env, ...env }, encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  return JSON.parse(r.stdout).open;
+}
+
+test('a kill during a request at the pace of a size: the stop and history say --size, and that command settles it at that pace', async (t) => {
+  const context = await setup(t, { script: '# Test\n## first\nThe first sentence is here. The second sentence is there.\n', settings: TIKTOK_PACE });
+  const { dir, fake, voiceRun } = context;
+  await killDuringRequest(context, '--size', 'tiktok');
+  assert.deepEqual(speeds(fake), [1.2, 1.2]);
+  const job = listJobs(dir).find((j) => j.status !== 'done');
+  assert.equal(job.size, 'tiktok');
+  assert.equal(job.lang, undefined);
+
+  let command;
+  await assert.rejects(voiceRun({}, { size: 'tiktok' }), (e) => {
+    assert.match(e.message, /nothing more was bought/);
+    command = /run: (.+)$/.exec(e.message)[1];
+    return true;
+  });
+  assert.match(command, / voice \S+ --size tiktok --new$/);
+  assert.equal(historyReport(dir).open[0].command, command);
+  const printed = historyCli(dir, fake.env);
+  assert.equal(printed.length, 1);
+  assert.equal(printed[0].command, command);
+
+  // What the command does: voice --size tiktok --new.
+  await voiceRun({ fresh: true }, { size: 'tiktok' });
+  assert.deepEqual(speeds(fake), [1.2, 1.2, 1.2], 'it settles the request at the pace of the size and buys nothing at the normal pace');
+  assert.deepEqual(historyReport(dir).open, []);
+  assert.deepEqual(historyCli(dir, fake.env), []);
+});
+
+test('the same holds for another language at the pace of a size, with --lang and --size', async (t) => {
+  const voice = { provider: 'elevenlabs', id: 'fake-voice' };
+  const context = await setup(t, {
+    script: '# Test\n## first\nThe first sentence is here.\n',
+    settings: { languages: { es: { voice } }, ...TIKTOK_PACE },
+    files: { 'script.es.md': '# Prueba\n## first\nLa primera frase está aquí. La segunda frase está allí.\n' },
+  });
+  const { dir, fake, spoken, voiceRun } = context;
+  await killDuringRequest(context, '--lang', 'es', '--size', 'tiktok');
+  assert.deepEqual(spoken(), ['La primera frase está aquí.', 'La segunda frase está allí.']);
+  const job = listJobs(dir).find((j) => j.status !== 'done');
+  assert.equal(job.lang, 'es');
+  assert.equal(job.size, 'tiktok');
+  await assert.rejects(voiceRun({}, { lang: 'es', size: 'tiktok' }), / voice \S+ --lang es --size tiktok --new$/);
+  const [open] = historyCli(dir, fake.env);
+  assert.match(open.command, / voice \S+ --lang es --size tiktok --new$/);
+  await voiceRun({ fresh: true }, { lang: 'es', size: 'tiktok' });
+  assert.deepEqual(speeds(fake), [1.2, 1.2, 1.2]);
+  assert.deepEqual(spoken().at(-1), 'La segunda frase está allí.');
+  assert.deepEqual(historyCli(dir, fake.env), []);
+  // A sentence made without a size keeps the command it had.
+  await voiceRun();
+  assert.ok(listJobs(dir).filter((j) => j.request.text === 'The first sentence is here.').every((j) => j.size === undefined && j.lang === undefined));
 });
 
 test('--new also finishes what was never asked for, and buys nothing that is already good', async (t) => {
@@ -546,4 +644,35 @@ test('the real command line stops on an unclear request, history prints the comm
   assert.match(forced.stderr, /--force .* buys 2 sentences again/);
   assert.equal(JSON.parse(forced.stdout).characters, sentences.slice(0, 2).join('').length);
   assert.equal(spoken().length, 5);
+});
+
+test('the real command line continues a request at the pace of a size with the command it printed', { skip: !cached && 'speech models not downloaded' }, async (t) => {
+  const { dir, fake } = await setup(t, { script: '# Test\n## first\nThe first sentence is here. The second sentence is there.\n## silent\n## second\n', settings: TIKTOK_PACE });
+  const env = { ...process.env, ...fake.env };
+  const cli = (...args) => new Promise((resolve) => {
+    const child = spawn(process.execPath, [bin, ...args], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+    const out = { stdout: '', stderr: '' };
+    child.stdout.on('data', (d) => { out.stdout += d; });
+    child.stderr.on('data', (d) => { out.stderr += d; });
+    child.on('close', (code) => resolve({ ...out, code }));
+  });
+  fake.plan('elevenlabs', SPEAK, {}, { hang: true });
+  const killed = spawn(process.execPath, [bin, 'voice', dir, '--size', 'tiktok'], { env, stdio: 'ignore' });
+  await fake.until('elevenlabs', SPEAK, 2);
+  killed.kill('SIGKILL');
+  await once(killed, 'close');
+
+  const stopped = await cli('voice', dir, '--size', 'tiktok');
+  assert.equal(stopped.code, 1);
+  const command = /run: (.+)$/m.exec(stopped.stderr)[1];
+  assert.match(command, / voice \S+ --size tiktok --new$/);
+  const [open] = JSON.parse((await cli('history', dir, '--json')).stdout).open;
+  assert.equal(open.command, command);
+  const printed = spawn(command, { shell: true, env, stdio: 'ignore' });
+  assert.equal((await once(printed, 'close'))[0], 0);
+  assert.deepEqual(speeds(fake), [1.2, 1.2, 1.2]);
+  assert.deepEqual(JSON.parse((await cli('history', dir, '--json')).stdout).open, []);
+  const done = JSON.parse((await cli('voice', dir, '--size', 'tiktok', '--json')).stdout);
+  assert.equal(done.characters, 0);
+  assert.equal(done.speed, 1.2);
 });

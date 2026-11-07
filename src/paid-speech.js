@@ -10,7 +10,7 @@ import { createJob, decide, historyDir, jobKey, listAttempts, listJobs, projectW
 import { serviceUrl } from './services.js';
 import { findConnector } from './connectors/index.js';
 import { readWav, writeWav } from './wav.js';
-import { langArg } from './project.js';
+import { langArg, sizeArg } from './project.js';
 
 // The connector of a voice that is bought per request, or null for free voices.
 export function speechConnector(config) {
@@ -48,8 +48,10 @@ export function openSpeech(project, paid, { force = false, fresh = false, log = 
   const { dir, config } = project;
   const boughtNow = new Set();
   const keyOf = (text) => speechKey(paid, config, text);
-  // A sentence of another language than the main one says so, for the command that continues it.
-  const version = langArg(project) ? { lang: project.language } : {};
+  // A sentence of another language than the main one says so, and so does a
+  // sentence at the pace of a size, for the command that continues it.
+  const version = { ...(langArg(project) ? { lang: project.language } : {}), ...(project.ownPace ? { size: project.ownPace.size } : {}) };
+  const again = () => `${selfCommand()} voice ${projectWord(dir)}${langArg(project)}${sizeArg(project)} --new`;
 
   const decision = (key) => {
     if (boughtNow.has(key)) return decide(dir, key);
@@ -58,11 +60,10 @@ export function openSpeech(project, paid, { force = false, fresh = false, log = 
 
   const stopMessage = (stuck) => {
     const lines = stuck.map(({ job, reason, scene, text }) => `  ${shortId(job)} in scene ${scene}: "${text.slice(0, 60)}"\n    ${stopSentence(job, reason)}`);
-    const command = `${selfCommand()} voice ${projectWord(dir)}${langArg(project)} --new`;
     const check = stuck.some((s) => s.reason === 'unknown' || s.reason === 'lost')
       ? `\nTo check, run "${selfCommand()} history ${projectWord(dir)}" again in a few minutes: a run that is still working saves its answer by then. Your ${paid.name} account shows what was charged.`
       : '';
-    return `the voice stopped, and nothing more was bought. ${stuck.length === 1 ? '1 paid sentence has' : `${stuck.length} paid sentences have`} no usable saved speech:\n${lines.join('\n')}${check}\nTo buy only ${stuck.length === 1 ? 'that sentence' : 'those sentences'} again, run: ${command}`;
+    return `the voice stopped, and nothing more was bought. ${stuck.length === 1 ? '1 paid sentence has' : `${stuck.length} paid sentences have`} no usable saved speech:\n${lines.join('\n')}${check}\nTo buy only ${stuck.length === 1 ? 'that sentence' : 'those sentences'} again, run: ${again()}`;
   };
 
   return {
@@ -124,7 +125,7 @@ export function openSpeech(project, paid, { force = false, fresh = false, log = 
           const outcome = e instanceof ServiceError ? e.outcome : 'lost';
           updateJob(dir, job, { status: outcome, error: e.message });
           if (outcome === 'refused') throw e;
-          throw new ServiceError(`${e.message.replace(/\.$/, '')}. That request may have cost money, so it is not sent again by itself. To buy it again, run: ${selfCommand()} voice ${projectWord(dir)}${langArg(project)} --new`, outcome);
+          throw new ServiceError(`${e.message.replace(/\.$/, '')}. That request may have cost money, so it is not sent again by itself. To buy it again, run: ${again()}`, outcome);
         }
       }
       // A scene is built from the saved file every time, so a rebuild gives the

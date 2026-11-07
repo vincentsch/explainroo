@@ -7,14 +7,14 @@ take the project folder first, and every command accepts `--json`.
 | Command | What it does |
 |---|---|
 | `init <dir>` | creates a project (`--theme`, `--size`, `--pace`, `--language`, `--voice`, `--title`) |
-| `voice [project]` | makes the narration and the word times, saved per scene so only changed scenes are made again (`--force` makes every scene again, `--new` buys again only paid sentences with no good answer) |
+| `voice [project]` | makes the narration and the word times, saved per scene so only changed scenes are made again (`--force` makes every scene again, `--new` buys again only paid sentences with no good answer, `--size` makes the narration of a size whose block in `"sizes"` sets its own pace, `--lang`) |
 | `preview [project]` | a live preview in the browser that reloads when you save (`--size`, `--no-watermark`) |
 | `still [project] [times]` | PNG pictures at `12.5`, `scene`, `scene@2.4` or `scene@end` (`--size`, `--no-watermark`, `--transparent` keeps alpha) |
 | `sheet [project]` | one image with many frames of the video or of one scene (`--scene`, `--every`, `--size`, `--no-watermark`) |
 | `check [project]` | finds layout, timing and pronunciation problems (`--size`, `--no-watermark`) |
-| `render [project]` | the video plus subtitle files, chapters and a cover (`--format mp4`, `gif`, `webm` or `mov`, `--transparent`, `--size`, `--no-watermark`, `--draft`, `--from`, `--to`, `--workers`, `--out`) |
+| `render [project]` | the video plus subtitle files, chapters and a cover (`--format mp4`, `gif`, `webm` or `mov`, `--transparent`, `--size`, `--no-watermark`, `--draft`, `--quality final` or `fast`, `--from`, `--to`, `--workers`, `--out`) |
 | `verify [project]` | checks the finished MP4, WebM or MOV: loudness, true peak, black frames, silence, clear voice (`--file` picks another file) |
-| `export [project]` | writes a web player folder (`--out dir`, `--json`), by default `out/player/` |
+| `export [project]` | writes a web player folder (`--out dir`, `--size`, `--no-watermark`, `--json`), by default `out/player/`, or `out/player-tiktok/` with `--size tiktok` |
 | `package [project]` | a folder to post on one platform (`--platform`, `--title`, `--description`, `--hashtags`, `--size` for x, `--workers`) |
 | `share [project]` | uploads a video to explainroo.com for a page link, once that service runs (`--platform`, `--file`, `--title`, `--new`) |
 | `publish [project]` | posts a package after a typed yes or `--yes` (`--via`, `--platform`, `--privacy`, `--media-url`, `--channel`, `--account`, `--dry-run`, `--new`) |
@@ -27,7 +27,7 @@ take the project folder first, and every command accepts `--json`.
 | `history [project]` | prints open paid jobs with the command that continues each one, then spend, then rendered versions |
 | `voices`, `say "text"` | lists Kokoro voices with their languages (`--language es`, `ja` or `zh` filters voices), or makes a sample in the chosen voice's language |
 | `voices [project] --provider <id>` | lists the names, ids and labels available to the key of `elevenlabs` or `cartesia` (`--language`, `--json`) |
-| `themes`, `formats`, `icons <word>` | lists the looks and the sizes, searches the 1,854 icons |
+| `themes`, `formats`, `icons <word>` | lists the looks, lists the sizes with each one's content area with and without the watermark, searches the 1,854 icons |
 | `doctor [project]` | checks Node, ffmpeg, Chrome, the models, and espeak-ng and Python with misaki for other languages, for one project when given (`--fetch` downloads only English models) |
 | `docs [topic]` | prints the start page, or one topic (`--list` lists the topics) |
 | `version` | prints the version (`--version` also works) |
@@ -35,6 +35,15 @@ take the project folder first, and every command accepts `--json`.
 The extra files share the video's name, also with `--out`: `video.srt`,
 `video.vtt`, `video.cover.jpg` and `video.chapters.txt`. A GIF has no sound,
 runs at 15 frames per second and is at most 960 pixels on its long side.
+`render` prints the size of the file it writes. A draft is half the size, made
+even, so a 1080 x 1350 video gives a 540 x 676 draft.
+
+A final draws 6 samples per frame for motion blur, which makes it several times
+slower than a draft. `render` says so before the frames. `--quality fast` makes
+a final without motion blur: full size, with the final encoder settings and one
+sample per frame. It writes `out/video.mp4` like any final, and the record says
+that motion blur was off. `package` copies such a file only when `video.json`
+has `"motionBlur": false`. `--quality fast` and `--draft` can't go together.
 With `--out`, the file ending must match the format. A render of part of the
 video (`--from`, `--to`) skips the chapters and the cover. A video without
 narration gets no subtitle files.

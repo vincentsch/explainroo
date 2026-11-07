@@ -455,6 +455,27 @@ const steps = [
     },
   },
   {
+    // Settings for TikTok only: bold captions at a quicker pace, with narration of their own.
+    setup: ({ temp }) => {
+      const file = path.join(temp, 'tiny/video.json');
+      fs.writeFileSync(file, JSON.stringify({ ...JSON.parse(fs.readFileSync(file, 'utf8')), sizes: { tiktok: { captions: 'bold', pace: 1.2 } } }));
+    },
+    args: ['render', 'tiny', '--size', 'tiktok', '--no-watermark', '--json'],
+    check: (r, { temp }) => {
+      expect(r.out === path.join(temp, 'tiny/out/video-tiktok-no-watermark.mp4') && r.width === 1080 && r.height === 1920, `the TikTok render went to ${r.out} at ${r.width}x${r.height}`);
+      expect(fs.existsSync(path.join(temp, 'tiny/build/pace-1.2/voice/hello.wav')), 'the narration at the pace of the TikTok block is not in build/pace-1.2/');
+      return `${r.duration.toFixed(1)}s at pace 1.2`;
+    },
+  },
+  {
+    args: ['package', 'tiny', '--platform', 'tiktok', '--json'],
+    check: (r) => {
+      expect(r.ok && r.source.how === 'copied' && r.source.file === 'out/video-tiktok-no-watermark.mp4', `the package did not copy the TikTok render: ${JSON.stringify(r.source)}`);
+      expect(r.post.size === 'tiktok' && r.post.watermark === false && r.post.verify.understood >= MIN_NARRATION_UNDERSTOOD, `post.json says ${JSON.stringify({ size: r.post.size, watermark: r.post.watermark, verify: r.post.verify })}`);
+      return `copied from ${r.source.file}, ${Math.round(r.post.verify.understood * 100)}% of the narration understood`;
+    },
+  },
+  {
     args: ['connect', 'cartesia', '--key-stdin', '--json'],
     input: `${GOOD_KEY}\n`,
     check: (r, { settings, fake }, raw) => {

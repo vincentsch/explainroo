@@ -67,7 +67,7 @@ test('output paths keep existing names or add the explicit size to every output 
     ['video', '.mp4'], ['draft', '.mp4'], ['video', '.gif'], ['draft', '.gif'],
     ['video', '.srt'], ['video', '.vtt'], ['video', '.cover.jpg'], ['video', '.chapters.txt'],
     ['draft', '.srt'], ['draft', '.vtt'], ['draft', '.cover.jpg'], ['draft', '.chapters.txt'],
-    ['stills', ''], ['sheet', '.jpg'], ['sheet-intro', '.jpg'],
+    ['stills', ''], ['sheet', '.jpg'], ['sheet-intro', '.jpg'], ['player', ''],
   ];
   for (const [name, ext] of names) {
     assert.equal(outputPath(project, name, ext), path.resolve(`/tmp/video/out/${name}${ext}`));
@@ -87,7 +87,7 @@ test('--no-watermark gets names of its own, alone and next to a size, and --out 
   const project = { paths: { out: '/tmp/video/out' } };
   const bare = { ...project, overrides: { watermark: false } };
   const sized = { ...project, sizeOverride: 'tiktok', overrides: { size: 'tiktok', watermark: false } };
-  for (const [name, ext] of [['video', '.mp4'], ['draft', '.mp4'], ['video', '.srt'], ['video', '.cover.jpg'], ['video', '.chapters.txt'], ['stills', ''], ['sheet', '.jpg'], ['sheet-intro', '.jpg']]) {
+  for (const [name, ext] of [['video', '.mp4'], ['draft', '.mp4'], ['video', '.srt'], ['video', '.cover.jpg'], ['video', '.chapters.txt'], ['stills', ''], ['sheet', '.jpg'], ['sheet-intro', '.jpg'], ['player', '']]) {
     assert.equal(outputPath(bare, name, ext), path.resolve(`/tmp/video/out/${name}-no-watermark${ext}`));
     assert.equal(outputPath(sized, name, ext), path.resolve(`/tmp/video/out/${name}-tiktok-no-watermark${ext}`));
     assert.equal(outputPath(bare, name, ext, 'chosen.mp4'), path.resolve('chosen.mp4'));

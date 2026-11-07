@@ -21,16 +21,25 @@ export function packageDir(project, platform) {
   return path.join(project.paths.out, 'package', platform);
 }
 
-// The settings a package changes for its platform. A project whose own size gives
-// the same frame and free area keeps it, so that its normal render can be reused.
+// The settings a package changes for its platform. When "sizes" in video.json has
+// a block under the platform's size name, the package uses that size and its
+// block. Otherwise a project whose own size gives the same frame and free area
+// keeps it, so that its normal render can be reused. The platform's rules come
+// last, so a TikTok package has no watermark whatever a block says.
 export function packageOverrides(project, platform, size) {
   const spec = PLATFORMS[platform];
   if (size !== undefined && !spec.anySize) fail(`--size works only with --platform x. A ${platform} package always has the ${spec.size} size.`);
   const target = size ?? spec.size;
   const wanted = resolveSize(target);
   const own = resolveSize(project.config.size);
-  const same = own.width === wanted.width && own.height === wanted.height && JSON.stringify(own.safe ?? null) === JSON.stringify(wanted.safe ?? null);
+  const same = target === project.config.size || (!project.sizeBlocks?.includes(target)
+    && own.width === wanted.width && own.height === wanted.height && JSON.stringify(own.safe ?? null) === JSON.stringify(wanted.safe ?? null));
   return { ...(same ? {} : { size: target }), ...(spec.watermark === false ? { watermark: false } : {}) };
+}
+
+// A command, like check or render, on the exact setup of a package.
+function setupCommand(command, project, overrides) {
+  return `${selfCommand()} ${command} ${projectWord(project.dir)}${langArg(project)}${overrides.size ? ` --size ${overrides.size}` : ''}${overrides.watermark === false ? ' --no-watermark' : ''}`;
 }
 
 // A file in versions.jsonl can be anywhere, also in a stranger's project. Only a
@@ -86,7 +95,8 @@ function writeAtomic(file, text) {
 
 function setupWords(project) {
   const { size, width, height, watermark } = project.config;
-  return `the ${size} size (${width}x${height}), ${watermark === false ? 'without' : 'with'} the watermark`;
+  const block = project.sizeBlocks?.includes(size) ? ` with its settings from "sizes"` : '';
+  return `the ${size} size (${width}x${height})${block}, ${watermark === false ? 'without' : 'with'} the watermark`;
 }
 
 // Writes out/package/<platform>/, or out/<lang>/package/<platform>/ for another
@@ -111,7 +121,7 @@ export async function packageVideo(arg, { lang, platform, size, title, descripti
   const errors = checked.issues.filter((i) => i.level === 'error');
   const folder = packageDir(project, platform);
   if (errors.length) {
-    const command = `${selfCommand()} check ${projectWord(dir)}${langArg(project)}${overrides.size ? ` --size ${overrides.size}` : ''}${overrides.watermark === false ? ' --no-watermark' : ''}`;
+    const command = setupCommand('check', project, overrides);
     const moved = overrides.size ? ` A layout made for ${own.config.size} may not fit ${overrides.size}, so place things from s.safe.` : '';
     // A package from before shows an older state of the project. Without its
     // post.json, share and posting tools can't take it for the current one.
@@ -148,8 +158,10 @@ export async function packageVideo(arg, { lang, platform, size, title, descripti
       video = { ...found.line, out: target };
       source = { how: 'copied', file: relativeFile(dir, found.file) };
     } else {
-      video = { ...(await encodeVideo(project, timeline, { format: 'mp4', out: temp, workers, log })), out: target };
-      source = { how: 'rendered', file: null };
+      log('no render is this exact video, so the package renders it');
+      video = { ...(await encodeVideo(project, timeline, { format: 'mp4', out: temp, workers, log, withoutBlur: '"motionBlur": false in video.json' })), out: target };
+      // The render whose file a later package can copy instead.
+      source = { how: 'rendered', file: null, command: setupCommand('render', project, overrides) };
     }
     moveFile(temp, target);
     recordVersion(dir, { event: 'package', platform, ...versionLine(project, video), source: source.file });
@@ -231,6 +243,7 @@ export function formatPackage(r) {
     `${name} package in ${path.relative(process.cwd(), r.folder) || r.folder}`,
     `  ${listed.join(', ')}`,
     `Video: ${p.width}x${p.height}, ${p.duration.toFixed(1)}s, ${p.watermark ? 'with' : 'without'} the watermark, ${how}`,
+    ...(r.source.command ? [`  No render was this exact video. Next time, "${r.source.command}" makes one that package can copy.`] : []),
     `Title: ${oneLine(p.title)}`,
     `Text: ${oneLine(p.text)}`,
     `AI label: ${p.ai_label ? 'yes' : 'no'}${p.ai_reasons.length ? ` (${p.ai_reasons.join(', ')})` : ''}`,

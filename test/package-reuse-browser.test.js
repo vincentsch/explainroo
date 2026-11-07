@@ -44,7 +44,8 @@ test('a full render is copied and all the files next to it are written again, an
   const line = readVersions(dir).at(-1);
   assert.equal(line.event, 'package');
   assert.equal(line.source, 'out/video.mp4');
-  assert.match((await cli(['history', dir])).stdout, /out\/package\/youtube\/video\.mp4 .*final, full video, watermark on, package for youtube, verify passed/);
+  // The tiny project has "motionBlur": false, and the record says so.
+  assert.match((await cli(['history', dir])).stdout, /out\/package\/youtube\/video\.mp4 .*final, no motion blur, full video, watermark on, package for youtube, verify passed/);
   // What the agent looked at with --size tiktok --no-watermark is reused for TikTok.
   const look = await cli(['render', dir, '--size', 'tiktok', '--no-watermark', '--workers', '1', '--json']);
   assert.equal(look.code, 0, look.text);
