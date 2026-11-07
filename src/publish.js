@@ -665,7 +665,15 @@ export async function publish(project, { via, platform: asked, privacy: askedPri
   if (media?.missing) fail(`${media.missing} Nothing was sent.`);
   notice(`This is the post. Nothing has been sent yet.\n${planText(plan)}`);
   if (!(await confirmed({ yes, ask }))) return needYes(plan, request, false);
-  const attempt = (listAttempts(dir, key).at(-1)?.attempt ?? 0) + 1;
+  // The attempt comes from what this run saw before it asked: the first one, or with
+  // --new one more than the newest it saw. Another run may have started the same
+  // post while this one waited for its yes, and then this one sends nothing. The
+  // exclusive open below catches a run that starts it in the same moment.
+  const attempt = (newest?.attempt ?? 0) + 1;
+  const meanwhile = listAttempts(dir, key).at(-1);
+  if ((meanwhile?.attempt ?? 0) >= attempt) {
+    fail(`while this run waited for a yes, another run started a post of this file to ${destination.name} on ${NETWORKS[network]} (job ${shortId(meanwhile)}). Nothing was sent. ${fresh ? 'To post it once more anyway, run the same command again.' : 'Run the same command again to see where that post is. To post it once more anyway, add --new.'}`);
+  }
   let job;
   try {
     job = createJob(dir, key, { kind: 'publish', provider: via, attempt, stage: 'planned', status: 'planned', network, destination: { ...destination, key: destinationKey(via, network, destination) }, account: chosen.account, plan, request });

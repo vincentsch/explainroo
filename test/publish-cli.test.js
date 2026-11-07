@@ -747,13 +747,54 @@ test('two identical posts at once make one post', async (t) => {
   const runs = [s.start(['publish', s.dir, '--via', 'blotato', '--yes']).result, s.start(['publish', s.dir, '--via', 'blotato', '--yes']).result];
   const loser = await Promise.race(runs);
   assert.equal(loser.code, 1, loser.text);
-  assert.match(loser.stderr, /another run (started the same post a moment ago|is posting this right now)|went out to Blotato .* no answer was saved/);
+  assert.match(loser.stderr, /another run (started the same post a moment ago|is posting this right now|started a post of this file)|went out to Blotato .* no answer was saved/);
   await s.fake.until('blotato', 'POST /posts');
   s.fake.release();
   const results = await Promise.all(runs);
   assert.deepEqual(results.map((r) => r.code).toSorted(), [0, 1]);
   assert.equal(s.fake.count('blotato', 'POST /posts'), 1);
   assert.equal(jobs(s.dir).length, 1);
+});
+
+// A run in a real terminal that stops at its question until the test answers it.
+function waitingRun(s, flags) {
+  const child = spawn('script', ['-qec', `${process.execPath} ${bin} publish ${s.dir} ${flags.join(' ')}`, '/dev/null'], { env: s.env, stdio: ['pipe', 'pipe', 'pipe'] });
+  let text = '';
+  const asked = new Promise((resolve) => {
+    child.stdout.on('data', (d) => {
+      text += d;
+      if (text.includes('Type yes to post this under your name')) resolve();
+    });
+  });
+  const done = new Promise((resolve) => child.on('close', (code) => resolve({ code, text })));
+  return { asked, answer: (words) => child.stdin.write(`${words}\r`), done };
+}
+
+test('a run that waits for its yes while another run posts the same file sends nothing, and a --new that another --new beat sends nothing either', { skip: !hasScript && 'needs the script program on Linux' }, async (t) => {
+  const s = await setup(t, { platforms: ['tiktok'], login: ['blotato'] });
+  const waiting = waitingRun(s, ['--via', 'blotato']);
+  await waiting.asked;
+  const other = await s.publish('--via', 'blotato', '--yes');
+  assert.equal(other.code, 0, other.text);
+  waiting.answer('yes');
+  const late = await waiting.done;
+  assert.equal(late.code, 1, late.text);
+  assert.match(late.text, /while this run waited for a yes, another run started a post of this file to @fakehandle on TikTok \(job \w+\)\. Nothing was sent\. Run the same command again to see where that post is\. To post it once more anyway, add --new\./);
+  assert.equal(s.fake.count('blotato', 'POST /posts'), 1);
+  assert.equal(s.fake.count('blotato', 'POST /media/uploads'), 1);
+  assert.equal(jobs(s.dir).length, 1);
+
+  // --new posts once more than the run saw, so two of them at once post once.
+  const again = waitingRun(s, ['--via', 'blotato', '--new']);
+  await again.asked;
+  const fresh = await s.publish('--via', 'blotato', '--new', '--yes');
+  assert.equal(fresh.code, 0, fresh.text);
+  again.answer('yes');
+  const beaten = await again.done;
+  assert.equal(beaten.code, 1, beaten.text);
+  assert.match(beaten.text, /while this run waited for a yes, another run started a post of this file to @fakehandle on TikTok \(job \w+\.2\)\. Nothing was sent\. To post it once more anyway, run the same command again\./);
+  assert.equal(s.fake.count('blotato', 'POST /posts'), 2);
+  assert.deepEqual(jobs(s.dir).map((job) => job.attempt).toSorted(), [1, 2]);
 });
 
 test('a status that can\'t be read after the post leaves it accepted, and a repeat needs no video link to say it was posted', async (t) => {
