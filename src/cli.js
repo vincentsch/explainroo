@@ -16,6 +16,7 @@ import { writeWav } from './wav.js';
 import { ffmpegVersion } from './ffmpeg.js';
 import { findChrome } from './browser.js';
 import { generateImage, jobRequest, imageLog, imageSpend, oldImageLog, IMAGE_MODELS } from './images.js';
+import { buyClip, clipJobRequest, clipRequest, formatClip } from './ai-clips.js';
 import { capture } from './capture.js';
 import { connect } from './connect.js';
 import { CONNECTORS } from './connectors/index.js';
@@ -56,6 +57,12 @@ Images (optional, needs an OpenRouter API key)
                         --resume <id> runs a job from history again)
   images [project]      list generated images and what they cost
 
+AI video clips (optional, costs money, needs an OpenRouter API key)
+  clip [project] "<what it shows>" --seconds 6 --max-cost 2   buy a short clip as assets/clips/<name>.mp4
+                        (--dry-run shows the price and spends nothing, --aspect 16:9, --model cheap|quality,
+                        --resolution 720p, --audio, --name <name>, --no-wait returns right after the request)
+                        The same command never buys twice (--new buys it again, --resume <id> continues a job)
+
 Outside services (optional)
   services [step]       list the choices for each step, free ones first (--project dir)
                         Steps: ${STEPS.map((s) => s.id).join(', ')}
@@ -92,7 +99,7 @@ function parseArgs(argv) {
   }
   return { pos, flags };
 }
-const BOOL = new Set(['json', 'draft', 'transparent', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'mobile', 'list', 'new', 'key-stdin', ...LISTS_VOICES.map((c) => c.id)]);
+const BOOL = new Set(['json', 'draft', 'transparent', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'mobile', 'list', 'new', 'key-stdin', 'audio', 'dry-run', 'no-wait', ...LISTS_VOICES.map((c) => c.id)]);
 
 function num(v, name) {
   if (v === undefined) return undefined;
@@ -221,6 +228,20 @@ export async function main(argv) {
         for (const m of r.moved) lines.push(m.to ? `The file that was at ${m.from} moved to ${m.to}.${m.known ? ' Asking for its request again brings it back.' : ''}` : `The link that was at ${m.from} is gone. What it pointed at was not touched.`);
         if (!r.reused) lines.push('Open the image and check it before you use it.');
         print(lines.join('\n'), r);
+        return 0;
+      }
+      case 'clip': {
+        const isProject = pos[0] && fs.existsSync(path.join(pos[0], 'video.json'));
+        const project = loadProject(isProject ? pos.shift() : undefined);
+        const resume = textFlag(flags, 'resume');
+        const fromRequest = ['seconds', 'aspect', 'model', 'resolution', 'audio', 'name'].filter((flag) => flags[flag] !== undefined);
+        if (resume !== undefined && (pos.length || fromRequest.length)) throw new ProjectError(`--resume takes the whole request from the job, so leave out ${pos.length ? 'the prompt' : `--${fromRequest[0]}`}.`);
+        if (resume === undefined && pos.length !== 1) throw new ProjectError('usage: explainroo clip [project] "<what the clip shows>" --seconds 6 --max-cost 2 [--dry-run] [--aspect 16:9] [--model cheap|quality] [--resolution 720p] [--audio] [--name <name>] [--no-wait] [--new] [--resume <id>]. Put the prompt in quotes, and check the project folder.');
+        const request = resume !== undefined ? clipJobRequest(project, resume) : clipRequest(project, { prompt: pos[0], seconds: num(flags.seconds, 'seconds'), aspect: textFlag(flags, 'aspect'), model: textFlag(flags, 'model'), resolution: textFlag(flags, 'resolution'), audio: !!flags.audio, name: textFlag(flags, 'name') });
+        const maxCost = num(flags['max-cost'], 'max-cost');
+        if (maxCost !== undefined && !(maxCost > 0)) throw new ProjectError('--max-cost must be an amount in US dollars above 0, like 2 or 0.50');
+        const r = await buyClip(project, request, { fresh: !!flags.new, maxCost, dryRun: !!flags['dry-run'], noWait: !!flags['no-wait'], log, notice });
+        print(formatClip(r), r);
         return 0;
       }
       case 'images': {
