@@ -107,19 +107,28 @@ function sameTake(chunks, cached, hash, config) {
 
 // A paid scene from before the record, or with its record removed: its WAV is
 // cut into requests using the times in its JSON, so a later rebuild costs nothing.
-function addFinishedScene(project, speech, scene, chunks, cached, hash, log) {
+function addFinishedScene(project, speech, scene, chunks, cached, hash, log, notice) {
   const file = voicePaths(project, scene.id).wav;
   if (!Array.isArray(cached?.chunks) || !cached.chunks.length || !fs.existsSync(file)) return;
-  const unknown = cached.chunks.filter((c) => !speech.knows(c.text));
-  if (!unknown.length || !sameTake(chunks, cached, hash, project.config)) return;
+  if (cached.chunks.every((c) => speech.knows(c.text))) return;
+  if (!sameTake(chunks, cached, hash, project.config)) {
+    notice(`voice ${scene.id}: the finished scene can't be matched to today's voice settings, so its new sentences are bought.`);
+    return;
+  }
   let samples, sampleRate;
   try {
     ({ samples, sampleRate } = readWav(file));
   } catch {
     return;
   }
-  for (const c of unknown) speech.add(scene.id, c.text, samples.subarray(Math.round(c.start * sampleRate), Math.round(c.end * sampleRate)), sampleRate);
-  log(`voice ${scene.id}: saved ${unknown.length} paid request${unknown.length === 1 ? '' : 's'} from the finished scene in history/voice/`);
+  let added = 0;
+  // Checked one by one, because a scene can say the same sentence twice.
+  for (const c of cached.chunks) {
+    if (speech.knows(c.text)) continue;
+    speech.add(scene.id, c.text, samples.subarray(Math.round(c.start * sampleRate), Math.round(c.end * sampleRate)), sampleRate);
+    added++;
+  }
+  log(`voice ${scene.id}: saved ${added} paid request${added === 1 ? '' : 's'} from the finished scene in history/voice/`);
 }
 
 // Returns { [sceneId]: voiceInfo } and generates whatever is missing or stale.
@@ -143,7 +152,7 @@ export async function synthesize(project, { force = false, fresh = false, log = 
     } : null);
     const cached = readVoice(project, scene.id);
     const hasAudio = !chunks.length || fs.existsSync(voicePaths(project, scene.id).wav);
-    if (speech && chunks.length) addFinishedScene(project, speech, scene, chunks, cached, hash, log);
+    if (speech && chunks.length) addFinishedScene(project, speech, scene, chunks, cached, hash, log, notice);
     if (!force && cached && cached.hash === hash && hasAudio && !speech?.needsNew(chunks)) {
       result[scene.id] = cached;
     } else if (only && !only.includes(scene.id) && cached) {

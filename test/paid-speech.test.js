@@ -240,6 +240,34 @@ test('a scene with pauses and a sentence cut in two is still recognised when a w
   assert.deepEqual(spoken(), [...spoken().slice(0, bought), 'It answers once more.']);
 });
 
+test('a sentence said twice in a scene from before the record is added once, and deleting build/ still costs nothing', async (t) => {
+  const script = '# Test\n## first\nIt answers fast. Then it waits. It answers fast.\n## silent\n## second\n';
+  const { dir, spoken, voiceRun } = await setup(t, { script });
+  await voiceRun();
+  const bought = spoken().length;
+  assert.equal(bought, 2);
+  fs.rmSync(historyDir(dir), { recursive: true });
+  await voiceRun();
+  assert.equal(listJobs(dir).length, 2);
+  for (const job of listJobs(dir)) assert.equal(hashFile(path.join(dir, job.output.file)), job.output.sha256);
+  fs.rmSync(path.join(dir, 'build'), { recursive: true });
+  await voiceRun();
+  assert.equal(spoken().length, bought);
+});
+
+test('a scene that can\'t be matched says so before it buys', async (t) => {
+  const { dir, spoken, voiceRun } = await setup(t);
+  await voiceRun();
+  fs.rmSync(historyDir(dir), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ voice: { provider: 'elevenlabs', id: 'other-voice' } }));
+  const said = [];
+  await voiceRun({ notice: (m) => said.push([m, spoken().length]) });
+  assert.equal(said.length, 2);
+  assert.match(said[0][0], /voice first: the finished scene can't be matched/);
+  assert.equal(said[0][1], 4, 'it says so before it buys');
+  assert.equal(spoken().length, 8);
+});
+
 test('a scene made with another voice, model or speed is not added under today\'s settings', async (t) => {
   for (const [settings, label] of [[{ voice: { provider: 'elevenlabs', id: 'other-voice' } }, 'voice'], [{ voice: { provider: 'elevenlabs', id: 'fake-voice', model: 'other-model' } }, 'model'], [{ speed: 0.8 }, 'speed']]) {
     const { dir, spoken, voiceRun } = await setup(t);
