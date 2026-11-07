@@ -238,7 +238,7 @@ test('the code that makes the voice and the command line name no paid service', 
 test('the help is made from the data, and names every new command', () => {
   const help = run(['--help']).stdout;
   assert.match(help, /--elevenlabs for your ElevenLabs key/);
-  for (const words of [/^ {2}services \[step\]/m, /^ {2}connect <service>/m, /^ {2}history \[project\]/m, /--new/, /--resume <id>/, /--key-stdin/, /^ {2}clip \[project\]/m, /--dry-run/, /--max-cost/, /--seconds/, /--aspect/, /--model cheap\|quality/, /--resolution/, /--audio/, /--name/, /--no-wait/, /--callback-url/]) assert.match(help, words);
+  for (const words of [/^ {2}services \[step\]/m, /^ {2}connect <service>/m, /^ {2}history \[project\]/m, /--new/, /--resume <id>/, /--key-stdin/, /^ {2}clip \[project\]/m, /--dry-run/, /--max-cost/, /--seconds/, /--aspect/, /--model cheap\|quality/, /--resolution/, /--audio/, /--name/, /--no-wait/, /^ {2}publish \[project\]/m, /--via youtube\|buffer\|blotato/, /--privacy private\|unlisted\|public/, /--media-url/, /--channel id for Buffer/, /--account id for Blotato/, /--yes when there is no terminal/, /--callback-url/]) assert.match(help, words);
 });
 
 test('the data names no paid partner, and it has no ranking words', () => {

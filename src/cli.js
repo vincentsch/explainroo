@@ -28,6 +28,7 @@ import { speechKeys } from './voice.js';
 import { findEnv } from './env.js';
 import { formatPackage, packageVideo } from './package.js';
 import { formatShare, share } from './share.js';
+import { formatPublish, publish } from './publish.js';
 
 // Paid voices that can list what a key may use, each with its own flag.
 const LISTS_VOICES = CONNECTORS.filter((c) => c.voices);
@@ -55,7 +56,11 @@ Post a video
                         and credits (--platform youtube|shorts|tiktok|reels|linkedin|x, --title, --description,
                         --hashtags, --size for x, --workers n). The words come from post.json, see "docs publishing"
   share [project]       upload a finished video to explainroo.com and get a page link (--platform name shares
-                        a package, --file, --title, --new uploads again). Nothing is uploaded without this command
+                        a package, --file, --title, --new uploads again). Only share and publish upload a video
+  publish [project]     post a package through YouTube, Buffer or Blotato (--via youtube|buffer|blotato,
+                        --platform name, --privacy private|unlisted|public, --media-url, --channel id for Buffer,
+                        --account id for Blotato). --dry-run shows the exact post and sends nothing. A real
+                        run needs a typed yes, or --yes when there is no terminal. --new posts again
 
 Product demos
   capture [project] <url>  save screenshots, wording, colors, fonts and logo of a live site (--mobile)
@@ -110,7 +115,11 @@ function parseArgs(argv) {
   }
   return { pos, flags };
 }
-const BOOL = new Set(['json', 'draft', 'transparent', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'mobile', 'list', 'new', 'key-stdin', 'audio', 'dry-run', 'no-wait', 'no-watermark', ...LISTS_VOICES.map((c) => c.id)]);
+const BOOL = new Set(['json', 'draft', 'transparent', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'mobile', 'list', 'new', 'key-stdin', 'audio', 'dry-run', 'no-wait', 'no-watermark', 'yes', ...LISTS_VOICES.map((c) => c.id)]);
+
+// publish refuses any other flag. A flag it ignored could change what a person
+// thinks is posted, like a time for a post, when it goes out right away.
+const PUBLISH_FLAGS = new Set(['via', 'platform', 'privacy', 'media-url', 'channel', 'account', 'dry-run', 'yes', 'new', 'json', 'quiet']);
 
 function num(v, name) {
   if (v === undefined) return undefined;
@@ -211,6 +220,20 @@ export async function main(argv) {
         const r = await share(project, { platform: textFlag(flags, 'platform'), file: textFlag(flags, 'file'), title: textFlag(flags, 'title'), fresh: !!flags.new, log });
         print(formatShare(r), r);
         return 0;
+      }
+      case 'publish': {
+        const unknown = Object.keys(flags).filter((flag) => !PUBLISH_FLAGS.has(flag));
+        if (unknown.length) throw new ProjectError(`publish does not take --${unknown[0]}. It takes ${[...PUBLISH_FLAGS].map((f) => `--${f}`).join(', ')}. It has no scheduler: a post goes out when the command runs. Nothing was sent.`);
+        if (pos.length > 1) throw new ProjectError('usage: explainroo publish [project] --via youtube|buffer|blotato [--platform tiktok] [--dry-run] [--yes]. Nothing was sent.');
+        const project = loadProject(pos[0]);
+        const r = await publish(project, { via: textFlag(flags, 'via'), platform: textFlag(flags, 'platform'), privacy: textFlag(flags, 'privacy'), mediaUrl: textFlag(flags, 'media-url'), channel: textFlag(flags, 'channel'), account: textFlag(flags, 'account'), dryRun: !!flags['dry-run'], yes: !!flags.yes, fresh: !!flags.new, log, notice });
+        if (r.confirmed === false) {
+          if (json) print(null, r);
+          else process.stderr.write(`error: ${r.error}\n`);
+          return 1;
+        }
+        print(formatPublish(r), r);
+        return r.stage === 'failed' ? 1 : 0;
       }
       case 'export': {
         const project = loadProject(pos[0]);
