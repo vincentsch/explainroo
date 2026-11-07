@@ -9,10 +9,11 @@
 // To test another command, add an entry to the list of steps below.
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
+import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { GOOD_KEY, startFakeServices } from '../test/helpers/fake-services.js';
+import { GOOD_KEY, formFields, startFakeServices } from '../test/helpers/fake-services.js';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const GUARD = new URL('../test/helpers/guard.js', import.meta.url).href;
@@ -73,9 +74,20 @@ function expect(ok, message) {
   if (!ok) throw new Error(message);
 }
 
-// Each step runs "explainroo <args>" and must exit with 0. input goes to stdin.
-// check gets the parsed --json output and a few paths, and the raw output after
-// that. It throws on a problem and can return a short note for the report.
+// A port that nothing listens on, for a share with no server.
+function closedPort() {
+  return new Promise((resolve) => {
+    const server = net.createServer().listen(0, '127.0.0.1', () => {
+      const { port } = server.address();
+      server.close(() => resolve(port));
+    });
+  });
+}
+
+// Each step runs "explainroo <args>" and must exit with `status` (0 unless it says
+// otherwise). input goes to stdin, and env(paths) adds to the environment. check
+// gets the parsed --json output and a few paths, and the raw output after that.
+// It throws on a problem and can return a short note for the report.
 const steps = [
   {
     args: ['--version', '--json'],
@@ -225,6 +237,50 @@ const steps = [
       expect(r.open.length === 0, 'a finished clip is still open');
     },
   },
+  {
+    // A tiny project for packaging. Its check writes one sentence of real narration.
+    args: ['init', 'tiny', '--json'],
+    check: (r) => {
+      fs.writeFileSync(path.join(r.dir, 'script.md'), '# A tiny video\n\n## hello\nThis short video was packaged for TikTok.\n');
+      fs.writeFileSync(path.join(r.dir, 'scenes.js'), "export default { hello(s) { s.title('A tiny video', { y: s.safe.y + s.safe.h * 0.4, at: 0 }); } };\n");
+      fs.writeFileSync(path.join(r.dir, 'post.json'), JSON.stringify({ title: 'A tiny video', description: 'A short test of packaging.', hashtags: ['explainroo'] }));
+    },
+  },
+  {
+    args: ['package', 'tiny', '--platform', 'tiktok', '--json'],
+    check: (r, { temp }) => {
+      const folder = path.join(temp, 'tiny/out/package/tiktok');
+      expect(r.ok && r.folder === folder && r.source.how === 'rendered', `package says ${JSON.stringify({ ok: r.ok, folder: r.folder, source: r.source })}`);
+      for (const name of ['video.mp4', 'post.json', 'description.txt', 'video.srt', 'video.vtt', 'video.cover.jpg', 'credits.txt', 'report.json']) expect(fs.statSync(path.join(folder, name)).size > 0, `the package has no ${name}`);
+      const post = JSON.parse(fs.readFileSync(path.join(folder, 'post.json'), 'utf8'));
+      expect(post.watermark === false && post.width === 1080 && post.height === 1920, 'the TikTok file is not 1080x1920 without the watermark');
+      expect(post.text === 'A short test of packaging.\n\n#explainroo' && post.ai_label === true && post.credits.includes('Made with explainroo'), `post.json says ${JSON.stringify(post)}`);
+      expect(post.verify.ok && post.verify.understood >= MIN_NARRATION_UNDERSTOOD, `verify of the package says ${JSON.stringify(post.verify)}`);
+      return `${post.width}x${post.height}, ${post.duration.toFixed(1)}s, ${Math.round(post.verify.understood * 100)}% of the narration understood`;
+    },
+  },
+  {
+    args: ['share', 'tiny', '--platform', 'tiktok', '--json'],
+    check: async (r, { fake }) => {
+      expect(!r.reused && r.url && r.media_url && r.expires_at && r.claim_url && r.file === 'out/package/tiktok/video.mp4', `share says ${JSON.stringify(r)}`);
+      const requests = fake.requests('cloud', 'POST /api/v1/shares');
+      expect(requests.length === 1 && requests[0].headers.authorization === undefined, 'share did not send one request without a key');
+      const form = await formFields(requests[0]);
+      expect([...form.keys()].join() === 'video,title' && form.get('title') === 'A tiny video', 'the upload does not have the video and the title');
+      return r.url;
+    },
+  },
+  {
+    args: ['share', 'tiny', '--platform', 'tiktok', '--json'],
+    check: (r, { fake }) => expect(r.reused && fake.count('cloud', 'POST /api/v1/shares') === 1, 'sharing the same file again uploaded it'),
+  },
+  {
+    // No server at the address: a clear message and an error code.
+    args: ['share', 'tiny', '--platform', 'tiktok', '--new', '--json'],
+    env: ({ closedPort }) => ({ EXPLAINROO_CLOUD_URL: `http://127.0.0.1:${closedPort}` }),
+    status: 1,
+    check: (r) => expect(/doesn't answer at .* yet\. The video was not sent/.test(r.error), `share with no server says ${r.error}`),
+  },
 ];
 
 async function runSteps(paths, env) {
@@ -232,11 +288,11 @@ async function runSteps(paths, env) {
     const name = step.args.filter((a) => a !== '--json').join(' ');
     const started = Date.now();
     // Without the "--", npx reads a flag like --version as its own.
-    const r = await run('npx', ['--no', '--', 'explainroo', ...step.args], { cwd: paths.temp, env, input: step.input });
-    if (r.status !== 0) throw new Error(`explainroo ${name} exited with ${r.status ?? r.signal}:\n${outputOf(r)}`);
+    const r = await run('npx', ['--no', '--', 'explainroo', ...step.args], { cwd: paths.temp, env: { ...env, ...step.env?.(paths) }, input: step.input });
+    if (r.status !== (step.status ?? 0)) throw new Error(`explainroo ${name} exited with ${r.status ?? r.signal}:\n${outputOf(r)}`);
     // npx sets its own exit code, so only stderr shows a request that it made.
     expect(!r.stderr.includes('test guard: blocked'), `explainroo ${name} tried to reach the network:\n${outputOf(r)}`);
-    const note = step.check(JSON.parse(r.stdout), paths, r.stdout + r.stderr);
+    const note = await step.check(JSON.parse(r.stdout), paths, r.stdout + r.stderr);
     console.log(`ok  ${name.padEnd(28)} ${((Date.now() - started) / 1000).toFixed(1).padStart(6)}s${note ? `  ${note}` : ''}`);
   }
 }
@@ -264,7 +320,7 @@ async function main() {
     const settings = path.join(temp, 'settings');
     // Keys from this computer's own settings have no place in this test.
     const env = { ...outside, ...fake.env, NODE_OPTIONS: `--import=${GUARD}`, EXPLAINROO_CONFIG: settings, OPENROUTER_API_KEY: '', ELEVENLABS_API_KEY: '', EXPLAINROO_CLIP_POLL_MS: '50' };
-    await runSteps({ temp, settings, fake, installed: path.join(temp, 'node_modules', pkg.name) }, env);
+    await runSteps({ temp, settings, fake, closedPort: await closedPort(), installed: path.join(temp, 'node_modules', pkg.name) }, env);
     console.log('pack test passed');
     return 0;
   } catch (e) {
