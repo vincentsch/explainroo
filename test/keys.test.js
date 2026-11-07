@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { findEnv, settingsEnvFile } from '../src/env.js';
+import { findEnv, readEnvFile, settingsEnvFile } from '../src/env.js';
 import { configRoot } from '../src/models.js';
 
 const bin = fileURLToPath(new URL('../bin/explainroo.js', import.meta.url));
@@ -81,4 +81,14 @@ test('doctor names the file for keys', (t) => {
   const r = spawnSync(process.execPath, [bin, 'doctor', '--json'], { encoding: 'utf8', env: { ...process.env, EXPLAINROO_CONFIG: settings } });
   const row = JSON.parse(r.stdout).checks.find((c) => c.name === 'keys file');
   assert.ok(row.detail.startsWith(path.join(settings, '.env')));
+});
+
+test('a key that ends in "=" keeps it, also in quotes and after export', (t) => {
+  const dir = temp(t);
+  const file = path.join(dir, '.env');
+  fs.writeFileSync(file, 'PLAIN_KEY=abc123==\nQUOTED_KEY="def456="\nexport EXPORTED_KEY=ghi789=\nSPACED_KEY = jkl= \n');
+  assert.equal(readEnvFile(file, 'PLAIN_KEY'), 'abc123==');
+  assert.equal(readEnvFile(file, 'QUOTED_KEY'), 'def456=');
+  assert.equal(readEnvFile(file, 'EXPORTED_KEY'), 'ghi789=');
+  assert.equal(readEnvFile(file, 'SPACED_KEY'), 'jkl=');
 });

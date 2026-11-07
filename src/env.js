@@ -29,18 +29,25 @@ export function keyFile({ project = null, root = ROOT, env = process.env } = {})
 // Writes one line of a .env file. An existing line is replaced, other lines stay,
 // and a new file can only be read by its owner.
 export function saveKey(file, name, value) {
+  saveKeys(file, { [name]: value });
+}
+
+// Writes several lines at once, so a run that dies leaves all of them or none.
+export function saveKeys(file, values) {
   const target = fs.existsSync(file) ? fs.realpathSync(file) : file;
   const old = fs.existsSync(target) ? fs.readFileSync(target, 'utf8') : null;
   const mode = old === null ? 0o600 : fs.statSync(target).mode & 0o777;
-  const isKey = (line) => new RegExp(`^\\s*(?:export\\s+)?${name}\\s*=`).test(line);
   const lines = old === null ? [] : old.split('\n');
-  const at = lines.findIndex(isKey);
-  if (at === -1) {
-    if (lines.at(-1) === '') lines.pop();
-    lines.push(`${name}=${value}`, '');
-  } else {
-    lines[at] = `${name}=${value}`;
-    for (let i = lines.length - 1; i > at; i--) if (isKey(lines[i])) lines.splice(i, 1);
+  for (const [name, value] of Object.entries(values)) {
+    const isKey = (line) => new RegExp(`^\\s*(?:export\\s+)?${name}\\s*=`).test(line);
+    const at = lines.findIndex(isKey);
+    if (at === -1) {
+      if (lines.at(-1) === '') lines.pop();
+      lines.push(`${name}=${value}`, '');
+    } else {
+      lines[at] = `${name}=${value}`;
+      for (let i = lines.length - 1; i > at; i--) if (isKey(lines[i])) lines.splice(i, 1);
+    }
   }
   fs.mkdirSync(path.dirname(target), { recursive: true });
   const temp = `${target}.${process.pid}.tmp`;
@@ -49,9 +56,17 @@ export function saveKey(file, name, value) {
   fs.renameSync(temp, target);
 }
 
+// Where a value is found, in the same order as findEnv. `file` is null when it
+// comes from the environment, which no command can change.
+export function findEnvSource(name, projectDir, root = ROOT) {
+  if (process.env[name]) return { value: process.env[name], file: null };
+  for (const file of [path.join(projectDir, '.env'), path.join(root, '.env'), settingsEnvFile()]) {
+    const value = readEnvFile(file, name);
+    if (value) return { value, file };
+  }
+  return null;
+}
+
 export function findEnv(name, projectDir, root = ROOT) {
-  return process.env[name]
-    || readEnvFile(path.join(projectDir, '.env'), name)
-    || readEnvFile(path.join(root, '.env'), name)
-    || readEnvFile(settingsEnvFile(), name);
+  return findEnvSource(name, projectDir, root)?.value ?? null;
 }
