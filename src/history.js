@@ -262,9 +262,10 @@ export function saveOutputFile(dir, name, temp) {
   return { file, name, sha256, bytes: size };
 }
 
-// One run at a time moves files under a public name. Moving a file takes far less
-// than the 15 seconds after which a lock counts as left behind by a dead run.
-function withNameLock(dir, name, fn) {
+// One run at a time moves files under a public name, or moves a post to its next
+// stage. Either takes far less than the 15 seconds after which a lock counts as
+// left behind by a dead run.
+export function withNameLock(dir, name, fn) {
   fs.mkdirSync(historyDir(dir, 'locks'), { recursive: true });
   const lock = historyDir(dir, 'locks', `${crypto.createHash('sha256').update(name).digest('hex').slice(0, 16)}.lock`);
   const pause = new Int32Array(new SharedArrayBuffer(4));
@@ -407,7 +408,7 @@ export function continueCommand(dir, job, reason) {
   return `${selfCommand()} ${CONTINUE[job.kind](job, projectWord(dir), again, reason)}`;
 }
 
-const FREE_KINDS = new Set(['share']);
+const FREE_KINDS = new Set(['share', 'publish']);
 
 function jobLabel(job) {
   const r = job.request || {};
@@ -470,6 +471,23 @@ function clipLine(job) {
   return `  ${oneLine(`${job.id}  ${job.status}  ${file}  ${cost}`, 400)}`;
 }
 
+// What each stage of a post means, for a line in history.
+const POST_STAGES = {
+  planned: 'approved, nothing sent yet',
+  media_uploaded: 'video uploaded, the post not sent yet',
+  sending: 'sent, and no answer was saved, so check the channel by hand',
+  accepted: 'accepted, the final status not read yet',
+  finished: 'posted',
+  failed: 'failed',
+};
+
+function postLine(job) {
+  const r = job.result ?? {};
+  const said = job.stage === 'failed' && r.error ? `: ${r.error}` : '';
+  const where = `${job.provider ?? '?'} ${job.plan?.platform ?? '?'} to ${job.destination?.name ?? job.destination?.id ?? '?'}`;
+  return `  ${oneLine(`${job.id}  ${where}  ${POST_STAGES[job.stage] ?? 'unknown'}${said}${r.link ? `  ${r.link}` : ''}`, 400)}`;
+}
+
 function shareLine(job) {
   const r = job.result ?? {};
   const where = job.status === 'done' && r.url
@@ -489,6 +507,8 @@ export function formatHistory({ open, spend, versions, jobs = [] }) {
   if (clips.length) parts.push(['Clips', ...clips.map(clipLine)].join('\n'));
   const shares = jobs.filter((job) => job.kind === 'share');
   if (shares.length) parts.push(['Shared links', ...shares.map(shareLine)].join('\n'));
+  const posts = jobs.filter((job) => job.kind === 'publish');
+  if (posts.length) parts.push(['Posts', ...posts.map(postLine)].join('\n'));
   parts.push(versions.length ? ['Rendered versions', ...versions.map(versionLine)].join('\n') : 'Nothing rendered yet.');
   return parts.join('\n\n');
 }
