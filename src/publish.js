@@ -461,7 +461,7 @@ async function carryOut(project, job, { log, notice }) {
       uploaded = await blotato.uploadMedia(dir, path.join(dir, job.request.file.name));
     } catch (e) {
       // An upload makes no post, so it can go again, by the next run.
-      if (e instanceof ServiceError) fail(`${e.message.replace(/\.$/, '')}. The video did not reach Blotato, and no post was made. Run the same command again to try once more.`);
+      if (e instanceof ServiceError) fail(`${e.message.replace(/\.$/, '')}. No post was made. Run the same command again to upload the video once more.`);
       throw e;
     }
     job = advance(dir, job, ['planned'], 'media_uploaded', { media: { public_url: uploaded.publicUrl, uploaded: new Date().toISOString() } });

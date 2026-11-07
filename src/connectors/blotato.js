@@ -121,7 +121,7 @@ async function uploadMedia(dir, file) {
   try {
     res = await fetch(target, { method: 'PUT', body: await fs.openAsBlob(file), signal: AbortSignal.timeout(60 * 60 * 1000), headers: { 'Content-Type': 'video/mp4' } });
   } catch {
-    throw new ServiceError('the upload of the video to Blotato stopped partway', 'refused');
+    throw new ServiceError('the upload of the video to Blotato did not finish', 'refused');
   }
   if (!res.ok) throw new ServiceError(`the upload of the video to Blotato failed (HTTP ${res.status})`, 'refused');
   return { publicUrl };
