@@ -317,7 +317,7 @@ test('an image that takes too long stops, and the request is not sent again', as
   });
   t.mock.method(process.stderr, 'write', () => true);
   fake.plan('openrouter', PAID, { hang: true });
-  await assert.rejects(generateImage(loadProject(dir), { name: 'hero', prompt: PROMPT_A, timeout: 100 }), /did not answer.*may have cost money.*--new/);
+  await assert.rejects(generateImage(loadProject(dir), { name: 'hero', prompt: PROMPT_A, timeout: 2000 }), /did not answer.*may have cost money.*--new/);
   assert.equal(purchases(), 1);
   assert.equal(jobs(dir)[0].status, 'lost');
 });
