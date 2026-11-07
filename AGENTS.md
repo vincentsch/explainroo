@@ -169,8 +169,6 @@ never put it in a script, a commit or a log.
    This is a size check, not a guarantee about platform compression. Show
    only the current query or result, use bigger type, and zoom into details.
    Review a still at `--scale 0.4448` too (about 480p for a 1080p video).
-   Never upload `draft.mp4`. After uploading, check the platform's lower
-   quality copy as well as its full-size copy.
 
 10. **Make the video and check the file.**
 
@@ -190,7 +188,7 @@ never put it in a script, a commit or a log.
 
 11. **Tell the user** where the video and its subtitle files, chapters and
     cover are, how long the video is, what verify said, and what you could
-    not check.
+    not check. To post it, see "Posting a video" below.
 
 ## How to write the narration
 
@@ -580,6 +578,17 @@ explainroo clip videos/<name> "A busy street at dusk" --seconds 6 --max-cost 2  
 It saves `assets/clips/<name>.mp4` and prints the `s.clip` line to use. The same
 command run again never buys twice, so it is safe after a crash or a timeout.
 
+## Posting a video
+
+`explainroo package videos/<name> --platform tiktok` writes `out/package/tiktok/`
+with everything needed to post the video there. The platforms are `youtube`,
+`shorts`, `tiktok`, `reels`, `linkedin` and `x`. Write the title, description
+and hashtags in `post.json` next to `video.json`. Run
+`explainroo docs publishing` first.
+
+`explainroo share` uploads a finished video to explainroo.com for a page link.
+It is the only command that uploads a video, so run it only when the user asks.
+
 ## Product demos
 
 A product demo is the kind of video software companies make to show their
@@ -664,12 +673,11 @@ For every size, run `check --size <size>` and look at
 `sheet --size <size>`. Fix cut-off text and overlaps. Then run
 `render --size <size>` for each size.
 
-`render --size tiktok` writes `out/video-tiktok.mp4` and matching subtitle,
-cover and chapter files. With `--draft`, it writes `draft-tiktok.mp4`.
-Stills go in `out/stills-tiktok/`. A sheet is `out/sheet-tiktok.jpg`, or
-`out/sheet-intro-tiktok.jpg` with `--scene intro`. Ratios use a hyphen in
-file names, for example `video-9-16.mp4`. Without `--size`, names stay the
-same. `render --out` still sets the file name you choose.
+`--size tiktok` adds `-tiktok` to every file a command writes, like
+`out/video-tiktok.mp4`, `out/stills-tiktok/` and `out/sheet-intro-tiktok.jpg`.
+A ratio uses a hyphen, like `video-9-16.mp4`. `--no-watermark` turns the
+watermark off for one run and adds `-no-watermark` the same way.
+`render --out` still sets the file name you choose.
 
 ## Pace
 
@@ -692,7 +700,8 @@ Shorts, TikTok and Reels it sits in the top right corner, because the app
 covers the bottom one. The user can turn it off with `"watermark": false` in
 `video.json`, or change it to their own text. If the user asks about it, tell
 them it is their choice, and that keeping it helps more people find this free
-project.
+project. A TikTok package has no watermark, because TikTok forbids one on posts
+from apps.
 
 ## Project files and settings
 
@@ -702,10 +711,11 @@ videos/<name>/
   video.json    look, size, language, voice, music, captions, watermark
   script.md     the narration, one "## scene-id" per scene
   scenes.js     one drawing function per scene
+  post.json     the words for package, optional
   assets/       images, generated illustrations, clips and sound files
   build/        voice, timing and audio made by explainroo (safe to delete,
                 because paid speech and paid images stay in history/)
-  out/          video.mp4, draft.mp4, stills/, sheets, report.json
+  out/          video.mp4, draft.mp4, stills/, sheets, report.json, package/
   history/      what was paid for and rendered, so keep it. A new session runs
                 "explainroo history" to see open jobs and how to continue them
 ```
@@ -800,13 +810,15 @@ when `ink` or `muted` has too little contrast against `bg`.
 |---|---|
 | `init <dir>` | creates a project (`--theme`, `--size`, `--pace`, `--language`, `--voice`, `--title`) |
 | `voice [project]` | makes the narration and the word times, saved per scene so only changed scenes are made again (`--force` makes every scene again, `--new` buys again only paid sentences with no good answer) |
-| `preview [project]` | a live preview in the browser that reloads when you save (`--size`) |
-| `still [project] [times]` | PNG pictures at `12.5`, `scene`, `scene@2.4` or `scene@end` (`--size`, `--transparent` keeps alpha) |
-| `sheet [project]` | one image with many frames of the video or of one scene (`--scene`, `--every`, `--size`) |
-| `check [project]` | finds layout, timing and pronunciation problems (`--size`) |
-| `render [project]` | the video plus subtitle files, chapters and a cover (`--format mp4`, `gif`, `webm` or `mov`, `--transparent`, `--size`, `--draft`, `--from`, `--to`, `--workers`, `--out`) |
+| `preview [project]` | a live preview in the browser that reloads when you save (`--size`, `--no-watermark`) |
+| `still [project] [times]` | PNG pictures at `12.5`, `scene`, `scene@2.4` or `scene@end` (`--size`, `--no-watermark`, `--transparent` keeps alpha) |
+| `sheet [project]` | one image with many frames of the video or of one scene (`--scene`, `--every`, `--size`, `--no-watermark`) |
+| `check [project]` | finds layout, timing and pronunciation problems (`--size`, `--no-watermark`) |
+| `render [project]` | the video plus subtitle files, chapters and a cover (`--format mp4`, `gif`, `webm` or `mov`, `--transparent`, `--size`, `--no-watermark`, `--draft`, `--from`, `--to`, `--workers`, `--out`) |
 | `verify [project]` | checks the finished MP4, WebM or MOV: loudness, black frames, silence, clear voice (`--file` picks another file) |
 | `export [project]` | writes a web player folder (`--out dir`, `--json`), by default `out/player/` |
+| `package [project]` | a folder to post on one platform (`--platform`, `--title`, `--description`, `--hashtags`, `--size` for x, `--workers`) |
+| `share [project]` | uploads a video to explainroo.com for a page link (`--platform`, `--file`, `--title`, `--new`) |
 | `capture [project] <url>` | saves screenshots, wording, colors, fonts and logos from a live site (`--mobile`, `--json`) |
 | `image [project] <name> "<prompt>"` | makes an illustration with OpenRouter (`--new` buys it again, `--resume <id>` runs a job from `history` again) |
 | `images [project]` | lists the images and what they cost |

@@ -117,7 +117,8 @@ test('the page about music describes files, s.sound and Soundroo, with public li
 });
 
 test('AGENTS.md has a few lines on clips and music, and points at their pages', () => {
-  const section = agents.slice(agents.indexOf('## AI video clips'), agents.indexOf('## Product demos'));
+  const start = agents.indexOf('## AI video clips');
+  const section = agents.slice(start, agents.indexOf('\n## ', start));
   for (const words of ['explainroo docs clips', '--dry-run', '--max-cost', 'assets/clips/<name>.mp4', 'never buys twice']) assert.ok(section.includes(words), words);
   assert.ok(section.split('\n').length < 16, 'keep it short: the rest is on the page');
   assert.match(agents, /^\| `music` .*`\{ "src", "volume", "credit", "loop" \}`.*`explainroo docs music`/m);
@@ -131,6 +132,39 @@ test('AGENTS.md says what history/ is, and no longer calls paid work safe to del
   assert.match(files, /safe to delete,\s+because paid speech and paid images stay in history\//);
   assert.doesNotMatch(agents, /elevenlabs-usage\.jsonl/);
   for (const row of ['`services [step]`', '`connect <service>`', '`history [project]`', '`--new`', '`--resume <id>`', '`--force`', '`--key-stdin`']) assert.ok(agents.includes(row), row);
+});
+
+test('the publishing page says why the TikTok file has no watermark, with TikTok\'s own words', () => {
+  const page = fs.readFileSync(path.join(root, 'docs/publishing.md'), 'utf8');
+  const why = page.slice(page.indexOf('## Why the TikTok file has no watermark'), page.indexOf('## The words'));
+  assert.ok(why.includes('[Content Sharing Guidelines](https://developers.tiktok.com/doc/content-sharing-guidelines)'));
+  assert.ok(why.replace(/\s+/g, ' ').includes('"should not superimpose or otherwise include any brand name, logo, watermark, other promotional branding, link or promotional text, on or in any content which is shared to TikTok"'));
+  assert.match(why, /the TikTok file has no "explainroo\.com"/);
+  assert.match(why, /--size tiktok --no-watermark/);
+});
+
+test('the publishing page covers the platforms, post.json, the folder, the limits with their date, and share', () => {
+  const page = fs.readFileSync(path.join(root, 'docs/publishing.md'), 'utf8');
+  for (const platform of ['youtube', 'shorts', 'tiktok', 'reels', 'linkedin', 'x']) assert.ok(page.includes(`| \`${platform}\` |`), platform);
+  for (const file of ['video.mp4', 'post.json', 'description.txt', 'video.srt', 'video.vtt', 'video.cover.jpg', 'video.chapters.txt', 'credits.txt', 'report.json']) assert.ok(page.includes(`\`${file}\``), file);
+  for (const field of ['title', 'description', 'hashtags', 'ai_label', 'credits', 'made_for_kids', 'category', 'platforms', 'text', 'ai_reasons']) assert.ok(page.includes(`\`${field}\``), field);
+  assert.match(page, /1\. The built-in default\.\n2\. `post\.json`\.\n3\. The block for this platform under `platforms` in `post\.json`\.\n4\. The flags `--title`, `--description` and `--hashtags` on `package`\./);
+  assert.match(page, /these were read on 2026-11-07/);
+  assert.match(page, /never go into the description by themselves/);
+  const share = page.slice(page.indexOf('## Share a link'));
+  for (const words of ['The video file and its title leave your computer', 'only when you run this command', 'MP4 and WebM', 'claim link', 'history/private/', 'EXPLAINROO_CLOUD_KEY', 'EXPLAINROO_CLOUD_URL', 'The server may have received the video', 'Only with `--new`', '--new']) assert.ok(share.replace(/\s+/g, ' ').includes(words), words);
+});
+
+test('AGENTS.md has a few lines on posting, the pointer, the TikTok sentence and every new flag', () => {
+  const start = agents.indexOf('## Posting a video');
+  const section = agents.slice(start, agents.indexOf('\n## ', start));
+  for (const words of ['explainroo package', '--platform tiktok', 'post.json', 'explainroo docs publishing', 'explainroo share', 'only command that uploads a video']) assert.ok(section.includes(words), words);
+  assert.ok(section.split('\n').length < 14, 'keep it short: the rest is on the page');
+  const watermark = agents.slice(agents.indexOf('## The watermark'), agents.indexOf('## Project files and settings'));
+  assert.match(watermark.replace(/\s+/g, ' '), /A TikTok package has no watermark/);
+  assert.match(agents, /^\| `package \[project\]` \|.*`--platform`.*`--title`.*`--description`.*`--hashtags`.*`--size` for x/m);
+  assert.match(agents, /^\| `share \[project\]` \|.*`--platform`.*`--file`.*`--title`.*`--new`/m);
+  for (const command of ['preview', 'still', 'sheet', 'check', 'render']) assert.match(agents, new RegExp(`^\\| \`${command} \\[project\\][^|]*\\|.*\`--no-watermark\``, 'm'), command);
 });
 
 test('the instructions link to examples on GitHub, because the package has none', () => {
