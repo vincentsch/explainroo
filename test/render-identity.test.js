@@ -152,6 +152,14 @@ test('each finished render adds a line with its range, scale and identity, and v
   assert.equal(after[1].verify, undefined);
   const raw = fs.readFileSync(path.join(dir, 'history/versions.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
   assert.equal(raw.at(-1).event, 'verify');
+  // The report names the file's hash, and the record says where the report is.
+  assert.equal(raw.at(-1).report, 'out/report.json');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(dir, 'out/report.json'), 'utf8')).sha256, one.sha256);
+  // verify --file still writes out/report.json, as it always has.
+  const other = spawnSync(process.execPath, [bin, 'verify', dir, '--file', path.join(dir, 'out/part.mp4'), '--json'], { encoding: 'utf8', timeout: 170000 });
+  assert.equal(other.status, 0, other.stdout + other.stderr);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(dir, 'out/report.json'), 'utf8')).sha256, three.sha256);
+  assert.equal(readVersions(dir)[2].verify.report, 'out/report.json');
 
   const history = spawnSync(process.execPath, [bin, 'history', dir], { encoding: 'utf8' });
   assert.match(history.stdout, /Rendered versions/);

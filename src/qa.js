@@ -102,7 +102,9 @@ export async function sheet(project, { scene = null, every = null, cols = null, 
   return { file: path.join(project.dir, file), frames: times.length };
 }
 
-export async function verify(project, { file = null, log = () => {} } = {}) {
+// The report goes to `report`, and by default to out/report.json, also for a
+// file given with --file.
+export async function verify(project, { file = null, report: reportFile = null, log = () => {} } = {}) {
   const video = path.resolve(file || path.join(project.paths.out, 'video.mp4'));
   if (path.extname(video).toLowerCase() === '.gif') throw new Error('verify checks MP4, WebM and MOV files. Pass a video with --file.');
   if (!fs.existsSync(video)) throw new Error(`${video} does not exist. Run "explainroo render" first.`);
@@ -182,8 +184,10 @@ export async function verify(project, { file = null, log = () => {} } = {}) {
     if (speech.matchRate < 0.85) issues.push({ level: 'warn', message: `only ${Math.round(speech.matchRate * 100)}% of the script was understood in the final mix; lower music.volume or check pronunciation` });
     fs.rmSync(wav, { force: true });
   }
+  const sha256 = sha256File(video);
   const report = {
     file: video,
+    sha256,
     duration: Math.round(duration * 100) / 100,
     video: v ? { width: v.width, height: v.height, fps: v.r_frame_rate, codec: v.codec_name } : null,
     audio: a ? { codec: a.codec_name, sampleRate: Number(a.sample_rate), channels: a.channels } : null,
@@ -193,17 +197,19 @@ export async function verify(project, { file = null, log = () => {} } = {}) {
     speech,
     issues,
   };
-  fs.mkdirSync(project.paths.out, { recursive: true });
-  fs.writeFileSync(path.join(project.paths.out, 'report.json'), JSON.stringify(report, null, 2));
+  const target = path.resolve(reportFile || path.join(project.paths.out, 'report.json'));
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.writeFileSync(target, JSON.stringify(report, null, 2));
   recordVersion(project.dir, {
     event: 'verify',
     time: new Date().toISOString(),
     file: relativeFile(project.dir, video),
-    sha256: sha256File(video),
+    sha256,
     ok: !issues.some((i) => i.level === 'error'),
     warnings: issues.filter((i) => i.level === 'warn').length,
     loudness: loud?.integrated ?? null,
     understood: speech?.matchRate ?? null,
+    report: relativeFile(project.dir, target),
   });
   return report;
 }
