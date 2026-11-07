@@ -67,7 +67,7 @@ test('init with valid settings writes video.json and the starter files', async (
   assert.equal(config.title, 'My first video');
   assert.ok(fs.existsSync(path.join(target, 'assets')));
   assert.ok(fs.existsSync(path.join(target, 'script.md')));
-  assert.deepEqual(fs.readFileSync(path.join(target, '.gitignore'), 'utf8').trim().split('\n'), ['build/', 'out/', '.env']);
+  assert.deepEqual(fs.readFileSync(path.join(target, '.gitignore'), 'utf8').trim().split('\n'), ['build/', 'out/', '.env', 'history/private/']);
 });
 
 test('render rejects bad formats, mismatched extensions and missing text flags before building', async () => {
