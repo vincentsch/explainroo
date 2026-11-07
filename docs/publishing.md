@@ -319,23 +319,27 @@ Google project is in testing status, Google ends the login after 7 days. Then
 run `connect youtube` again to sign in. On 2026-11-07 a Google project could upload
 100 videos a day through the API.
 
-**Buffer** signs in with a public client, which has no secret. explainroo has
-none built in yet, so for now you make your own. The free plan allows one.
+**Buffer** signs in with a public client that comes with explainroo, so you
+don't make one yourself. A public client has no secret. Run
+`explainroo connect buffer`. It prints a link and works the same way as
+YouTube, with `connect buffer --callback-url '<the address>'` at the end. Here
+the browser goes to `https://localhost:8976/callback`.
 
-1. In Buffer, open Settings, then API, and pick the App Clients tab.
-2. Click New Client, give it a name, and make it a public client.
-3. Add the redirect address `https://localhost:8976/callback`, exactly as
-   written.
-4. Allow the permissions `account:read`, `posts:read`, `posts:write` and
-   `offline_access`.
-5. Save it, and put its client id in `BUFFER_CLIENT_ID`, in the settings `.env`
-   or in the environment.
-
-Then run `explainroo connect buffer`. It prints a link and works the same way
-as YouTube, with `connect buffer --callback-url '<the address>'` at the end.
 Buffer gives a new refresh token each time the login is renewed and ends the
 whole login when an old one comes back. `publish` saves each new one before it
 uses it, so don't put an older copy of the `.env` file back.
+
+To sign in with a Buffer client of your own, put its client id in
+`BUFFER_CLIENT_ID`, in the settings `.env` or in the environment. Make it a
+public client with the redirect address `https://localhost:8976/callback`, and
+allow these permissions:
+
+- `account:read`
+- `posts:read`
+- `posts:write`
+
+The login then saves the client id next to its tokens, because only that client
+can renew it.
 
 **Blotato** uses an API key. Creating one ends Blotato's free trial and starts
 its paid Starter plan, so decide that first. Then run
