@@ -17,12 +17,32 @@ import { planCamera, cameraAt, cameraMoving, continues, frameRect, backgroundSho
 Stage.UI = UI;
 Stage.Short = Short;
 
+let colorContext = null;
+
+// Any CSS color in a form the contrast math reads, like "black" as "#000000",
+// or null when the string is no color. The canvas keeps its old color when it
+// is given something that isn't one, so two different old colors show that.
+function readableColor(color) {
+  if (typeof color !== 'string') return null;
+  if (parseColor(color)) return color;
+  colorContext ??= new OffscreenCanvas(1, 1).getContext('2d');
+  const read = (before) => {
+    colorContext.fillStyle = before;
+    colorContext.fillStyle = color;
+    return colorContext.fillStyle;
+  };
+  const seen = read('#000000');
+  return seen === read('#ffffff') ? seen : null;
+}
+
 // The color a scene painted behind a text, with s.bg or the kit's backdrop: a
 // gradient from top to bottom, read at the text's height.
 function pageColor(tx, H) {
   const p = tx.page;
-  if (!p || !parseColor(p.top) || !parseColor(p.bottom)) return null;
-  return mixColor(p.top, p.bottom, clamp((tx.y0 + tx.y1) / 2 / H));
+  const top = p && readableColor(p.top);
+  const bottom = p && readableColor(p.bottom);
+  if (!top || !bottom) return null;
+  return mixColor(top, bottom, clamp((tx.y0 + tx.y1) / 2 / H));
 }
 
 export async function fetchState() {

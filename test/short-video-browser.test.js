@@ -106,6 +106,25 @@ test('check measures text against the backdrop or s.bg, not the page of the look
   assert.deepEqual(contrast.map((i) => [i.scene, i.message.match(/^"([^"]+)"/)[1]]), [['hook', 'Paper bag'], ['tip', 'Keep it dry']], JSON.stringify(contrast));
 });
 
+test('check reads a background given as a CSS color name', { skip, timeout: 120000 }, async (t) => {
+  const dir = project(t, `export default {
+    hook(s) {
+      s.bg('black');
+      s.text('Dark on black', { y: s.safe.y + s.safe.h * 0.3, color: '#111111', at: 0 });
+      s.text('Light on black', { y: s.safe.y + s.safe.h * 0.6, color: '#ffffff', at: 0 });
+    },
+    tip(s) {
+      s.short.backdrop({ color: 'navy' });
+      s.text('Dark on navy', { y: s.safe.y + s.safe.h * 0.3, color: '#111111', at: 0 });
+      s.text('Light on navy', { y: s.safe.y + s.safe.h * 0.6, color: '#ffffff', at: 0 });
+    },
+  };`);
+  const r = await cli(['check', dir, '--json']);
+  const contrast = JSON.parse(r.stdout).issues.filter((i) => /low contrast/.test(i.message));
+  // "black" and "navy" paint the same as their hex values, so check measures against them.
+  assert.deepEqual(contrast.map((i) => [i.scene, i.message.match(/^"([^"]+)"/)[1]]), [['hook', 'Dark on black'], ['tip', 'Dark on navy']], JSON.stringify(contrast));
+});
+
 test('the exported player brings the kit along', { skip, timeout: 120000 }, async (t) => {
   const dir = project(t);
   const out = (await json(['export', dir])).out;
