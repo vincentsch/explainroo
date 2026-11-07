@@ -6,6 +6,9 @@ export class ProjectError extends Error {}
 //   refused  the service said no, or nothing was sent, so it cost nothing
 //   failed   the service answered with an error, and it may have cost money
 //   lost     no answer came back, so nobody can tell what it cost
+// A read that costs nothing, such as a video job's status, has two more:
+//   later    the service didn't answer this time, and trying again is free
+//   gone     the service no longer has it
 export class ServiceError extends ProjectError {
   constructor(message, outcome, details = {}) {
     super(message);

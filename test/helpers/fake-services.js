@@ -7,13 +7,18 @@
 //   t.after(fake.close);
 //   spawn(cli, { env: { ...process.env, ...fake.env } });
 //   fake.count('openrouter', 'POST /api/v1/chat/completions');
-//   fake.plan('openrouter', 'POST /api/v1/chat/completions', { status: 500 }, { drop: true }, { delay: 200 }, { hang: true }, { hold: true });
+//   fake.plan('openrouter', 'POST /api/v1/chat/completions', { status: 500 }, { drop: true }, { delay: 200 }, { hang: true }, { hold: true }, { raw: Buffer.from('x') });
 //   fake.release();   // answers every request that a { hold: true } kept waiting
 //
 // To add a service, add its routes to ROUTES. A connector with the id "my-service"
 // reads its address from EXPLAINROO_MY_SERVICE_URL.
 import http from 'node:http';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { ffmpegPath } from '../../src/ffmpeg.js';
 
 // The one key the fake services accept.
 export const GOOD_KEY = 'fake-key-for-tests';
@@ -35,8 +40,58 @@ export function fakeSpeech(text, take = 1) {
   return pcm;
 }
 
+// A saved copy of the public list, and the price per second these clips are charged at.
+const VIDEO_MODELS = fs.readFileSync(new URL('../fixtures/openrouter-video-models.json', import.meta.url));
+export const FAKE_CLIP_USD_PER_SECOND = 0.03;
+
+// A small real MP4 of the asked length. It differs per purchase, and it has a sound if one was asked for.
+export function fakeClip({ duration = 6, generate_audio: audio = false }, take) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-fake-clip-'));
+  try {
+    const file = path.join(dir, 'clip.mp4');
+    const hue = crypto.createHash('sha256').update(String(take)).digest()[0];
+    const made = spawnSync(ffmpegPath(), ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', `testsrc2=s=320x180:r=30:d=${duration},hue=h=${hue}`, ...(audio ? ['-f', 'lavfi', '-i', `sine=frequency=330:duration=${duration}`] : []), '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-threads', '1', ...(audio ? ['-c:a', 'aac'] : []), file]);
+    if (made.status !== 0) throw new Error(`the fake could not make a clip: ${made.stderr}`);
+    return fs.readFileSync(file);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+const videoId = (pathname) => decodeURIComponent(pathname.split('/')[4]);
+
 export const ROUTES = {
   openrouter: {
+    'GET /api/v1/videos/models': ({ res }) => {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(VIDEO_MODELS);
+    },
+    'POST /api/v1/videos': ({ req, res, body, count, state }) => {
+      if (req.headers.authorization !== `Bearer ${GOOD_KEY}`) return sendJson(res, 401, { error: { message: 'No auth credentials found' } });
+      const id = `job_${count}`;
+      state.videos.set(id, { body, take: count });
+      sendJson(res, 202, { id, polling_url: `http://elsewhere.invalid/api/v1/videos/${id}`, status: 'pending' });
+    },
+    'GET /api/v1/videos/*/content': ({ req, res, pathname, state }) => {
+      if (req.headers.authorization !== `Bearer ${GOOD_KEY}`) return sendJson(res, 401, { error: { message: 'No auth credentials found' } });
+      const video = state.videos.get(videoId(pathname));
+      if (!video) return sendJson(res, 404, { error: { message: 'not found' } });
+      res.writeHead(200, { 'Content-Type': 'video/mp4' });
+      res.end(fakeClip(video.body, video.take));
+    },
+    'GET /api/v1/videos/*': ({ req, res, pathname, state }) => {
+      if (req.headers.authorization !== `Bearer ${GOOD_KEY}`) return sendJson(res, 401, { error: { message: 'No auth credentials found' } });
+      const id = videoId(pathname);
+      const video = state.videos.get(id);
+      if (!video) return sendJson(res, 404, { error: { message: 'not found' } });
+      sendJson(res, 200, {
+        id,
+        generation_id: `gen-${id}`,
+        status: 'completed',
+        unsigned_urls: [`http://elsewhere.invalid/api/v1/videos/${id}/content?index=0`],
+        usage: { cost: Math.round(FAKE_CLIP_USD_PER_SECOND * (video.body.duration ?? 6) * 10000) / 10000, is_byok: false },
+      });
+    },
     'GET /api/v1/key': ({ req, res }) => {
       if (req.headers.authorization !== `Bearer ${GOOD_KEY}`) return sendJson(res, 401, { error: { message: 'No auth credentials found' } });
       sendJson(res, 200, { data: { label: 'fake', usage: 0 } });
@@ -64,10 +119,12 @@ export const ROUTES = {
   },
 };
 
+// A "*" at the end of a route matches the rest of the address, and one in the middle one part of it.
 function matches(route, method, pathname) {
   const [routeMethod, pattern] = route.split(' ');
   if (routeMethod !== method) return false;
-  return pattern.endsWith('*') ? pathname.startsWith(pattern.slice(0, -1)) : pathname === pattern;
+  if (pattern.endsWith('*') && !pattern.slice(0, -1).includes('*')) return pathname.startsWith(pattern.slice(0, -1));
+  return new RegExp(`^${pattern.split('*').map((part) => part.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('[^/]+')}$`).test(pathname);
 }
 
 export async function startFakeServices({ routes = {} } = {}) {
@@ -75,6 +132,7 @@ export async function startFakeServices({ routes = {} } = {}) {
   const requests = [];
   const plans = new Map();
   const waiting = [];
+  const state = { videos: new Map() };
   let holding = [];
   const planKey = (service, route) => `${service} ${route}`;
 
@@ -97,13 +155,17 @@ export async function startFakeServices({ routes = {} } = {}) {
     if (step.drop) return req.socket.destroy();
     if (step.delay) await new Promise((resolve) => setTimeout(resolve, step.delay));
     if (step.hold) await new Promise((resolve) => holding.push(resolve));
+    if (step.raw) {
+      res.writeHead(200, { 'Content-Type': 'video/mp4' });
+      return res.end(step.raw);
+    }
     if (step.status) return sendJson(res, step.status, step.body ?? { error: { message: `fake error ${step.status}` } });
     if (step.dropBody) {
       res.writeHead(200, { 'Content-Type': 'application/json', 'Content-Length': '1000' });
       res.write('{"cut off');
       return setTimeout(() => req.socket.destroy(), 20);
     }
-    table[service][route]({ req, res, body, count });
+    table[service][route]({ req, res, body, count, pathname, state });
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
