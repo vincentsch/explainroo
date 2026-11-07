@@ -87,6 +87,25 @@ test('check sees the kit\'s text like any other text', { skip, timeout: 120000 }
   assert.ok(issues.some((i) => i.scene === 'tip' && /"Paper bag" runs off the frame/.test(i.message)), JSON.stringify(issues));
 });
 
+test('check measures text against the backdrop or s.bg, not the page of the look', { skip, timeout: 120000 }, async (t) => {
+  const dir = project(t, `export default {
+    hook(s) {
+      s.short.backdrop({ color: '#1b2440' });
+      s.icon('shopping-bag', { y: s.safe.y + s.safe.h * 0.4, label: 'Paper bag', at: 0 });
+      s.text('Fresh for weeks', { y: s.safe.y + s.safe.h * 0.7, color: '#ffffff', at: 0 });
+    },
+    tip(s) {
+      s.bg('#10304a');
+      s.text('Keep it dry', { y: s.safe.y + s.safe.h * 0.3, color: 'ink', at: 0 });
+      s.text('Freeze the rest', { y: s.safe.y + s.safe.h * 0.6, color: '#ffffff', at: 0 });
+    },
+  };`);
+  const r = await cli(['check', dir, '--json']);
+  const contrast = JSON.parse(r.stdout).issues.filter((i) => /low contrast/.test(i.message));
+  // The look is clean, whose page is light. The dark label and the dark text sit on a dark background.
+  assert.deepEqual(contrast.map((i) => [i.scene, i.message.match(/^"([^"]+)"/)[1]]), [['hook', 'Paper bag'], ['tip', 'Keep it dry']], JSON.stringify(contrast));
+});
+
 test('the exported player brings the kit along', { skip, timeout: 120000 }, async (t) => {
   const dir = project(t);
   const out = (await json(['export', dir])).out;

@@ -41,6 +41,12 @@ function mix(a, b, p) {
   return `#${h(0)}${h(1)}${h(2)}`;
 }
 
+// The top and bottom of the backdrop's gradient.
+function backdropColors(o) {
+  const top = o.color ?? '#0d1222';
+  return [top, o.color2 ?? mix(top, '#000000', 0.35)];
+}
+
 function alpha(c, a) {
   const [r, g, b] = rgb(c);
   return `rgba(${r}, ${g}, ${b}, ${a})`;
@@ -274,6 +280,9 @@ export class Short {
   backdrop(o = {}) {
     const s = this.s;
     const sc = s.engine.scale;
+    // check measures the text drawn after it against these colors.
+    const [top, bottom] = backdropColors(o);
+    s._page = { top, bottom };
     const key = JSON.stringify({ ...o, sc, W: s.W, H: s.H });
     const cache = (s.engine._shortBackdrops ??= new Map());
     if (!cache.has(key)) cache.set(key, this._backdrop(o, sc));
@@ -308,10 +317,10 @@ export class Short {
     const canvas = new OffscreenCanvas(Math.max(1, Math.round(s.W * sc)), Math.max(1, Math.round(s.H * sc)));
     const g = canvas.getContext('2d');
     g.scale(sc, sc);
-    const top = o.color ?? '#0d1222';
+    const [top, bottom] = backdropColors(o);
     const gradient = g.createLinearGradient(0, 0, 0, s.H);
     gradient.addColorStop(0, top);
-    gradient.addColorStop(1, o.color2 ?? mix(top, '#000000', 0.35));
+    gradient.addColorStop(1, bottom);
     g.fillStyle = gradient;
     g.fillRect(0, 0, s.W, s.H);
     if (o.glow) {

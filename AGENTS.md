@@ -1254,8 +1254,9 @@ font roles are `display`, `body`, `hand` and `mono`.
   Run it again with fewer pages, for example `render --workers 2`.
 
 `check` looks at text and math formulas. It finds text off the frame, too
-close to the edge (3.5%), too small, with low contrast (against the page, or
-against the text's own `bg`), on top of other text, or under the captions.
+close to the edge (3.5%), too small, with low contrast (against the page, a
+background from `s.bg` or `s.short.backdrop`, or the text's own `bg`), on top
+of other text, or under the captions.
 It does not see shapes, arrows and icons, or drawings made with `s.draw`.
 Look at the stills for those.
 

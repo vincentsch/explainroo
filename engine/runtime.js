@@ -6,7 +6,7 @@ import { getTheme, makeBackground, fontString, colorOf } from './themes.js';
 import { Pen } from './pen.js';
 import { drawTransition } from './transitions.js';
 import { buildPhrases, drawCaptions, buildChunks, drawBoldCaptions } from './captions.js';
-import { AUDIO_FILE, hashStr, mulberry32, suggest, suggestColor, contrast, opaque, withAlpha, parseColor, rgba } from './util.js';
+import { AUDIO_FILE, clamp, hashStr, mulberry32, suggest, suggestColor, contrast, opaque, withAlpha, parseColor, mixColor, rgba } from './util.js';
 import { layoutAreas } from './layout.js';
 import { loadClips, soundURL, ClipFrames } from './clips.js';
 import { UI } from './ui.js';
@@ -16,6 +16,14 @@ import { planCamera, cameraAt, cameraMoving, continues, frameRect, backgroundSho
 
 Stage.UI = UI;
 Stage.Short = Short;
+
+// The color a scene painted behind a text, with s.bg or the kit's backdrop: a
+// gradient from top to bottom, read at the text's height.
+function pageColor(tx, H) {
+  const p = tx.page;
+  if (!p || !parseColor(p.top) || !parseColor(p.bottom)) return null;
+  return mixColor(p.top, p.bottom, clamp((tx.y0 + tx.y1) / 2 / H));
+}
 
 export async function fetchState() {
   const res = await fetch('/__state.json', { cache: 'no-store' });
@@ -632,7 +640,7 @@ export class Engine {
           }
           const least = tx.ui ? uiMinSize : minSize;
           if (!tx.block && Math.round(tx.size) < least) once(`small:${sc.id}:${tx.text}`, () => add('warn', sc.id, t, `"${label}" is ${Math.round(tx.size)}px, hard to read (use at least ${least}px)`));
-          const bg = opaque(tx.bg || this.theme.bg, this.theme.bg);
+          const bg = opaque(tx.bg || pageColor(tx, H) || this.theme.bg, this.theme.bg);
           if (typeof tx.fg === 'string' && contrast(tx.fg, bg) < 3) once(`contrast:${sc.id}:${tx.text}`, () => {
             const suggestion = suggestColor(cssColor(tx.fg), cssColor(bg), tx.size, Object.fromEntries(Object.entries(colors).map(([name, c]) => [name, cssColor(c)])));
             add('warn', sc.id, t, `"${label}" has low contrast against its background (${contrast(tx.fg, bg).toFixed(1)}:1); use color: '${suggestion.color}' (${suggestion.ratio.toFixed(1)}:1)`);

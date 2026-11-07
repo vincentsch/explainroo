@@ -503,6 +503,8 @@ export class Stage {
       alpha: this.ctx.globalAlpha,
       fg: entry.fg,
       bg: entry.bg,
+      // What the scene painted behind it, for a text with no background of its own.
+      page: entry.bg ? null : this._page ?? null,
       block: !!entry.block,
       ui: entry.ui || 0,
       zoomed: !!entry.zoomed,
@@ -527,11 +529,13 @@ export class Stage {
 
   bg(color) {
     const ctx = this.ctx;
+    const fill = colorOf(this.theme, color, 'bg');
     ctx.save();
     ctx.setTransform(this.engine.scale, 0, 0, this.engine.scale, 0, 0);
-    ctx.fillStyle = colorOf(this.theme, color, 'bg');
+    ctx.fillStyle = fill;
     ctx.fillRect(0, 0, this.W, this.H);
     ctx.restore();
+    this._page = { top: fill, bottom: fill };
   }
 
   sfx(name, at, o = {}) {
