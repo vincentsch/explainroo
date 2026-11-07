@@ -219,3 +219,30 @@ test('the README installs with npx, its prompt runs the docs command, and clonin
   assert.equal(install.match(/```bash\n(.*)\n/)[1], 'npx --yes explainroo doctor --fetch');
   assert.ok(install.indexOf('git clone') > install.indexOf('To change the code'));
 });
+
+test('the README headline is the first sentence of the package description', () => {
+  const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
+  const { description } = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+  assert.equal(readme.match(/<b>([^<]+)<\/b>/)[1], description.slice(0, description.indexOf('.') + 1));
+});
+
+// Each command that can send something off the computer has a row in the README.
+const SENDS = ['connect', 'voice', 'voices', 'image', 'clip', 'share', 'publish', 'capture'];
+
+test('the README says what leaves the computer for each command that sends something', () => {
+  const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
+  const start = readme.indexOf('## What leaves your computer');
+  const section = readme.slice(start, readme.indexOf('\n## ', start));
+  const rows = section.split('\n').filter((line) => line.startsWith('| `'));
+  for (const command of SENDS) assert.ok(rows.some((row) => row.startsWith(`| \`${command}`)), command);
+  const words = section.replace(/\s+/g, ' ');
+  for (const claim of ['needs no account and no key', 'The voice, the timing, the music and the rendering run on your computer', 'Your coding agent is a separate service with its own terms and prices', 'no telemetry', 'Nothing uploads to the hosted service without the explicit `explainroo share` command.']) assert.ok(words.includes(claim), claim);
+  assert.doesNotMatch(readme, /none of this leaves/i);
+});
+
+test('the README marks the hosted link and partners as coming, and labels a partner as paid', () => {
+  const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
+  const partners = readme.slice(readme.indexOf('## Partners'), readme.indexOf('\n## ', readme.indexOf('## Partners')));
+  for (const words of ['Partners are coming', 'There are none yet', '"paid partner"', 'free choices stay first', 'never to pick a paid service for you']) assert.ok(partners.replace(/\s+/g, ' ').includes(words), words);
+  assert.match(readme, /`explainroo share`[^]*?That hosted service is coming\./);
+});

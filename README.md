@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <b>Explainer videos made by your AI agent.</b><br>
+  <b>The video studio your AI agent runs.</b><br>
   Free and open source. The voice, the timing and the rendering run on your computer.
 </p>
 
@@ -27,6 +27,7 @@ https://github.com/user-attachments/assets/6dd5dc32-c975-4e0e-8cd4-2ef3ccc11e61
 
 ## News
 
+- **Nov 2026 (draft)**: explainroo 0.5 runs with npx, so you don't have to clone it. It can also use outside services on your own key, like AI video clips and posting through YouTube, Buffer or Blotato.
 - **Oct 20, 2026**: [explainroo 0.4.1](https://www.explainroo.com/news/explainroo-0-4-1/) keeps arrow and chart labels whole while a shot holds.
 - **Oct 15, 2026**: [explainroo 0.4](https://www.explainroo.com/news/explainroo-0-4/) films each scene with a camera that follows the narration.
 - **Oct 13, 2026**: [explainroo 0.3](https://www.explainroo.com/news/explainroo-0-3/) narrates in Japanese and Mandarin Chinese, and adds the editorial look.
@@ -62,8 +63,10 @@ explainroo does the rest:
 - **Voice.** [Kokoro](https://huggingface.co/hexgrad/Kokoro-82M), an open
   voice model, reads the script aloud in English, Spanish, French, Italian,
   Brazilian Portuguese, Hindi, Japanese or Mandarin Chinese. It has 54 voices
-  and needs no account or API key. You can also use an [ElevenLabs](https://elevenlabs.io) voice or
-  record the narration yourself.
+  and needs no account or API key. You can also use an
+  [ElevenLabs](https://elevenlabs.io) or [Cartesia](https://cartesia.ai) voice,
+  or record the narration yourself. One project can make the same video in
+  several languages, with a script for each.
 - **Timing.** [Whisper](https://github.com/openai/whisper) listens to the
   narration and notes when each word is spoken.
 - **Pictures.** Chrome runs in the background and draws the frames. The lines
@@ -87,10 +90,38 @@ video. A layout check finds text that is cut off or overlaps, and a speech
 check finds words the voice got wrong. For a feed-sized player,
 `explainroo check videos/<name> --view-width 854` also flags small text.
 
-None of this leaves your computer, and it costs nothing. Your coding agent is
-a separate service with its own terms and prices. If you want, the agent can
-also make illustrations with an AI image model through OpenRouter, and you pay
-for each image.
+## What leaves your computer
+
+Making a video needs no account and no key, and it costs nothing. The voice,
+the timing, the music and the rendering run on your computer. Your coding agent
+is a separate service with its own terms and prices.
+
+Some commands send something to an outside service, and only when you or your
+agent run them:
+
+| You run | What leaves your computer | Where it goes |
+| --- | --- | --- |
+| `connect` | A test request with your key, or the code from your sign-in | That service |
+| `voice` with ElevenLabs or Cartesia | The narration text | That company |
+| `voices --provider elevenlabs` or `cartesia` | Your key, to list its voices | That company |
+| `image` or `clip` | The prompt and any reference images | OpenRouter and the model's provider |
+| `clip --dry-run` | A request for the list of video models and their prices, without your prompt | OpenRouter |
+| `share` | The video file and its title | The hosted explainroo service, which is coming |
+| `publish` | The video or a link to it, its title and its text | YouTube, Buffer or Blotato, and whatever they send it to |
+| `publish --dry-run` | Your login, to read your channels or accounts | YouTube, Buffer or Blotato |
+| `capture` | Requests for the page you name and the files it loads | That site and the servers it loads from |
+
+With ElevenLabs or Cartesia, the commands that make missing narration, like
+`check` and `render`, send the narration text too.
+
+The first run downloads the voice and speech models from Hugging Face. Other
+languages need one more speech model, which downloads the first time, and
+Japanese and Chinese also download their fonts from GitHub. Nothing of yours
+goes along with these downloads. explainroo has no telemetry, so it sends
+nothing about how you use it.
+
+Nothing uploads to the hosted service without the explicit `explainroo share`
+command.
 
 ## Looks
 
@@ -120,9 +151,13 @@ over the video, and explainroo keeps your text out of those spots.
   </picture>
 </p>
 
-Tall, 4:5 and square videos get captions that light up word by word. One
-project can render several sizes: `explainroo render videos/demo --size tiktok`
-writes the TikTok version next to the wide one.
+Tall, 4:5 and square videos get captions that light up word by word.
+`"captions": "bold"` shows two to four big words at a time instead, with
+numbers and marked words in color. For Shorts, TikTok and Reels, `s.short`
+draws the parts short videos often have, like a hook title that is there on the
+first frame (`explainroo docs short-video`). One project can render several
+sizes: `explainroo render videos/demo --size tiktok` writes the TikTok version
+next to the wide one.
 
 ## More than an MP4
 
@@ -161,6 +196,73 @@ and [Vroni](https://www.explainroo.com/videos/vroni-product-demo/), two of my
 own products. The files for the Unspar demo are in
 [examples/unspar-demo](examples/unspar-demo). explainroo.com also has
 unofficial demos of [Gmail, ChatGPT and Claude](https://www.explainroo.com/videos/#product-demos).
+
+## Outside services
+
+Each step of making a video has a free choice first. The services that cost
+money use your own account and key:
+
+| Step | Free | Costs money |
+| --- | --- | --- |
+| Voice | Kokoro, or your own recording | ElevenLabs, Cartesia |
+| Timing | Whisper | |
+| Images | The built-in icons and your own files | OpenRouter |
+| Clips | Your own footage | OpenRouter |
+| Music | The built-in music, your own file, or Soundroo | |
+| Sharing | A web player for your own site, or a link from `share` (coming) | |
+| Posting | A package you upload yourself, YouTube, or Buffer on its free plan | Blotato |
+
+`explainroo services` lists every choice with what it costs and what data
+leaves your computer. `explainroo connect <service>` sets one up and tests your
+key or login. explainroo's instructions tell your agent to show you the
+options, free ones first, and to let you choose.
+
+A project keeps a record of what was paid for in its `history/` folder. The
+same request again uses the file it already bought. After a crash, a clip that
+was already ordered is picked up again, and a request whose outcome is unknown
+is never sent again by itself. `explainroo history` shows the record, and
+`explainroo docs connectors` says how to add a service.
+
+## AI video clips
+
+`explainroo clip` buys a short video clip that an AI model makes from a text
+prompt. It goes through OpenRouter on your own key, and the clip plays in a
+scene like any other video file. `--dry-run` shows the price and spends
+nothing. A paid run needs `--max-cost`, and it refuses when the price is
+higher. Clips work for short shots of the real world, like a street or food.
+They get text and diagrams wrong, and a character looks different in each clip.
+`explainroo docs clips` has the details.
+
+## Music and sound files
+
+A video can play your own music file instead of the built-in music. explainroo
+brings it to the level of the built-in music and lowers it while the voice
+speaks. `s.sound` plays a sound file on a word. [Soundroo](https://www.soundroo.com)
+is a free tool where your agent writes original music, and it renders the
+track on your computer. `explainroo docs music` has the details.
+
+## Posting a video
+
+`explainroo package` writes a folder with everything needed to post a video on
+one platform: YouTube, Shorts, TikTok, Reels, LinkedIn or X. Next to the video
+at the right size, it holds the words for the post. It also says whether to mark
+the post as made with AI, and why. You can upload the folder yourself.
+
+`explainroo share` uploads a finished video to explainroo.com and gives back a
+page link. That hosted service is coming. Until it runs, `share` says so and
+makes no link.
+
+`explainroo publish` posts a package through YouTube, Buffer or Blotato, with
+your own account. `--dry-run` shows the exact post first, and nothing goes out
+without a yes. `explainroo docs publishing` has the details.
+
+## Partners
+
+Partners are coming. A partner will be a company that pays to be built in as
+one of the choices for a step. There are none yet. `explainroo services`
+always labels a partner as a "paid partner", and the free choices stay first
+in every step. explainroo's instructions tell your agent never to pick a paid
+service for you.
 
 ## Install it yourself
 
@@ -209,7 +311,10 @@ node bin/explainroo.js doctor --fetch
 
 Each video has a small "explainroo.com" in one corner. `"watermark": false` in
 `video.json` turns it off. Please keep it if you can, because that is how
-other people find explainroo.
+other people find explainroo. A TikTok package has no watermark, because
+TikTok's rules don't allow apps to add one. The
+[publishing page](docs/publishing.md#why-the-tiktok-file-has-no-watermark)
+quotes them.
 
 ## Credits and license
 
