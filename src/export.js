@@ -84,6 +84,8 @@ export function copyPlayer(project, timeline, used, out) {
   // A custom look is already resolved in config.look; its source is private.
   if (state.config.look) state.config.theme = state.config.look.extends;
   if (typeof state.config.voice === 'object' && state.config.voice.provider === 'recording') state.config.voice = { provider: 'recording', src: 'audio.m4a' };
+  // A music file is inside the mix. Its name and credit have no use in the player.
+  if (state.config.music?.src) state.config.music = { src: 'audio.m4a' };
   state.timeline = { ...timeline, scenes: timeline.scenes.map(s => ({ ...s, voice: s.voice ? { ...s.voice, url: 'audio.m4a' } : null })) };
   state.assets = used.assets.filter(a => !/\.(woff2?|ttf|otf)$/i.test(a));
   fs.writeFileSync(path.join(out, 'state.json'), JSON.stringify(state));

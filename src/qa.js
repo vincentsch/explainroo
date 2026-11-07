@@ -8,8 +8,9 @@ import { transcribeWords } from './models.js';
 import { readWav } from './wav.js';
 import { alignWords, readAlike } from './align.js';
 import { buildChapters, chapterHints } from './chapters.js';
-import { outputPath } from './project.js';
+import { outputPath, ProjectError } from './project.js';
 import { recordVersion, relativeFile, sha256File } from './history.js';
+import { decodedSound } from './server.js';
 
 export async function check(project, { log = () => {}, step = 0.25, viewWidth = null } = {}) {
   if (viewWidth !== null && (!Number.isFinite(viewWidth) || viewWidth <= 0)) throw new Error("--view-width must be a positive number");
@@ -22,6 +23,14 @@ export async function check(project, { log = () => {}, step = 0.25, viewWidth = 
       issues.push({ level: 'warn', scene: sc.id, t: null, message: `the voice check could not confirm ${suspicious.length ? suspicious.slice(0, 8).map((w) => `"${w}"`).join(', ') : `${Math.round((1 - v.matchRate) * 100)}% of the words`}. It heard: "${v.transcript.slice(0, 200)}". ${project.config.voice.provider === 'recording' ? 'The recording does not match script.md here. Make script.md say what was actually said.' : 'If a word is mispronounced, write it as {shown|spoken} in script.md.'}` });
     }
     if (v && v.duration > 40) issues.push({ level: 'hint', scene: sc.id, t: null, message: `the narration runs ${v.duration.toFixed(0)}s; long scenes are easier to follow when split` });
+  }
+  if (project.config.music?.src) {
+    try {
+      await decodedSound(project.dir, project.config.music.src);
+    } catch (e) {
+      if (!(e instanceof ProjectError)) throw e;
+      issues.push({ level: 'error', scene: null, t: null, message: `music: ${e.message}` });
+    }
   }
   const pageIssues = await withEngine(project, timeline, { scale: 0.5, log }, (page) => page.evaluate(([s, w]) => window.explainroo.check(s, w), [step, viewWidth]));
   issues.push(...pageIssues);

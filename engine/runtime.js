@@ -6,9 +6,9 @@ import { getTheme, makeBackground, fontString, colorOf } from './themes.js';
 import { Pen } from './pen.js';
 import { drawTransition } from './transitions.js';
 import { buildPhrases, drawCaptions } from './captions.js';
-import { hashStr, mulberry32, suggest, suggestColor, contrast, opaque, withAlpha, parseColor, rgba } from './util.js';
+import { AUDIO_FILE, hashStr, mulberry32, suggest, suggestColor, contrast, opaque, withAlpha, parseColor, rgba } from './util.js';
 import { layoutAreas } from './layout.js';
-import { loadClips, ClipFrames } from './clips.js';
+import { loadClips, soundURL, ClipFrames } from './clips.js';
 import { UI } from './ui.js';
 import { playbackTextIssue } from './readability.js';
 import { planCamera, cameraAt, cameraMoving, continues, frameRect, backgroundShot } from './director.js';
@@ -133,6 +133,14 @@ export class Engine {
     const clip = this.clips.get(key) || this.clips.get('assets/' + key);
     if (!clip) throw new SceneError(`clip "${src}" not found. Put an MP4, MOV, WebM or M4V in the project's assets/ folder. Available: ${[...this.clips.keys()].join(', ') || 'none'}`);
     return clip;
+  }
+
+  soundFile(src) {
+    const key = src.replace(/^\.?\//, '');
+    const files = this.state.assets.filter((a) => AUDIO_FILE.test(a));
+    const file = [key, 'assets/' + key].find((name) => files.includes(name));
+    if (!file) throw new SceneError(`sound file "${src}" not found. Put a wav, mp3, m4a, aac, flac, ogg or opus file in the project's assets/ folder. Available: ${files.join(', ') || 'none'}`);
+    return file;
   }
 
   clipImage(clip, frame) {
@@ -452,12 +460,15 @@ export class Engine {
   }
 
   // Sound cues for the soundtrack: element entrances, explicit s.sfx() calls
-  // and scene transitions, thinned so effects never pile up.
+  // and scene transitions, thinned so effects never pile up. "sfx": false only
+  // silences those. Clip sound and s.sound still play, so with any such file in
+  // assets/ the scenes have to be looked at.
   sfxCues() {
-    if (this.config.sfx === false && !this.clips.size) return { cues: [], clips: [], errors: [] };
+    if (this.config.sfx === false && !this.clips.size && !this.state.assets.some((a) => AUDIO_FILE.test(a))) return { cues: [], clips: [], sounds: [], errors: [] };
     const { events, errors } = this.collectEvents();
     const clips = events.filter((e) => e.kind === 'clip' && e.volume > 0 && e.speed === 1 && e.hasAudio).map((e) => ({ ...e, start: e.T, end: e.T + e.end - e.at }));
-    if (this.config.sfx === false) return { cues: [], clips, errors };
+    const sounds = events.filter((e) => e.kind === 'sound').map((e) => ({ url: e.url, start: e.T, sceneStart: e.T - e.at, end: e.T - e.at + e.out, volume: e.volume }));
+    if (this.config.sfx === false) return { cues: [], clips, sounds, errors };
     const cues = [];
     for (const e of events) {
       if (!e.sfx) continue;
@@ -491,7 +502,7 @@ export class Engine {
       last.set(c.name, c.t);
       out.push(c);
     }
-    return { cues: out, clips, errors };
+    return { cues: out, clips, sounds, errors };
   }
 
   // Samples every scene and reports layout problems.
@@ -671,19 +682,29 @@ export async function boot({ canvas, scale = 1, transparent = false, version = '
   return { engine, audio, state };
 }
 
+// A music file comes with its measured level, which decides how loud it plays.
+async function loadMusicFile({ src, volume, loop }) {
+  const res = await fetch(soundURL('info', src));
+  if (!res.ok) throw new Error(await res.text());
+  const { lufs } = await res.json();
+  return { url: soundURL('audio', src), lufs, volume, loop };
+}
+
 // Mixes narration, music and sound effects in an OfflineAudioContext.
 export async function renderAudio(engine, audio, { sampleRate = 48000 } = {}) {
   if (audio.loadError) throw new Error(`audio engine failed to load: ${audio.loadError.message}`);
   const { timeline, config } = engine.state;
-  const { cues, clips, errors } = engine.sfxCues();
+  const { cues, clips, sounds, errors } = engine.sfxCues();
   const buffer = await audio.renderSoundtrack({
     duration: timeline.duration,
     sampleRate,
     voice: timeline.scenes.filter((s) => s.voice).map((s) => ({ url: '/project/' + s.voice.url + '?v=' + engine.state.version, start: s.voice.start })),
     voiceSpans: timeline.voiceSpans,
-    music: config.music,
+    music: config.music?.src ? null : config.music,
+    musicFile: config.music?.src ? await loadMusicFile(config.music) : null,
     sfx: cues,
     clips,
+    sounds,
     scenes: timeline.scenes.map((s) => ({ start: s.start, dur: s.dur })),
   });
   return { buffer, cues, errors };

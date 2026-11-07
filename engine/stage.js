@@ -6,7 +6,7 @@ import { clamp, lerp, ease, easeFn, rand01, noise1, hashStr, mulberry32, suggest
 import { colorOf, tintOf, fontString } from './themes.js';
 import { scalePath, quadD, polyD, pathLength, pointAt, parsePath, absolutize } from './pathdata.js';
 import { layoutText, lineStartX } from './text.js';
-import { clipFrame, clipURL } from './clips.js';
+import { clipFrame, clipURL, soundURL } from './clips.js';
 import { highlightLine, codeTokens, matchTokens, resolveCodeSteps, codeMorphState } from './code.js';
 
 const DEFAULT_DUR = { draw: 0.9, write: 0.8, pop: 0.6, rise: 0.75, fade: 0.6, zoom: 0.75, drop: 0.75, grow: 1.0, none: 0.001, 'slide-left': 0.75, 'slide-right': 0.75, 'slide-up': 0.75, 'slide-down': 0.75 };
@@ -500,6 +500,20 @@ export class Stage {
     const t = at === undefined ? this.t : this.time(at);
     const rec = this.engine.recorder;
     if (rec) rec.push({ kind: 'sfx', at: t, dur: o.dur ?? 0, sfx: name, gain: o.gain ?? 1, pitch: o.pitch, explicit: true, key: `sfx|${Math.round(t * 1000)}|${name}|${o.pitch ?? ''}` });
+  }
+
+  // Plays a file from assets/. It only matters to the soundtrack, so frames skip
+  // it, and an exported player, which has the sound in its mix, doesn't need the file.
+  sound(src, o = {}) {
+    const rec = this.engine.recorder;
+    if (!rec) return;
+    const file = this.engine.soundFile(src);
+    const volume = o.volume ?? 0.5;
+    if (typeof volume !== 'number' || !(volume >= 0 && volume <= 1)) throw new SceneError('sound volume must be from 0 to 1');
+    const at = this.time(o.at ?? 0);
+    const out = o.out === undefined ? this.dur : Math.min(this.dur, this.time(o.out));
+    const n = this._soundSeq = (this._soundSeq || 0) + 1;
+    rec.push({ kind: 'sound', key: `sound|${at}|${o.id ?? n}|${file}`, at, out, volume, src: file, url: soundURL('audio', file) });
   }
 
   // ---------- camera and groups ----------
