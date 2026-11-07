@@ -5,6 +5,8 @@
 //   history/versions.jsonl         one line per finished render, plus verify results
 //   history/voice/<key>.wav        paid speech, saved request by request
 //   history/replaced/<hash>.<ext>  files that a newer purchase under the same name moved
+//   history/failed-check/          what came back for a clip and failed its check
+//   history/downloads/             clips on their way in, kept out of git
 //   history/private/               links and addresses that act like secrets, kept out of git
 //
 // Keys never go in here.
@@ -127,6 +129,7 @@ function outputPlaces(job) {
   if (!/^[0-9a-f]{64}$/.test(sha256)) return [];
   if (job.kind === 'speech') return [`history/voice/${job.attempt > 1 ? `${job.key}.${job.attempt}` : job.key}.wav`];
   if (job.kind === 'image' && /^[\w-]+$/.test(job.request?.name) && new RegExp(`^assets/${job.request.name}\\.(png|jpg|webp)$`).test(name)) return [name, replacedFile(name, sha256)];
+  if (job.kind === 'clip' && /^[\w-]+$/.test(job.request?.name) && name === `assets/clips/${job.request.name}.mp4`) return [name, replacedFile(name, sha256)];
   return [];
 }
 
@@ -197,6 +200,11 @@ export function stopSentence(job, reason) {
     case 'lost': return `No answer came back on ${when(job.updated)}${saidBy(job)}, so that request may have cost money.`;
     case 'failed': return `It failed on ${when(job.updated)}${saidBy(job)}, and that try may have cost money.`;
     case 'refused': return `The service refused it on ${when(job.updated)}${saidBy(job)}. That cost nothing.`;
+    case 'running': return `It went out on ${when(job.created)}, and its result has not been fetched yet. Continuing it buys nothing.`;
+    case 'cancelled': return `The service says it was cancelled on ${when(job.updated)}${saidBy(job)}, and that try may have cost money.`;
+    case 'expired': return `The service says it expired on ${when(job.updated)}${saidBy(job)}, and that try may have cost money.`;
+    case 'gone': return `It went out on ${when(job.created)}, and by ${when(job.updated)} the service no longer had the result. It keeps results only for a short time, and that try may have cost money.`;
+    case 'failed-check': return `The file that came back on ${when(job.updated)} failed the check${saidBy(job)}. It is kept at ${oneLine(job.kept, 200)}, and that try may have cost money.`;
     case 'deleted': return `It was bought on ${when(job.created)}, but ${name} is gone.`;
     case 'changed': return `It was bought on ${when(job.created)}, but ${name} has changed since then.`;
     default: return `Its status is ${oneLine(job.status, 40)}.`;
@@ -239,6 +247,16 @@ export function saveOutput(dir, name, bytes) {
   return { file, name, sha256, bytes: bytes.length };
 }
 
+// The same for a file that is already on disk, on its way in from a download.
+export function saveOutputFile(dir, name, temp) {
+  const sha256 = sha256File(temp);
+  const file = replacedFile(name, sha256);
+  const { size } = fs.statSync(temp);
+  fs.mkdirSync(historyDir(dir, 'replaced'), { recursive: true });
+  fs.renameSync(temp, path.join(dir, file));
+  return { file, name, sha256, bytes: size };
+}
+
 // One run at a time moves files under a public name. Moving a file takes far less
 // than the 15 seconds after which a lock counts as left behind by a dead run.
 function withNameLock(dir, name, fn) {
@@ -263,6 +281,19 @@ function withNameLock(dir, name, fn) {
   }
 }
 
+// All at once, so a run that dies never leaves half a file under a public name.
+function moveFile(from, to) {
+  try {
+    fs.renameSync(from, to);
+  } catch (e) {
+    if (e.code !== 'EXDEV') throw e;
+    const temp = `${to}.${process.pid}.tmp`;
+    fs.copyFileSync(from, temp);
+    fs.renameSync(temp, to);
+    fs.rmSync(from, { force: true });
+  }
+}
+
 // Puts a job's output under its public name. Whatever is there moves aside first,
 // and so do the other files in `others`.
 export function placeOutput(dir, { key, attempt }, others = []) {
@@ -276,8 +307,7 @@ export function placeOutput(dir, { key, attempt }, others = []) {
     const pushed = moveAside(dir, name);
     if (pushed) moved.push(pushed);
     fs.mkdirSync(path.dirname(path.join(dir, name)), { recursive: true });
-    fs.copyFileSync(path.join(dir, source), path.join(dir, name));
-    fs.rmSync(path.join(dir, source), { force: true });
+    moveFile(path.join(dir, source), path.join(dir, name));
     return { job: updateJob(dir, job, { output: { ...job.output, file: name } }), moved };
   });
 }
@@ -348,22 +378,29 @@ export function projectWord(dir, cwd = process.cwd()) {
   return shellWord(path.relative(cwd, dir) || '.');
 }
 
-// The command that continues a job. A refused job can go again as it is, and
-// everything else may have cost money, so it needs --new.
+// The command that continues a job. A running job only has its result to fetch, and
+// a refused job can go again as it is. Everything else may have cost money, so it
+// needs --new. A clip that may be bought again needs a cap, so it repeats the
+// user's. That number comes from a file that a stranger's project can bring.
 const CONTINUE = {
   image: (job, where, again) => `image ${where} --resume ${shortId(job)}${again}`,
   speech: (job, where, again) => `voice ${where}${again}`,
+  clip: (job, where, again, reason) => {
+    const cap = Number(job.max_cost_usd);
+    return `clip ${where} --resume ${shortId(job)}${again}${reason !== 'running' && cap > 0 ? ` --max-cost ${cap}` : ''}`;
+  },
 };
 
 export function continueCommand(dir, job, reason) {
-  const again = reason === 'refused' ? '' : ' --new';
-  return `${selfCommand()} ${CONTINUE[job.kind](job, projectWord(dir), again)}`;
+  const again = reason === 'refused' || reason === 'running' ? '' : ' --new';
+  return `${selfCommand()} ${CONTINUE[job.kind](job, projectWord(dir), again, reason)}`;
 }
 
 function jobLabel(job) {
   const r = job.request || {};
   if (job.kind === 'speech') return `scene ${oneLine(job.scene ?? '?', 60)}: "${oneLine(r.text, 60)}"`;
   if (job.kind === 'image') return `${oneLine(r.name ?? '?', 60)}: "${oneLine(r.prompt, 60)}" with ${oneLine(r.model ?? '?', 60)}`;
+  if (job.kind === 'clip') return `${oneLine(r.name ?? '?', 60)}: "${oneLine(r.prompt, 60)}" with ${oneLine(r.model ?? '?', 60)}, ${oneLine(r.seconds ?? '?', 10)} seconds`;
   return oneLine(job.kind ?? 'unknown', 60);
 }
 
@@ -371,13 +408,15 @@ function jobLabel(job) {
 // later deleted or changed is no reason to spend money, unless a scene still needs
 // it (`needed`). A refusal cost nothing, so it doesn't matter once an earlier attempt
 // is good, or for a sentence no scene has to be built from. And a newer purchase
-// under the same name means someone moved on.
+// under the same name means someone moved on, unless a job is still running: that
+// one was paid for, and fetching its result buys nothing.
 function isOpen(dir, job, jobs, current, needed) {
   if (!Object.hasOwn(CONTINUE, job.kind ?? '') || !current(job) || goodOutput(dir, job)) return false;
+  if (job.status === 'running') return true;
   if (job.status === 'done') return needed(job);
   if (job.status === 'refused' && job.kind === 'speech' && !needed(job)) return false;
   if (job.status === 'refused' && jobs.some((other) => other.key === job.key && goodOutput(dir, other))) return false;
-  return !(job.kind === 'image' && jobs.some((other) => other.kind === job.kind && other.key !== job.key && other.status === 'done' && other.request?.name === job.request?.name && other.created > job.created));
+  return !(job.kind !== 'speech' && jobs.some((other) => other.kind === job.kind && other.key !== job.key && other.status === 'done' && other.request?.name === job.request?.name && other.created > job.created));
 }
 
 // What history prints. `current` says whether a job is still wanted: a sentence
@@ -410,13 +449,21 @@ function versionLine(v) {
   return `  ${oneLine(`${when(v.time)}  ${v.file}  ${v.format} ${v.width}x${v.height}, ${Number(v.duration).toFixed(1)}s, ${kind.join(', ')}, ${checked}`, 400)}`;
 }
 
-export function formatHistory({ open, spend, versions }) {
+function clipLine(job) {
+  const file = job.output?.file ?? job.kept ?? `${job.request?.name}, no file`;
+  const cost = typeof job.cost_usd === 'number' ? `$${job.cost_usd.toFixed(4)}` : job.status === 'refused' ? 'cost nothing' : typeof job.estimated_usd === 'number' ? `about $${job.estimated_usd.toFixed(2)}` : 'cost unknown';
+  return `  ${oneLine(`${job.id}  ${job.status}  ${file}  ${cost}`, 400)}`;
+}
+
+export function formatHistory({ open, spend, versions, jobs = [] }) {
   const parts = [];
   parts.push(open.length ? ['Open jobs', ...open.flatMap((o) => [`  ${o.id}  ${o.kind}  ${o.what}`, `    ${o.message}`, `    To continue: ${o.command}`])].join('\n') : 'No open jobs.');
   const paid = spend.usd || !Object.keys(spend.characters).length ? [`  $${spend.usd.toFixed(4)} in known prices`] : [];
   for (const [provider, characters] of Object.entries(spend.characters)) paid.push(`  ${oneLine(findService(provider)?.name ?? provider, 60)}: ${Number(characters)} characters`);
   if (spend.unknown_price) paid.push(`  ${spend.unknown_price} attempt${spend.unknown_price === 1 ? ' has' : 's have'} no known price and may have cost money${spend.may_have_cost_usd ? `, about $${spend.may_have_cost_usd.toFixed(2)} at the usual price` : ''}.`);
   parts.push(spend.attempts ? [`Spend so far, across ${spend.attempts} attempt${spend.attempts === 1 ? '' : 's'}`, ...paid].join('\n') : 'Nothing bought yet.');
+  const clips = jobs.filter((job) => job.kind === 'clip');
+  if (clips.length) parts.push(['Clips', ...clips.map(clipLine)].join('\n'));
   parts.push(versions.length ? ['Rendered versions', ...versions.map(versionLine)].join('\n') : 'Nothing rendered yet.');
   return parts.join('\n\n');
 }
