@@ -16,6 +16,9 @@
 // never attempted. A run that finds `sending` stops, because nobody knows whether the
 // post exists, and only --new posts again. A YouTube upload is the exception: its
 // session can say how much arrived, so it goes on from there.
+//
+// With --draft, Buffer saves the post as a draft, and the job is finished once Buffer
+// shows it as one. A draft counts as the post of that file to that channel.
 import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
@@ -26,7 +29,7 @@ import { packageDir } from './package.js';
 import { langArg } from './project.js';
 import { DEFAULT_CATEGORY, PLATFORMS, withHashtags } from './post.js';
 import { liveShare } from './share.js';
-import { allOf, oneOf } from './services.js';
+import { allOf, oneOf, serviceUrl } from './services.js';
 import youtube from './connectors/youtube.js';
 import buffer, { BUFFER_VALUES } from './connectors/buffer.js';
 import blotato from './connectors/blotato.js';
@@ -56,6 +59,8 @@ const pollMs = () => Number(process.env.EXPLAINROO_PUBLISH_POLL_MS) || 10 * 1000
 const waitMs = () => Number(process.env.EXPLAINROO_PUBLISH_WAIT_MS) || 2 * 60 * 1000;
 // A YouTube upload that drops this often in one run stops, and the next run goes on.
 const UPLOAD_TRIES = 5;
+// How long the host of a video link has to say the size of its file.
+const LINK_SECONDS = 20;
 
 function fail(message) {
   throw new ProjectError(message);
@@ -168,11 +173,75 @@ function mediaFor(project, via, platform, pkg, flag) {
   return { url: null, from: null, expires_at: null, missing: `Buffer needs a public link to this exact file, and there is none. Run "${selfCommand()} share ${projectWord(project.dir)}${langArg(project)} --platform ${platform}" first, or pass --media-url with a link to this file.` };
 }
 
+function bytesWords(bytes) {
+  return `${bytes.toLocaleString('en-US')} bytes`;
+}
+
+// Where the size check of a link goes. EXPLAINROO_MEDIA_CHECK_URL sends it to a test
+// server, with the host and the path of the link after that address.
+function checkAddress(link) {
+  if (!process.env.EXPLAINROO_MEDIA_CHECK_URL) return link;
+  const base = serviceUrl({ id: 'media-check', name: 'video link', baseUrl: 'the host of each link' }).replace(/\/+$/, '');
+  const url = new URL(link);
+  return `${base}/${url.host}${url.pathname}${url.search}`;
+}
+
+// The size of the file at a link. HEAD comes first. A host that refuses HEAD, or
+// answers it without a size, gets a GET for the first byte, and the body is never
+// read.
+async function linkSize(link) {
+  const address = checkAddress(link);
+  let why = null;
+  for (const method of ['HEAD', 'GET']) {
+    let res;
+    try {
+      res = await fetch(address, { method, signal: AbortSignal.timeout(LINK_SECONDS * 1000), headers: { 'Accept-Encoding': 'identity', ...(method === 'GET' ? { Range: 'bytes=0-0' } : {}) } });
+      await res.body?.cancel().catch(() => {});
+    } catch (e) {
+      why = e?.name === 'TimeoutError' ? `it did not answer within ${LINK_SECONDS} seconds` : 'nothing answered at that address';
+      continue;
+    }
+    const total = res.status === 206 ? /\/(\d+)\s*$/.exec(res.headers.get('content-range') ?? '')?.[1] : res.ok ? res.headers.get('content-length') : null;
+    if (/^\d+$/.test(total ?? '')) return { bytes: Number(total), how: method === 'HEAD' ? 'HEAD' : 'GET of the first byte' };
+    why = res.ok ? 'it answered without the size of the file' : `it answered HTTP ${res.status}`;
+  }
+  return { bytes: null, why };
+}
+
+// The link a service fetches has to lead to this exact file, or the post shows
+// another video. The sizes are compared before anything is sent.
+async function checkMedia(link, pkg, unchecked) {
+  if (unchecked) return { result: 'unchecked', bytes: null, expected: pkg.bytes };
+  const found = await linkSize(link);
+  if (found.bytes === null) return { result: 'unknown', bytes: null, expected: pkg.bytes, why: found.why };
+  return { result: found.bytes === pkg.bytes ? 'same' : 'different', bytes: found.bytes, expected: pkg.bytes, how: found.how };
+}
+
+function checkWords(check) {
+  if (check.result === 'same') return `${bytesWords(check.bytes)}, the same as the file`;
+  if (check.result === 'different') return `${bytesWords(check.bytes)}, and the file has ${bytesWords(check.expected)}, so it is another video`;
+  if (check.result === 'unknown') return `not known, because ${check.why}`;
+  return 'not checked, because of --media-url-unchecked';
+}
+
+// Why a link stops the post, or null when it may go out.
+function linkProblem(check, link, pkg, via) {
+  const service = VIA[via].name;
+  if (check?.result === 'different') return `The video link ${link} leads to a file of ${bytesWords(check.bytes)}, and ${pkg.name} has ${bytesWords(check.expected)}. So the link is to another video, and ${service} would post that one. Pass a link to this exact file. If you are sure the link is right, add --media-url-unchecked.`;
+  if (check?.result === 'unknown') return `The size of the file at ${link} could not be read, because ${check.why}. ${service} fetches the video from this link, so explainroo compares its size with ${pkg.name} first. Check that the link opens the video without a login, or add --media-url-unchecked to post it without this check.`;
+  return null;
+}
+
+function withCheck(plan, check) {
+  return check && plan.media ? { ...plan, media: { ...plan.media, check } } : plan;
+}
+
 // The one place a request is made. A dry run prints it, and a real run saves it in
 // the record and sends it. It holds no token. YouTube destinations get the title in
 // their own field and the description with the hashtags as the body. Every other
-// destination has one text field, and gets the text from the package.
-export function buildRequest(via, { network, pkg, privacy, media, destination }) {
+// destination has one text field, and gets the text from the package. A Buffer draft
+// has saveToDraft and the mode of Buffer's example of a draft.
+export function buildRequest(via, { network, pkg, privacy, media, destination, draft = false }) {
   const post = pkg.post;
   const isYoutube = network === 'youtube';
   const body = isYoutube ? withHashtags(post.description.trim(), post.hashtags) : post.text;
@@ -200,9 +269,10 @@ export function buildRequest(via, { network, pkg, privacy, media, destination })
     return buffer.createPostRequest({
       channelId: destination?.id ?? null,
       text: body,
-      mode: BUFFER_VALUES.mode,
+      mode: draft ? BUFFER_VALUES.draftMode : BUFFER_VALUES.mode,
       schedulingType: BUFFER_VALUES.schedulingType,
       needsApproval: false,
+      ...(draft ? { saveToDraft: true } : {}),
       aiAssisted: post.ai_label,
       assets: buffer.videoAssets(media.url),
       ...(metadata ? { metadata } : {}),
@@ -240,7 +310,8 @@ function aiWords(via, network, label) {
   return `${NETWORKS[network]} through Blotato has no field for it, so it is not sent.`;
 }
 
-function privacyWords(via, network, privacy) {
+function privacyWords(via, network, privacy, draft) {
+  if (!privacy.setting && draft) return `public once it goes out. ${NETWORKS[network]} through ${VIA[via].name} has no privacy setting.`;
   if (!privacy.setting) return `public. ${NETWORKS[network]} through ${VIA[via].name} has no privacy setting, so the post goes public right away.`;
   if (privacy.value === 'private') return network === 'youtube' ? 'private. Only you can see it until you change that in YouTube Studio.' : 'private. Only you can see it until you change that on TikTok.';
   if (privacy.value === 'unlisted') return 'unlisted. Anyone with the link can see it, and it is not listed on your channel or in search.';
@@ -248,17 +319,19 @@ function privacyWords(via, network, privacy) {
 }
 
 // The facts of a post, for a person about to post it under their own name.
-function planFacts(via, platform, network, { pkg, privacy, media, destination, account, choices, request }) {
+function planFacts(via, platform, network, { pkg, privacy, media, destination, account, choices, request, draft = false }) {
   const post = pkg.post;
   const isYoutube = network === 'youtube';
   const text = via === 'youtube' ? request.start.body.snippet.description : via === 'buffer' ? request.variables.input.text : request.post.post.content.text;
   const warnings = [];
   if (media?.expires_at && Date.parse(media.expires_at) - Date.now() < SOON_MS) warnings.push(`The link to the video expires on ${when(media.expires_at)}, in less than a day. ${VIA[via].name} has to fetch the video before then.`);
+  else if (draft && media?.expires_at) warnings.push(`The link to the video expires on ${when(media.expires_at)}. Buffer fetches the video when the post goes out, so schedule the draft before then.`);
   return {
     via,
     service: VIA[via].name,
     platform,
     network,
+    draft,
     file: { name: pkg.name, bytes: pkg.bytes, sha256: pkg.sha256, duration: post.duration ?? null, verify: 'passed' },
     account: account ?? null,
     destination: destination ? { id: destination.id, name: destination.name } : null,
@@ -266,7 +339,7 @@ function planFacts(via, platform, network, { pkg, privacy, media, destination, a
     title: isYoutube ? post.title : null,
     text,
     hashtags: post.hashtags,
-    privacy: { value: privacy.value, setting: privacy.setting, words: privacyWords(via, network, privacy) },
+    privacy: { value: privacy.value, setting: privacy.setting, words: privacyWords(via, network, privacy, draft) },
     ai_label: { value: post.ai_label, reasons: Array.isArray(post.ai_reasons) ? post.ai_reasons : [], words: aiWords(via, network, post.ai_label) },
     made_for_kids: { value: post.made_for_kids, sent: isYoutube },
     category: isYoutube ? String(post.category) : null,
@@ -291,6 +364,7 @@ export function planText(plan) {
   if (plan.destination) lines.push(`${plan.via === 'blotato' ? 'Account' : 'Channel'}:   ${plan.destination.name} on ${name} (id ${plan.destination.id})`);
   else if (plan.choices.length) lines.push(`${plan.via === 'blotato' ? 'Account' : 'Channel'}:   not chosen yet. ${plan.service} has ${plan.choices.length} on ${name}:`, ...plan.choices.map((c) => `             ${c.id}  ${c.name}`));
   else lines.push(`${plan.via === 'blotato' ? 'Account' : 'Channel'}:   not known yet`);
+  if (plan.draft) lines.push('Draft:     yes. Buffer keeps it as a draft, and nothing is published until you schedule it there.');
   if (plan.title !== null) lines.push(`Title:     ${plan.title}`);
   lines.push(plan.title !== null ? 'Description:' : 'Text:', quoteBlock(plan.text));
   lines.push(`Hashtags:  ${plan.hashtags.length ? `${plan.hashtags.join(' ')}, in the ${plan.title !== null ? 'description' : 'text'}` : 'none'}`);
@@ -304,6 +378,7 @@ export function planText(plan) {
     if (plan.media.url) lines.push(`Video link: ${plan.media.url}, ${from}${plan.media.expires_at ? `. It expires on ${when(plan.media.expires_at)}` : ''}`);
     else if (plan.media.from === 'upload') lines.push(`Video link: none needed, ${from}`);
     else lines.push('Video link: none yet');
+    if (plan.media.check) lines.push(`Link size: ${checkWords(plan.media.check)}`);
   } else lines.push('The file goes up to YouTube from this computer.');
   for (const warning of plan.warnings) lines.push(`Warning:   ${warning}`);
   return lines.join('\n');
@@ -356,7 +431,7 @@ function storedRequestFits(job, { via, network, pkg, destination }) {
   if (via === 'buffer') {
     const input = r.variables?.input ?? {};
     const youtubeMeta = input.metadata?.youtube;
-    return input.channelId === destination.id && input.text === p.text && input.assets?.[0]?.video?.url === p.media?.url
+    return input.channelId === destination.id && input.text === p.text && input.assets?.[0]?.video?.url === p.media?.url && (input.saveToDraft === true) === (p.draft === true)
       && (!youtubeMeta || (youtubeMeta.title === p.title && youtubeMeta.privacy === BUFFER_VALUES.privacy[p.privacy?.value]));
   }
   const post = r.post?.post ?? {};
@@ -426,7 +501,7 @@ async function follow(project, job, { log, wait = waitMs() }) {
   for (let read = 0; ; read++) {
     let seen = null;
     try {
-      seen = await connector.postStatus(dir, job.job_id, { network: job.network, platform: job.plan?.platform });
+      seen = await connector.postStatus(dir, job.job_id, { network: job.network, platform: job.plan?.platform, draft: job.plan?.draft === true });
     } catch (e) {
       // The post is made, so a status that can't be read is only a note. A later
       // run reads it again.
@@ -442,7 +517,8 @@ async function follow(project, job, { log, wait = waitMs() }) {
       last = null;
     }
     // YouTube has the video once the upload is done. Its processing is its own work.
-    if (job.provider === 'youtube' && seen) return job;
+    // A draft waits for the user, so a status that is not draft won't change by itself.
+    if ((job.provider === 'youtube' || job.plan?.draft === true) && seen) return job;
     const left = deadline - Date.now();
     if (left <= 0 || (job.provider === 'youtube' && read >= 2)) return last ? updateJob(dir, job, { note: hideSecrets(last) }) : job;
     log(`${connector.name} says the post is ${seen?.status ?? 'not readable yet'}, reading again in ${Math.round(Math.min(pollMs(), left) / 1000)}s`);
@@ -486,7 +562,7 @@ async function carryOut(project, job, { log, notice }) {
     throw new ProjectError(unknownOutcome(job, `${said.replace(/\.$/, '')}. The request for the post to ${destinationWords(job)} went out.`));
   }
   job = setStage(dir, job, 'accepted', { job_id: answer.id, accepted: new Date().toISOString(), result: { status: answer.status ?? null, link: answer.link ?? null, error: null } });
-  notice(`${VIA[job.provider].name} accepted the post (id ${answer.id}).`);
+  notice(`${VIA[job.provider].name} accepted the ${job.plan?.draft === true ? 'draft' : 'post'} (id ${answer.id}).`);
   return follow(project, job, { log });
 }
 
@@ -549,16 +625,16 @@ function statusTrouble(job, e) {
 }
 
 // Asks for a typed yes. Without a terminal, --yes is the only way past.
-async function confirmed({ yes, ask }) {
+async function confirmed({ yes, ask, draft }) {
   if (yes) return true;
   if (!process.stdin.isTTY) return false;
-  return ask();
+  return ask(draft ? 'Type yes to save this as a draft in your Buffer, or anything else to stop: ' : 'Type yes to post this under your name, or anything else to stop: ');
 }
 
-function askYes() {
+function askYes(question) {
   return new Promise((resolve) => {
     const rl = readline.createInterface({ input: process.stdin, output: process.stderr });
-    rl.question('Type yes to post this under your name, or anything else to stop: ', (answer) => {
+    rl.question(question, (answer) => {
       rl.close();
       resolve(answer.trim().toLowerCase() === 'yes');
     });
@@ -584,6 +660,7 @@ function result(job, fields = {}) {
     via: job.provider,
     platform: job.plan?.platform ?? null,
     network: job.network,
+    draft: job.plan?.draft === true,
     job: shortId(job),
     attempt: job.attempt,
     stage: stageOf(job),
@@ -600,13 +677,16 @@ function needYes(plan, request, continued) {
   return { ok: false, dry_run: false, confirmed: false, error: words, plan, request };
 }
 
-export async function publish(project, { via, platform: asked, privacy: askedPrivacy, mediaUrl, channel, account, dryRun = false, yes = false, fresh = false, log = () => {}, notice = () => {}, ask = askYes } = {}) {
+export async function publish(project, { via, platform: asked, privacy: askedPrivacy, mediaUrl, mediaUnchecked = false, channel, account, draft = false, dryRun = false, yes = false, fresh = false, log = () => {}, notice = () => {}, ask = askYes } = {}) {
   const { dir } = project;
   if (via === undefined) fail(`publish needs --via ${oneOf(Object.keys(VIA))}`);
   if (!Object.hasOwn(VIA, via)) fail(`--via must be ${oneOf(Object.keys(VIA))}`);
   if (channel !== undefined && via !== 'buffer') fail('--channel is for --via buffer. Blotato takes --account, and YouTube posts to the channel of its login.');
   if (account !== undefined && via !== 'blotato') fail('--account is for --via blotato. Buffer takes --channel, and YouTube posts to the channel of its login.');
   if (mediaUrl !== undefined && via === 'youtube') fail('--media-url is for Buffer and Blotato. YouTube takes the file from this computer.');
+  if (draft && via !== 'buffer') fail('--draft is for --via buffer. explainroo can save a post as a draft only in Buffer. Nothing was sent.');
+  if (mediaUnchecked && via === 'youtube') fail('--media-url-unchecked is for Buffer and Blotato. YouTube takes the file from this computer, so there is no link to check.');
+  if (mediaUnchecked && via === 'blotato' && mediaUrl === undefined) fail('--media-url-unchecked goes with --media-url. Without a link, Blotato gets the file uploaded from this computer, so there is no link to check.');
   const connector = VIA[via];
   const platform = pickPlatform(project, via, asked);
   const network = checkPair(via, platform);
@@ -629,19 +709,28 @@ export async function publish(project, { via, platform: asked, privacy: askedPri
     if (chosen.missing) missing.push(chosen.missing);
   }
   const destination = chosen.destination ? { id: chosen.destination.id, name: chosen.destination.name } : null;
-  const request = buildRequest(via, { network, pkg, privacy, media, destination });
-  const plan = planFacts(via, platform, network, { pkg, privacy, media, destination, account: chosen.account, choices: chosen.choices.map((c) => ({ id: c.id, name: c.name })), request });
+  const request = buildRequest(via, { network, pkg, privacy, media, destination, draft });
+  const plan = planFacts(via, platform, network, { pkg, privacy, media, destination, account: chosen.account, choices: chosen.choices.map((c) => ({ id: c.id, name: c.name })), request, draft });
   const key = destination ? publishKey(via, pkg.sha256, network, destination) : null;
   const newest = key ? listAttempts(dir, key).at(-1) : null;
+  // The link the service will fetch: the one this run sends, or the one an approved
+  // post that goes on still holds. A post that is already out needs no link.
+  const goesOn = !!newest && !fresh && ['planned', 'media_uploaded'].includes(stageOf(newest));
+  const link = (goesOn ? newest.plan?.media?.url : !newest || fresh ? media?.url : null) ?? null;
 
   if (dryRun) {
     if (media?.missing && !(newest && !fresh && ['accepted', 'finished'].includes(stageOf(newest)))) missing.push(media.missing);
+    const check = link ? await checkMedia(link, pkg, mediaUnchecked) : null;
+    const problem = linkProblem(check, link, pkg, via);
+    if (problem) missing.push(problem);
     let would = missing.length ? 'stop' : 'post';
     if (!missing.length && newest && !fresh) would = { planned: 'continue', media_uploaded: 'continue', sending: via === 'youtube' && readSession(dir, newest) ? 'resume' : 'stop', accepted: 'read', finished: 'nothing', failed: 'stop' }[stageOf(newest)] ?? 'stop';
     // A run that goes on with an earlier post sends what was approved then.
     const earlier = would === 'continue' || would === 'resume';
     const changed = earlier && JSON.stringify(newest.request) !== JSON.stringify(request);
-    return { dry_run: true, via, platform, network, would, missing, ...(newest && !fresh ? { job: shortId(newest), stage: stageOf(newest) } : {}), ...(changed ? { changed: true } : {}), plan: earlier ? newest.plan : plan, request: earlier ? newest.request : request };
+    // draft says whether the post the real run makes, or the one it finds, is a draft.
+    const found = !missing.length && newest && !fresh;
+    return { dry_run: true, via, platform, network, would, draft: found ? newest.plan?.draft === true : draft, missing, ...(newest && !fresh ? { job: shortId(newest), stage: stageOf(newest) } : {}), ...(changed ? { changed: true } : {}), plan: withCheck(earlier ? newest.plan : plan, check), request: earlier ? newest.request : request };
   }
   if (missing.length) fail(`${missing.join(' ')} Nothing was sent.`);
 
@@ -657,15 +746,24 @@ export async function publish(project, { via, platform: asked, privacy: askedPri
     const changed = JSON.stringify(newest.request) !== JSON.stringify(request);
     const expiredLink = newest.plan?.media?.expires_at && Date.parse(newest.plan.media.expires_at) < Date.now() && !newest.media?.public_url;
     if (expiredLink) fail(`the link to the video in the post approved on ${when(newest.created)} expired on ${when(newest.plan.media.expires_at)}, so ${VIA[via].name} can't fetch it. Share the package again, then run the same command with --new. Nothing was sent.`);
-    notice(`This goes on with the post approved on ${when(newest.created)}, from where it stopped. It sends what was approved then.${changed ? ' post.json or the flags have changed since. To post the new version instead, run the same command with --new.' : ''}`);
-    notice(planText(newest.plan));
-    if (!(await confirmed({ yes, ask }))) return needYes(newest.plan, newest.request, true);
+    const check = link ? await checkMedia(link, pkg, mediaUnchecked) : null;
+    const problem = linkProblem(check, link, pkg, via);
+    if (problem) fail(`${problem} Nothing was sent.`);
+    const earlierDraft = newest.plan?.draft === true;
+    const earlierPlan = withCheck(newest.plan, check);
+    notice(`This goes on with the ${earlierDraft ? 'draft' : 'post'} approved on ${when(newest.created)}, from where it stopped. It sends what was approved then.${changed ? ' post.json or the flags have changed since. To post the new version instead, run the same command with --new.' : ''}`);
+    notice(planText(earlierPlan));
+    if (!(await confirmed({ yes, ask, draft: earlierDraft }))) return needYes(earlierPlan, newest.request, true);
     return result(await carryOut(project, newest, { log, notice }), { continued: true });
   }
 
   if (media?.missing) fail(`${media.missing} Nothing was sent.`);
-  notice(`This is the post. Nothing has been sent yet.\n${planText(plan)}`);
-  if (!(await confirmed({ yes, ask }))) return needYes(plan, request, false);
+  const check = link ? await checkMedia(link, pkg, mediaUnchecked) : null;
+  const problem = linkProblem(check, link, pkg, via);
+  if (problem) fail(`${problem} Nothing was sent.`);
+  const approved = withCheck(plan, check);
+  notice(`This is the ${draft ? 'draft' : 'post'}. Nothing has been sent yet.\n${planText(approved)}`);
+  if (!(await confirmed({ yes, ask, draft }))) return needYes(approved, request, false);
   // The attempt comes from what this run saw before it asked: the first one, or with
   // --new one more than the newest it saw. Another run may have started the same
   // post while this one waited for its yes, and then this one sends nothing. The
@@ -677,7 +775,7 @@ export async function publish(project, { via, platform: asked, privacy: askedPri
   }
   let job;
   try {
-    job = createJob(dir, key, { kind: 'publish', provider: via, attempt, stage: 'planned', status: 'planned', network, destination: { ...destination, key: destinationKey(via, network, destination) }, account: chosen.account, plan, request });
+    job = createJob(dir, key, { kind: 'publish', provider: via, attempt, stage: 'planned', status: 'planned', network, destination: { ...destination, key: destinationKey(via, network, destination) }, account: chosen.account, plan: approved, request });
   } catch (e) {
     if (e.code === 'EEXIST') fail('another run started the same post a moment ago. Run the same command again in a minute to see where it is. Nothing more was sent.');
     throw e;
@@ -697,14 +795,14 @@ function linkLines(r) {
 
 export function formatPublish(r) {
   if (r.dry_run) {
-    const lines = [`This is what a real run would post. Nothing was posted.\n${planText(r.plan)}`];
+    const lines = [`${r.plan.draft ? 'This is the draft a real run would save in Buffer. Nothing was sent.' : 'This is what a real run would post. Nothing was posted.'}\n${planText(r.plan)}`];
     if (r.missing.length) lines.push('Before it can post:', ...r.missing.map((m) => `  ${m}`));
     const would = {
-      post: 'The real run shows this plan again and posts only after a typed yes, or with --yes when there is no terminal.',
+      post: r.plan.draft ? 'The real run shows this plan again and saves the draft only after a typed yes, or with --yes when there is no terminal.' : 'The real run shows this plan again and posts only after a typed yes, or with --yes when there is no terminal.',
       continue: `This post was approved before (job ${r.job}) and stopped before it went out. The real run goes on with it after a yes, and sends what was approved then.${r.changed ? ' post.json or the flags have changed since. To post the new version instead, add --new.' : ''}`,
       resume: `The upload of this post (job ${r.job}) stopped partway. The real run asks YouTube how much arrived and goes on from there after a yes.`,
       read: `This post was accepted before (job ${r.job}). The real run reads its status and posts nothing.`,
-      nothing: `This file was already posted there (job ${r.job}). The real run prints its status and link and posts nothing.`,
+      nothing: r.draft ? `This file was already saved as a draft there (job ${r.job}). The real run sends nothing. To save another draft or post it anyway, add --new.` : `This file was already posted there (job ${r.job}). The real run prints its status and link and posts nothing.`,
       stop: r.missing.length ? null : `An earlier try of this post (job ${r.job}) ${r.stage === 'failed' ? 'failed' : 'has no known outcome'}, so the real run stops. --new posts again.`,
     }[r.would];
     if (would) lines.push(would);
@@ -714,11 +812,18 @@ export function formatPublish(r) {
   const service = VIA[r.via].name;
   const where = `${r.destination?.name ?? '?'} on ${NETWORKS[r.network]}`;
   const through = r.via === 'youtube' ? '' : ` through ${service}`;
+  const draftKept = r.draft && r.post.status === 'draft';
+  if (r.already && r.draft && r.post.status !== 'sent') return [`This file was already saved as a draft for ${where} in Buffer (job ${r.job}), so nothing was sent.`, 'Schedule that draft in Buffer to post it. To save another draft or post it anyway, run the same command with --new.'].join('\n');
   if (r.already) return [`This file was already posted to ${where}${through} (job ${r.job}), so nothing was sent.`, `Status: ${r.post.status ?? 'unknown'}`, ...linkLines(r), 'To post it again anyway, run the same command with --new.'].join('\n');
   if (r.stage === 'failed') return [`${service} says the post to ${where} failed${r.post.error ? `: ${r.post.error}` : '.'}`, 'Nothing more is sent by itself. To post it again, run the same command with --new.'].join('\n');
-  const lines = [r.stage === 'finished' ? `Posted to ${where}${through}.` : `${service} accepted the post to ${where} (id ${r.post.id}).`];
+  if (r.stage === 'finished' && draftKept) return [`Saved as a draft for ${where} in Buffer (id ${r.post.id}). Nothing was published.`, 'Status: draft', 'To post it, schedule the draft in Buffer.'].join('\n');
+  const first = r.stage === 'finished'
+    ? (r.draft ? `Buffer posted it to ${where} instead of keeping it as a draft.` : `Posted to ${where}${through}.`)
+    : `${service} accepted the ${r.draft ? 'draft for' : 'post to'} ${where} (id ${r.post.id}).`;
+  const lines = [first];
   if (r.post.status) lines.push(`Status: ${r.post.status}${r.post.details ? ` (${r.post.details})` : ''}`);
   lines.push(...linkLines(r));
-  if (r.stage === 'accepted') lines.push(`${r.note ? `The status could not be read: ${r.note}.` : 'It is not finished yet.'} Run the same command later to read the status. It will not post again.`);
+  const waiting = r.note ? `The status could not be read: ${r.note}.` : r.draft ? 'Buffer does not show it as a draft. Look at the channel in Buffer.' : 'It is not finished yet.';
+  if (r.stage === 'accepted') lines.push(`${waiting} Run the same command later to read the status. It will not post again.`);
   return lines.join('\n');
 }

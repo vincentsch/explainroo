@@ -54,13 +54,14 @@ the user's own account, and only when you run a command that uses them.
 | Buffer | posting with `publish` | a sign-in | no, on Buffer's free plan | the title, the text and a link to the video |
 
 `connect`, `voices --provider` and `publish --dry-run` send only the key or
-the sign-in to that service. `clip --dry-run` reads OpenRouter's public price
-list, without the prompt or a key. `services` reads the same list when it lists
-clips, at most once a day. `share` uploads the video and its title to
-explainroo.com, where the hosted service is coming. `capture` loads the page
-you name. The models and fonts download the first time, and nothing of the
-user's goes along. Nothing else leaves the computer, and everything else is
-free.
+the sign-in to that service. When a post uses a link to the video, `publish`
+and its dry run also ask that link for the size of its file. `clip --dry-run`
+reads OpenRouter's public price list, without the prompt or a key. `services`
+reads the same list when it lists clips, at most once a day. `share` uploads
+the video and its title to explainroo.com, where the hosted service is coming.
+`capture` loads the page you name. The models and fonts download the first
+time, and nothing of the user's goes along. Nothing else leaves the computer,
+and everything else is free.
 
 ## Before you start
 
@@ -110,7 +111,9 @@ never call a partner the best.
 
 `share` and `publish` are the only commands that upload a video, so run them
 only when the user asks. Run `publish` with `--dry-run` first and show the
-user the plan. Add `--yes` only after the user said yes.
+user the plan. Add `--yes` only after the user said yes. When the user wants to
+see the post in Buffer before it goes out, add `--draft`. It saves a draft
+there and publishes nothing.
 
 ## From a brief to a finished video
 

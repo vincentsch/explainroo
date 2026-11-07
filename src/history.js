@@ -489,7 +489,8 @@ function postLine(job) {
   const r = job.result ?? {};
   const said = job.stage === 'failed' && r.error ? `: ${r.error}` : '';
   const where = `${job.provider ?? '?'} ${job.plan?.platform ?? '?'} to ${job.destination?.name ?? job.destination?.id ?? '?'}`;
-  return `  ${oneLine(`${job.id}  ${where}  ${POST_STAGES[job.stage] ?? 'unknown'}${said}${r.link ? `  ${r.link}` : ''}`, 400)}`;
+  const stage = job.stage === 'finished' && job.plan?.draft === true && r.status === 'draft' ? 'saved as a draft' : POST_STAGES[job.stage] ?? 'unknown';
+  return `  ${oneLine(`${job.id}  ${where}  ${stage}${said}${r.link ? `  ${r.link}` : ''}`, 400)}`;
 }
 
 function shareLine(job) {

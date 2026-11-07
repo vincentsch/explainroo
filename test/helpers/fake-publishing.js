@@ -59,6 +59,11 @@ export function publishingState() {
       uploads: new Map(),
       posts: new Map(),
     },
+    // The hosts of video links, for the size check that publish makes. A link leads
+    // to a file of `bytes` bytes, or gets a 404 while that is null, unless `files`
+    // has an answer of its own for it: { bytes }, { status: 404 }, { head: 405 } to
+    // refuse HEAD, or { size: false } to answer without a size.
+    links: { bytes: null, files: new Map() },
   };
 }
 
@@ -267,10 +272,14 @@ function gqlError(res, status, message, code) {
 }
 
 const REQUIRED_POST = ['channelId', 'mode', 'schedulingType', 'needsApproval', 'assets'];
+// The share modes that Buffer's reference names.
+const SHARE_MODES = ['addToQueue', 'shareNext', 'shareNow', 'customScheduled'];
 
 // What Buffer's reference makes required on createPost, and for each network.
 function createPostProblem(input, channel) {
   for (const field of REQUIRED_POST) if (input?.[field] === undefined || input[field] === null) return `Variable "$input" got invalid value; Field "${field}" of required type was not provided.`;
+  if (!SHARE_MODES.includes(input.mode)) return `Variable "$input" got invalid value; Value "${input.mode}" does not exist in "ShareMode" enum.`;
+  if (input.saveToDraft !== undefined && typeof input.saveToDraft !== 'boolean') return 'Variable "$input" got invalid value; Field "saveToDraft" must be a Boolean.';
   if (!Array.isArray(input.assets) || !input.assets.some((a) => typeof a?.video?.url === 'string')) return 'Variable "$input" got invalid value; a video asset needs a url.';
   if (input.assets.some((a) => a?.video && Object.hasOwn(a.video, 'thumbnailUrl'))) return 'Variable "$input" got invalid value; Field "thumbnailUrl" is not defined by type "VideoAssetInput".';
   if (!channel) return null;
@@ -299,8 +308,10 @@ const bufferRoutes = {
       if (!channel) return sendJson(res, 200, { data: { createPost: { __typename: 'NotFoundError', message: 'Channel not found' } } });
       if (channel.isLocked || channel.isDisconnected) return sendJson(res, 200, { data: { createPost: { __typename: 'InvalidInputError', message: 'Channel is locked or disconnected' } } });
       const id = next(p, 'post-');
-      p.buffer.posts.set(id, { id, input, channelId: channel.id, status: 'sending', reads: 0 });
-      return sendJson(res, 200, { data: { createPost: { __typename: 'PostActionSuccess', post: { id, status: 'sending', externalLink: null } } } });
+      // A draft stays a draft until someone schedules it in Buffer.
+      const status = input.saveToDraft === true ? 'draft' : 'sending';
+      p.buffer.posts.set(id, { id, input, channelId: channel.id, status, reads: 0 });
+      return sendJson(res, 200, { data: { createPost: { __typename: 'PostActionSuccess', post: { id, status, externalLink: null } } } });
     }
     if (op === 'ReadPost' && /\bpost\b/.test(query)) {
       const post = p.buffer.posts.get(input?.id);
@@ -385,6 +396,38 @@ const storageRoutes = {
   },
 };
 
+// The host of a video link. The path is the link's host and path, so
+// /media.example/v.mp4 stands for https://media.example/v.mp4. A GET with a Range
+// gets that part, as a host that knows ranges answers it.
+function linkRoute({ req, res, pathname, state }) {
+  const { links } = state.publishing;
+  const file = links.files.get(`https:/${pathname}`) ?? (links.bytes === null ? { status: 404 } : { bytes: links.bytes });
+  const head = req.method === 'HEAD';
+  if (file.status) {
+    res.writeHead(file.status, { 'Content-Type': 'text/html' });
+    return res.end(head ? undefined : '<p>Not found</p>');
+  }
+  if (head && file.head) {
+    res.writeHead(file.head);
+    return res.end();
+  }
+  // No Content-Length, so the body goes in chunks and the size stays unknown.
+  if (file.size === false) {
+    res.writeHead(200, { 'Content-Type': 'video/mp4' });
+    if (!head) res.write(Buffer.alloc(1));
+    return res.end();
+  }
+  const range = head ? null : /^bytes=(\d+)-(\d*)$/.exec(req.headers.range ?? '');
+  if (range) {
+    const start = Number(range[1]);
+    const end = Math.min(range[2] === '' ? file.bytes - 1 : Number(range[2]), file.bytes - 1);
+    res.writeHead(206, { 'Content-Type': 'video/mp4', 'Content-Range': `bytes ${start}-${end}/${file.bytes}`, 'Content-Length': String(end - start + 1) });
+    return res.end(Buffer.alloc(end - start + 1));
+  }
+  res.writeHead(200, { 'Content-Type': 'video/mp4', 'Content-Length': String(file.bytes) });
+  return res.end(head ? undefined : Buffer.alloc(file.bytes));
+}
+
 export const PUBLISHING_ROUTES = {
   youtube: youtubeRoutes,
   'youtube-auth': { 'POST /token': tokenRoute('youtube') },
@@ -392,4 +435,5 @@ export const PUBLISHING_ROUTES = {
   'buffer-auth': { 'POST /token': tokenRoute('buffer') },
   blotato: blotatoRoutes,
   'blotato-storage': storageRoutes,
+  'media-check': { 'HEAD /*': linkRoute, 'GET /*': linkRoute },
 };

@@ -246,8 +246,9 @@ It stops when the package is missing, when `video.mp4` changed since, or when
 package. Buffer and Blotato take the one package they can post, and list them
 when there are more.
 
-It has no scheduler and no queue. A post goes out when the command runs, and
-`publish` refuses any flag it doesn't know, like a time for the post.
+It has no scheduler and no queue. A post goes out when the command runs, unless
+`--draft` saves it as a draft in Buffer. `publish` refuses any flag it doesn't
+know, like a time for the post.
 
 ### Nothing goes out without a yes
 
@@ -264,7 +265,8 @@ Read the plan as the person whose name the post goes out under. It shows:
 - the privacy
 - the AI label, and whether that place takes it
 - "made for kids", which only YouTube takes
-- the link to the video, when the service needs one
+- the link to the video, when the service needs one, and the size of the file there
+- that it is a draft, with `--draft`
 
 A real run prints the same plan first. In a terminal, you have to type `yes`.
 Without a terminal it needs `--yes`, and without that it prints the plan, sends
@@ -310,15 +312,41 @@ YouTube don't notify your subscribers.
 - **YouTube** gets the file from your computer, as an upload that can go on
   after a break.
 - **Buffer** has no upload, so it needs a public https link to this exact
-  file, which must work until the post goes out. Pass your own with
-  `--media-url`. Once the hosted service runs, `explainroo share <project>
-  --platform tiktok` can make one, and `publish` takes the link from it. A link to `out/video.mp4` doesn't count for a TikTok package,
-  because the package has its own file. The plan warns when the link expires
-  within a day.
+  file. Pass your own with `--media-url`. Once the hosted service runs,
+  `explainroo share <project> --platform tiktok` can make one, and `publish`
+  takes the link from it. A link to `out/video.mp4` doesn't count for a TikTok
+  package, because the package has its own file. Buffer fetches the video from
+  the link when it posts it, so the link has to stay up until then. The plan
+  warns when the link expires within a day.
 - **Blotato** gets the file uploaded to its own storage first, unless you pass
   `--media-url`. Blotato's reference says such links must be on its own
   domain, and another page says any public link works. Without `--media-url` it
   works either way.
+
+Before a post that uses a link, `publish` asks the link for the size of its
+file. It sends a HEAD request, and asks for the first byte when the host
+refuses HEAD. When the size differs from `video.mp4`, or the host doesn't say
+it, `publish` stops and sends nothing, because the service would post whatever
+the link leads to. The plan shows what it found as `Link size`. If you are sure
+that the link is right, `--media-url-unchecked` posts it without this check.
+
+### Save a draft in Buffer
+
+```bash
+explainroo publish videos/<name> --via buffer --platform tiktok --draft --dry-run
+```
+
+`--draft` saves the post as a draft in your Buffer, and nothing is published.
+When you want it to go out, open Buffer and schedule it there. `publish` reads
+the draft back and prints its status, which is `draft`. Only `--via buffer`
+takes `--draft`, and the other routes refuse it.
+
+A draft counts as the post of this file to that channel. A second `publish` of
+the same package sends nothing, with or without `--draft`. `--new --draft`
+saves another draft, and `--new` alone posts the file.
+
+The link to the video has to work until Buffer posts the draft, after you
+schedule it.
 
 ### Signing in
 
@@ -422,3 +450,4 @@ environment only, and never from a `.env` file.
 | `EXPLAINROO_BUFFER_URL` | `https://api.buffer.com` |
 | `EXPLAINROO_BUFFER_AUTH_URL` | `https://auth.buffer.com` |
 | `EXPLAINROO_BLOTATO_URL` | `https://backend.blotato.com/v2` |
+| `EXPLAINROO_MEDIA_CHECK_URL` | the host of a video link, for its size check. The host and the path of the link go after this address |

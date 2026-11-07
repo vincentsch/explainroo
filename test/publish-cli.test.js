@@ -8,7 +8,7 @@ import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { startFakeServices } from './helpers/fake-services.js';
 import { BLOTATO_KEY, BUFFER_CLIENT, BUFFER_REDIRECT } from './helpers/fake-publishing.js';
-import { DIE_BEFORE, GQL, NONE, PLACEHOLDER, SESSION, UPLOAD, bin, jobs, mutations, setup, writePackage } from './helpers/publishing.js';
+import { DIE_BEFORE, GQL, NONE, PLACEHOLDER, SESSION, UPLOAD, bin, jobs, linkChecks, mutations, setup, writePackage } from './helpers/publishing.js';
 import { readEnvFile } from '../src/env.js';
 
 // --- The dry run shows what a real run sends ------------------------------------
@@ -99,6 +99,8 @@ test('the plan says everything a person needs before posting under their own nam
   assert.match(tiktok.stdout, /^AI label: {2}yes \(voice: Kokoro\)\. Buffer marks the post as AI assisted: true\. TikTok gets isAiGenerated: true\.$/m);
   assert.match(tiktok.stdout, /^For kids: {2}no\. Only YouTube asks this, so it is not sent\.$/m);
   assert.match(tiktok.stdout, /^Video link: https:\/\/media\.example\/v\.mp4, from --media-url$/m);
+  assert.match(tiktok.stdout, /^Link size: 6,012 bytes, the same as the file$/m);
+  assert.doesNotMatch(tiktok.stdout, /^Draft:/m);
 });
 
 // --- Which package goes where ---------------------------------------------------
@@ -307,6 +309,78 @@ test('a normal post on each service reads the status back, and a repeat prints i
   const fresh = await publish(...runs[2], '--new', '--yes');
   assert.equal(fresh.code, 0, fresh.text);
   assert.equal(fake.count('blotato', 'POST /posts'), 2);
+});
+
+// --- Buffer drafts ------------------------------------------------------------------
+
+test('--draft saves the post as a draft in Buffer and reads it back, and a repeat with or without --draft makes nothing new until --new', async (t) => {
+  const s = await setup(t, { platforms: ['tiktok'], login: ['buffer'] });
+  const media = ['--media-url', 'https://media.example/v.mp4'];
+  const args = ['--via', 'buffer', ...media, '--draft'];
+  const plan = await s.json(...args, '--dry-run');
+  assert.equal(plan.code, 0, plan.text);
+  assert.equal(plan.out.would, 'post');
+  assert.equal(plan.out.draft, true);
+  assert.equal(plan.out.plan.draft, true);
+  const { input } = plan.out.request.variables;
+  assert.equal(input.saveToDraft, true);
+  assert.equal(input.mode, 'addToQueue', 'the mode of Buffer\'s example of a draft');
+  assert.equal(input.needsApproval, false);
+  const human = await s.publish(...args, '--dry-run');
+  assert.match(human.stdout, /^This is the draft a real run would save in Buffer\. Nothing was sent\.\nVideo: /);
+  assert.match(human.stdout, /^Draft: {5}yes\. Buffer keeps it as a draft, and nothing is published until you schedule it there\.$/m);
+  assert.match(human.stdout, /^Privacy: {3}public once it goes out\. TikTok through Buffer has no privacy setting\.$/m);
+  assert.match(human.stdout, /saves the draft only after a typed yes, or with --yes when there is no terminal\.$/m);
+  assert.deepEqual(s.changes(), NONE);
+
+  const saved = await s.publish(...args, '--yes');
+  assert.equal(saved.code, 0, saved.text);
+  assert.match(saved.stderr, /^This is the draft\. Nothing has been sent yet\.\nVideo: /m);
+  assert.match(saved.stdout.trimEnd(), /^Saved as a draft for @fakehandle on TikTok in Buffer \(id post-\d+\)\. Nothing was published\.\nStatus: draft\nTo post it, schedule the draft in Buffer\.$/);
+  assert.deepEqual(mutations(s.fake).map((r) => r.body), [plan.out.request], 'the real run sent what the dry run printed');
+  const [post] = s.fake.publishing.buffer.posts.values();
+  assert.equal(post.status, 'draft');
+  assert.equal(post.reads, 1, 'the draft was read back');
+  const [job] = s.jobs();
+  assert.equal(job.stage, 'finished');
+  assert.equal(job.plan.draft, true);
+  assert.equal(job.result.status, 'draft');
+
+  // The draft counts as the post of this file to this channel.
+  for (const extra of [['--draft'], []]) {
+    for (const yes of [['--yes'], []]) {
+      const again = await s.publish('--via', 'buffer', ...media, ...extra, ...yes);
+      assert.equal(again.code, 0, again.text);
+      assert.match(again.stdout.trimEnd(), /^This file was already saved as a draft for @fakehandle on TikTok in Buffer \(job \w+\), so nothing was sent\.\nSchedule that draft in Buffer to post it\. To save another draft or post it anyway, run the same command with --new\.$/);
+    }
+    const dry = await s.json('--via', 'buffer', ...media, ...extra, '--dry-run');
+    assert.equal(dry.out.would, 'nothing');
+    assert.equal(dry.out.draft, true);
+  }
+  assert.match((await s.publish('--via', 'buffer', ...media, '--dry-run')).stdout, /^This file was already saved as a draft there \(job \w+\)\. The real run sends nothing\. To save another draft or post it anyway, add --new\.$/m);
+  assert.equal(mutations(s.fake).length, 1, 'no second draft and no post');
+  assert.match((await s.cli(['history', s.dir])).stdout, /^ {2}\w+ buffer tiktok to @fakehandle saved as a draft$/m);
+
+  const another = await s.json(...args, '--new', '--yes');
+  assert.equal(another.code, 0, another.text);
+  assert.equal(another.out.stage, 'finished');
+  assert.equal(another.out.draft, true);
+  assert.equal(another.out.post.status, 'draft');
+  assert.equal(another.out.attempt, 2);
+  assert.equal(mutations(s.fake).length, 2);
+});
+
+test('only Buffer takes --draft, and the other routes refuse it before anything is read or sent', async (t) => {
+  const s = await setup(t, { platforms: ['youtube', 'tiktok'], login: ['youtube', 'blotato'] });
+  for (const args of [['--via', 'youtube'], ['--via', 'blotato', '--platform', 'tiktok'], ['--via', 'blotato', '--platform', 'youtube']]) {
+    for (const extra of [['--dry-run'], ['--yes'], []]) {
+      const r = await s.publish(...args, '--draft', ...extra);
+      assert.equal(r.code, 1, r.text);
+      assert.match(r.stderr, /--draft is for --via buffer\. explainroo can save a post as a draft only in Buffer\. Nothing was sent\./);
+    }
+  }
+  assert.equal(s.fake.total(), 0);
+  assert.deepEqual(s.jobs(), []);
 });
 
 test('two Buffer channels on one network stay two destinations: the run asks which, and each gets the file once', async (t) => {
@@ -718,7 +792,8 @@ test('Buffer gets the video from --media-url or from a share of this exact file,
   assert.equal(shared.code, 0, shared.text);
   const link = JSON.parse(shared.stdout).media_url;
   const plan = await s.json('--via', 'buffer', '--dry-run');
-  assert.deepEqual(plan.out.plan.media, { url: link, from: 'share', expires_at: JSON.parse(shared.stdout).expires_at });
+  const size = s.packages.tiktok.bytes.length;
+  assert.deepEqual(plan.out.plan.media, { url: link, from: 'share', expires_at: JSON.parse(shared.stdout).expires_at, check: { result: 'same', bytes: size, expected: size, how: 'HEAD' } });
   assert.equal(plan.out.request.variables.input.assets[0].video.url, link);
   assert.deepEqual(plan.out.missing, []);
 
@@ -738,6 +813,66 @@ test('Buffer gets the video from --media-url or from a share of this exact file,
     assert.match((await s.publish('--via', 'buffer', '--media-url', bad, '--dry-run')).stderr, /--media-url must/);
   }
   assert.deepEqual(s.changes(), NONE);
+});
+
+test('a video link has to lead to a file of the package\'s size: another size or none stops before anything is sent, and --media-url-unchecked skips the check', async (t) => {
+  const s = await setup(t, { platforms: ['tiktok'], login: ['buffer', 'blotato'] });
+  const size = s.packages.tiktok.bytes.length;
+  const { files } = s.fake.publishing.links;
+  const other = 'https://media.example/other.mp4';
+  files.set(other, { bytes: 9999 });
+  const dry = await s.json('--via', 'buffer', '--media-url', other, '--dry-run');
+  assert.equal(dry.code, 0, dry.text);
+  assert.equal(dry.out.would, 'stop');
+  assert.deepEqual(dry.out.plan.media.check, { result: 'different', bytes: 9999, expected: size, how: 'HEAD' });
+  const mismatch = (service) => `The video link ${other} leads to a file of 9,999 bytes, and out/package/tiktok/video.mp4 has 6,012 bytes. So the link is to another video, and ${service} would post that one. Pass a link to this exact file. If you are sure the link is right, add --media-url-unchecked.`;
+  assert.ok(dry.out.missing.includes(mismatch('Buffer')), dry.text);
+  assert.match((await s.publish('--via', 'buffer', '--media-url', other, '--dry-run')).stdout, /^Link size: 9,999 bytes, and the file has 6,012 bytes, so it is another video$/m);
+  for (const via of ['buffer', 'blotato']) {
+    const r = await s.publish('--via', via, '--media-url', other, '--yes');
+    assert.equal(r.code, 1, r.text);
+    assert.ok(r.stderr.includes(`${mismatch(via === 'buffer' ? 'Buffer' : 'Blotato')} Nothing was sent.`), r.text);
+  }
+
+  // A host that refuses HEAD is asked for the first byte.
+  files.set('https://media.example/no-head.mp4', { bytes: size, head: 405 });
+  const ranged = await s.json('--via', 'buffer', '--media-url', 'https://media.example/no-head.mp4', '--dry-run');
+  assert.deepEqual(ranged.out.plan.media.check, { result: 'same', bytes: size, expected: size, how: 'GET of the first byte' });
+  assert.deepEqual(ranged.out.missing, []);
+  const asked = linkChecks(s.fake).filter((r) => r.pathname === '/media.example/no-head.mp4');
+  assert.deepEqual(asked.map((r) => [r.method, r.headers.range ?? null]), [['HEAD', null], ['GET', 'bytes=0-0']]);
+
+  // A size that can't be read stops the post too.
+  for (const [link, answer, why] of [
+    ['https://media.example/gone.mp4', { status: 404 }, 'it answered HTTP 404'],
+    ['https://media.example/sizeless.mp4', { head: 405, size: false }, 'it answered without the size of the file'],
+  ]) {
+    files.set(link, answer);
+    const r = await s.publish('--via', 'buffer', '--media-url', link, '--yes');
+    assert.equal(r.code, 1, r.text);
+    assert.ok(r.stderr.includes(`The size of the file at ${link} could not be read, because ${why}. Buffer fetches the video from this link, so explainroo compares its size with out/package/tiktok/video.mp4 first. Check that the link opens the video without a login, or add --media-url-unchecked to post it without this check. Nothing was sent.`), r.text);
+    assert.ok((await s.publish('--via', 'buffer', '--media-url', link, '--dry-run')).stdout.includes(`\nLink size: not known, because ${why}\n`));
+  }
+  assert.deepEqual(s.changes(), NONE);
+  assert.deepEqual(s.jobs(), []);
+
+  // --media-url-unchecked sends the link as it is, and never asks its host.
+  const before = linkChecks(s.fake).length;
+  const unchecked = ['--via', 'buffer', '--media-url', other, '--media-url-unchecked'];
+  const plan = await s.json(...unchecked, '--dry-run');
+  assert.equal(plan.out.would, 'post');
+  assert.deepEqual(plan.out.plan.media.check, { result: 'unchecked', bytes: null, expected: size });
+  assert.match((await s.publish(...unchecked, '--dry-run')).stdout, /^Link size: not checked, because of --media-url-unchecked$/m);
+  const posted = await s.json(...unchecked, '--yes');
+  assert.equal(posted.code, 0, posted.text);
+  assert.equal(posted.out.stage, 'finished');
+  assert.equal(mutations(s.fake).at(-1).body.variables.input.assets[0].video.url, other);
+  assert.equal(s.jobs()[0].plan.media.check.result, 'unchecked');
+  assert.equal(linkChecks(s.fake).length, before, 'the host of the link was not asked');
+
+  // The flag goes with a link.
+  assert.match((await s.publish('--via', 'youtube', '--media-url-unchecked', '--dry-run')).stderr, /--media-url-unchecked is for Buffer and Blotato\. YouTube takes the file from this computer, so there is no link to check\./);
+  assert.match((await s.publish('--via', 'blotato', '--media-url-unchecked', '--dry-run')).stderr, /--media-url-unchecked goes with --media-url\. Without a link, Blotato gets the file uploaded from this computer, so there is no link to check\./);
 });
 
 test('publish refuses flags it does not know, like a time for a post, and flags for another service', async (t) => {

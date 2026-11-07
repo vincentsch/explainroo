@@ -16,6 +16,8 @@ export const DIE_BEFORE = new URL('./die-before.js', import.meta.url).href;
 export const UPLOAD = 'POST /upload/youtube/v3/videos';
 export const SESSION = 'PUT /upload/youtube/v3/videos';
 export const GQL = 'POST /';
+// Every size check of a video link, by HEAD or by GET.
+export const linkChecks = (fake) => [...fake.requests('media-check', 'HEAD /*'), ...fake.requests('media-check', 'GET /*')];
 export const PLACEHOLDER = '<the publicUrl Blotato gives for the uploaded video>';
 export const NONE = { youtube: 0, buffer: 0, blotato: 0 };
 
@@ -93,6 +95,9 @@ export async function setup(t, { platforms = ['tiktok'], login = [] } = {}) {
   const settings = temp(t, 'explainroo-publish-settings-');
   const envFile = path.join(settings, '.env');
   const { dir, packages } = makeProject(t, platforms);
+  // The packages all have the same size, and a video link leads to a file of that
+  // size unless a test puts another answer at it.
+  fake.publishing.links.bytes = Object.values(packages)[0]?.bytes.length ?? null;
   const env = {
     ...process.env,
     ...fake.env,

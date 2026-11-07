@@ -23,10 +23,12 @@ export const BUFFER_REDIRECT = 'https://localhost:8976/callback';
 export const BUFFER_SCOPES = ['account:read', 'posts:read', 'posts:write', 'offline_access'];
 
 // Values that Buffer's reference does not list. mode and schedulingType are known
-// to work in real posts. The others follow the same form, and no real post has
-// confirmed them yet.
+// to work in real posts. draftMode is what Buffer's example of a draft sends with
+// saveToDraft. The others follow the same form, and no real post has confirmed
+// them yet.
 export const BUFFER_VALUES = {
   mode: 'shareNow',
+  draftMode: 'addToQueue',
   schedulingType: 'automatic',
   privacy: { private: 'private', unlisted: 'unlisted', public: 'public' },
   services: { youtube: 'youtube', tiktok: 'tiktok', instagram: 'instagram', linkedin: 'linkedin', twitter: 'twitter' },
@@ -171,13 +173,15 @@ async function createPost(dir, body, { token }) {
   throw new ServiceError(`Buffer answered without saying whether it made the post${gqlWords(json) ? ` (${gqlWords(json)})` : ''}`, 'lost');
 }
 
-async function postStatus(dir, id) {
+// A draft is finished once Buffer shows it with the status draft, because it stays
+// there until the user schedules it.
+async function postStatus(dir, id, { draft = false } = {}) {
   const data = await gql(dir, { operationName: 'ReadPost', query: READ_POST, variables: { input: { id } } });
   const post = data.post;
   if (!post) throw new ServiceError('Buffer does not show the post yet', 'later');
   const status = String(post.status ?? 'unknown');
   const error = typeof post.error?.message === 'string' ? post.error.message : null;
-  const state = status === 'sent' ? 'finished' : status === 'error' ? 'failed' : 'pending';
+  const state = status === 'sent' || (draft && status === 'draft') ? 'finished' : status === 'error' ? 'failed' : 'pending';
   return { state, status, link: post.externalLink ?? null, error: state === 'failed' ? error ?? 'no reason given' : null };
 }
 

@@ -14,7 +14,8 @@
 // { cut: true } drops the connection while the request body is still coming in.
 // Each request keeps its raw body, so a test can read a multipart upload. A plan
 // step the server doesn't know goes to the route, such as { keep: 1000 } for a
-// YouTube upload. fake-publishing.js has the posting services and their sign-ins.
+// YouTube upload. fake-publishing.js has the posting services and their sign-ins,
+// and the hosts of video links, where a share's media_url leads to its file.
 //
 // To add a service, add its routes to ROUTES. A connector with the id "my-service"
 // reads its address from EXPLAINROO_MY_SERVICE_URL.
@@ -117,7 +118,7 @@ export async function formFields(request) {
 // The hosted service: a share with no key expires and has a claim link, and one
 // with an account's key does not.
 const SHARE_DAYS = 7;
-async function shareRoute({ req, res, raw, count }) {
+async function shareRoute({ req, res, raw, count, state }) {
   const auth = req.headers.authorization;
   if (auth !== undefined && auth !== `Bearer ${GOOD_KEY}`) return sendJson(res, 401, { message: 'Unauthenticated.' });
   let form;
@@ -136,10 +137,13 @@ async function shareRoute({ req, res, raw, count }) {
   if (!mp4 && !webm) return sendJson(res, 415, { message: 'The video must be an MP4 or WebM file.' });
   const id = `share${count}`;
   const account = auth !== undefined;
+  const mediaUrl = `https://www.explainroo.com/media/${id}.${mp4 ? 'mp4' : 'webm'}`;
+  // The link to the file leads to the file that came up.
+  state.publishing.links.files.set(mediaUrl, { bytes: video.size });
   sendJson(res, 201, {
     id,
     url: `https://www.explainroo.com/v/${id}`,
-    media_url: `https://www.explainroo.com/media/${id}.${mp4 ? 'mp4' : 'webm'}`,
+    media_url: mediaUrl,
     expires_at: account ? null : new Date(Date.now() + SHARE_DAYS * 86400000).toISOString(),
     claim_url: account ? null : `https://www.explainroo.com/claim/${id}-secret`,
   });

@@ -109,8 +109,8 @@ agent run them:
 | `clip --dry-run` | A request for the list of video models and their prices, without your prompt or a key | OpenRouter |
 | `services`, when it lists clips | The same request as `clip --dry-run`, at most once a day. It asks for the list of video models and their prices, without your prompt or a key | OpenRouter |
 | `share` | The video file and its title | explainroo.com, where the hosted service is coming |
-| `publish` | The video or a link to it, its title and its text | YouTube, Buffer or Blotato, and whatever they send it to |
-| `publish --dry-run` | Your login, to read your channels or accounts | YouTube, Buffer or Blotato |
+| `publish` | The video or a link to it, its title and its text. With a link, first a request for the size of the file there | YouTube, Buffer or Blotato, and whatever they send it to. The size request goes to the host of the link |
+| `publish --dry-run` | Your login, to read your channels or accounts, and the same size request | YouTube, Buffer or Blotato, and the host of the link |
 | `capture` | Requests for the page you name and the files it loads | That site and the servers it loads from |
 
 With ElevenLabs or Cartesia, the commands that make missing narration, like

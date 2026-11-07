@@ -17,7 +17,7 @@ take the project folder first, and every command accepts `--json`.
 | `export [project]` | writes a web player folder (`--out dir`, `--size`, `--no-watermark`, `--json`), by default `out/player/`, or `out/player-tiktok/` with `--size tiktok` |
 | `package [project]` | a folder to post on one platform (`--platform`, `--title`, `--description`, `--hashtags`, `--size` for x, `--workers`) |
 | `share [project]` | uploads a video to explainroo.com for a page link, once that service runs (`--platform`, `--file`, `--title`, `--new`) |
-| `publish [project]` | posts a package after a typed yes or `--yes` (`--via`, `--platform`, `--privacy`, `--media-url`, `--channel`, `--account`, `--dry-run`, `--new`) |
+| `publish [project]` | posts a package after a typed yes or `--yes` (`--via`, `--platform`, `--privacy`, `--media-url`, `--media-url-unchecked`, `--channel`, `--account`, `--draft` for Buffer, `--dry-run`, `--new`) |
 | `capture [project] <url>` | saves screenshots, wording, colors, fonts and logos from a live site (`--mobile`, `--json`). `--name pricing` saves to `assets/capture/<site>/pricing/`, so several pages of one site stay side by side |
 | `image [project] <name> "<prompt>"` | makes an illustration with OpenRouter (`--new` buys it again, `--resume <id>` runs a job from `history` again) |
 | `images [project]` | lists the images and what they cost |
