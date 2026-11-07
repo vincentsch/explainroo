@@ -46,7 +46,16 @@ test('within each step free entries come first, and the first entry of every ste
 });
 
 test('the first list holds what exists today', () => {
-  assert.deepEqual(SERVICES.map((s) => s.id), ['kokoro', 'recording', 'elevenlabs', 'whisper', 'own-images', 'openrouter', 'own-footage', 'openrouter-video', 'built-in-music', 'own-music', 'soundroo', 'web-player', 'upload-by-hand']);
+  assert.deepEqual(SERVICES.map((s) => s.id), ['kokoro', 'recording', 'elevenlabs', 'whisper', 'own-images', 'openrouter', 'own-footage', 'openrouter-video', 'built-in-music', 'own-music', 'soundroo', 'web-player', 'package']);
+});
+
+test('package is the free route for posting', () => {
+  const posting = SERVICES.filter((s) => s.step === 'posting');
+  assert.equal(posting[0].id, 'package');
+  assert.equal(posting[0].free, true);
+  assert.match(posting[0].setup.use, /explainroo package <project> --platform tiktok/);
+  assert.match(posting[0].data_leaves, /Nothing leaves your computer until you upload/);
+  assert.equal(findService('upload-by-hand'), null);
 });
 
 test('a service with a key has a connector with a free key test, and a connector has an entry', () => {

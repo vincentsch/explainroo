@@ -222,19 +222,19 @@
       }
     },
     {
-      "id": "upload-by-hand",
+      "id": "package",
       "step": "posting",
-      "name": "Uploading by hand",
-      "about": "You upload the finished MP4 to the platform yourself.",
+      "name": "A package to upload by hand",
+      "about": "\"explainroo package\" writes a folder for one platform with the sized video, the title, the text with hashtags, captions, a cover, the AI label and credits. You upload it yourself.",
       "free": true,
       "partner": false,
       "status": "available",
       "cost": "Free.",
-      "data_leaves": "Nothing leaves your computer until you upload the file.",
+      "data_leaves": "Nothing leaves your computer until you upload the files.",
       "setup": {
         "env": [],
         "steps": ["Nothing to set up."],
-        "use": "Run \"explainroo render <project>\" and upload out/video.mp4. Its .srt file works as captions on YouTube and LinkedIn."
+        "use": "Run \"explainroo package <project> --platform tiktok\" and upload what is in out/package/tiktok/. The platforms are youtube, shorts, tiktok, reels, linkedin and x. Run \"explainroo docs publishing\" for more."
       }
     }
   ]
