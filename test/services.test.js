@@ -185,7 +185,7 @@ test('services --json gives the same data plus whether a key is there, and never
     assert.ok(!(withKey.stdout + withKey.stderr).includes(key));
       const connected = run(['services', 'voice'], { ...noKeys, ELEVENLABS_API_KEY: key }).stdout;
     assert.match(connected, /ElevenLabs \(costs money, connected\)/);
-    assert.match(connected, /Use: Run "explainroo voices --elevenlabs"/);
+    assert.match(connected, /Use: Run "explainroo voices --provider elevenlabs"/);
     assert.ok(!connected.includes(key));
 
     fs.writeFileSync(path.join(settings, 'video.json'), '{}');

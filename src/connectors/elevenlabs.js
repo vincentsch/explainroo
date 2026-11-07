@@ -30,7 +30,7 @@ async function request(url, key, options = {}) {
     const body = await res.json().catch(() => null);
     const status = body?.detail?.status;
     if (status === 'quota_exceeded' || res.status === 402) throw new ServiceError('the ElevenLabs account has no characters left. Ask the user to check their plan.', 'refused');
-    if (status === 'voice_not_found' || res.status === 404) throw new ServiceError('ElevenLabs could not find that voice id. Run "explainroo voices --elevenlabs" and check voice.id.', 'refused');
+    if (status === 'voice_not_found' || res.status === 404) throw new ServiceError('ElevenLabs could not find that voice id. Run "explainroo voices --provider elevenlabs" and check voice.id.', 'refused');
     if (res.status === 401 || res.status === 403) throw new ServiceError('ElevenLabs rejected the API key. Ask the user to check the key and its permissions.', 'refused');
     if ((res.status === 429 || res.status >= 500) && attempt < 2) {
       await sleep(250 * 2 ** attempt);

@@ -24,7 +24,7 @@ Add an entry to `src/services.json`. The website can read the same file later.
     "env": ["ELEVENLABS_API_KEY"],
     "url": "https://elevenlabs.io",
     "steps": ["Make an account at elevenlabs.io.", "..."],
-    "use": "Run \"explainroo voices --elevenlabs\" to see the voices."
+    "use": "Run \"explainroo voices --provider elevenlabs\" to see the voices."
   },
   "voice": { "keys": ["id", "model"], "defaults": { "model": "eleven_multilingual_v2" } }
 }

@@ -230,6 +230,7 @@ Script syntax:
 ## scene-id {hold=1.5}
 Narration for this scene. [#marker] A marker names a moment you can animate on.
 [pause 0.6] adds silence. {SQL|sequel} shows "SQL" in captions but says "sequel".
+*Stars* mark a keyword that bold captions show in color. Nobody hears them.
 > Lines starting with > are notes for you and are not spoken.
 ```
 
@@ -408,8 +409,8 @@ account and receives the script text. If the user wants it and there is no
 key, run `explainroo connect elevenlabs`, as "Where keys go" says.
 
 ```bash
-explainroo voices videos/<name> --elevenlabs
-explainroo voices videos/<name> --elevenlabs --json
+explainroo voices videos/<name> --provider elevenlabs
+explainroo voices videos/<name> --provider elevenlabs --json
 ```
 
 The list shows the names, ids and labels available to that key. Use an id
@@ -424,7 +425,13 @@ command reports the characters used.
 ElevenLabs uses `speed` times `pace`, limited to 0.7 through 1.2.
 The voice command tells you when it uses that limit.
 
-Paid speech is bought per sentence, and each answer is saved in `history/voice/`.
+Cartesia's Sonic voices cost money on the user's account, and Cartesia gets
+the script text. It reads everything between two pauses at once. Set it up with
+`explainroo connect cartesia`, list voices with `explainroo voices --provider
+cartesia --language es` and use one as `{ "provider": "cartesia", "id": "..." }`.
+`model` defaults to `sonic-3.6`. Speed times pace is limited to 0.6 to 1.5.
+
+Paid speech is bought request by request, and each answer is saved in `history/voice/`.
 Moving a marker, changing `{shown|...}` or deleting `build/` buys nothing, and
 editing a sentence buys only that sentence. If a run stops while a request is out,
 nobody can tell whether it was charged, so `voice` stops and explains. Then
@@ -462,8 +469,8 @@ speech check reports a mismatch, make script.md say what was actually said.
 Replacing a scene recording makes that scene again. Replacing a whole take
 makes all its scenes again.
 
-ElevenLabs narration and recordings work in every supported language.
-Run `voice`, `check` and `render` as usual with any of the three sources.
+ElevenLabs, Cartesia and recordings work in every supported language.
+Run `voice`, `check` and `render` as usual with any source.
 
 ## Videos in other languages
 
@@ -517,6 +524,19 @@ In Hindi, the speech check confirms fewer words than in the other languages,
 because the speech model knows Hindi less well. A few unconfirmed words are
 normal there. Fix a word when it stays unconfirmed in several scenes, or
 when the user hears it wrong.
+
+### One video in several languages
+
+`script.md` is the main language, from `language`. Each `script.<lang>.md`
+adds one, like `script.es.md`. One `scenes.js` draws them all. Put on-screen
+text in `strings.json` and `strings.<lang>.json` and read it with `s.str('key')`.
+Nested groups become dotted keys like `'intro.title'`. Word cues differ between
+languages, so give each script the same `[#markers]`.
+
+Add `--lang es` to the commands from `voice` to `publish`. Spanish builds in
+`build/es/` and writes to `out/es/`. `"languages": { "es": { ... } }` holds
+settings for one language, and a language without its own voice uses its
+default. `package` reads `post.es.json` if there is one.
 
 ### Japanese and Chinese
 
@@ -724,12 +744,13 @@ videos/<name>/
 | `size` | `16:9` | a platform (`youtube`, `shorts`, `tiktok`, `reels`, `vertical`, `instagram`, `linkedin`, `square`), `16:9`, `9:16`, `1:1`, `4:5` or `WIDTHxHEIGHT` |
 | `fps` | 30 | 24, 25, 30, 50 or 60 |
 | `language` | `en` | narration language: `en`, `es`, `fr`, `it`, `pt-br`, `hi`, `ja` or `zh`; see Videos in other languages |
-| `voice` | the language's voice | a Kokoro id or a provider object for Kokoro, ElevenLabs or a recording; English uses `af_heart`; see Voices |
+| `voice` | the language's voice | a Kokoro id or a provider object for Kokoro, ElevenLabs, Cartesia or a recording; English uses `af_heart`; see Voices |
+| `languages` | none | settings for one language, like `{ "es": { "voice": "ef_dora" } }`; see Videos in other languages |
 | `speed` | 0.9 for Kokoro, 1 otherwise | voice speed only, 0.6 to 1.6; ElevenLabs limits speed times pace to 0.7 through 1.2 |
 | `pace` | 1 | speed of the whole video (voice, pauses, animations), 0.7 to 1.6 |
 | `music` | `true` | `true` (the look's style), `warm`, `upbeat`, `calm`, `tech`, `playful`, `{ "style", "volume" }`, `false`, or your own file as `{ "src", "volume", "credit", "loop" }`, see `explainroo docs music` |
 | `sfx` | `true` | sound effects: `true`, `"minimal"` or `false` |
-| `captions` | `"auto"` | text of the narration at the bottom; auto turns it on for vertical and square videos |
+| `captions` | `"auto"` | text of the narration at the bottom; auto turns it on for vertical and square videos; `"bold"` shows 2 to 4 big words at a time, with numbers, money and `*starred*` words in color |
 | `cover` | `"auto"` | full-size JPEG, without captions, at the end of the first scene, or a still spec: `12.5`, `"intro"`, `"intro@2.4"`, `"intro@end"` |
 | `transition` | `"auto"` | the look's default, or `fade`, `slide`, `wipe`, `zoom`, `brush`, `cut` |
 | `camera` | `"auto"` | `"auto"` films each scene with a camera that follows the narration; `"still"` keeps every frame as written |
@@ -823,11 +844,13 @@ when `ink` or `muted` has too little contrast against `bg`.
 | `connect <service>` | sets a service up: tests its key or signs in through the browser, and saves it (`--key-stdin`, `--callback-url`, `--project`) |
 | `history [project]` | prints open paid jobs with the command that continues each one, then spend, then rendered versions |
 | `voices`, `say "text"` | lists Kokoro voices with their languages (`--language es`, `ja` or `zh` filters voices), or makes a sample in the chosen voice's language |
-| `voices [project] --elevenlabs` | lists the names, ids and labels available to the key (`--json` also works) |
+| `voices [project] --provider <id>` | lists the names, ids and labels available to the key of `elevenlabs` or `cartesia` (`--language`, `--json`) |
 | `themes`, `formats`, `icons <word>` | lists the looks and the sizes, searches the 1,854 icons |
 | `doctor` | checks Node, ffmpeg, Chrome, the models, and espeak-ng and Python with misaki for other languages (`--fetch` downloads only English models) |
 | `docs [topic]` | prints this file, or one page from `docs/` (`--list` lists the pages) |
 | `version` | prints the version (`--version` also works) |
+
+`--lang es` picks a language of a video in several languages, from `voice` to `publish`.
 
 The extra files share the video's name, also with `--out`: `video.srt`,
 `video.vtt`, `video.cover.jpg` and `video.chapters.txt`. A GIF has no sound,
@@ -943,6 +966,9 @@ s.subtitle('the phone book of the internet', { at: 1 }); // 46 px, muted, at 60%
 s.text('Every site has an *address*', { y: 300, size: 64, at: 'address' });
 s.note('about 20 ms', { x: 1400, y: 820, at: 3 });        // 32 px, muted
 ```
+
+`s.str('key')` gives on-screen text from the strings file of the language
+drawn, and `s.lang` its code.
 
 `s.text(str, options)` takes these options: `x`, `y`, `size` (48), `font`
 (`display`, `body`, `hand`, `mono`), `weight` or `bold: true`, `align`
@@ -1123,6 +1149,12 @@ line count. `check` checks the lines of every step.
 typed as commands. Other lines are output. A line can also be `{ cmd, at }`
 or `{ out, at, color }`. Options: `w`, `size`, `rows`, `title`, `prompt`,
 `cps` (22), `outputDelay`, `lineGap`.
+
+### Short videos
+
+`s.short` is a kit for Shorts, TikTok and Reels: a hook title that is there on
+the first frame, stickers, a step pill, a payoff card and camera punch-ins.
+Run `explainroo docs short-video` before you use it.
 
 ### Camera, groups and your own drawing
 

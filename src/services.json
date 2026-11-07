@@ -61,7 +61,7 @@
           "Open the API keys page in your account settings.",
           "Make a key that may read voices and make speech, and copy it."
         ],
-        "use": "Run \"explainroo voices --elevenlabs\" to see the voices, then set \"voice\": { \"provider\": \"elevenlabs\", \"id\": \"<voice id>\" } in video.json."
+        "use": "Run \"explainroo voices --provider elevenlabs\" to see the voices, then set \"voice\": { \"provider\": \"elevenlabs\", \"id\": \"<voice id>\" } in video.json."
       },
       "voice": { "keys": ["id", "model"], "defaults": { "model": "eleven_multilingual_v2" } }
     },
