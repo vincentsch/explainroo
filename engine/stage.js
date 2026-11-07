@@ -69,6 +69,24 @@ export class Stage {
     return this._ui;
   }
 
+  // The short-video kit (engine/short.js): a hook title for the first frame, a
+  // sticker, a step pill, a payoff card, a flash and keys for camera punch-ins.
+  get short() {
+    if (!this._short) {
+      if (!Stage.Short) throw new SceneError('the short-video kit is not loaded');
+      this._short = new Stage.Short(this);
+    }
+    return this._short;
+  }
+
+  // Draws fn once the scene function has finished, in design pixels without the
+  // camera, so an overlay such as a flash covers everything. A hidden group
+  // queues nothing.
+  _post(fn) {
+    if (this._suppress > 0) return;
+    (this._posts ??= []).push(fn);
+  }
+
   // ---------- language ----------
 
   // The language of the version being drawn, like "en" or "es".

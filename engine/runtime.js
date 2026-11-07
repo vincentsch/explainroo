@@ -10,10 +10,12 @@ import { AUDIO_FILE, hashStr, mulberry32, suggest, suggestColor, contrast, opaqu
 import { layoutAreas } from './layout.js';
 import { loadClips, soundURL, ClipFrames } from './clips.js';
 import { UI } from './ui.js';
+import { Short } from './short.js';
 import { playbackTextIssue } from './readability.js';
 import { planCamera, cameraAt, cameraMoving, continues, frameRect, backgroundShot } from './director.js';
 
 Stage.UI = UI;
+Stage.Short = Short;
 
 export async function fetchState() {
   const res = await fetch('/__state.json', { cache: 'no-store' });
@@ -307,10 +309,12 @@ export class Engine {
       // The UI kit draws on the same recorder; its panels and headlines
       // still report their own times.
       let ui = null;
+      let short = null;
       api = new Proxy(s, {
         get: (target, prop) => {
           if (prop === 'ctx') return raw.proxy;
           if (prop === 'ui') return (ui ??= new Stage.UI(api));
+          if (prop === 'short') return (short ??= new Stage.Short(api));
           const v = target[prop];
           return typeof v === 'function' ? v.bind(target) : v;
         },
@@ -318,6 +322,17 @@ export class Engine {
     }
     try {
       this.scenesModule[sc.id](api);
+      // Overlays queued with s._post() go on top of the scene, without the camera.
+      for (const fn of s._posts ?? []) {
+        ctx.save();
+        ctx.setTransform(this.scale, 0, 0, this.scale, 0, 0);
+        ctx.globalAlpha = 1;
+        try {
+          fn();
+        } finally {
+          ctx.restore();
+        }
+      }
       const ink = raw?.box();
       if (ink) this.layoutLog.push({ kind: 'ink', at: 0, out: Infinity, box: ink });
     } catch (e) {
