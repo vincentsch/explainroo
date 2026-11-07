@@ -14,6 +14,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GOOD_KEY, formFields, startFakeServices } from '../test/helpers/fake-services.js';
+import { BLOTATO_KEY, GOOGLE_CLIENT } from '../test/helpers/fake-publishing.js';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const GUARD = new URL('../test/helpers/guard.js', import.meta.url).href;
@@ -84,8 +85,16 @@ function closedPort() {
   });
 }
 
+// Every request that changes something at a posting service.
+function postingChanges(fake) {
+  return fake.count('youtube', 'POST /upload/youtube/v3/videos') + fake.requests('youtube', 'PUT /upload/youtube/v3/videos').length
+    + fake.requests('buffer', 'POST /').filter((r) => /\bmutation\b/.test(r.body?.query ?? '')).length
+    + fake.count('blotato', 'POST /media/uploads') + fake.count('blotato-storage', 'PUT /*') + fake.count('blotato', 'POST /posts');
+}
+
 // Each step runs "explainroo <args>" and must exit with `status` (0 unless it says
-// otherwise). input goes to stdin, and env(paths) adds to the environment. check
+// otherwise). args can be a function of the paths, for a value an earlier step
+// found. input goes to stdin, and env(paths) adds to the environment. check
 // gets the parsed --json output and a few paths, and the raw output after that.
 // It throws on a problem and can return a short note for the report.
 const steps = [
@@ -281,14 +290,90 @@ const steps = [
     status: 1,
     check: (r) => expect(/doesn't answer at .* yet\. The video was not sent/.test(r.error), `share with no server says ${r.error}`),
   },
+  {
+    args: ['package', 'tiny', '--platform', 'youtube', '--json'],
+    check: (r) => expect(r.ok && r.post.width === 1920 && r.post.height === 1080, `package for YouTube says ${JSON.stringify({ ok: r.ok, width: r.post?.width })}`),
+  },
+  {
+    // No login yet: the dry run says what is missing and sends nothing.
+    args: ['publish', 'tiny', '--via', 'youtube', '--dry-run', '--json'],
+    check: (r, { fake }) => {
+      expect(r.dry_run && r.would === 'stop' && /no YouTube login/.test(r.missing.join(' ')), `the dry run says ${JSON.stringify(r.missing)}`);
+      const youtube = ['GET /youtube/v3/channels', 'POST /upload/youtube/v3/videos', 'PUT /upload/youtube/v3/videos', 'GET /youtube/v3/videos'].reduce((n, route) => n + fake.count('youtube', route), fake.count('youtube-auth', 'POST /token'));
+      expect(youtube === 0, 'the dry run with no login sent a request to YouTube');
+    },
+  },
+  {
+    // The YouTube sign-in: the client on stdin, then the address the browser lands on.
+    args: ['connect', 'youtube', '--key-stdin', '--json'],
+    input: `${GOOGLE_CLIENT.id}\n${GOOGLE_CLIENT.secret}\n`,
+    check: (r, paths) => {
+      expect(r.link?.startsWith('https://accounts.google.com/') && r.redirect_uri === 'http://127.0.0.1:8976/callback', `connect youtube says ${JSON.stringify(r)}`);
+      paths.youtubeLink = r.link;
+    },
+  },
+  {
+    args: (paths) => ['connect', 'youtube', '--callback-url', paths.fake.approve(paths.youtubeLink), '--json'],
+    check: (r, { settings }, raw) => {
+      const env = fs.readFileSync(path.join(settings, '.env'), 'utf8');
+      expect(r.connected && /^YOUTUBE_REFRESH_TOKEN=1\/\/fake-refresh-/m.test(env), `the YouTube login was not saved: ${JSON.stringify(r)}`);
+      expect(!raw.includes(GOOGLE_CLIENT.secret) && !/fake-refresh/.test(raw), 'connect printed a secret');
+      return r.account;
+    },
+  },
+  {
+    args: ['publish', 'tiny', '--via', 'youtube', '--dry-run', '--json'],
+    check: (r, { fake }) => {
+      expect(r.would === 'post' && r.plan.destination?.id === 'UCfakechannel0000000000' && r.request.start.body.status.privacyStatus === 'private', `the YouTube dry run says ${JSON.stringify({ would: r.would, destination: r.plan.destination })}`);
+      expect(postingChanges(fake) === 0, 'the YouTube dry run changed something');
+      return `${r.plan.destination.name}, ${r.plan.privacy.value}`;
+    },
+  },
+  {
+    // The TikTok package was shared above, so Buffer has its link, and no login.
+    args: ['publish', 'tiny', '--via', 'buffer', '--platform', 'tiktok', '--dry-run', '--json'],
+    check: (r, { fake }) => {
+      expect(r.plan.media?.from === 'share' && r.request.variables.input.assets[0].video.url === r.plan.media.url, `the Buffer dry run has no link from share: ${JSON.stringify(r.plan.media)}`);
+      expect(r.would === 'stop' && /no Buffer login/.test(r.missing.join(' ')), `the Buffer dry run says ${JSON.stringify(r.missing)}`);
+      expect(postingChanges(fake) === 0, 'the Buffer dry run changed something');
+    },
+  },
+  {
+    args: ['connect', 'blotato', '--key-stdin', '--json'],
+    input: `${BLOTATO_KEY}\n`,
+    check: (r, { settings }) => expect(r.connected && fs.readFileSync(path.join(settings, '.env'), 'utf8').includes(`BLOTATO_API_KEY=${BLOTATO_KEY}\n`), 'the Blotato key was not saved whole'),
+  },
+  {
+    args: ['publish', 'tiny', '--via', 'blotato', '--platform', 'tiktok', '--dry-run', '--json'],
+    check: (r, { fake }) => {
+      expect(r.would === 'post' && r.request.post.post.accountId === '102' && r.request.post.post.target.privacyLevel === 'SELF_ONLY', `the Blotato dry run says ${JSON.stringify({ would: r.would, target: r.request.post?.post?.target })}`);
+      expect(postingChanges(fake) === 0, 'the Blotato dry run changed something');
+    },
+  },
+  {
+    // A real run without a terminal and without --yes sends nothing.
+    args: ['publish', 'tiny', '--via', 'blotato', '--platform', 'tiktok', '--json'],
+    status: 1,
+    check: (r, { fake }) => expect(r.confirmed === false && postingChanges(fake) === 0, `publish without --yes says ${JSON.stringify(r.error)}`),
+  },
+  {
+    args: ['publish', 'tiny', '--via', 'blotato', '--platform', 'tiktok', '--yes', '--json'],
+    check: (r, { fake, temp }) => {
+      const sent = [...fake.publishing.blotato.uploads.values()][0]?.bytes;
+      const packaged = JSON.parse(fs.readFileSync(path.join(temp, 'tiny/out/package/tiktok/post.json'), 'utf8')).sha256;
+      expect(r.stage === 'finished' && sent === packaged && fake.count('blotato', 'POST /posts') === 1, `the Blotato post says ${JSON.stringify({ stage: r.stage, sent, packaged })}`);
+      return r.post.link;
+    },
+  },
 ];
 
 async function runSteps(paths, env) {
   for (const step of steps) {
-    const name = step.args.filter((a) => a !== '--json').join(' ');
+    const args = typeof step.args === 'function' ? step.args(paths) : step.args;
+    const name = args.filter((a) => a !== '--json').map((a) => (/^https?:/.test(a) ? '<address>' : a)).join(' ');
     const started = Date.now();
     // Without the "--", npx reads a flag like --version as its own.
-    const r = await run('npx', ['--no', '--', 'explainroo', ...step.args], { cwd: paths.temp, env: { ...env, ...step.env?.(paths) }, input: step.input });
+    const r = await run('npx', ['--no', '--', 'explainroo', ...args], { cwd: paths.temp, env: { ...env, ...step.env?.(paths) }, input: step.input });
     if (r.status !== (step.status ?? 0)) throw new Error(`explainroo ${name} exited with ${r.status ?? r.signal}:\n${outputOf(r)}`);
     // npx sets its own exit code, so only stderr shows a request that it made.
     expect(!r.stderr.includes('test guard: blocked'), `explainroo ${name} tried to reach the network:\n${outputOf(r)}`);
@@ -319,7 +404,8 @@ async function main() {
     console.log(`installed in ${((Date.now() - started) / 1000).toFixed(1)}s`);
     const settings = path.join(temp, 'settings');
     // Keys from this computer's own settings have no place in this test.
-    const env = { ...outside, ...fake.env, NODE_OPTIONS: `--import=${GUARD}`, EXPLAINROO_CONFIG: settings, OPENROUTER_API_KEY: '', ELEVENLABS_API_KEY: '', EXPLAINROO_CLOUD_KEY: '', EXPLAINROO_CLIP_POLL_MS: '50' };
+    const env = { ...outside, ...fake.env, NODE_OPTIONS: `--import=${GUARD}`, EXPLAINROO_CONFIG: settings, OPENROUTER_API_KEY: '', ELEVENLABS_API_KEY: '', EXPLAINROO_CLOUD_KEY: '', EXPLAINROO_CLIP_POLL_MS: '50',
+      YOUTUBE_CLIENT_ID: '', YOUTUBE_CLIENT_SECRET: '', YOUTUBE_REFRESH_TOKEN: '', BUFFER_CLIENT_ID: '', BUFFER_ACCESS_TOKEN: '', BUFFER_REFRESH_TOKEN: '', BUFFER_TOKEN_EXPIRES: '', BLOTATO_API_KEY: '', EXPLAINROO_PUBLISH_POLL_MS: '50', EXPLAINROO_PUBLISH_WAIT_MS: '2000' };
     await runSteps({ temp, settings, fake, closedPort: await closedPort(), installed: path.join(temp, 'node_modules', pkg.name) }, env);
     console.log('pack test passed');
     return 0;
