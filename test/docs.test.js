@@ -97,6 +97,34 @@ test('the page about adding a service says what it takes, and implies nothing ab
   for (const words of ['src/services.json', 'src/connectors/', 'test/helpers/fake-services.js', 'Anyone can send one', 'Nothing about payment is implied']) assert.ok(page.includes(words), words);
 });
 
+test('the page about clips says honestly what they are good and bad at, and what they cost', () => {
+  const page = fs.readFileSync(path.join(root, 'docs/clips.md'), 'utf8');
+  const honest = page.slice(page.indexOf('## What clips are good and bad at'), page.indexOf('## See the price first'));
+  for (const words of ['a street, food, weather', 'hands', 'a mood', 'Readable text and numbers', 'Diagrams, app screens and logos', 'The same character across clips', 'Timing to a word', 'use drawings and screenshots', 'Do not ask\nfor real people', 'a failed try may cost money']) assert.ok(honest.includes(words), words);
+  for (const words of ['--dry-run', '--max-cost', '--seconds', '--aspect', '--model', '--resolution', '--audio', '--name', '--no-wait', '--new', '--resume <id>', 'google/veo-3.1-lite', 'google/veo-3.1', 'history/failed-check/', 'history/replaced/', 'The prompt goes to OpenRouter and to the company that runs the model', 'zero data retention']) assert.ok(page.includes(words), words);
+  assert.doesNotMatch(page, /\bbest\b/i);
+});
+
+test('the page about music describes files, s.sound and Soundroo, with public links only', () => {
+  const page = fs.readFileSync(path.join(root, 'docs/music.md'), 'utf8');
+  for (const words of ['"src": "assets/track.mp3"', '"credit"', '"loop": false', 'fades out at the end', 'stays in stereo', 's.sound(', '"sfx": false', 'wav, mp3, m4a, aac, flac, ogg or opus']) assert.ok(page.includes(words), words);
+  const soundroo = page.slice(page.indexOf('## Original music with Soundroo'));
+  for (const words of ['https://www.soundroo.com', 'https://github.com/vincentsch/soundroo.git', 'Node 22', 'node bin/soundroo.js init', 'node bin/soundroo.js add', 'node bin/soundroo.js render --all', '/renders/', 'nothing leaves your computer unless you run its\nown share command']) assert.ok(soundroo.includes(words), words);
+  assert.doesNotMatch(page, /\/home\//);
+  // It isn't on npm, so a command through npx would fail.
+  assert.doesNotMatch(page, /npx soundroo/);
+  for (const url of page.match(/https?:\/\/[^\s)"]+/g)) assert.ok(['https://www.soundroo.com', 'https://github.com/vincentsch/soundroo.git'].includes(url), url);
+});
+
+test('AGENTS.md has a few lines on clips and music, and points at their pages', () => {
+  const section = agents.slice(agents.indexOf('## AI video clips'), agents.indexOf('## Product demos'));
+  for (const words of ['explainroo docs clips', '--dry-run', '--max-cost', 'assets/clips/<name>.mp4', 'never buys twice']) assert.ok(section.includes(words), words);
+  assert.ok(section.split('\n').length < 16, 'keep it short: the rest is on the page');
+  assert.match(agents, /^\| `music` .*`\{ "src", "volume", "credit", "loop" \}`.*`explainroo docs music`/m);
+  assert.match(agents, /^`s\.sound\('assets\/door\.mp3', \{ at, out, volume \}\)`/m);
+  assert.match(agents, /^\| `clip \[project\] "<prompt>"` \|/m);
+});
+
 test('AGENTS.md says what history/ is, and no longer calls paid work safe to delete', () => {
   const files = agents.slice(agents.indexOf('## Project files and settings'), agents.indexOf('`video.json` settings'));
   assert.match(files, /history\/ {6}what was paid for and rendered/);

@@ -17,8 +17,8 @@ the script on this computer, or the narration comes from ElevenLabs or your
 own recording. Whisper listens to the narration and writes down when each
 word is spoken. Chrome draws the frames in the background.
 explainroo adds music and sound effects, and ffmpeg makes the MP4. You need
-no API key for local voices or recordings. ElevenLabs and AI images need
-keys.
+no API key for local voices or recordings. ElevenLabs, AI images and AI clips
+need keys.
 
 The full documentation for people is at https://www.explainroo.com/docs/.
 
@@ -47,7 +47,7 @@ layout and the wording. Ask only when you cannot go on without an answer.
 When you ask, put everything you need in one message. Typical reasons to ask:
 
 - The topic is unclear, or you need a fact you cannot check.
-- The user chose AI images and there is no OpenRouter key. Run
+- The user chose AI images or clips and there is no OpenRouter key. Run
   `explainroo connect openrouter` and show the user what it prints.
 - The user chose ElevenLabs and there is no ElevenLabs key. Run
   `explainroo connect elevenlabs` and show the user what it prints.
@@ -566,6 +566,20 @@ Keep text out of images. Put words on screen with `s.text` instead. Use
 images for things icons cannot show, and keep one style through the whole
 video.
 
+## AI video clips
+
+`explainroo clip` buys a short AI video clip through OpenRouter, on the same key
+as images. It costs money, and clips are bad at text, diagrams and showing the
+same character twice. Ask the user, and run `explainroo docs clips` first.
+
+```bash
+explainroo clip videos/<name> "A busy street at dusk" --seconds 6 --dry-run     # the price, spends nothing
+explainroo clip videos/<name> "A busy street at dusk" --seconds 6 --max-cost 2  # buys it, never above the cap
+```
+
+It saves `assets/clips/<name>.mp4` and prints the `s.clip` line to use. The same
+command run again never buys twice, so it is safe after a crash or a timeout.
+
 ## Product demos
 
 A product demo is the kind of video software companies make to show their
@@ -688,7 +702,7 @@ videos/<name>/
   video.json    look, size, language, voice, music, captions, watermark
   script.md     the narration, one "## scene-id" per scene
   scenes.js     one drawing function per scene
-  assets/       images: screenshots, logos, generated illustrations
+  assets/       images, generated illustrations, clips and sound files
   build/        voice, timing and audio made by explainroo (safe to delete,
                 because paid speech and paid images stay in history/)
   out/          video.mp4, draft.mp4, stills/, sheets, report.json
@@ -708,7 +722,7 @@ videos/<name>/
 | `voice` | the language's voice | a Kokoro id or a provider object for Kokoro, ElevenLabs or a recording; English uses `af_heart`; see Voices |
 | `speed` | 0.9 for Kokoro, 1 otherwise | voice speed only, 0.6 to 1.6; ElevenLabs limits speed times pace to 0.7 through 1.2 |
 | `pace` | 1 | speed of the whole video (voice, pauses, animations), 0.7 to 1.6 |
-| `music` | `true` | `true` (the look's style), `warm`, `upbeat`, `calm`, `tech`, `playful`, `{ "style", "volume" }` or `false` |
+| `music` | `true` | `true` (the look's style), `warm`, `upbeat`, `calm`, `tech`, `playful`, `{ "style", "volume" }`, `false`, or your own file as `{ "src", "volume", "credit", "loop" }`, see `explainroo docs music` |
 | `sfx` | `true` | sound effects: `true`, `"minimal"` or `false` |
 | `captions` | `"auto"` | text of the narration at the bottom; auto turns it on for vertical and square videos |
 | `cover` | `"auto"` | full-size JPEG, without captions, at the end of the first scene, or a still spec: `12.5`, `"intro"`, `"intro@2.4"`, `"intro@end"` |
@@ -796,6 +810,7 @@ when `ink` or `muted` has too little contrast against `bg`.
 | `capture [project] <url>` | saves screenshots, wording, colors, fonts and logos from a live site (`--mobile`, `--json`) |
 | `image [project] <name> "<prompt>"` | makes an illustration with OpenRouter (`--new` buys it again, `--resume <id>` runs a job from `history` again) |
 | `images [project]` | lists the images and what they cost |
+| `clip [project] "<prompt>"` | buys a short AI video clip with OpenRouter (`--seconds`, `--max-cost`, `--dry-run`, `--aspect`, `--model`, `--resolution`, `--audio`, `--name`, `--no-wait`, `--new`, `--resume <id>`) |
 | `services [step]` | lists the choices for each step, free ones first, with what each costs and what data leaves (`--json`, `--project`) |
 | `connect <service>` | sets a service up: tests its key and saves it (`--key-stdin`, `--project`) |
 | `history [project]` | prints open paid jobs with the command that continues each one, then spend, then rendered versions |
@@ -1183,6 +1198,9 @@ and the sounds you add yourself.
 `chalk`, `rise`, `sparkle`, `blip`, `error`. `dur` sets the length of `type`,
 `scribble`, `chalk` and `rise` (`rise` ends at `at + dur`). The music is made
 to fit the video, and it gets quieter while the voice speaks.
+
+`s.sound('assets/door.mp3', { at, out, volume })` plays your own file on a cue,
+lowered under the voice. `"sfx": false` doesn't silence it.
 
 ### Colors and fonts
 
