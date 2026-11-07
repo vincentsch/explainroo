@@ -239,6 +239,11 @@ const steps = [
     },
   },
   {
+    // The same command again uses the clip it bought.
+    args: ['clip', 'video', CLIP_PROMPT, '--seconds', '6', '--max-cost', '1', '--json'],
+    check: (r, { fake }) => expect(r.reused && r.status === 'done' && fake.count('openrouter', 'POST /api/v1/videos') === 1, `the same clip again says ${JSON.stringify({ reused: r.reused, status: r.status })}, and the fake counted ${fake.count('openrouter', 'POST /api/v1/videos')} purchases`),
+  },
+  {
     args: ['history', 'video', '--json'],
     check: (r) => {
       const clip = r.jobs.find((job) => job.kind === 'clip');
@@ -294,6 +299,17 @@ const steps = [
     args: ['package', 'tiny', '--platform', 'youtube', '--json'],
     check: (r) => expect(r.ok && r.post.width === 1920 && r.post.height === 1080, `package for YouTube says ${JSON.stringify({ ok: r.ok, width: r.post?.width })}`),
   },
+  // The other platforms keep the watermark that video.json sets.
+  ...[['shorts', 1080, 1920], ['reels', 1080, 1920], ['linkedin', 1080, 1350], ['x', 1080, 1080]].map(([platform, width, height]) => ({
+    args: ['package', 'tiny', '--platform', platform, '--json'],
+    check: (r, { temp }) => {
+      const folder = path.join(temp, 'tiny/out/package', platform);
+      expect(r.ok && r.folder === folder && r.post.width === width && r.post.height === height && r.post.watermark !== false, `package for ${platform} says ${JSON.stringify({ ok: r.ok, folder: r.folder, width: r.post?.width, height: r.post?.height, watermark: r.post?.watermark })}`);
+      for (const name of ['video.mp4', 'post.json', 'description.txt', 'video.srt', 'video.cover.jpg', 'credits.txt', 'report.json']) expect(fs.statSync(path.join(folder, name)).size > 0, `the ${platform} package has no ${name}`);
+      expect(r.post.verify.ok && r.post.verify.understood >= MIN_NARRATION_UNDERSTOOD, `verify of the ${platform} package says ${JSON.stringify(r.post.verify)}`);
+      return `${width}x${height}, ${r.source.how}`;
+    },
+  })),
   {
     // No login yet: the dry run says what is missing and sends nothing.
     args: ['publish', 'tiny', '--via', 'youtube', '--dry-run', '--json'],
@@ -358,11 +374,32 @@ const steps = [
   },
   {
     args: ['publish', 'tiny', '--via', 'blotato', '--platform', 'tiktok', '--yes', '--json'],
-    check: (r, { fake, temp }) => {
+    check: (r, paths) => {
+      const { fake, temp } = paths;
       const sent = [...fake.publishing.blotato.uploads.values()][0]?.bytes;
       const packaged = JSON.parse(fs.readFileSync(path.join(temp, 'tiny/out/package/tiktok/post.json'), 'utf8')).sha256;
       expect(r.stage === 'finished' && sent === packaged && fake.count('blotato', 'POST /posts') === 1, `the Blotato post says ${JSON.stringify({ stage: r.stage, sent, packaged })}`);
+      paths.postingChanges = postingChanges(fake);
       return r.post.link;
+    },
+  },
+  {
+    // The same post again: it went out, so nothing is sent.
+    args: ['publish', 'tiny', '--via', 'blotato', '--platform', 'tiktok', '--yes', '--json'],
+    check: (r, { fake, postingChanges: before }) => expect(r.already && r.stage === 'finished' && postingChanges(fake) === before, `the same post again says ${JSON.stringify({ already: r.already, stage: r.stage })}, with ${postingChanges(fake) - before} new requests that change something`),
+  },
+  {
+    // The record of the tiny project holds every package, share and post.
+    args: ['history', 'tiny', '--json'],
+    check: (r) => {
+      const packaged = new Set(r.versions.filter((v) => v.event === 'package').map((v) => v.platform));
+      expect(['tiktok', 'youtube', 'shorts', 'reels', 'linkedin', 'x'].every((p) => packaged.has(p)), `history lists packages for ${[...packaged].join(', ')}`);
+      const shares = r.jobs.filter((job) => job.kind === 'share');
+      expect(shares.some((job) => job.status === 'done' && job.result?.url), 'history does not show the share link');
+      const posts = r.jobs.filter((job) => job.kind === 'publish');
+      expect(posts.length === 1 && posts[0].provider === 'blotato' && posts[0].stage === 'finished', `history shows ${posts.length} posts`);
+      expect(r.open.length === 0, `history has open jobs: ${JSON.stringify(r.open)}`);
+      return `${packaged.size} packages, ${shares.length} shares, ${posts.length} post`;
     },
   },
   {
