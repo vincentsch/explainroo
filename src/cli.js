@@ -17,11 +17,14 @@ import { ffmpegVersion } from './ffmpeg.js';
 import { findChrome } from './browser.js';
 import { generateImage, jobRequest, imageLog, imageSpend, oldImageLog, IMAGE_MODELS } from './images.js';
 import { capture } from './capture.js';
+import { connect } from './connect.js';
 import { CONNECTORS } from './connectors/index.js';
 import { hideSecrets } from './errors.js';
-import { formatHistory, historyReport } from './history.js';
+import { formatHistory, historyReport, selfCommand } from './history.js';
 import { boughtCharacters, speechConnector } from './paid-speech.js';
+import { formatServices, findService, needsKey, SERVICES, STEPS } from './services.js';
 import { currentSpeechKeys } from './voice.js';
+import { findEnv } from './env.js';
 
 // Paid voices that can list what a key may use, each with its own flag.
 const LISTS_VOICES = CONNECTORS.filter((c) => c.voices);
@@ -54,6 +57,9 @@ Images (optional, needs an OpenRouter API key)
   images [project]      list generated images and what they cost
 
 Outside services (optional)
+  services [step]       list the choices for each step, free ones first (--project dir)
+                        Steps: ${STEPS.map((s) => s.id).join(', ')}
+  connect <service>     set a service up: test its key and save it (--key-stdin, --project dir)
   history [project]     open paid jobs with the command that continues each one, spend and renders
 
 Reference
@@ -86,7 +92,7 @@ function parseArgs(argv) {
   }
   return { pos, flags };
 }
-const BOOL = new Set(['json', 'draft', 'transparent', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'mobile', 'list', 'new', ...LISTS_VOICES.map((c) => c.id)]);
+const BOOL = new Set(['json', 'draft', 'transparent', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'mobile', 'list', 'new', 'key-stdin', ...LISTS_VOICES.map((c) => c.id)]);
 
 function num(v, name) {
   if (v === undefined) return undefined;
@@ -265,6 +271,8 @@ export async function main(argv) {
       case 'icons': return icons(pos, print);
       case 'doctor': return await doctor(flags, log, print);
       case 'docs': return docs(pos[0], flags, print);
+      case 'services': return services(pos[0], flags, print);
+      case 'connect': return await connect(pos, flags, { print, log, notice });
       case 'history': {
         const project = loadProject(pos[0]);
         const wanted = currentSpeechKeys(project);
@@ -431,6 +439,19 @@ function docs(topic, flags, print) {
   const file = topic === undefined ? path.join(ROOT, 'AGENTS.md') : path.join(dir, `${topic}.md`);
   const text = fs.readFileSync(file, 'utf8');
   print(text.trimEnd(), { topic: topic ?? null, file, text });
+  return 0;
+}
+
+function services(step, flags, print) {
+  if (step !== undefined && !STEPS.some((s) => s.id === step)) throw new ProjectError(`there is no step "${step}". The steps are: ${STEPS.map((s) => s.id).join(', ')}.`);
+  const steps = STEPS.filter((s) => step === undefined || s.id === step);
+  const list = SERVICES.filter((s) => steps.some((x) => x.id === s.step));
+  const dir = path.resolve(textFlag(flags, 'project') ?? '.');
+  const connected = (id) => {
+    const service = findService(id);
+    return needsKey(service) ? service.setup.env.every((name) => !!findEnv(name, dir)) : undefined;
+  };
+  print(formatServices(steps, list, { connected, command: selfCommand() }), { steps, services: list.map((s) => (needsKey(s) ? { ...s, connected: connected(s.id) } : s)) });
   return 0;
 }
 
