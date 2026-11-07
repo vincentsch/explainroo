@@ -106,7 +106,7 @@ agent run them:
 | `voices --provider elevenlabs` or `cartesia` | Your key, to list its voices | That company |
 | `image` or `clip` | The prompt and any reference images | OpenRouter and the model's provider |
 | `clip --dry-run` | A request for the list of video models and their prices, without your prompt | OpenRouter |
-| `share` | The video file and its title | The hosted explainroo service, which is coming |
+| `share` | The video file and its title | explainroo.com, where the hosted service is coming |
 | `publish` | The video or a link to it, its title and its text | YouTube, Buffer or Blotato, and whatever they send it to |
 | `publish --dry-run` | Your login, to read your channels or accounts | YouTube, Buffer or Blotato |
 | `capture` | Requests for the page you name and the files it loads | That site and the servers it loads from |
@@ -253,8 +253,8 @@ page link. That hosted service is coming. Until it runs, `share` says so and
 makes no link.
 
 `explainroo publish` posts a package through YouTube, Buffer or Blotato, with
-your own account. `--dry-run` shows the exact post first, and nothing goes out
-without a yes. `explainroo docs publishing` has the details.
+your own account. `--dry-run` shows the exact post first, and a real run posts
+only after a yes. `explainroo docs publishing` has the details.
 
 ## Partners
 
