@@ -303,7 +303,8 @@ export function placeOutput(dir, { key, attempt }, others = []) {
     const { name } = job.output;
     if (!source) throw new ProjectError(`${name} is gone, or it has changed, and no copy of it is left. To buy it again, run the same command with --new.`);
     const moved = others.filter((other) => other !== name && other !== source).map((other) => moveAside(dir, other)).filter(Boolean);
-    if (source === name) return { job, moved };
+    // Another run may have put the same file in place first. The record says where it is.
+    if (source === name) return { job: job.output.file === name ? job : updateJob(dir, job, { output: { ...job.output, file: name } }), moved };
     const pushed = moveAside(dir, name);
     if (pushed) moved.push(pushed);
     fs.mkdirSync(path.dirname(path.join(dir, name)), { recursive: true });

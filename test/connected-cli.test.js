@@ -1059,6 +1059,22 @@ test('--new makes a new attempt, the earlier one keeps its cost, and a repeat re
   assert.equal(fake.count('openrouter', CLIP_POST), 2);
 });
 
+test('two runs that fetch the same finished job leave one file, and the record says where it is', async (t) => {
+  const { dir, cli, start, fake } = await setup(t);
+  fake.plan('openrouter', CLIP_STATUS, ...Array(10).fill(running));
+  assert.equal((await cli(bought(dir, STREET), { EXPLAINROO_CLIP_WAIT_MS: '50' })).code, 0);
+  fake.plan('openrouter', CLIP_STATUS);
+  // The second download ends later, after the first run has put its file in place.
+  fake.plan('openrouter', CLIP_FILE, { delay: 300 }, { delay: 900 });
+  const results = await Promise.all([start(bought(dir, STREET)).result, start(bought(dir, STREET)).result]);
+  assert.deepEqual(results.map((r) => r.code), [0, 0], results.map((r) => r.text).join('\n'));
+  assert.equal(fake.count('openrouter', CLIP_POST), 1);
+  const [job] = jobs(dir);
+  assert.equal(job.output.file, 'assets/clips/a-busy-street-at-dusk-435f.mp4');
+  assert.equal(clipFiles(dir).length, 1);
+  assert.match((await cli(['history', dir])).stdout, /done assets\/clips\/a-busy-street-at-dusk-435f\.mp4 \$0\.1800/);
+});
+
 test('the wait is limited: the command exits cleanly and says running it again will not buy again', async (t) => {
   const { dir, cli, fake, env } = await setup(t);
   fake.plan('openrouter', CLIP_STATUS, ...Array(2000).fill(running));
