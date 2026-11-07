@@ -792,8 +792,11 @@ test('--aspect follows the project: wide is 16:9 and anything else is 9:16', asy
 
 test('sound stays off unless --audio is given, and a model that can\'t take the setting isn\'t sent it', async (t) => {
   const { dir, cli, fake } = await setup(t);
-  assert.equal((await cli(bought(dir, STREET, '--audio'))).code, 0);
+  const withSound = await cli([...bought(dir, STREET, '--audio'), '--json']);
+  assert.equal(withSound.code, 0);
   assert.equal(fake.requests('openrouter', CLIP_POST)[0].body.generate_audio, true);
+  // s.clip is silent without a volume, so the line for a clip bought with sound has one.
+  assert.match(JSON.parse(withSound.stdout).clip_line, /fit: 'cover', volume: 1, at: 0 \}\);$/);
   assert.equal(jobs(dir)[0].estimated_usd, 0.3);
   // Its setting is unknown, so nothing is sent for it.
   assert.equal((await cli(bought(dir, HARBOR, '--model', 'x-ai/grok-imagine-video'))).code, 0);

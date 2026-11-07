@@ -81,8 +81,9 @@ export function clipJobRequest(project, id) {
 }
 
 const publicName = (request) => `assets/clips/${request.name}.mp4`;
-// Fills the frame and crops what doesn't fit, in any frame size.
-const clipLine = (request) => `s.clip('${publicName(request)}', { w: s.safe.w, h: s.safe.h, fit: 'cover', at: 0 });`;
+// Fills the frame and crops what doesn't fit, in any frame size. s.clip is silent
+// unless it has a volume, so a clip bought with sound gets one.
+const clipLine = (request) => `s.clip('${publicName(request)}', { w: s.safe.w, h: s.safe.h, fit: 'cover', ${request.audio ? 'volume: 1, ' : ''}at: 0 });`;
 
 function clipSpend(project) {
   return Math.round(listJobs(project.dir).filter((job) => job.kind === 'clip').reduce((sum, job) => sum + (job.cost_usd || 0), 0) * 10000) / 10000;
