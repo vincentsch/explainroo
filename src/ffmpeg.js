@@ -22,7 +22,7 @@ export function run(bin, args, { input } = {}) {
     let err = '';
     p.stdout.on('data', (d) => (out += d));
     p.stderr.on('data', (d) => (err += d));
-    p.on('error', (e) => reject(new Error(`${bin} could not start: ${e.message}. Install ffmpeg or set EXPLAINROO_FFMPEG.`)));
+    p.on('error', (e) => reject(Object.assign(new Error(`${bin} could not start: ${e.message}. Install ffmpeg or set EXPLAINROO_FFMPEG.`), { code: e.code })));
     p.on('close', (code) => {
       if (code === 0) resolve({ stdout: out, stderr: err });
       else reject(new Error(`${bin} ${args.slice(0, 6).join(' ')} ... failed (${code}):\n${err.split('\n').slice(-12).join('\n')}`));

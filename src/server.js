@@ -8,6 +8,9 @@ import { fileURLToPath } from 'node:url';
 import { ensureFonts, languageFonts } from './fonts.js';
 import { extractClip, VIDEO_FILE } from './clips.js';
 import { typesetMath, mathHash, MAX_TEX_LENGTH } from './math.js';
+import { decodeSound, SOUND_RATE } from './sounds.js';
+import { ProjectError } from './errors.js';
+import { AUDIO_FILE } from '../engine/util.js';
 
 export const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
@@ -19,6 +22,11 @@ const TYPES = {
   '.css': 'text/css; charset=utf-8',
   '.wav': 'audio/wav',
   '.mp3': 'audio/mpeg',
+  '.m4a': 'audio/mp4',
+  '.aac': 'audio/aac',
+  '.flac': 'audio/flac',
+  '.ogg': 'audio/ogg',
+  '.opus': 'audio/ogg',
   '.woff2': 'font/woff2',
   '.woff': 'font/woff',
   '.ttf': 'font/ttf',
@@ -49,7 +57,7 @@ function safeJoin(base, rel) {
 // Project files the engine page may read: scenes.js and the modules it
 // imports, images, fonts, audio and video. Never dotfiles such as .env, and
 // no JSON, Markdown or text files, which can hold keys or private notes.
-const PROJECT_FILES = /\.(m?js|png|jpe?g|webp|gif|svg|wav|mp3|mp4|mov|webm|m4v|woff2?|ttf|otf)$/i;
+const PROJECT_FILES = /\.(m?js|png|jpe?g|webp|gif|svg|wav|mp3|m4a|aac|flac|ogg|opus|mp4|mov|webm|m4v|woff2?|ttf|otf)$/i;
 
 function allowedName(rel) {
   const parts = rel.split(/[\\/]+/);
@@ -73,11 +81,11 @@ export function projectFile(projectDir, rel) {
   return allowedName(realRel) ? real : null;
 }
 
-function clipFile(projectDir, rel) {
-  if (!rel.startsWith('assets/') || !VIDEO_FILE.test(rel)) return null;
+function assetFile(projectDir, rel, kind) {
+  if (!rel.startsWith('assets/') || !kind.test(rel)) return null;
   const file = projectFile(projectDir, rel);
   const assets = path.join(fs.realpathSync(projectDir), 'assets');
-  if (!file || !VIDEO_FILE.test(file) || !file.startsWith(assets + path.sep) || !fs.statSync(file).isFile()) return null;
+  if (!file || !kind.test(file) || !file.startsWith(assets + path.sep) || !fs.statSync(file).isFile()) return null;
   return file;
 }
 
@@ -118,6 +126,35 @@ async function cachedClip(projectDir, file, fps) {
     job.finally(() => clipJobs.delete(key)).catch(() => {});
   }
   return clipJobs.get(key);
+}
+
+const soundJobs = new Map();
+
+// A music or sound file, decoded once under build/. The name comes from what is in
+// the file, so the same file gives the same samples and level on every run, also
+// after build/ is deleted. Nothing about it goes in the project's settings.
+export async function decodedSound(projectDir, rel) {
+  const file = assetFile(projectDir, rel, AUDIO_FILE);
+  if (!file) throw new ProjectError(`sound file "${rel}" not found. Put a wav, mp3, m4a, aac, flac, ogg or opus file in the project's assets/ folder.`);
+  const hash = crypto.createHash('sha256').update(JSON.stringify({ rate: SOUND_RATE, channels: 2, version: 1 }));
+  for await (const chunk of fs.createReadStream(file)) hash.update(chunk);
+  const base = `build/sounds/${hash.digest('hex')}`;
+  const wav = clipCacheFile(projectDir, `${base}.wav`);
+  const infoFile = clipCacheFile(projectDir, `${base}.json`);
+  if (!wav || !infoFile) throw new Error('the sound cache must stay in build/. Remove symlinks from build/sounds/.');
+  if (!soundJobs.has(infoFile)) {
+    const job = (async () => {
+      if (fs.existsSync(infoFile) && fs.existsSync(wav)) return JSON.parse(fs.readFileSync(infoFile, 'utf8'));
+      const info = await decodeSound(file, wav, rel);
+      const temp = `${infoFile}.${process.pid}.tmp`;
+      fs.writeFileSync(temp, JSON.stringify(info));
+      fs.renameSync(temp, infoFile);
+      return info;
+    })();
+    soundJobs.set(infoFile, job);
+    job.finally(() => soundJobs.delete(infoFile)).catch(() => {});
+  }
+  return { wav, info: await soundJobs.get(infoFile) };
 }
 
 // Uploads from the page may only land in build/ or out/: checked after the
@@ -231,7 +268,7 @@ export async function startServer({ projectDir, getState, port = 0, log = () => 
         return send(res, 200, JSON.stringify(state), TYPES['.json']);
       }
       if (['/__clip/info', '/__clip/frame', '/__clip/audio'].includes(p)) {
-        const file = clipFile(projectDir, url.searchParams.get('path') || '');
+        const file = assetFile(projectDir, url.searchParams.get('path') || '', VIDEO_FILE);
         if (!file) return send(res, 404, 'clip not found. Put a video in assets/.');
         const state = await getState();
         const stat = fs.statSync(file);
@@ -254,6 +291,20 @@ export async function startServer({ projectDir, getState, port = 0, log = () => 
         res.writeHead(200, { 'Content-Type': TYPES[path.extname(name)], 'Cache-Control': 'no-store' });
         if (req.method === 'HEAD') return res.end();
         fs.createReadStream(cached).pipe(res);
+        return;
+      }
+      if (p === '/__sound/info' || p === '/__sound/audio') {
+        let sound;
+        try {
+          sound = await decodedSound(projectDir, url.searchParams.get('path') || '');
+        } catch (e) {
+          if (e instanceof ProjectError) return send(res, 404, e.message);
+          throw e;
+        }
+        if (p === '/__sound/info') return send(res, 200, JSON.stringify(sound.info), TYPES['.json']);
+        res.writeHead(200, { 'Content-Type': TYPES['.wav'], 'Cache-Control': 'no-store' });
+        if (req.method === 'HEAD') return res.end();
+        fs.createReadStream(sound.wav).pipe(res);
         return;
       }
       let file = null;

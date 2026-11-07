@@ -5,8 +5,8 @@ import { ProjectError } from './project.js';
 import { alignWords } from './align.js';
 import { ffmpeg, probe, normalizeLoudness } from './ffmpeg.js';
 import { readWav, writeWav } from './wav.js';
+import { AUDIO_FILE } from '../engine/util.js';
 
-const AUDIO_FILE = /\.(wav|mp3|m4a|aac|flac|ogg|opus)$/i;
 // Four Kokoro scenes from how-dns-works measured -22.0 to -22.5 LUFS.
 const RECORDING_LUFS = -22.3;
 

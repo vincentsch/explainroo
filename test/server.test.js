@@ -181,6 +181,70 @@ test('the preview server keeps secrets and sources safe', async () => {
   }
 });
 
+test('sound endpoints only read audio assets, keep the cache inside build, and make it from what is in the file', async () => {
+  const { ffmpeg } = await import('../src/ffmpeg.js');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-sound-server-'));
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-sound-outside-'));
+  fs.mkdirSync(path.join(dir, 'assets'));
+  const sound = path.join(dir, 'assets/ok.ogg');
+  await ffmpeg(['-loglevel', 'error', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=1', '-c:a', 'libopus', sound]);
+  fs.copyFileSync(sound, path.join(outside, 'away.ogg'));
+  fs.copyFileSync(sound, path.join(dir, 'root.ogg'));
+  fs.copyFileSync(sound, path.join(dir, 'assets/.private.ogg'));
+  fs.mkdirSync(path.join(dir, 'assets/.hidden'));
+  fs.copyFileSync(sound, path.join(dir, 'assets/.hidden/ok.ogg'));
+  fs.writeFileSync(path.join(dir, 'assets/notes.md'), 'secret');
+  fs.writeFileSync(path.join(dir, '.env'), 'OPENROUTER_API_KEY=secret');
+  fs.symlinkSync(path.join(outside, 'away.ogg'), path.join(dir, 'assets/away.ogg'));
+  fs.symlinkSync(path.join(dir, 'root.ogg'), path.join(dir, 'assets/root-link.ogg'));
+  fs.symlinkSync(path.join(dir, '.env'), path.join(dir, 'assets/key.mp3'));
+  const server = await startServer({ projectDir: dir, getState: () => ({ config: { fps: 30 } }) });
+  try {
+    for (const endpoint of ['info', 'audio']) {
+      const url = (p) => `/__sound/${endpoint}?path=${encodeURIComponent(p)}`;
+      for (const p of ['root.ogg', 'assets/../root.ogg', 'assets/missing.ogg', 'assets/notes.md', 'assets/ok.avi', 'assets/.private.ogg', 'assets/.hidden/ok.ogg', 'assets/away.ogg', 'assets/root-link.ogg', 'assets/key.mp3', '../away.ogg', '.env', sound, '']) {
+        assert.equal((await request(server.port, { path: url(p) })).status, 404, `${endpoint}: ${p}`);
+      }
+      assert.equal((await request(server.port, { path: url('assets/ok.ogg'), host: 'evil.example' })).status, 403);
+      assert.equal((await request(server.port, { path: url('assets/ok.ogg'), origin: 'http://evil.example' })).status, 403);
+      assert.equal((await request(server.port, { path: url('assets/ok.ogg'), method: 'POST' })).status, 405);
+    }
+    const responses = await Promise.all(Array.from({ length: 4 }, () => request(server.port, { path: '/__sound/info?path=assets/ok.ogg' })));
+    assert.ok(responses.every((r) => r.status === 200));
+    const info = JSON.parse(responses[0].body);
+    assert.ok(info.lufs < 0 && Math.abs(info.duration - 1) < 0.1, responses[0].body);
+    const audio = await fetch(`${server.url}/__sound/audio?path=assets/ok.ogg`);
+    assert.equal(audio.headers.get('content-type'), 'audio/wav');
+    const bytes = Buffer.from(await audio.arrayBuffer());
+    assert.equal(bytes.toString('ascii', 0, 4), 'RIFF');
+    const cached = fs.readdirSync(path.join(dir, 'build/sounds')).toSorted();
+    assert.equal(cached.length, 2);
+    assert.match(cached[0], /^([0-9a-f]{64})\.json$/);
+    assert.equal(cached[1], cached[0].replace('.json', '.wav'));
+    // The same contents under another name use the same decoded file.
+    fs.copyFileSync(sound, path.join(dir, 'assets/copy.ogg'));
+    assert.equal((await request(server.port, { path: '/__sound/info?path=assets/copy.ogg' })).status, 200);
+    assert.deepEqual(fs.readdirSync(path.join(dir, 'build/sounds')).toSorted(), cached);
+    // A cache folder that leads elsewhere is refused.
+    fs.rmSync(path.join(dir, 'build/sounds'), { recursive: true });
+    fs.symlinkSync(outside, path.join(dir, 'build/sounds'));
+    assert.equal((await request(server.port, { path: '/__sound/info?path=assets/ok.ogg' })).status, 500);
+    assert.deepEqual(fs.readdirSync(outside), ['away.ogg']);
+    // The file types that the page can name are served too.
+    for (const [ext, mime] of [['m4a', 'audio/mp4'], ['aac', 'audio/aac'], ['flac', 'audio/flac'], ['ogg', 'audio/ogg'], ['opus', 'audio/ogg']]) {
+      fs.copyFileSync(sound, path.join(dir, `assets/type.${ext}`));
+      const response = await fetch(`${server.url}/project/assets/type.${ext}`);
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get('content-type'), mime);
+      await response.arrayBuffer();
+    }
+  } finally {
+    await server.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(outside, { recursive: true, force: true });
+  }
+});
+
 test('clip endpoints only read video assets and keep the cache inside build', async () => {
   const { ffmpeg } = await import('../src/ffmpeg.js');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-clip-server-'));

@@ -43,7 +43,7 @@ export function makeState(project, timeline) {
 }
 
 // The Node files that shape frames and sound, next to the page engine.
-const RENDER_FILES = ['src/render.js', 'src/ffmpeg.js', 'src/pipeline.js'];
+const RENDER_FILES = ['src/render.js', 'src/ffmpeg.js', 'src/pipeline.js', 'src/sounds.js'];
 // Folders in a project that no scene imports from.
 const NOT_SCRIPTS = new Set(['build', 'out', 'history', 'assets']);
 

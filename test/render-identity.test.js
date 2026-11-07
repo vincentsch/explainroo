@@ -85,11 +85,11 @@ test('the rendering code in the identity is the version, engine/ and the Node fi
   const root = temp(t);
   fs.mkdirSync(path.join(root, 'engine/audio'), { recursive: true });
   fs.mkdirSync(path.join(root, 'src'));
-  for (const rel of ['engine/stage.js', 'engine/audio/mix.js', 'src/render.js', 'src/ffmpeg.js', 'src/pipeline.js', 'src/voice.js']) fs.writeFileSync(path.join(root, rel), rel);
+  for (const rel of ['engine/stage.js', 'engine/audio/mix.js', 'src/render.js', 'src/ffmpeg.js', 'src/pipeline.js', 'src/sounds.js', 'src/voice.js']) fs.writeFileSync(path.join(root, rel), rel);
   const base = renderingCodeHash(root, '1.0.0');
   assert.equal(renderingCodeHash(root, '1.0.0'), base);
   assert.notEqual(renderingCodeHash(root, '1.0.1'), base);
-  for (const rel of ['engine/stage.js', 'engine/audio/mix.js', 'src/render.js', 'src/ffmpeg.js', 'src/pipeline.js']) {
+  for (const rel of ['engine/stage.js', 'engine/audio/mix.js', 'src/render.js', 'src/ffmpeg.js', 'src/pipeline.js', 'src/sounds.js']) {
     fs.appendFileSync(path.join(root, rel), 'x');
     const changed = renderingCodeHash(root, '1.0.0');
     assert.notEqual(changed, base, rel);

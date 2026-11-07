@@ -1,5 +1,8 @@
 // Small math, easing, randomness and color helpers shared by the engine.
 
+// The sound files a project can use: recordings, music and s.sound.
+export const AUDIO_FILE = /\.(wav|mp3|m4a|aac|flac|ogg|opus)$/i;
+
 export const clamp = (v, a = 0, b = 1) => (v < a ? a : v > b ? b : v);
 export const lerp = (a, b, p) => a + (b - a) * p;
 
