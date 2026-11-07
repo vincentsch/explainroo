@@ -95,4 +95,5 @@ Anything that costs money goes through the project record in `src/history.js`.
 `decide` says what to do with a request: buy it, use what was bought, or stop and
 explain. `createJob` claims the request with an exclusive open before anything is
 sent, so of two commands running at once, only one can buy. `src/images.js` is the
-short example to copy.
+short example to copy. A new kind of job also says where its output may be, in
+`outputPlaces`, and how it continues, in `CONTINUE`.

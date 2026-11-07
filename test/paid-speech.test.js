@@ -268,6 +268,16 @@ test('a scene that can\'t be matched says so before it buys', async (t) => {
   assert.equal(spoken().length, 8);
 });
 
+test('a refused --force leaves nothing that history would print and that would do nothing', async (t) => {
+  const { dir, fake, spoken, voiceRun } = await setup(t, { script: '# Test\n## first\nIt answers fast.\n## silent\n## second\n' });
+  await voiceRun();
+  fake.plan('elevenlabs', SPEAK, { status: 402, body: { detail: { status: 'quota_exceeded' } } });
+  await assert.rejects(voiceRun({ force: true }), /no characters left/);
+  assert.deepEqual(historyReport(dir).open, []);
+  await voiceRun();
+  assert.equal(spoken().length, 2);
+});
+
 test('a scene made with another voice, model or speed is not added under today\'s settings', async (t) => {
   for (const [settings, label] of [[{ voice: { provider: 'elevenlabs', id: 'other-voice' } }, 'voice'], [{ voice: { provider: 'elevenlabs', id: 'fake-voice', model: 'other-model' } }, 'model'], [{ speed: 0.8 }, 'speed']]) {
     const { dir, spoken, voiceRun } = await setup(t);
@@ -381,10 +391,10 @@ test('a saved answer that was deleted or changed is never used, and --new buys o
     return true;
   });
   assert.equal(spoken().length, 4);
-  assert.equal(historyReport(dir).open.length, 2);
+  assert.equal(historyReport(dir, { needed: () => true }).open.length, 2);
   await voiceRun({ fresh: true });
   assert.deepEqual(spoken().slice(4), [sentences[1], sentences[2]]);
-  assert.deepEqual(historyReport(dir).open, []);
+  assert.deepEqual(historyReport(dir, { needed: () => true }).open, []);
 });
 
 test('a refusal costs nothing, so the next run goes on without --new and keeps what it has', async (t) => {

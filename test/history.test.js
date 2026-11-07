@@ -21,7 +21,7 @@ function buy(dir, key, data, name = 'assets/hero.png', attempt = 1) {
   const job = createJob(dir, key, { kind: 'image', provider: 'made-up', attempt, request: { name: 'hero', prompt: 'a hero' } });
   const output = saveOutput(dir, name, Buffer.from(data));
   const done = updateJob(dir, job, { status: 'done', cost_usd: 0.1, output });
-  return placeOutput(dir, done, output.file).job;
+  return placeOutput(dir, done).job;
 }
 
 test('a job file holds what the record promises, and a key does not depend on field order', (t) => {
@@ -168,8 +168,50 @@ test('a job finds its output by hash when the same bytes are already set aside',
   const output = saveOutput(dir, 'assets/hero.png', Buffer.from('same'));
   assert.equal(output.sha256, sha('same'));
   assert.equal(sha256File(path.join(dir, output.file)), output.sha256);
-  const job = updateJob(dir, createJob(dir, 'abcd1234', { kind: 'image' }), { status: 'done', output: { ...output, file: 'gone/elsewhere.png' } });
+  const job = updateJob(dir, createJob(dir, 'abcd1234', { kind: 'image', request: { name: 'hero' } }), { status: 'done', output: { ...output, file: 'gone/elsewhere.png' } });
   assert.equal(goodOutput(dir, job), output.file);
+});
+
+test('where a job\'s output may be comes from the code, and never from the job file', (t) => {
+  const dir = temp(t);
+  const output = saveOutput(dir, 'assets/hero.png', Buffer.from('bytes'));
+  const job = (kind, changes, request = { name: 'hero' }, attempt = 1) => ({ key: 'abcd1234', attempt, kind, status: 'done', request, output: { ...output, ...changes } });
+  assert.equal(goodOutput(dir, job('image', {})), output.file);
+  // Each of these would write or read somewhere else, with a hash that fits.
+  for (const name of ['.git/hooks/pre-commit', '../outside.png', '/tmp/outside.png', 'assets/other.png', 'assets/sub/hero.png', 'scenes.js', 'assets/hero.sh']) {
+    assert.equal(goodOutput(dir, job('image', { name })), null, name);
+  }
+  assert.equal(goodOutput(dir, job('image', {}, { name: '../hero' })), null);
+  assert.equal(goodOutput(dir, job('image', {}, {})), null);
+  assert.equal(goodOutput(dir, job('image', { sha256: `../${output.sha256}` })), null);
+  assert.equal(goodOutput(dir, job('something-else', {})), null);
+  assert.equal(goodOutput(dir, { ...job('speech', { file: output.file, name: undefined }) }), null);
+  fs.mkdirSync(historyDir(dir, 'voice'));
+  fs.writeFileSync(historyDir(dir, 'voice', 'abcd1234.2.wav'), 'bytes');
+  assert.equal(goodOutput(dir, job('speech', {}, null, 2)), 'history/voice/abcd1234.2.wav');
+});
+
+test('a link under a public name is removed and never copied, so a key can\'t reach the record', (t) => {
+  const dir = temp(t);
+  fs.mkdirSync(path.join(dir, 'assets'));
+  fs.writeFileSync(path.join(dir, '.env'), 'OPENROUTER_API_KEY=a-real-key\n');
+  fs.symlinkSync('../.env', path.join(dir, 'assets/hero.png'));
+  assert.deepEqual(moveAside(dir, 'assets/hero.png'), { from: 'assets/hero.png', to: null, known: false });
+  assert.equal(fs.existsSync(path.join(dir, 'assets/hero.png')), false);
+  assert.equal(fs.existsSync(historyDir(dir, 'replaced')), false);
+  assert.equal(fs.readFileSync(path.join(dir, '.env'), 'utf8'), 'OPENROUTER_API_KEY=a-real-key\n');
+});
+
+test('a lock that a dead run left behind does not stop the next one for long', (t) => {
+  const dir = temp(t);
+  const job = updateJob(dir, createJob(dir, 'abcd1234', { kind: 'image', request: { name: 'hero' } }), { status: 'done', output: saveOutput(dir, 'assets/hero.png', Buffer.from('bytes')) });
+  fs.mkdirSync(historyDir(dir, 'locks'));
+  const lock = historyDir(dir, 'locks', `${sha('abcd1234').slice(0, 16)}.lock`);
+  fs.writeFileSync(lock, '');
+  const old = new Date(Date.now() - 60000);
+  fs.utimesSync(lock, old, old);
+  assert.equal(placeOutput(dir, job).job.output.file, 'assets/hero.png');
+  assert.deepEqual(fs.readdirSync(historyDir(dir, 'locks')), []);
 });
 
 test('versions keep every render, and a verify result joins the render with its hash', (t) => {
@@ -235,6 +277,9 @@ test('the report lists open jobs first with a working command, adds up spend and
   fs.writeFileSync(historyDir(dir, 'voice', 'ffff6666.wav'), 'wav');
   updateJob(dir, speech, { status: 'done', output: { file: 'history/voice/ffff6666.wav', sha256: sha('wav'), bytes: 3 } });
 
+  const gone = createJob(dir, 'abab1111', { kind: 'image', request: { name: 'gone', prompt: 'a file someone deleted' } });
+  updateJob(dir, gone, { status: 'done', cost_usd: 0, output: { file: 'assets/gone.png', name: 'assets/gone.png', sha256: sha('x') } });
+
   const report = historyReport(dir, { current: (job) => job.key !== 'eeee5555', otherSpend: [{ cost_usd: 0.5 }] });
   const open = Object.fromEntries(report.open.map((o) => [o.id, o]));
   assert.deepEqual(Object.keys(open).toSorted(), ['bbbb2222', 'cccc3333', 'dddd4444']);
@@ -245,9 +290,37 @@ test('the report lists open jobs first with a working command, adds up spend and
   assert.doesNotMatch(open.dddd4444.command, /--new/);
   assert.match(open.dddd4444.message, /cost nothing/);
   assert.equal(report.spend.usd, 0.6);
-  assert.equal(report.spend.attempts, 7);
+  assert.equal(report.spend.attempts, 8);
   assert.deepEqual(report.spend.characters, { 'made-up': 30 });
   assert.equal(report.spend.may_have_cost_usd, 0.13);
   assert.equal(report.spend.unknown_price, 3);
-  assert.equal(listJobs(dir).length, 6);
+  assert.equal(listJobs(dir).length, 7);
+});
+
+test('a job is open only when someone would want to continue it', (t) => {
+  const dir = temp(t);
+  const image = (key, name, status, created) => {
+    const job = updateJob(dir, createJob(dir, key, { kind: 'image', request: { name, prompt: 'a prompt for it' } }), { status });
+    fs.writeFileSync(historyDir(dir, 'jobs', `${key}.json`), JSON.stringify({ ...job, created }));
+  };
+  const ids = (...options) => historyReport(dir, ...options).open.map((o) => o.id).toSorted();
+  image('aaaa1111', 'hero', 'failed', '2026-01-01T10:00:00.000Z');
+  assert.deepEqual(ids(), ['aaaa1111']);
+  // Someone reworded the prompt, and the new image came out.
+  const newer = createJob(dir, 'bbbb2222', { kind: 'image', request: { name: 'hero', prompt: 'a better prompt' } });
+  const bytes = saveOutput(dir, 'assets/hero.png', Buffer.from('bytes'));
+  updateJob(dir, newer, { status: 'done', output: bytes });
+  assert.deepEqual(ids(), []);
+  // The same failure under another name still is open.
+  image('cccc3333', 'other', 'lost', '2026-01-01T10:00:00.000Z');
+  assert.deepEqual(ids(), ['cccc3333']);
+  // A refusal after a good attempt cost nothing and leaves nothing to do.
+  updateJob(dir, createJob(dir, 'bbbb2222', { kind: 'image', attempt: 2, request: { name: 'hero' } }), { status: 'refused' });
+  assert.deepEqual(ids(), ['cccc3333']);
+  // Deleted on purpose: no reason to buy, unless a scene still has to be built from it.
+  fs.rmSync(path.join(dir, bytes.file));
+  assert.deepEqual(ids(), ['bbbb2222.2', 'cccc3333']);
+  fs.rmSync(historyDir(dir, 'jobs', 'bbbb2222.2.json'));
+  assert.deepEqual(ids(), ['cccc3333']);
+  assert.deepEqual(ids({ needed: (job) => job.key === 'bbbb2222' }), ['bbbb2222', 'cccc3333']);
 });

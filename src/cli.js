@@ -23,7 +23,7 @@ import { hideSecrets } from './errors.js';
 import { formatHistory, historyReport, selfCommand } from './history.js';
 import { boughtCharacters, speechConnector } from './paid-speech.js';
 import { formatServices, findService, needsKey, SERVICES, STEPS } from './services.js';
-import { currentSpeechKeys } from './voice.js';
+import { speechKeys } from './voice.js';
 import { findEnv } from './env.js';
 
 // Paid voices that can list what a key may use, each with its own flag.
@@ -218,7 +218,7 @@ export async function main(argv) {
           ? [`${r.file}  already bought on ${r.time.slice(0, 10)} (job ${r.job}), so nothing was spent. To buy it again, add --new.`]
           : [`${r.file}  ${r.model}  ${r.cost_usd !== null ? '$' + r.cost_usd.toFixed(4) : 'cost unknown'}  (images so far: $${r.total_usd.toFixed(4)})`];
         if (r.newer_attempt) lines.push(`A newer try, job ${r.newer_attempt}, has no good answer. "explainroo history" shows it.`);
-        for (const m of r.moved) lines.push(`The file that was at ${m.from} moved to ${m.to}.${m.known ? ' Asking for its request again brings it back.' : ''}`);
+        for (const m of r.moved) lines.push(m.to ? `The file that was at ${m.from} moved to ${m.to}.${m.known ? ' Asking for its request again brings it back.' : ''}` : `The link that was at ${m.from} is gone. What it pointed at was not touched.`);
         if (!r.reused) lines.push('Open the image and check it before you use it.');
         print(lines.join('\n'), r);
         return 0;
@@ -275,8 +275,8 @@ export async function main(argv) {
       case 'connect': return await connect(pos, flags, { print, log, notice });
       case 'history': {
         const project = loadProject(pos[0]);
-        const wanted = currentSpeechKeys(project);
-        const report = historyReport(project.dir, { current: (job) => job.kind !== 'speech' || wanted.has(job.key), otherSpend: oldImageLog(project) });
+        const { current, unbuilt } = speechKeys(project);
+        const report = historyReport(project.dir, { current: (job) => job.kind !== 'speech' || current.has(job.key), needed: (job) => unbuilt.has(job.key), otherSpend: oldImageLog(project) });
         print(formatHistory(report), report);
         return 0;
       }

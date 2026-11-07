@@ -104,7 +104,7 @@ export async function generateImage(project, { name, prompt, model, aspect, refs
 
   const decision = decide(dir, key, { fresh });
   if (decision.action === 'use') {
-    const placed = placeOutput(dir, decision.job, decision.file, publicNames(name));
+    const placed = placeOutput(dir, decision.job, publicNames(name));
     return finished(project, placed.job, { reused: true, moved: placed.moved, newer: decision.newer });
   }
   if (decision.action !== 'buy') throw stopped(project, decision.job, decision.reason, label);
@@ -140,7 +140,7 @@ export async function generateImage(project, { name, prompt, model, aspect, refs
     completion_tokens: result.completion_tokens,
     seconds: Math.round((Date.now() - t0) / 100) / 10,
   });
-  const placed = placeOutput(dir, done, output.file, publicNames(name));
+  const placed = placeOutput(dir, done, publicNames(name));
   return finished(project, placed.job, { reused: false, moved: placed.moved });
 }
 
