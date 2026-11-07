@@ -13,7 +13,8 @@ import { GOOD_KEY, startFakeServices } from './helpers/fake-services.js';
 const bin = fileURLToPath(new URL('../bin/explainroo.js', import.meta.url));
 const LIST = 'GET /api/v1/videos/models';
 const HOUR = 60 * 60 * 1000;
-const today = () => new Date().toISOString().slice(0, 10);
+const day = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const today = () => day(new Date());
 
 function temp(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-prices-'));
@@ -109,6 +110,23 @@ test('a kept answer younger than a day makes no request, and an older one is rea
   assert.match((await cli(['services', 'clips'])).stdout, new RegExp(`list read on ${today()}`));
   assert.equal(requests(), 2);
   assert.equal(keptFiles().length, 1);
+});
+
+// The JSON keeps the time in UTC, and the text gives the user's own date. Each zone
+// is picked so that its date differs from the UTC date of the read.
+test('services clips gives the date the list was read in the time zone of the computer', async (t) => {
+  const { cli, prices, requests, age } = await setup(t);
+  await prices();
+  age(1);
+  const { read } = await prices();
+  const ahead = new Date(read).getUTCHours() >= 12;
+  const zone = ahead ? 'Pacific/Kiritimati' : 'Etc/GMT+12';
+  const local = new Date(Date.parse(read) + (ahead ? 14 : -12) * HOUR).toISOString().slice(0, 10);
+  assert.notEqual(local, read.slice(0, 10));
+  const r = await cli(['services', 'clips'], { TZ: zone });
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stdout, new RegExp(`list read on ${local}:`));
+  assert.equal(requests(), 1);
 });
 
 test('offline mode shows the range at once, without a request, also when a fresh answer is kept', async (t) => {

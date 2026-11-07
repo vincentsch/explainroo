@@ -72,6 +72,14 @@ const RANGE_BECAUSE = {
   unreadable: "Today's prices could not be read, so here is the range.",
 };
 
+// The day a time falls on in this computer's time zone. The time in the JSON is
+// in UTC, and its own date can be a day off from the user's.
+function localDay(iso) {
+  const d = new Date(iso);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 // Today's prices of an entry under one step, when they were read, or else its range
 // and why. A model the list has no price for gets the range too.
 function priceLines(service, prices) {
@@ -80,7 +88,7 @@ function priceLines(service, prices) {
   const { resolution, audio } = prices.settings;
   const nameWidth = Math.max(...prices.models.map((m) => m.name.length));
   const idWidth = Math.max(...prices.models.map((m) => m.id.length));
-  const lines = [`    Prices at ${resolution} ${audio ? 'with' : 'without'} sound, from ${service.name}'s list read on ${prices.read.slice(0, 10)}:`];
+  const lines = [`    Prices at ${resolution} ${audio ? 'with' : 'without'} sound, from ${service.name}'s list read on ${localDay(prices.read)}:`];
   for (const m of prices.models) lines.push(`      ${m.name.padEnd(nameWidth)}  ${m.id.padEnd(idWidth)}  ${m.usd_per_second === null ? 'no price in that list' : `${usd(m.usd_per_second)} a second`}`);
   if (prices.models.some((m) => m.usd_per_second === null)) lines.push(`    A model with no price in that list has the range. ${service.price_range}`);
   return lines;
