@@ -107,7 +107,11 @@ const steps = [
     check: (r) => {
       expect(r.ok, 'doctor found a problem');
       for (const name of ['voice model', 'speech check model']) {
-        expect(r.checks.find((c) => c.name === name)?.ok, `the ${name} is missing. Run "node bin/explainroo.js doctor --fetch" once, so this test can reuse it.`);
+        expect(r.checks.find((c) => c.name === name)?.state === 'ready', `the ${name} is missing. Run "node bin/explainroo.js doctor --fetch" once, so this test can reuse it.`);
+      }
+      // English with Kokoro needs no other program and no language model, installed or not.
+      for (const name of ['espeak-ng', 'misaki ja', 'misaki zh', 'language model']) {
+        expect(r.checks.find((c) => c.name === name)?.state === 'not needed', `doctor says English needs the ${name}`);
       }
     },
   },
@@ -217,7 +221,8 @@ const steps = [
       const errors = r.issues.filter((i) => i.level === 'error');
       expect(!errors.length, `verify found errors: ${errors.map((e) => e.message).join('; ')}`);
       expect(r.speech?.matchRate >= MIN_NARRATION_UNDERSTOOD, `only ${r.speech?.matchRate} of the narration was understood, and ${MIN_NARRATION_UNDERSTOOD} is the minimum`);
-      return `${r.duration}s, ${r.video.width}x${r.video.height}, ${r.loudness.integrated} LUFS, ${Math.round(r.speech.matchRate * 100)}% of the narration understood`;
+      expect(r.loudness.truePeak <= -1 && !r.issues.some((i) => /true peak/.test(i.message)), `the true peak is ${r.loudness.truePeak} dBTP`);
+      return `${r.duration}s, ${r.video.width}x${r.video.height}, ${r.loudness.integrated} LUFS, ${r.loudness.truePeak} dBTP, ${Math.round(r.speech.matchRate * 100)}% of the narration understood`;
     },
   },
   {
@@ -429,6 +434,16 @@ const steps = [
       write('strings.json', { tip: { title: 'Fresh bread' } });
       write('strings.es.json', { tip: { title: 'Pan fresco' } });
       write('scenes.js', "export default { tip(s) { s.title(s.str('tip.title'), { y: s.safe.y + s.safe.h * 0.3, enter: 'none' }); s.icon('shopping-bag', { y: s.safe.y + s.safe.h * 0.6, size: 220, at: '#bag' }); } };\n");
+    },
+  },
+  {
+    // Spanish with a paid voice needs the language model, and no espeak-ng.
+    args: ['doctor', 'bilingual', '--json'],
+    check: (r) => {
+      expect(JSON.stringify(r.setup) === JSON.stringify([{ language: 'en', voice: 'kokoro' }, { language: 'es', voice: 'cartesia' }]), `doctor judged ${JSON.stringify(r.setup)}`);
+      const state = (name) => r.checks.find((c) => c.name === name)?.state;
+      expect(r.ok && state('espeak-ng') === 'not needed' && state('voice model') === 'ready' && state('language model') !== 'not needed', `doctor says ${r.checks.map((c) => `${c.name}: ${c.state}`).join(', ')}`);
+      return `language model ${state('language model')}`;
     },
   },
   {

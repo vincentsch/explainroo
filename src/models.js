@@ -1,6 +1,7 @@
 // Local speech models: Kokoro for the voice, Whisper for word timing and checks.
 // Both run on the CPU through ONNX Runtime and are downloaded from Hugging Face
 // on first use into ~/.cache/explainroo/models (or $EXPLAINROO_CACHE/models).
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -11,6 +12,11 @@ export const TTS_SAMPLE_RATE = 24000;
 
 export const LANGUAGES = {
   en: 'af_heart', es: 'ef_dora', fr: 'ff_siwis', it: 'if_sara', 'pt-br': 'pf_dora', hi: 'hf_alpha', ja: 'jf_alpha', zh: 'zf_xiaobei',
+};
+
+// The languages by name, for messages.
+export const LANGUAGE_NAMES = {
+  en: 'English', es: 'Spanish', fr: 'French', it: 'Italian', 'pt-br': 'Brazilian Portuguese', hi: 'Hindi', ja: 'Japanese', zh: 'Chinese',
 };
 
 export function voiceLanguage(id) {
@@ -49,22 +55,95 @@ async function lib() {
   return transformers;
 }
 
-function progressLogger(label, log) {
-  if (!log) return undefined;
-  const files = new Map();
-  let last = 0;
-  return (p) => {
-    if (p.status === 'progress' && p.total > 5e6 && p.loaded < p.total) {
-      files.set(p.file, { loaded: p.loaded, total: p.total });
-      const now = Date.now();
-      if (now - last < 1500) return;
-      last = now;
-      let loaded = 0;
-      let total = 0;
-      for (const f of files.values()) { loaded += f.loaded; total += f.total; }
-      log(`downloading ${label}: ${(loaded / 1e6).toFixed(0)} / ${(total / 1e6).toFixed(0)} MB`);
-    }
+// What doctor and the download lines call each model.
+export const MODEL_NAMES = { [TTS_MODEL]: 'voice model', [ASR_MODEL]: 'speech check model', [MULTILINGUAL_ASR_MODEL]: 'language model' };
+
+// What each model downloads at the dtype explainroo loads it with, in bytes: its
+// weights and the small files beside them. The Whisper models and Kokoro at fp32
+// and q8 are measured. The other Kokoro weights are the sizes on the model's page.
+export const DOWNLOAD_BYTES = {
+  [TTS_MODEL]: { fp32: 325535886, fp16: 163e6, q8: 92364770, q4: 305e6, q4f16: 155e6 },
+  [ASR_MODEL]: { q8: 79563802 },
+  [MULTILINGUAL_ASR_MODEL]: { q8: 251805856 },
+};
+const ASR_DTYPE = 'q8';
+
+function megabytes(bytes) {
+  return `${Math.round(bytes / 1e6)} MB`;
+}
+
+// The size of a model's download, like "252 MB".
+export function downloadSize(model) {
+  return megabytes(DOWNLOAD_BYTES[model][model === TTS_MODEL ? ttsDtype() : ASR_DTYPE]);
+}
+
+// One line for each model download, fed with the progress events of transformers.js.
+// The total comes from DOWNLOAD_BYTES, so it is known before the first byte and
+// never changes. transformers.js also reports the files it reads from the cache,
+// so only a file that wasn't there counts. A file sent without a size reports a
+// total that grows with every chunk, so only the bytes loaded count. On a terminal,
+// log.update changes the line in place. Elsewhere a download prints one line when
+// it starts and one when it is done.
+export function downloadProgress(model, dtype, log, { cached = (name, file) => fs.existsSync(path.join(cacheRoot(), 'models', name, file)), now = Date.now } = {}) {
+  const label = `the ${MODEL_NAMES[model]}`;
+  const total = DOWNLOAD_BYTES[model]?.[dtype] ?? null;
+  const fresh = new Set();
+  const loaded = new Map();
+  let started = null;
+  let shown = 0;
+  const sum = () => [...loaded.values()].reduce((a, b) => a + b, 0);
+  const line = () => `downloading ${label}: ${total ? `${Math.round(Math.min(sum(), total) / 1e6)} / ${megabytes(total)}` : megabytes(sum())}`;
+  return {
+    callback(p) {
+      if (p.status === 'initiate' && !cached(p.name, p.file)) fresh.add(p.file);
+      if (!fresh.has(p.file) || !['download', 'progress'].includes(p.status)) return;
+      if (p.status === 'progress') loaded.set(p.file, p.loaded);
+      if (started === null) {
+        started = now();
+        shown = started;
+        if (log.update) log.update(line());
+        else log(`downloading ${label}${total ? `, ${megabytes(total)}` : ''}`);
+      } else if (log.update && now() - shown >= 250) {
+        shown = now();
+        log.update(line());
+      }
+    },
+    finish(done) {
+      if (started === null) return;
+      log(done ? `downloaded ${label}: ${megabytes(sum())} in ${Math.round((now() - started) / 1000)}s` : `the download of ${label} stopped after ${megabytes(sum())}`);
+    },
   };
+}
+
+// transformers.js warns about every file that comes without a size. The download
+// line counts those files anyway, so while a model loads, that one warning is
+// left out and every other warning comes through.
+const NO_SIZE = 'Unable to determine content-length';
+export function withoutSizeWarning(warn) {
+  return (...args) => {
+    if (typeof args[0] === 'string' && args[0].startsWith(NO_SIZE)) return;
+    warn.apply(console, args);
+  };
+}
+
+let loading = 0;
+let warn = null;
+async function loadModel(model, dtype, log, load) {
+  const progress = log ? downloadProgress(model, dtype, log) : null;
+  if (loading++ === 0) {
+    warn = console.warn;
+    console.warn = withoutSizeWarning(warn);
+  }
+  try {
+    const loaded = await load(progress?.callback);
+    progress?.finish(true);
+    return loaded;
+  } catch (e) {
+    progress?.finish(false);
+    throw e;
+  } finally {
+    if (--loading === 0) console.warn = warn;
+  }
 }
 
 let ttsPromise = null;
@@ -73,11 +152,8 @@ export function loadTTS({ log } = {}) {
     ttsPromise = (async () => {
       await lib();
       const { KokoroTTS } = await import('kokoro-js');
-      return KokoroTTS.from_pretrained(TTS_MODEL, {
-        dtype: ttsDtype(),
-        device: 'cpu',
-        progress_callback: progressLogger('voice model', log),
-      });
+      const dtype = ttsDtype();
+      return loadModel(TTS_MODEL, dtype, log, (progress_callback) => KokoroTTS.from_pretrained(TTS_MODEL, { dtype, device: 'cpu', progress_callback }));
     })();
   }
   return ttsPromise;
@@ -89,10 +165,7 @@ export function loadASR({ log, language = 'en' } = {}) {
   if (!asrPromises.has(model)) {
     asrPromises.set(model, (async () => {
       const { pipeline } = await lib();
-      return pipeline('automatic-speech-recognition', model, {
-        dtype: 'q8',
-        progress_callback: progressLogger('speech check model', log),
-      });
+      return loadModel(model, ASR_DTYPE, log, (progress_callback) => pipeline('automatic-speech-recognition', model, { dtype: ASR_DTYPE, progress_callback }));
     })());
   }
   return asrPromises.get(model);

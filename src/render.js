@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { prepare, renderIdentity, withEngine, VERSION } from './pipeline.js';
 import { projectUrl } from './timeline.js';
-import { frameEncoder, ffmpeg, normalizeLoudness } from './ffmpeg.js';
+import { AUDIO_CODECS, finishMix, frameEncoder, ffmpeg } from './ffmpeg.js';
 import { subtitleCues, toSrt, toVtt } from './subtitles.js';
 import { buildChapters, toChaptersText, toChapterMetadata } from './chapters.js';
 import { resolveTimes } from './qa.js';
@@ -86,7 +86,7 @@ export async function encodeVideo(project, timeline, opts) {
         const ta = Date.now();
         const sound = await list[0].evaluate((p) => window.explainroo.soundtrack(p), projectUrl(project, mix));
         log(`soundtrack: ${sound.cues} sound cues, mixed in ${((Date.now() - ta) / 1000).toFixed(1)}s`);
-        norm = normalizeLoudness(mix, mixNorm, project.config.loudness);
+        norm = finishMix(mix, mixNorm, project.config.loudness, AUDIO_CODECS[format], { log });
         norm.catch(() => {});
       }
 
@@ -148,8 +148,7 @@ export async function encodeVideo(project, timeline, opts) {
       fs.rmSync(palette, { force: true });
     }
   } else {
-    const audioCodec = format === 'webm' ? ['-c:a', 'libopus', '-b:a', '192k']
-      : format === 'mov' ? ['-c:a', 'pcm_s16le'] : ['-c:a', 'aac', '-b:a', '192k'];
+    const audioCodec = AUDIO_CODECS[format];
     const containerArgs = format === 'webm' ? [] : ['-movflags', '+faststart'];
     await ffmpeg(['-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', listFile, ...audioArgs, ...metadataArgs, '-map', '0:v', '-map', '1:a', '-c:v', 'copy', ...audioCodec, ...containerArgs, '-shortest', out]);
   }

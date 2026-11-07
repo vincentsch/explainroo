@@ -9,12 +9,11 @@ import { render } from './render.js';
 import { exportPlayer } from './export.js';
 import { check, stills, sheet, verify } from './qa.js';
 import { startServer, ROOT } from './server.js';
-import { VOICES, LANGUAGES, voiceLanguage, loadTTS, loadASR, cacheRoot, ttsDtype, TTS_SAMPLE_RATE, MULTILINGUAL_ASR_MODEL } from './models.js';
-import { settingsEnvFile } from './env.js';
-import { espeakVersion, misakiAvailable, phonemize, generateSpeech } from './phonemes.js';
+import { VOICES, LANGUAGES, voiceLanguage, loadTTS, TTS_SAMPLE_RATE } from './models.js';
+import { phonemize, generateSpeech } from './phonemes.js';
 import { writeWav } from './wav.js';
-import { ffmpegVersion } from './ffmpeg.js';
-import { findChrome } from './browser.js';
+import { doctor, formatDoctor } from './doctor.js';
+import { dbtp } from './ffmpeg.js';
 import { generateImage, jobRequest, imageLog, imageSpend, oldImageLog, IMAGE_MODELS } from './images.js';
 import { buyClip, clipJobRequest, clipRequest, formatClip } from './ai-clips.js';
 import { capture } from './capture.js';
@@ -93,7 +92,8 @@ Reference
   themes                list looks
   formats               list sizes for YouTube, Shorts, TikTok, Reels, Instagram, LinkedIn
   icons <word…>         search the 1,800+ built-in icons
-  doctor                check ffmpeg, Chrome, espeak-ng, misaki and models (--fetch downloads English models)
+  doctor [project]      check ffmpeg, Chrome, espeak-ng, misaki and models: each is ready, not needed or missing.
+                        With a project, for its languages and voices (--fetch downloads the English models)
   docs [topic]          print the instructions for coding agents, or one extra page (--list shows the pages)
   version               print the version (--version works too)
 
@@ -137,7 +137,7 @@ export async function main(argv) {
   const { pos, flags } = parseArgs(argv);
   const cmd = pos.shift();
   const json = !!flags.json;
-  const log = json || flags.quiet ? () => {} : (m) => process.stderr.write(`${m}\n`);
+  const log = json || flags.quiet ? () => {} : lineLog(process.stderr);
   // What must be said also with --json, such as money about to be spent.
   const notice = (m) => process.stderr.write(`${m}\n`);
   const print = (human, data) => {
@@ -249,7 +249,7 @@ export async function main(argv) {
         const project = loadProject(pos[0], langOverride(flags));
         const r = await verify(project, { file: flags.file, log });
         const lines = [
-          `${r.file}: ${r.duration}s, ${r.video ? `${r.video.width}x${r.video.height}` : 'no video'}, loudness ${r.loudness?.integrated ?? '?'} LUFS, true peak ${r.loudness?.truePeak ?? '?'} dBFS`,
+          `${r.file}: ${r.duration}s, ${r.video ? `${r.video.width}x${r.video.height}` : 'no video'}, loudness ${r.loudness?.integrated ?? '?'} LUFS, true peak ${dbtp(r.loudness?.truePeak)}`,
           r.speech ? `narration understood: ${Math.round(r.speech.matchRate * 100)}%` : '',
           ...r.issues.map((i) => `${i.level.toUpperCase().padEnd(5)} ${i.message}`),
         ].filter(Boolean);
@@ -342,7 +342,11 @@ export async function main(argv) {
         return 0;
       }
       case 'icons': return icons(pos, print);
-      case 'doctor': return await doctor(flags, log, print);
+      case 'doctor': {
+        const r = await doctor({ project: pos[0] === undefined ? null : loadProject(pos[0]), fetch: !!flags.fetch, log });
+        print(formatDoctor(r), r);
+        return r.ok ? 0 : 1;
+      }
       case 'docs': return docs(pos[0], flags, print);
       case 'services': return services(pos[0], flags, print);
       case 'connect': return await connect(pos, flags, { print, log, notice });
@@ -390,6 +394,23 @@ function allSpeechKeys(project) {
     keys.unbuilt.forEach((key) => unbuilt.add(key));
   }
   return { current, unbuilt };
+}
+
+// Writes each message as a line. On a terminal, log.update shows a line that the
+// next message replaces, for progress that changes in place.
+function lineLog(stream) {
+  let open = false;
+  const log = (m) => {
+    stream.write(`${open ? '\r\x1b[K' : ''}${m}\n`);
+    open = false;
+  };
+  if (stream.isTTY) {
+    log.update = (m) => {
+      stream.write(`\r\x1b[K${m}`);
+      open = true;
+    };
+  }
+  return log;
 }
 
 // A text flag given without a value (for example "--title" at the end of the
@@ -556,40 +577,4 @@ function services(step, flags, print) {
   };
   print(formatServices(steps, list, { connected, command: selfCommand() }), { steps, services: list.map((s) => (needsKey(s) ? { ...s, connected: connected(s.id) } : s)) });
   return 0;
-}
-
-async function doctor(flags, log, print) {
-  const rows = [];
-  const add = (name, ok, detail) => rows.push({ name, ok, detail });
-  // The voice library (kokoro-js) needs import.meta.dirname, added in Node 20.11.
-  const [maj, min] = process.versions.node.split('.').map(Number);
-  const nodeOk = maj > 20 || (maj === 20 && min >= 11);
-  add('node', nodeOk, `v${process.versions.node}${nodeOk ? '' : ' (need 20.11 or newer)'}`);
-  const ff = ffmpegVersion();
-  add('ffmpeg', !!ff, ff || 'not found; install ffmpeg or set EXPLAINROO_FFMPEG');
-  const espeak = espeakVersion();
-  add('espeak-ng', true, espeak || 'not found; only needed for Spanish, French, Italian, Portuguese and Hindi');
-  for (const [language, name] of [['ja', 'Japanese'], ['zh', 'Chinese']]) {
-    add(`misaki ${language}`, true, misakiAvailable(language) ? `Python with misaki for ${name}` : `not found; only needed for ${name}`);
-  }
-  try {
-    add('chrome', true, findChrome());
-  } catch (e) {
-    add('chrome', false, e.message);
-  }
-  const models = path.join(cacheRoot(), 'models', 'onnx-community');
-  const has = (n) => fs.existsSync(path.join(models, n));
-  if (flags.fetch) {
-    log('downloading English speech models (about 400 MB the first time)');
-    log('other languages fetch their speech check model on first use, and Japanese and Chinese their fonts');
-    await loadTTS({ log });
-    await loadASR({ log });
-  }
-  add('voice model', has('Kokoro-82M-v1.0-ONNX'), has('Kokoro-82M-v1.0-ONNX') ? `Kokoro 82M (${ttsDtype()}) in ${models}` : 'not downloaded yet; "explainroo doctor --fetch" or the first voice run fetches it');
-  add('speech check model', has('whisper-base.en_timestamped'), has('whisper-base.en_timestamped') ? 'Whisper base.en' : 'not downloaded yet; fetched on first use');
-  add('language model', has(MULTILINGUAL_ASR_MODEL.split('/')[1]), 'Whisper small for languages other than English; downloaded on first use, not by --fetch');
-  add('keys file', true, `${settingsEnvFile()}; only needed for services that use your own key`);
-  const ok = rows.every((r) => r.ok || r.name.includes('model'));
-  print(rows.map((r) => `${r.ok ? 'ok  ' : 'FAIL'} ${r.name.padEnd(20)} ${r.detail}`).join('\n'), { ok, checks: rows });
-  return ok ? 0 : 1;
 }

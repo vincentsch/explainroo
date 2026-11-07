@@ -1,4 +1,5 @@
 // ffmpeg and ffprobe helpers.
+import fs from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 
 export function ffmpegPath() {
@@ -72,20 +73,91 @@ export function frameEncoder({ fps, out, draft, format = 'mp4', transparent = fa
   };
 }
 
-// Two-pass loudness normalization to `target` LUFS, peak-limited.
-export async function normalizeLoudness(input, output, target = -14, sampleRate = 48000) {
+// The highest true peak a finished video may have, in dBTP.
+export const PEAK_CEILING = -1;
+
+// A true peak as people read it, like "+0.5 dBTP", or "-inf dBTP" for silence.
+export function dbtp(peak) {
+  if (peak === -Infinity) return '-inf dBTP';
+  if (typeof peak !== 'number' || Number.isNaN(peak)) return '? dBTP';
+  return `${peak > 0 ? '+' : ''}${peak.toFixed(1)} dBTP`;
+}
+
+// The encoder of each video format's sound. ffmpeg's AAC encoder can turn a quiet
+// sound into a loud click where it replaces a band with noise. At 192 kbit/s that
+// replacement saves nothing, so it is off.
+export const AUDIO_CODECS = {
+  mp4: ['-c:a', 'aac', '-b:a', '192k', '-aac_pns', '0'],
+  webm: ['-c:a', 'libopus', '-b:a', '192k'],
+  mov: ['-c:a', 'pcm_s16le'],
+};
+
+// The first pass of a two-pass loudness normalization to `target` LUFS. It returns
+// the filter for the second pass, or null for silence and very short clips, which
+// have no measurable integrated loudness.
+async function loudnessFilter(input, target) {
   const base = `I=${target}:TP=-1.5:LRA=11`;
   const pass1 = await ffmpeg(['-i', input, '-af', `loudnorm=${base}:print_format=json`, '-f', 'null', '-']);
   const json = pass1.stderr.slice(pass1.stderr.lastIndexOf('{'), pass1.stderr.lastIndexOf('}') + 1);
   const m = JSON.parse(json);
-  // Silence and very short clips have no measurable integrated loudness.
-  if (!Number.isFinite(Number(m.input_i))) {
-    await ffmpeg(['-i', input, '-ar', String(sampleRate), '-c:a', 'pcm_s16le', output]);
-    return { inputI: Number(m.input_i), inputTP: Number(m.input_tp) };
+  const filter = Number.isFinite(Number(m.input_i))
+    ? `loudnorm=${base}:measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true:print_format=summary`
+    : null;
+  return { filter, inputI: Number(m.input_i), inputTP: Number(m.input_tp) };
+}
+
+// Two-pass loudness normalization to `target` LUFS, peak-limited.
+export async function normalizeLoudness(input, output, target = -14, sampleRate = 48000) {
+  const { filter, inputI, inputTP } = await loudnessFilter(input, target);
+  await ffmpeg(['-i', input, ...(filter ? ['-af', filter] : []), '-ar', String(sampleRate), '-c:a', 'pcm_s16le', output]);
+  return { inputI, inputTP };
+}
+
+let latencyOption;
+function limiterTakesLatency() {
+  latencyOption ??= /\blatency\b/.test(spawnSync(ffmpegPath(), ['-hide_banner', '-h', 'filter=alimiter'], { encoding: 'utf8' }).stdout ?? '');
+  return latencyOption;
+}
+
+// A limiter at `db` for sound at 192 kHz. alimiter delays the sound by its attack,
+// 959 samples there. ffmpeg 5.1 and newer take the delay back with latency=true.
+// Older builds pad the end and cut the start instead, which gives the same samples.
+export function limiterFilter(db, latency = limiterTakesLatency()) {
+  const limit = `alimiter=limit=${(10 ** (db / 20)).toFixed(6)}:level=false`;
+  return latency ? `${limit}:latency=true` : `apad=pad_len=959,${limit},atrim=start_sample=959,asetpts=PTS-STARTPTS`;
+}
+
+// The finished soundtrack of a video or a web player at 48 kHz: loudness
+// normalization to `target` LUFS, then a limiter on the sound upsampled four times,
+// so that the points a player rebuilds between samples stay under the ceiling too.
+// The encoder can raise a peak again, by an amount that depends on the sound. So
+// the result is encoded with `codec` and measured the way verify measures a video.
+// When the encoded sound lands above the ceiling, the limiter goes down by the
+// difference and runs again. The encoder doesn't always follow, so it gets up to
+// four runs.
+export async function finishMix(input, output, target, codec, { log = () => {} } = {}) {
+  const { filter } = await loudnessFilter(input, target);
+  let limit = PEAK_CEILING;
+  for (let run = 1; ; run++) {
+    const chain = [filter, 'aresample=48000', 'aresample=192000', limiterFilter(limit), 'aresample=48000'].filter(Boolean).join(',');
+    await ffmpeg(['-i', input, '-af', chain, '-ar', '48000', '-c:a', 'pcm_s16le', output]);
+    const peak = await encodedPeak(output, codec);
+    if (!(peak > PEAK_CEILING) || run === 4) return { limit, truePeak: peak };
+    const before = (await loudness(output)).truePeak;
+    limit = Math.round((Math.min(limit, before) - (peak - PEAK_CEILING) - 0.2) * 10) / 10;
+    log(`soundtrack: the encoded sound peaked at ${dbtp(peak)}, so the limiter runs again at ${limit} dB`);
   }
-  const measured = `measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}:offset=${m.target_offset}`;
-  await ffmpeg(['-i', input, '-af', `loudnorm=${base}:${measured}:linear=true:print_format=summary`, '-ar', String(sampleRate), '-c:a', 'pcm_s16le', output]);
-  return { inputI: Number(m.input_i), inputTP: Number(m.input_tp) };
+}
+
+// The true peak of `wav` after encoding it with `codec`.
+async function encodedPeak(wav, codec) {
+  const file = `${wav}.peak.mka`;
+  try {
+    await ffmpeg(['-loglevel', 'error', '-i', wav, ...codec, file]);
+    return (await loudness(file)).truePeak;
+  } finally {
+    fs.rmSync(file, { force: true });
+  }
 }
 
 export async function probe(file) {
@@ -99,5 +171,6 @@ export async function loudness(file) {
   const I = /I:\s*(-?[\d.]+) LUFS/.exec(summary);
   const LRA = /LRA:\s*(-?[\d.]+) LU/.exec(summary);
   const peak = /Peak:\s*(-?[\d.]+|-inf) dBFS/.exec(summary);
-  return { integrated: I ? Number(I[1]) : null, range: LRA ? Number(LRA[1]) : null, truePeak: peak ? Number(peak[1]) : null };
+  // Silence has a peak of -inf, which JSON writes as null.
+  return { integrated: I ? Number(I[1]) : null, range: LRA ? Number(LRA[1]) : null, truePeak: peak ? (peak[1] === '-inf' ? -Infinity : Number(peak[1])) : null };
 }

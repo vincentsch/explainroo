@@ -9,7 +9,7 @@ import { loadProject } from '../src/project.js';
 import { withEngine } from '../src/pipeline.js';
 import { render } from '../src/render.js';
 import { stills, verify } from '../src/qa.js';
-import { ffmpegPath, ffmpegVersion, probe } from '../src/ffmpeg.js';
+import { ffmpegPath, ffmpegVersion, loudness, probe } from '../src/ffmpeg.js';
 
 let chrome;
 try { chrome = findChrome(); } catch {}
@@ -23,7 +23,7 @@ function pixels(file, decoder = []) {
 const alphaAt = (data, x, y, w = 320) => data[(y * w + x) * 4 + 3];
 
 function projectFiles(dir) {
-  fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ theme: 'clean', size: '320x180', fps: 24, captions: false, watermark: false, music: false, sfx: false, end: 0 }));
+  fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ theme: 'clean', size: '320x180', fps: 24, captions: false, watermark: false, music: 'upbeat', sfx: false, end: 0 }));
   fs.writeFileSync(path.join(dir, 'script.md'), '## box {min=2 chapter="Box"}\n');
   fs.writeFileSync(path.join(dir, 'scenes.js'), `export default { box(s) {
     s.box('', { x: 160, y: 90, w: 80, h: 60, fill: '#245cff', border: false, at: 0, enter: 'none' });
@@ -64,7 +64,11 @@ test('transparent WebM and MOV retain alpha, audio, chapters and opaque covers',
       assert.equal(alphaAt(data, 0, 0), 0);
       assert.equal(alphaAt(data, 160, 90), 255);
       assert.equal(alphaAt(pixels(r.cover), 0, 0), 255);
+      // Both share the finished mix, and each encoder keeps its true peak under the ceiling.
+      const sound = await loudness(r.out);
+      assert.ok(sound.truePeak <= -1, `${format}: the true peak is ${sound.truePeak} dBTP`);
       const report = await verify(project, { file: r.out });
+      assert.ok(!report.issues.some((i) => /true peak/.test(i.message)), JSON.stringify(report.issues));
       assert.deepEqual(report.blackSegments, []);
       assert.ok(report.issues.some((i) => /skipped because the video has alpha/.test(i.message)));
       assert.ok(!report.issues.some((i) => i.level === 'error'));

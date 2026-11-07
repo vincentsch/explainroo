@@ -22,6 +22,21 @@ function binary() {
 
 const INSTALL = 'espeak-ng is needed for this language. Linux: sudo apt install espeak-ng. macOS: brew install espeak-ng. Windows: use the installer at https://github.com/espeak-ng/espeak-ng/releases. Or set EXPLAINROO_ESPEAK to its binary.';
 
+// The program Kokoro needs to read a language: espeak-ng, or Python with misaki for
+// Japanese and Chinese. English needs neither.
+export function phonemeProgram(language) {
+  if (['ja', 'zh'].includes(language)) return 'misaki';
+  return Object.hasOwn(ESPEAK_LANGUAGES, language) ? 'espeak-ng' : null;
+}
+
+// How to get espeak-ng on this computer.
+export function espeakInstall(platform = process.platform) {
+  const how = platform === 'darwin' ? 'Install it with "brew install espeak-ng"'
+    : platform === 'win32' ? 'Install it from https://github.com/espeak-ng/espeak-ng/releases'
+      : 'Install it with "sudo apt install espeak-ng"';
+  return `${how}, or set EXPLAINROO_ESPEAK to its binary.`;
+}
+
 export function espeakVersion() {
   const r = spawnSync(binary(), ['--version'], { encoding: 'utf8', timeout: 5000 });
   return !r.error && r.status === 0 ? r.stdout.trim().split('\n')[0] : null;
@@ -73,7 +88,7 @@ function python() {
   return process.env.EXPLAINROO_PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
 }
 
-function misakiInstall(language) {
+export function misakiInstall(language) {
   return `Python with misaki is needed for ${language === 'ja' ? 'Japanese' : 'Chinese'}. Run: ${python()} -m pip install "misaki[${language}]".${language === 'ja' ? ` Then run: ${python()} -m unidic download.` : ''} Or set EXPLAINROO_PYTHON to a Python with these packages.`;
 }
 

@@ -8,7 +8,7 @@ import { findChrome, launch } from '../src/browser.js';
 import { loadProject } from '../src/project.js';
 import { exportPlayer } from '../src/export.js';
 import { withEngine } from '../src/pipeline.js';
-import { ffmpeg, probe } from '../src/ffmpeg.js';
+import { ffmpeg, loudness, probe } from '../src/ffmpeg.js';
 import { ROOT } from '../src/server.js';
 
 let chrome;
@@ -42,7 +42,7 @@ test('exported player runs at a sub-path with matching frames, clips and accessi
   fs.writeFileSync(path.join(dir, '.env'), 'SECRET');
   fs.copyFileSync(path.join(ROOT, 'fonts/Inter-400-latin.woff2'), path.join(dir, 'assets/unused.woff2'));
   await ffmpeg(['-loglevel', 'error', '-f', 'lavfi', '-i', 'color=red:s=160x90:r=30:d=1', '-f', 'lavfi', '-i', 'color=lime:s=160x90:r=30:d=1', '-filter_complex', '[0:v][1:v]concat=n=2:v=1:a=0[v]', '-map', '[v]', '-c:v', 'libx264', '-threads', '1', path.join(dir, 'assets/clip.mp4')]);
-  fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ theme: 'clean', music: false, sfx: false, end: 0, fonts: [{ family: 'Unused', src: 'assets/unused.woff2' }] }));
+  fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ theme: 'clean', music: 'upbeat', sfx: false, end: 0, fonts: [{ family: 'Unused', src: 'assets/unused.woff2' }] }));
   fs.writeFileSync(path.join(dir, 'script.md'), '# Player fixture\n## intro {min=12}\n');
   fs.writeFileSync(path.join(dir, 'helper.mjs'), "export const label = 'Player fixture';");
   fs.writeFileSync(path.join(dir, 'scenes.js'), `const modulePath = './helper.mjs';
@@ -65,6 +65,9 @@ test('exported player runs at a sub-path with matching frames, clips and accessi
   const audioInfo = await probe(path.join(output.out, 'audio.m4a'));
   assert.equal(audioInfo.streams[0].codec_name, 'aac');
   assert.ok(Math.abs(Number(audioInfo.format.duration) - 12) < 0.1);
+  const sound = await loudness(path.join(output.out, 'audio.m4a'));
+  assert.ok(sound.truePeak <= -1, `the true peak is ${sound.truePeak} dBTP`);
+  assert.ok(Math.abs(sound.integrated - -14) <= 1.5, `the loudness is ${sound.integrated} LUFS`);
   // A cue exercises the browser's native TextTrack parsing and the HTML overlay.
   fs.writeFileSync(path.join(output.out, 'subtitles.vtt'), 'WEBVTT\n\n00:00:00.000 --> 00:00:10.000\nReadable &amp; accessible\n');
   const timeline = JSON.parse(fs.readFileSync(path.join(project.paths.build, 'timeline.json'), 'utf8'));

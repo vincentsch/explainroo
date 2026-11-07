@@ -103,7 +103,7 @@ test('captions and subtitle files keep native text and split at danda', () => {
   }
 });
 
-test('init stores the language and default voice; voices filters and doctor allows missing espeak-ng and misaki', async t => {
+test('init stores the language and default voice; voices filters and doctor needs no espeak-ng or misaki for English', async t => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-language-cli-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   let output = '';
@@ -129,12 +129,14 @@ test('init stores the language and default voice; voices filters and doctor allo
   t.after(() => { if (saved === undefined) delete process.env.EXPLAINROO_ESPEAK; else process.env.EXPLAINROO_ESPEAK = saved; });
   output = '';
   assert.equal(await main(['doctor', '--json']), 0);
-  assert.match(JSON.parse(output).checks.find(c => c.name === 'espeak-ng').detail, /only needed for Spanish, French, Italian, Portuguese and Hindi/);
+  const espeak = JSON.parse(output).checks.find(c => c.name === 'espeak-ng');
+  assert.deepEqual([espeak.state, espeak.ok], ['not needed', true]);
+  assert.match(espeak.detail, /^only needed for Kokoro voices in Spanish, French, Italian, Brazilian Portuguese and Hindi$/);
   const python = process.env.EXPLAINROO_PYTHON;
   process.env.EXPLAINROO_PYTHON = path.join(dir, 'missing');
   t.after(() => { if (python === undefined) delete process.env.EXPLAINROO_PYTHON; else process.env.EXPLAINROO_PYTHON = python; });
   output = '';
   assert.equal(await main(['doctor', '--json']), 0);
   const misaki = JSON.parse(output).checks.filter(c => c.name.startsWith('misaki'));
-  assert.deepEqual(misaki.map(c => [c.name, c.ok, c.detail]), [['misaki ja', true, 'not found; only needed for Japanese'], ['misaki zh', true, 'not found; only needed for Chinese']]);
+  assert.deepEqual(misaki.map(c => [c.name, c.state, c.ok, c.detail]), [['misaki ja', 'not needed', true, 'only needed for Kokoro voices in Japanese'], ['misaki zh', 'not needed', true, 'only needed for Kokoro voices in Chinese']]);
 });

@@ -33,9 +33,10 @@ npx --yes explainroo doctor --fetch
 
 `doctor` checks Node, ffmpeg and Chrome, and the extra programs some
 languages need. It also downloads the English speech models, about 400 MB,
-the first time only. Other languages fetch their speech check model on first
-use. Commands that work on a video take the project folder first, and every
-command accepts `--json`.
+the first time only. Each part is `ready`, `missing` with how to get it, or
+`not needed` for this setup. `doctor videos/<name>` checks what that
+project's languages and voices need. Commands that work on a video take the
+project folder first, and every command accepts `--json`.
 
 `explainroo docs` prints this file. A few topics have their own page.
 `explainroo docs --list` lists them, and `explainroo docs <topic>` prints one.
@@ -184,8 +185,10 @@ never put it in a script, a commit or a log.
     writes `.chapters.txt` for the YouTube description and adds the chapters
     to the MP4. `--format gif` makes a silent GIF instead, for a README or a
     post. `verify` checks the MP4. It measures the loudness and looks for
-    black frames and silence. It also runs the speech check on the finished
-    sound to make sure the voice is still clear over the music.
+    black frames and silence. `render` keeps the true peak at -1 dBTP or
+    lower. `verify` warns above that and fails above 0 dBTP, where the sound
+    clips. It also runs the speech check on the finished sound to make sure
+    the voice is still clear over the music.
 
 11. **Tell the user** where the video and its subtitle files, chapters and
     cover are, how long the video is, what verify said, and what you could
@@ -830,7 +833,7 @@ when `ink` or `muted` has too little contrast against `bg`.
 | `sheet [project]` | one image with many frames of the video or of one scene (`--scene`, `--every`, `--size`, `--no-watermark`) |
 | `check [project]` | finds layout, timing and pronunciation problems (`--size`, `--no-watermark`) |
 | `render [project]` | the video plus subtitle files, chapters and a cover (`--format mp4`, `gif`, `webm` or `mov`, `--transparent`, `--size`, `--no-watermark`, `--draft`, `--from`, `--to`, `--workers`, `--out`) |
-| `verify [project]` | checks the finished MP4, WebM or MOV: loudness, black frames, silence, clear voice (`--file` picks another file) |
+| `verify [project]` | checks the finished MP4, WebM or MOV: loudness, true peak, black frames, silence, clear voice (`--file` picks another file) |
 | `export [project]` | writes a web player folder (`--out dir`, `--json`), by default `out/player/` |
 | `package [project]` | a folder to post on one platform (`--platform`, `--title`, `--description`, `--hashtags`, `--size` for x, `--workers`) |
 | `share [project]` | uploads a video to explainroo.com for a page link, once that service runs (`--platform`, `--file`, `--title`, `--new`) |
@@ -845,7 +848,7 @@ when `ink` or `muted` has too little contrast against `bg`.
 | `voices`, `say "text"` | lists Kokoro voices with their languages (`--language es`, `ja` or `zh` filters voices), or makes a sample in the chosen voice's language |
 | `voices [project] --provider <id>` | lists the names, ids and labels available to the key of `elevenlabs` or `cartesia` (`--language`, `--json`) |
 | `themes`, `formats`, `icons <word>` | lists the looks and the sizes, searches the 1,854 icons |
-| `doctor` | checks Node, ffmpeg, Chrome, the models, and espeak-ng and Python with misaki for other languages (`--fetch` downloads only English models) |
+| `doctor [project]` | checks Node, ffmpeg, Chrome, the models, and espeak-ng and Python with misaki for other languages, for one project when given (`--fetch` downloads only English models) |
 | `docs [topic]` | prints this file, or one page from `docs/` (`--list` lists the pages) |
 | `version` | prints the version (`--version` also works) |
 

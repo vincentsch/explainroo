@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { findChrome } from '../src/browser.js';
 import { readVersions, sha256File } from '../src/history.js';
+import { ffmpeg } from '../src/ffmpeg.js';
 import { runCli as cli, speechCheckModel, tinyProject as tiny } from './helpers/tiny-project.js';
 
 let chrome = null;
@@ -121,4 +122,29 @@ test('a package that fails check says which size failed and writes nothing, and 
   assert.equal(bad.code, 1);
   assert.match(bad.stderr, /post\.json has unknown setting\(s\): titel/);
   assert.equal(fs.existsSync(path.join(dir, 'out/package/x')), false);
+});
+
+test('a package of a video whose sound clips fails verify with the word clipping', { skip, timeout: 300000 }, async (t) => {
+  const dir = tiny(t, { size: '16:9' }, { narrated: false });
+  const rendered = await cli(['render', dir, '--workers', '1', '--json']);
+  assert.equal(rendered.code, 0, rendered.text);
+  // The render's sound changes for a tone above full scale, like a render from before
+  // the limiter, and the record gets its hash, so package takes the file as it is.
+  const video = path.join(dir, 'out/video.mp4');
+  const clipping = path.join(dir, 'out/clipping.mp4');
+  await ffmpeg(['-loglevel', 'error', '-i', video, '-f', 'lavfi', '-i', "aevalsrc=exprs='1.12*sin(2*PI*1000*t)':s=48000:d=1", '-map', '0:v', '-map', '1:a', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-shortest', clipping]);
+  fs.renameSync(clipping, video);
+  const record = path.join(dir, 'history/versions.jsonl');
+  const lines = fs.readFileSync(record, 'utf8').trim().split('\n').map((line) => JSON.parse(line));
+  lines.at(-1).sha256 = sha256File(video);
+  fs.writeFileSync(record, lines.map((line) => JSON.stringify(line)).join('\n') + '\n');
+  const r = await cli(['package', dir, '--platform', 'youtube', '--workers', '1']);
+  assert.equal(r.code, 1, r.text);
+  assert.match(r.stdout, /, copied from out\/video\.mp4$/m);
+  assert.match(r.stdout, /^verify: found errors/m);
+  assert.match(r.stdout, /^ERROR the true peak is \+\d\.\d dBTP, above 0 dBTP, so the sound is clipping\./m);
+  assert.match(r.stdout, /^Fix the errors and package it again before you post it\.$/m);
+  const post = read(path.join(dir, 'out/package/youtube/post.json'));
+  assert.equal(post.verify.ok, false);
+  assert.match(post.verify.errors[0], /clipping/);
 });

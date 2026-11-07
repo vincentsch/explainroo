@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { prepare, withEngine } from './pipeline.js';
-import { probe, loudness, ffmpeg } from './ffmpeg.js';
+import { dbtp, probe, loudness, ffmpeg, PEAK_CEILING } from './ffmpeg.js';
 import { transcribeWords } from './models.js';
 import { readWav } from './wav.js';
 import { alignWords, readAlike } from './align.js';
@@ -121,7 +121,11 @@ export async function verify(project, { file = null, report: reportFile = null, 
   if (loud && loud.integrated !== null && Math.abs(loud.integrated - project.config.loudness) > 1.5) {
     issues.push({ level: 'warn', message: `loudness is ${loud.integrated} LUFS, target is ${project.config.loudness}` });
   }
-  if (loud && loud.truePeak !== null && loud.truePeak > -0.5) issues.push({ level: 'warn', message: `true peak ${loud.truePeak} dBFS is close to clipping` });
+  if (loud?.truePeak > 0) {
+    issues.push({ level: 'error', message: `the true peak is ${dbtp(loud.truePeak)}, above 0 dBTP, so the sound is clipping. Render the video again with this version of explainroo, which holds the peak at ${dbtp(PEAK_CEILING)}. If it still clips, lower "loudness" in video.json.` });
+  } else if (loud?.truePeak > PEAK_CEILING) {
+    issues.push({ level: 'warn', message: `the true peak is ${dbtp(loud.truePeak)}, above the ceiling of ${dbtp(PEAK_CEILING)}` });
+  }
 
   const alpha = v && (String(v.tags?.alpha_mode ?? v.tags?.ALPHA_MODE) === '1' || /^(yuva|rgba|bgra|gbrap|argb|abgr)/.test(v.pix_fmt || ''));
   let blacks = [];
