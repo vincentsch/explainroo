@@ -18,6 +18,7 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const GUARD = new URL('../test/helpers/guard.js', import.meta.url).href;
 const STEP_TIMEOUT = 20 * 60 * 1000;
 const MIN_NARRATION_UNDERSTOOD = 0.85;
+const CLIP_PROMPT = 'A busy street at dusk in the rain';
 
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
 const topics = fs.readdirSync(path.join(ROOT, 'docs')).filter((f) => f.endsWith('.md')).map((f) => f.slice(0, -3));
@@ -108,6 +109,24 @@ const steps = [
     },
   })),
   {
+    args: ['init', 'video', '--json'],
+    check: (r) => {
+      const ignored = fs.readFileSync(path.join(r.dir, '.gitignore'), 'utf8').split('\n');
+      expect(ignored.includes('.env'), 'the .gitignore of a new project does not list .env');
+      expect(ignored.includes('history/private/'), 'the .gitignore of a new project does not list history/private/');
+    },
+  },
+  {
+    // No key is saved yet, and a dry run needs none.
+    args: ['clip', 'video', CLIP_PROMPT, '--seconds', '6', '--dry-run', '--json'],
+    check: (r, { temp, fake }) => {
+      expect(r.dry_run && r.model === 'google/veo-3.1-lite' && r.price_usd === 0.18, `the dry run says ${JSON.stringify(r)}`);
+      expect(fake.count('openrouter', 'POST /api/v1/videos') === 0, 'the dry run sent a paid request');
+      expect(!fs.existsSync(path.join(temp, 'video/history')), 'the dry run wrote to the record');
+      return `about $${r.price_usd} with no key`;
+    },
+  },
+  {
     args: ['services', '--json'],
     check: (r) => {
       expect(r.steps.length === 7 && r.services.length > 0, 'services lists no steps');
@@ -151,14 +170,6 @@ const steps = [
     },
   },
   {
-    args: ['init', 'video', '--json'],
-    check: (r) => {
-      const ignored = fs.readFileSync(path.join(r.dir, '.gitignore'), 'utf8').split('\n');
-      expect(ignored.includes('.env'), 'the .gitignore of a new project does not list .env');
-      expect(ignored.includes('history/private/'), 'the .gitignore of a new project does not list history/private/');
-    },
-  },
-  {
     args: ['voice', 'video', '--json'],
     check: (r) => {
       expect(r.scenes.length > 0 && r.duration > 0, 'voice made no narration');
@@ -195,6 +206,23 @@ const steps = [
       expect(r.versions[0].verify?.ok === true, 'history does not show the verify result');
       expect(r.versions[0].version === pkg.version, `the record says version ${r.versions[0].version}`);
       expect(r.open.length === 0, 'a free video has open paid jobs');
+    },
+  },
+  {
+    // One purchase from the fake, with the key connect saved above.
+    args: ['clip', 'video', CLIP_PROMPT, '--seconds', '6', '--max-cost', '1', '--json'],
+    check: (r, { fake }) => {
+      expect(r.status === 'done' && r.cost_usd === 0.18 && fs.statSync(r.file).size > 0, `the purchase says ${JSON.stringify(r)}`);
+      expect(fake.count('openrouter', 'POST /api/v1/videos') === 1, 'the purchase did not send one request');
+      return `${r.clip_line.slice(0, 40)}...`;
+    },
+  },
+  {
+    args: ['history', 'video', '--json'],
+    check: (r) => {
+      const clip = r.jobs.find((job) => job.kind === 'clip');
+      expect(clip?.status === 'done' && clip.cost_usd === 0.18 && clip.output.file.startsWith('assets/clips/'), 'history does not show the clip');
+      expect(r.open.length === 0, 'a finished clip is still open');
     },
   },
 ];
@@ -235,7 +263,7 @@ async function main() {
     console.log(`installed in ${((Date.now() - started) / 1000).toFixed(1)}s`);
     const settings = path.join(temp, 'settings');
     // Keys from this computer's own settings have no place in this test.
-    const env = { ...outside, ...fake.env, NODE_OPTIONS: `--import=${GUARD}`, EXPLAINROO_CONFIG: settings, OPENROUTER_API_KEY: '', ELEVENLABS_API_KEY: '' };
+    const env = { ...outside, ...fake.env, NODE_OPTIONS: `--import=${GUARD}`, EXPLAINROO_CONFIG: settings, OPENROUTER_API_KEY: '', ELEVENLABS_API_KEY: '', EXPLAINROO_CLIP_POLL_MS: '50' };
     await runSteps({ temp, settings, fake, installed: path.join(temp, 'node_modules', pkg.name) }, env);
     console.log('pack test passed');
     return 0;
