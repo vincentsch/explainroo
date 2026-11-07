@@ -40,6 +40,8 @@ Add an entry to `src/services.json`. The website can read the same file later.
   may give, and `normalizeConfig` checks them.
 - `connector` is for a second entry that uses the same account and key as another
   one. `openrouter-video` has `"connector": "openrouter"`, and needs no file of its own.
+- `setup.login` is `"oauth"` for a service that signs in through the browser
+  instead of taking a key. `setup.env` then lists the lines a login saves.
 
 ## 2. The connector
 
@@ -60,6 +62,13 @@ const connector = {
 };
 export default connector;
 ```
+
+A service that signs in through the browser has no `key`. It has `signIn` (the
+sign-in address, the token address, the redirect address and the scopes),
+`login(dir)`, which says whether a login is saved, `test(accessToken)` and
+`loginLines(tokens)`, the lines a new login saves. `src/oauth.js` holds the two
+steps of the sign-in and the refreshing of tokens, and `src/connectors/youtube.js`
+and `src/connectors/buffer.js` use it.
 
 Build each address with `serviceUrl(connector)` from `src/services.js`. It lets
 `EXPLAINROO_ELEVENLABS_URL` replace the base address. That variable is read from

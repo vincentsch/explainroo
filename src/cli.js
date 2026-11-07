@@ -76,7 +76,8 @@ AI video clips (optional, costs money, needs an OpenRouter API key)
 Outside services (optional)
   services [step]       list the choices for each step, free ones first (--project dir)
                         Steps: ${STEPS.map((s) => s.id).join(', ')}
-  connect <service>     set a service up: test its key and save it (--key-stdin, --project dir)
+  connect <service>     set a service up: test its key and save it (--key-stdin, --project dir), or sign in
+                        through the browser and finish with --callback-url '<address>'
   history [project]     open paid jobs with the command that continues each one, spend and renders
 
 Reference

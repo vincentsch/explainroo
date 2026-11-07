@@ -253,6 +253,73 @@
         "steps": ["Nothing to set up."],
         "use": "Run \"explainroo package <project> --platform tiktok\" and upload what is in out/package/tiktok/. The platforms are youtube, shorts, tiktok, reels, linkedin and x. Run \"explainroo docs publishing\" for more."
       }
+    },
+    {
+      "id": "youtube",
+      "step": "posting",
+      "name": "YouTube with your own Google client",
+      "about": "\"explainroo publish --via youtube\" uploads a youtube or shorts package to your channel. It signs in with a Google client that you make in your own Google Cloud project, so no other company stands between you and YouTube.",
+      "free": true,
+      "partner": false,
+      "status": "available",
+      "cost": "Free. On 2026-11-07 YouTube let each Google Cloud project upload 100 videos a day through its API.",
+      "data_leaves": "The video, its title and its description go to YouTube, and only when you run \"explainroo publish\".",
+      "setup": {
+        "env": ["YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN"],
+        "login": "oauth",
+        "url": "https://console.cloud.google.com/apis/credentials",
+        "steps": [
+          "Open console.cloud.google.com and make a project, or pick one of yours.",
+          "Turn on the YouTube Data API v3 for that project.",
+          "Set up the OAuth consent screen, and add your own Google account as a test user.",
+          "Under Credentials, make an OAuth client ID of the type Desktop app.",
+          "Copy its client id and client secret."
+        ],
+        "use": "See the post first with: explainroo publish <project> --via youtube --dry-run. Run \"explainroo docs publishing\" for more."
+      }
+    },
+    {
+      "id": "buffer",
+      "step": "posting",
+      "name": "Buffer",
+      "about": "A company that posts to social networks for you. \"explainroo publish --via buffer\" sends a package to one of your Buffer channels on YouTube, TikTok, Instagram, LinkedIn or X.",
+      "free": true,
+      "partner": false,
+      "status": "available",
+      "cost": "Free on Buffer's free plan, which limits how many channels and posts you have. Bigger plans cost money on your Buffer account.",
+      "data_leaves": "The title, the text and a link to the video go to Buffer, which fetches the video from that link and posts it. The video has to be online first, through \"explainroo share\" or your own host.",
+      "setup": {
+        "env": ["BUFFER_ACCESS_TOKEN", "BUFFER_REFRESH_TOKEN"],
+        "login": "oauth",
+        "url": "https://buffer.com",
+        "steps": [
+          "Make an account at buffer.com and connect the channels you want to post to.",
+          "Run \"explainroo connect buffer\", open the link it prints and approve.",
+          "Give the address the browser lands on to \"explainroo connect buffer --callback-url\"."
+        ],
+        "use": "See the post first with: explainroo publish <project> --via buffer --platform tiktok --dry-run. Run \"explainroo docs publishing\" for more."
+      }
+    },
+    {
+      "id": "blotato",
+      "step": "posting",
+      "name": "Blotato",
+      "about": "A company that posts to social networks for you. \"explainroo publish --via blotato\" uploads a package to Blotato and posts it to one of your accounts on YouTube, TikTok, Instagram, LinkedIn or X.",
+      "free": false,
+      "partner": false,
+      "status": "available",
+      "cost": "Paid. It needs a paid Blotato plan, and the Starter plan cost $29 a month on 2026-11-07. Creating an API key ends Blotato's free trial and starts that plan on your account.",
+      "data_leaves": "The video, its title and its text go to Blotato, which posts them to the network, and only when you run \"explainroo publish\".",
+      "setup": {
+        "env": ["BLOTATO_API_KEY"],
+        "url": "https://my.blotato.com",
+        "steps": [
+          "Creating an API key ends Blotato's free trial and starts its paid Starter plan on your account. Only go on if you want that.",
+          "Make an account at blotato.com and connect the accounts you want to post to.",
+          "Open the API settings in your Blotato account, make a key, and copy all of it, also any \"=\" at the end."
+        ],
+        "use": "See the post first with: explainroo publish <project> --via blotato --platform tiktok --dry-run. Run \"explainroo docs publishing\" for more."
+      }
     }
   ]
 }

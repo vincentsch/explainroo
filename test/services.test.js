@@ -30,7 +30,8 @@ test('every entry says what it costs, what data leaves and how to set it up, and
     assert.ok(s.setup.steps.length > 0 && s.setup.steps.every((step) => typeof step === 'string' && step.trim()), s.id);
     assert.ok(typeof s.setup.use === 'string' && s.setup.use.trim(), s.id);
     if (s.free) {
-      assert.deepEqual(s.setup.env, [], `${s.id} is free, so it needs no key`);
+      // A free service needs no key, at most a login to the user's own account.
+      if (s.setup.login !== 'oauth') assert.deepEqual(s.setup.env, [], `${s.id} is free, so it needs no key`);
       assert.match(s.cost, /^Free/, s.id);
     } else assert.match(s.cost, /Paid/, s.id);
   }
@@ -46,7 +47,7 @@ test('within each step free entries come first, and the first entry of every ste
 });
 
 test('the first list holds what exists today', () => {
-  assert.deepEqual(SERVICES.map((s) => s.id), ['kokoro', 'recording', 'elevenlabs', 'whisper', 'own-images', 'openrouter', 'own-footage', 'openrouter-video', 'built-in-music', 'own-music', 'soundroo', 'web-player', 'cloud', 'package']);
+  assert.deepEqual(SERVICES.map((s) => s.id), ['kokoro', 'recording', 'elevenlabs', 'whisper', 'own-images', 'openrouter', 'own-footage', 'openrouter-video', 'built-in-music', 'own-music', 'soundroo', 'web-player', 'cloud', 'package', 'youtube', 'buffer', 'blotato']);
 });
 
 test('the hosted link is coming and says what leaves the computer, and package is the free route for posting', () => {
@@ -80,7 +81,8 @@ test('a service with a key has a connector with a free key test, and a connector
   for (const connector of CONNECTORS) {
     assert.ok(findService(connector.id), connector.id);
     assert.ok(/^https:\/\//.test(connector.baseUrl), connector.id);
-    assert.equal(typeof connector.key, 'function', connector.id);
+    // A service either takes a key or signs in through the browser.
+    assert.ok(typeof connector.key === 'function' || (connector.signIn && typeof connector.login === 'function'), connector.id);
   }
   // Paid speech needs all of this from a connector.
   for (const connector of CONNECTORS.filter((c) => c.speak)) {
@@ -106,6 +108,30 @@ test('the entries for clips and music say what they cost, what leaves the comput
   assert.match(soundroo.data_leaves, /Nothing leaves your computer unless you run Soundroo's own share command/);
   assert.equal(soundroo.setup.url, 'https://www.soundroo.com');
   assert.match(soundroo.setup.steps.join(' '), /Node 22/);
+});
+
+test('the posting services say what they cost and what leaves the computer, and Blotato says that its key starts a paid plan', () => {
+  const [youtube, buffer, blotato] = ['youtube', 'buffer', 'blotato'].map(findService);
+  for (const s of [youtube, buffer, blotato]) {
+    assert.equal(s.step, 'posting', s.id);
+    assert.equal(s.partner, false, s.id);
+    assert.match(s.setup.use, new RegExp(`explainroo publish <project> --via ${s.id} .*--dry-run`), s.id);
+  }
+  assert.equal(youtube.free, true);
+  assert.equal(youtube.setup.login, 'oauth');
+  assert.deepEqual(youtube.setup.env, ['YOUTUBE_CLIENT_ID', 'YOUTUBE_CLIENT_SECRET', 'YOUTUBE_REFRESH_TOKEN']);
+  assert.match(youtube.data_leaves, /^The video, its title and its description go to YouTube/);
+  assert.match(youtube.setup.steps.join(' '), /Desktop app/);
+  assert.equal(buffer.free, true);
+  assert.equal(buffer.setup.login, 'oauth');
+  assert.match(buffer.data_leaves, /The title, the text and a link to the video go to Buffer/);
+  assert.equal(blotato.free, false);
+  assert.deepEqual(blotato.setup.env, ['BLOTATO_API_KEY']);
+  assert.match(blotato.cost, /Creating an API key ends Blotato's free trial/);
+  assert.match(blotato.setup.steps[0], /^Creating an API key ends Blotato's free trial and starts its paid Starter plan/);
+  assert.match(blotato.data_leaves, /^The video, its title and its text go to Blotato/);
+  const posting = SERVICES.filter((s) => s.step === 'posting').map((s) => s.id);
+  assert.deepEqual(posting, ['package', 'youtube', 'buffer', 'blotato']);
 });
 
 test('the label "paid partner" appears only when the flag is true', () => {
@@ -212,7 +238,7 @@ test('the code that makes the voice and the command line name no paid service', 
 test('the help is made from the data, and names every new command', () => {
   const help = run(['--help']).stdout;
   assert.match(help, /--elevenlabs for your ElevenLabs key/);
-  for (const words of [/^ {2}services \[step\]/m, /^ {2}connect <service>/m, /^ {2}history \[project\]/m, /--new/, /--resume <id>/, /--key-stdin/, /^ {2}clip \[project\]/m, /--dry-run/, /--max-cost/, /--seconds/, /--aspect/, /--model cheap\|quality/, /--resolution/, /--audio/, /--name/, /--no-wait/]) assert.match(help, words);
+  for (const words of [/^ {2}services \[step\]/m, /^ {2}connect <service>/m, /^ {2}history \[project\]/m, /--new/, /--resume <id>/, /--key-stdin/, /^ {2}clip \[project\]/m, /--dry-run/, /--max-cost/, /--seconds/, /--aspect/, /--model cheap\|quality/, /--resolution/, /--audio/, /--name/, /--no-wait/, /--callback-url/]) assert.match(help, words);
 });
 
 test('the data names no paid partner, and it has no ranking words', () => {
