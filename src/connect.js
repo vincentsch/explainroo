@@ -1,6 +1,7 @@
 // explainroo connect <service>: walks through setting a service up. A key comes
 // from a hidden prompt or from stdin, and never from the command line, because
 // arguments end up in shell history and agent logs.
+import fs from 'node:fs';
 import path from 'node:path';
 import { ProjectError, rememberSecret } from './errors.js';
 import { findEnv, keyFile, saveKey } from './env.js';
@@ -63,7 +64,8 @@ export async function connect(args, flags, { print, log, notice }) {
   const known = SERVICES.filter(needsKey).map((s) => s.id);
   if (name === undefined) throw new ProjectError(`usage: explainroo connect <service> [--key-stdin] [--project <dir>]. Services with a key: ${known.join(', ')}. "explainroo services" lists them all.`);
   const service = findService(name);
-  if (!service) throw new ProjectError(`there is no service "${name}". The services are: ${SERVICES.map((s) => s.id).join(', ')}.`);
+  // The word itself isn't repeated, because it may be a key typed in the wrong place.
+  if (!service) throw new ProjectError(`there is no service with that name. The services are: ${SERVICES.map((s) => s.id).join(', ')}. A key never goes on the command line.`);
   // Whatever else is on the line may be a key, so it is never repeated.
   if (rest.length || Object.keys(flags).some((flag) => !FLAGS.has(flag))) {
     throw new ProjectError('connect only takes the service, --key-stdin and --project. A key never goes on the command line, because it would end up in shell history and logs.');
@@ -80,6 +82,8 @@ export async function connect(args, flags, { print, log, notice }) {
   const project = flags.project === undefined ? null : findProjectDir(flags.project);
   const file = keyFile({ project });
   const lookIn = project ?? process.cwd();
+  // A project's .env can be a link to a file that git tracks, in a stranger's project too.
+  if (project && fs.lstatSync(file, { throwIfNoEntry: false })?.isSymbolicLink()) throw new ProjectError(`${file} is a link, so a key saved there could end up anywhere. Remove the link, or leave out --project.`);
 
   let key;
   // A terminal shows what is typed on stdin, so there the hidden prompt takes over.

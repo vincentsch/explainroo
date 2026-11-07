@@ -60,7 +60,7 @@ test('an unknown service is an error that lists the real ones, and no service pr
   const { cli } = await setup(t);
   const r = await cli(['connect', 'nope']);
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /there is no service "nope".*kokoro.*openrouter/);
+  assert.match(r.stderr, /there is no service with that name.*kokoro.*openrouter/);
   const usage = await cli(['connect']);
   assert.equal(usage.code, 1);
   assert.match(usage.stderr, /usage: explainroo connect <service>/);
@@ -147,7 +147,7 @@ test('an empty key, and one that could break a header, stop before any request',
 test('a key on the command line is refused and never repeated', async (t) => {
   const { fake, env, cli } = await setup(t);
   const key = 'sk-on-the-command-line-1234';
-  for (const args of [['connect', 'openrouter', key], ['connect', 'openrouter', '--key', key], [`connect`, 'openrouter', `--key=${key}`], ['connect', 'openrouter', '--key-stdin', key], ['connect', 'openrouter', `--${key}`]]) {
+  for (const args of [['connect', key], ['connect', 'openrouter', key], ['connect', 'openrouter', '--key', key], [`connect`, 'openrouter', `--key=${key}`], ['connect', 'openrouter', '--key-stdin', key], ['connect', 'openrouter', `--${key}`]]) {
     for (const flags of [[], ['--json']]) {
       const r = await cli([...args, ...flags]);
       assert.equal(r.code, 1, args.join(' '));
@@ -176,6 +176,18 @@ test('--project saves in that project, keeps the other lines and adds .env to it
   const notProject = await cli(['connect', 'openrouter', '--project', temp(t), '--key-stdin'], GOOD_KEY);
   assert.equal(notProject.code, 1);
   assert.match(notProject.stderr, /not a video project/);
+});
+
+test('--project refuses a .env that is a link, because the key could end up in a tracked file', async (t) => {
+  const { cli } = await setup(t);
+  const dir = projectFolder(t);
+  fs.writeFileSync(path.join(dir, 'notes.md'), 'notes\n');
+  fs.symlinkSync('notes.md', path.join(dir, '.env'));
+  const r = await cli(['connect', 'openrouter', '--project', dir, '--key-stdin'], GOOD_KEY);
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /is a link/);
+  assert.equal(fs.readFileSync(path.join(dir, 'notes.md'), 'utf8'), 'notes\n');
+  assert.ok(!r.text.includes(GOOD_KEY));
 });
 
 test('a source checkout saves in its own folder, and an installed copy in the settings folder', (t) => {
