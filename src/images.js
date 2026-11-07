@@ -44,7 +44,7 @@ function publicNames(name) {
 
 function stopped(project, job, reason, label) {
   const parts = [`${label} is job ${shortId(job)}. ${stopSentence(job, reason)}`];
-  if (reason === 'unknown') parts.push(`To check, run "${selfCommand()} history ${projectWord(project.dir)}" again in a few minutes: a run that is still working saves its result within 5 minutes. The activity page of your OpenRouter account shows what was charged.`);
+  if (reason === 'unknown') parts.push(`To check, run "${selfCommand()} history ${projectWord(project.dir)}" again in a few minutes: a run that is still working saves its result within 10 minutes. The activity page of your OpenRouter account shows what was charged.`);
   parts.push('To buy it again anyway, run the same command with --new.');
   return new ProjectError(parts.join(' '));
 }

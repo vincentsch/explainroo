@@ -54,6 +54,16 @@ test('a free service needs nothing and says how to use it', async (t) => {
   assert.equal(json.needs_key, false);
   assert.match(json.use, /"provider": "recording"/);
   assert.equal(fake.count('openrouter', KEY_CHECK.openrouter), 0);
+  assert.doesNotMatch(r.stdout, /coming/);
+});
+
+test('a free service that is coming says so', async (t) => {
+  const { fake, cli } = await setup(t);
+  const r = await cli(['connect', 'cloud']);
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /^Hosted link on explainroo\.com is free and needs no setting up\. The service is coming, so it may not answer yet\.\n/);
+  assert.equal(JSON.parse((await cli(['connect', 'cloud', '--json'])).stdout).coming, true);
+  assert.equal(fake.total(), 0);
 });
 
 test('the entry for video clips uses the OpenRouter connector and the same key', async (t) => {
@@ -265,7 +275,7 @@ test('connect says when another value is read first', async (t) => {
     child.on('close', (code) => resolve({ code, text }));
   });
   assert.equal(r.code, 0);
-  assert.match(r.text, /a different OPENROUTER_API_KEY is set/);
+  assert.match(r.text, /A different OPENROUTER_API_KEY is set/);
   assert.ok(!r.text.includes('another-value-in-the-environment'));
   assert.ok(!r.text.includes(GOOD_KEY));
 });

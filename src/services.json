@@ -47,7 +47,7 @@
       "id": "elevenlabs",
       "step": "voice",
       "name": "ElevenLabs",
-      "about": "A company that turns text into speech. It offers premium and cloned voices.",
+      "about": "A company that turns text into speech. It has its own voices and can clone one.",
       "free": false,
       "partner": false,
       "status": "available",
@@ -69,7 +69,7 @@
       "id": "cartesia",
       "step": "voice",
       "name": "Cartesia",
-      "about": "A company that turns text into speech with its Sonic voices. It reads everything between two pauses at once, so the sentences flow into each other.",
+      "about": "A company that turns text into speech with its Sonic voices. It reads everything between two pauses at once, so the sentences sound connected.",
       "free": false,
       "partner": false,
       "status": "available",
@@ -165,7 +165,7 @@
       "free": false,
       "partner": false,
       "status": "available",
-      "cost": "Paid per second on your OpenRouter account. On 2026-11-07 the rates it can price ran from about half a cent to 60 cents a second, and six silent seconds at 720p on the default model came to about 18 cents. \"explainroo clip <project> \"<what it shows>\" --seconds 6 --dry-run\" gives today's price. A failed try may cost money too.",
+      "cost": "Paid per second on your OpenRouter account. On 2026-11-07 the video models explainroo can price cost from about half a cent to 60 cents a second. Six silent seconds at 720p on the default model came to about 18 cents. \"explainroo clip <project> \"<what it shows>\" --seconds 6 --dry-run\" gives today's price. A failed try may cost money too.",
       "data_leaves": "The prompt goes to OpenRouter and to the company that runs the video model. Video jobs are not covered by OpenRouter's zero data retention.",
       "setup": {
         "env": ["OPENROUTER_API_KEY"],
@@ -247,7 +247,7 @@
       "id": "cloud",
       "step": "sharing",
       "name": "Hosted link on explainroo.com",
-      "about": "\"explainroo share\" uploads a finished video to explainroo.com and gives back a page that anyone with the link can watch, and a link to the file that posting tools can use. The service is coming. The command works, and it says so when no server answers yet.",
+      "about": "\"explainroo share\" uploads a finished video to explainroo.com and gives back a page that anyone with the link can watch, and a link to the file that posting tools can use. The service is coming. Until it runs, the command says so and makes no link.",
       "free": true,
       "partner": false,
       "status": "coming",
@@ -280,7 +280,7 @@
       "id": "youtube",
       "step": "posting",
       "name": "YouTube with your own Google client",
-      "about": "\"explainroo publish --via youtube\" uploads a youtube or shorts package to your channel. It signs in with a Google client that you make in your own Google Cloud project, so no other company stands between you and YouTube.",
+      "about": "\"explainroo publish --via youtube\" uploads a youtube or shorts package to your channel. It signs in with a Google client that you make in your own Google Cloud project, so the video and your login go only to Google.",
       "free": true,
       "partner": false,
       "status": "available",
@@ -309,13 +309,14 @@
       "partner": false,
       "status": "available",
       "cost": "Free on Buffer's free plan, which limits how many channels and posts you have. Bigger plans cost money on your Buffer account.",
-      "data_leaves": "The title, the text and a link to the video go to Buffer, which fetches the video from that link and posts it. The video has to be online first, through \"explainroo share\" or your own host.",
+      "data_leaves": "The title, the text and a link to the video go to Buffer, which fetches the video from that link and posts it. The video has to be online first, on your own host, or through \"explainroo share\" once its service runs.",
       "setup": {
         "env": ["BUFFER_ACCESS_TOKEN", "BUFFER_REFRESH_TOKEN"],
         "login": "oauth",
         "url": "https://buffer.com",
         "steps": [
           "Make an account at buffer.com and connect the channels you want to post to.",
+          "Until explainroo has a Buffer client of its own, you make one in Buffer's settings and put its id in BUFFER_CLIENT_ID. \"explainroo connect buffer\" shows how.",
           "Run \"explainroo connect buffer\", open the link it prints and approve.",
           "Give the address the browser lands on to \"explainroo connect buffer --callback-url\"."
         ],
@@ -338,7 +339,7 @@
         "steps": [
           "Creating an API key ends Blotato's free trial and starts its paid Starter plan on your account. Only go on if you want that.",
           "Make an account at blotato.com and connect the accounts you want to post to.",
-          "Open the API settings in your Blotato account, make a key, and copy all of it, also any \"=\" at the end."
+          "Open the API settings in your Blotato account, make a key, and copy all of it, including any \"=\" at the end."
         ],
         "use": "See the post first with: explainroo publish <project> --via blotato --platform tiktok --dry-run. Run \"explainroo docs publishing\" for more."
       }

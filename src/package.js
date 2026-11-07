@@ -11,7 +11,7 @@ import { encodeVideo, planExtras, versionLine, writeExtras } from './render.js';
 import { buildChapters, toChaptersText } from './chapters.js';
 import { moveFile, projectWord, readVersions, recordVersion, relativeFile, selfCommand, sha256File, versionLines } from './history.js';
 import { PLATFORMS, hashtagFlag, postWords, readPostFile } from './post.js';
-import { oneOf } from './services.js';
+import { allOf, oneOf } from './services.js';
 
 function fail(message) {
   throw new ProjectError(message);
@@ -94,7 +94,7 @@ function setupWords(project) {
 // flags and win over post.json.
 export async function packageVideo(arg, { lang, platform, size, title, description, hashtags, workers, log = () => {} } = {}) {
   if (platform === undefined) fail(`package needs --platform ${oneOf(Object.keys(PLATFORMS))}`);
-  if (!Object.hasOwn(PLATFORMS, platform)) fail(`there is no platform "${platform}". The platforms are ${oneOf(Object.keys(PLATFORMS))}.`);
+  if (!Object.hasOwn(PLATFORMS, platform)) fail(`there is no platform "${platform}". The platforms are ${allOf(Object.keys(PLATFORMS))}.`);
   if (title !== undefined && !title.trim()) fail('--title needs words');
   const spec = PLATFORMS[platform];
   const own = loadProject(arg, { lang });

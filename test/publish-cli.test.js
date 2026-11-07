@@ -23,7 +23,7 @@ test('a YouTube dry run works without a login and says what is missing, and send
   assert.equal(r.out.plan.destination, null);
   assert.equal(r.out.request.start.body.status.privacyStatus, 'private');
   const human = await publish('--via', 'youtube', '--dry-run');
-  assert.match(human.stdout, /^This is what a real run would post\. Nothing was sent\./);
+  assert.match(human.stdout, /^This is what a real run would post\. Nothing was posted\./);
   assert.match(human.stdout, /^Channel: {3}not known yet$/m);
   assert.match(human.stdout, /^Before it can post:\n {2}There is no YouTube login yet/m);
   assert.equal(fake.total(), 0);
@@ -626,6 +626,21 @@ test('a 429 from Buffer stops at once with when to try again, sends nothing agai
   assert.equal(mutations(s.fake).length, 2);
 });
 
+test('a busy sign-in service says how long to wait, in seconds or until a date', async (t) => {
+  const s = await setup(t, { platforms: ['tiktok'], login: ['buffer'] });
+  const media = ['--media-url', 'https://media.example/v.mp4'];
+  expireBufferLogin(s);
+  const date = 'Sat, 07 Nov 2026 12:00:00 GMT';
+  s.fake.plan('buffer-auth', 'POST /token', { status: 429, headers: { 'Retry-After': date }, body: { error: 'rate_limited' } }, { status: 429, headers: { 'Retry-After': '45' }, body: { error: 'rate_limited' } });
+  const dated = await s.publish('--via', 'buffer', ...media, '--yes');
+  assert.equal(dated.code, 1);
+  assert.match(dated.stderr, new RegExp(`has had too many requests and asks to wait until ${date} before the next one\\. Nothing was sent`));
+  const counted = await s.publish('--via', 'buffer', ...media, '--yes');
+  assert.equal(counted.code, 1);
+  assert.match(counted.stderr, /has had too many requests and asks to wait 45 seconds before the next one\. Nothing was sent/);
+  assert.equal(mutations(s.fake).length, 0);
+});
+
 // --- What publish checks before anything goes out -------------------------------------
 
 test('publish posts only a package as package left it: missing, changed, failed verify or broken all stop first', async (t) => {
@@ -727,7 +742,7 @@ test('Buffer gets the video from --media-url or from a share of this exact file,
 test('publish refuses flags it does not know, like a time for a post, and flags for another service', async (t) => {
   const s = await setup(t, { platforms: ['youtube'], login: ['youtube'] });
   for (const [args, words] of [
-    [['--via', 'buffer', '--at', '2026-12-01T10:00:00Z'], /publish does not take --at\. .* It has no scheduler: a post goes out when the command runs\. Nothing was sent\./],
+    [['--via', 'buffer', '--at', '2026-12-01T10:00:00Z'], /publish does not take --at\. .* It has no scheduler, so a post goes out when the command runs\. Nothing was sent\./],
     [['--via', 'youtube', '--schedule', 'tomorrow'], /publish does not take --schedule/],
     [['--via', 'youtube', '--channel', 'UC123'], /--channel is for --via buffer/],
     [['--via', 'youtube', '--account', '1'], /--account is for --via blotato/],
@@ -804,7 +819,7 @@ test('a status that can\'t be read after the post leaves it accepted, and a repe
   s.fake.plan('buffer', GQL, {}, {}, {}, { status: 200, body: { errors: [{ message: 'Cannot query the post right now', extensions: { code: 'UNEXPECTED' } }] } });
   const r = await s.publish('--via', 'buffer', ...media, '--yes');
   assert.equal(r.code, 0, r.text);
-  assert.match(r.stdout, /^Buffer accepted the post to @fakehandle on TikTok \(id post-\d+\)\.\n.*The status could not be read: Buffer refused the request \(HTTP 200: Cannot query the post right now\)\. It is not finished yet\. Run the same command later to read the status\. It will not post again\./s);
+  assert.match(r.stdout, /^Buffer accepted the post to @fakehandle on TikTok \(id post-\d+\)\.\n.*The status could not be read: Buffer refused the request \(HTTP 200: Cannot query the post right now\)\. Run the same command later to read the status\. It will not post again\./s);
   assert.equal(jobs(s.dir)[0].stage, 'accepted');
   // Without --media-url and with no share, the post that exists is still found.
   const later = await s.json('--via', 'buffer');
@@ -930,7 +945,7 @@ test('a Buffer answer counts by what it holds: a post with errors is posted, err
   unsure.fake.plan('buffer', GQL, {}, {}, { status: 200, body: { data: null, errors: [{ message: 'Unexpected error', extensions: { code: 'UNEXPECTED' } }] } });
   const unknown = await unsure.publish('--via', 'buffer', ...media, '--yes');
   assert.equal(unknown.code, 1);
-  assert.match(unknown.stderr, /Buffer answered without saying whether it made the post \(Unexpected error\)\. The post to @fakehandle on TikTok went out, and no answer came back\. So the post may or may not exist\. Look at the channel in Buffer for the post\./);
+  assert.match(unknown.stderr, /Buffer answered without saying whether it made the post \(Unexpected error\)\. The request for the post to @fakehandle on TikTok went out\. So the post may or may not exist\. Look at the channel in Buffer for the post\./);
   assert.equal(jobs(unsure.dir)[0].stage, 'sending');
   assert.match((await unsure.publish('--via', 'buffer', ...media, '--yes')).stderr, /may or may not exist/);
   assert.equal(mutations(unsure.fake).length, 1);

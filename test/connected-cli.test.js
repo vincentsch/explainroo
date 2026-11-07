@@ -1094,7 +1094,7 @@ test('--new while the last try is still running picks that job up, so a command 
   const first = await cli(command, { EXPLAINROO_CLIP_WAIT_MS: '100' });
   assert.equal(first.code, 0, first.text);
   assert.match(first.stderr, /If this stops, run the same command again\. It will not buy again\./);
-  assert.match(first.stdout, /Running the same command again will not buy again/);
+  assert.match(first.stdout, /To get the clip, run the same command again, which buys nothing/);
   // The same command, --new and all, the way an agent runs it again after a timeout.
   const second = await cli(command, { EXPLAINROO_CLIP_WAIT_MS: '100' });
   assert.equal(second.code, 0, second.text);
@@ -1154,7 +1154,7 @@ test('the wait is limited: the command exits cleanly and says running it again w
   const r = await cli(bought(dir, STREET), { EXPLAINROO_CLIP_WAIT_MS: '150' });
   assert.equal(r.code, 0, r.text);
   assert.match(r.stdout, /still running/);
-  assert.match(r.stdout, /Running the same command again will not buy again/);
+  assert.match(r.stdout, /To get the clip, run the same command again, which buys nothing/);
   const json = JSON.parse((await cli([...bought(dir, STREET), '--json'], { EXPLAINROO_CLIP_WAIT_MS: '50' })).stdout);
   assert.equal(json.status, 'running');
   assert.match(json.command, /--resume \w+$/);
@@ -1183,7 +1183,7 @@ test('--no-wait returns right after the request, and the same command picks it u
   fake.plan('openrouter', CLIP_STATUS, running);
   const again = await cli(bought(dir, STREET, '--no-wait'));
   assert.equal(again.code, 0, again.text);
-  assert.match(again.stdout, /It is still running\. Running the same command again will not buy again/);
+  assert.match(again.stdout, /It is still running\. To get the clip, run the same command again, which buys nothing/);
   assert.equal(fake.count('openrouter', CLIP_POST), 1);
   assert.equal(fake.count('openrouter', CLIP_STATUS), 1);
   assert.equal(jobs(dir)[0].status, 'running');
@@ -1230,7 +1230,7 @@ test('a download that keeps failing leaves the job as it is, and the next run ge
   const r = await cli(bought(dir, STREET));
   assert.equal(r.code, 0, r.text);
   assert.match(r.stdout, /the download did not work/);
-  assert.match(r.stdout, /will not buy again/);
+  assert.match(r.stdout, /run the same command again, which buys nothing/);
   assert.equal(jobs(dir)[0].status, 'running');
   assert.equal((await cli(bought(dir, STREET))).code, 0);
   assert.equal(jobs(dir)[0].status, 'done');
@@ -1574,7 +1574,7 @@ test('a rejected key, a refused file, too many uploads and a check that took too
   assert.doesNotMatch(unkeyed.stderr, /rejected/);
   const bad = await cli(['share', dir], { EXPLAINROO_CLOUD_KEY: 'not-the-key' });
   assert.equal(bad.code, 1);
-  assert.match(bad.stderr, /rejected the key in EXPLAINROO_CLOUD_KEY \(HTTP 401: Unauthenticated\.\)\. No share link was made, and the video was not shared without the key\./);
+  assert.match(bad.stderr, /rejected the key in EXPLAINROO_CLOUD_KEY \(HTTP 401: Unauthenticated\.\)\. No share link was made, and explainroo did not try again without the key\./);
   assert.doesNotMatch(bad.text, /not-the-key/);
   assert.equal(uploads(), 2, 'it never tries again without the key');
   assert.equal(fake.requests('cloud', SHARE)[1].headers.authorization, 'Bearer not-the-key');

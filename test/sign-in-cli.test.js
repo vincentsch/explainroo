@@ -169,7 +169,7 @@ test('connect blotato says before the key is made that it ends the trial, and ke
   assert.ok(!r.text.includes(BLOTATO_KEY));
   const cut = await cli(['connect', 'blotato', '--key-stdin'], { input: `${BLOTATO_KEY.replace(/=+$/, '')}\n` });
   assert.equal(cut.code, 1);
-  assert.match(cut.stderr, /Blotato rejected the key\. Check that you copied all of it, also any "=" at the end\./);
+  assert.match(cut.stderr, /Blotato rejected the key\. Check that you copied all of it, including any "=" at the end\./);
 });
 
 

@@ -26,7 +26,7 @@ import { packageDir } from './package.js';
 import { langArg } from './project.js';
 import { DEFAULT_CATEGORY, PLATFORMS, withHashtags } from './post.js';
 import { liveShare } from './share.js';
-import { oneOf } from './services.js';
+import { allOf, oneOf } from './services.js';
 import youtube from './connectors/youtube.js';
 import buffer, { BUFFER_VALUES } from './connectors/buffer.js';
 import blotato from './connectors/blotato.js';
@@ -78,7 +78,7 @@ function clock(seconds) {
 // other services take the one package they can post, and list them when there are more.
 function pickPlatform(project, via, platform) {
   if (platform !== undefined) {
-    if (!Object.hasOwn(PLATFORMS, platform)) fail(`there is no platform "${platform}". The platforms are ${oneOf(Object.keys(PLATFORMS))}.`);
+    if (!Object.hasOwn(PLATFORMS, platform)) fail(`there is no platform "${platform}". The platforms are ${allOf(Object.keys(PLATFORMS))}.`);
     return platform;
   }
   if (via === 'youtube') return 'youtube';
@@ -483,7 +483,7 @@ async function carryOut(project, job, { log, notice }) {
     }
     const said = e instanceof ServiceError ? e.message : 'the connection broke';
     updateJob(dir, job, { note: hideSecrets(said) });
-    throw new ProjectError(unknownOutcome(job, `${said.replace(/\.$/, '')}. The post to ${destinationWords(job)} went out, and no answer came back.`));
+    throw new ProjectError(unknownOutcome(job, `${said.replace(/\.$/, '')}. The request for the post to ${destinationWords(job)} went out.`));
   }
   job = setStage(dir, job, 'accepted', { job_id: answer.id, accepted: new Date().toISOString(), result: { status: answer.status ?? null, link: answer.link ?? null, error: null } });
   notice(`${VIA[job.provider].name} accepted the post (id ${answer.id}).`);
@@ -697,7 +697,7 @@ function linkLines(r) {
 
 export function formatPublish(r) {
   if (r.dry_run) {
-    const lines = [`This is what a real run would post. Nothing was sent.\n${planText(r.plan)}`];
+    const lines = [`This is what a real run would post. Nothing was posted.\n${planText(r.plan)}`];
     if (r.missing.length) lines.push('Before it can post:', ...r.missing.map((m) => `  ${m}`));
     const would = {
       post: 'The real run shows this plan again and posts only after a typed yes, or with --yes when there is no terminal.',
@@ -719,6 +719,6 @@ export function formatPublish(r) {
   const lines = [r.stage === 'finished' ? `Posted to ${where}${through}.` : `${service} accepted the post to ${where} (id ${r.post.id}).`];
   if (r.post.status) lines.push(`Status: ${r.post.status}${r.post.details ? ` (${r.post.details})` : ''}`);
   lines.push(...linkLines(r));
-  if (r.stage === 'accepted') lines.push(`${r.note ? `The status could not be read: ${r.note}. ` : ''}It is not finished yet. Run the same command later to read the status. It will not post again.`);
+  if (r.stage === 'accepted') lines.push(`${r.note ? `The status could not be read: ${r.note}.` : 'It is not finished yet.'} Run the same command later to read the status. It will not post again.`);
   return lines.join('\n');
 }

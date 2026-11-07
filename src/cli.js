@@ -55,11 +55,12 @@ Post a video
   package [project]     write a folder for one platform: the sized video, its words, captions, cover, AI label
                         and credits (--platform youtube|shorts|tiktok|reels|linkedin|x, --title, --description,
                         --hashtags, --size for x, --workers n). The words come from post.json, see "docs publishing"
-  share [project]       upload a finished video to explainroo.com and get a page link (--platform name shares
-                        a package, --file, --title, --new uploads again). Only share and publish upload a video
+  share [project]       upload a finished video to explainroo.com and get a page link, once that service runs
+                        (--platform name shares a package, --file, --title, --new uploads again). Only share
+                        and publish upload a video
   publish [project]     post a package through YouTube, Buffer or Blotato (--via youtube|buffer|blotato,
                         --platform name, --privacy private|unlisted|public, --media-url, --channel id for Buffer,
-                        --account id for Blotato). --dry-run shows the exact post and sends nothing. A real
+                        --account id for Blotato). --dry-run shows the exact post and posts nothing. A real
                         run needs a typed yes, or --yes when there is no terminal. --new posts again
 
 Product demos
@@ -83,7 +84,7 @@ Outside services (optional)
                         Steps: ${STEPS.map((s) => s.id).join(', ')}
   connect <service>     set a service up: test its key and save it (--key-stdin, --project dir), or sign in
                         through the browser and finish with --callback-url '<address>'
-  history [project]     open paid jobs with the command that continues each one, spend and renders
+  history [project]     open paid jobs and the command that continues each one, then what was spent and rendered
 
 Reference
   voices [project]      list Kokoro voices (--language es for one language, --provider ${LISTS_VOICES.map((c) => c.id).join('|')} for the
@@ -226,7 +227,7 @@ export async function main(argv) {
       }
       case 'publish': {
         const unknown = Object.keys(flags).filter((flag) => !PUBLISH_FLAGS.has(flag));
-        if (unknown.length) throw new ProjectError(`publish does not take --${unknown[0]}. It takes ${[...PUBLISH_FLAGS].map((f) => `--${f}`).join(', ')}. It has no scheduler: a post goes out when the command runs. Nothing was sent.`);
+        if (unknown.length) throw new ProjectError(`publish does not take --${unknown[0]}. It takes ${[...PUBLISH_FLAGS].map((f) => `--${f}`).join(', ')}. It has no scheduler, so a post goes out when the command runs. Nothing was sent.`);
         if (pos.length > 1) throw new ProjectError('usage: explainroo publish [project] --via youtube|buffer|blotato [--platform tiktok] [--dry-run] [--yes]. Nothing was sent.');
         const project = loadProject(pos[0], langOverride(flags));
         const r = await publish(project, { via: textFlag(flags, 'via'), platform: textFlag(flags, 'platform'), privacy: textFlag(flags, 'privacy'), mediaUrl: textFlag(flags, 'media-url'), channel: textFlag(flags, 'channel'), account: textFlag(flags, 'account'), dryRun: !!flags['dry-run'], yes: !!flags.yes, fresh: !!flags.new, log, notice });

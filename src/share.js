@@ -11,7 +11,7 @@ import { createJob, forgetJob, historyDir, jobKey, listAttempts, projectWord, re
 import { langArg, outputPath } from './project.js';
 import { packageDir } from './package.js';
 import { PLATFORMS } from './post.js';
-import { oneOf, serviceUrl } from './services.js';
+import { allOf, serviceUrl } from './services.js';
 
 function fail(message) {
   throw new ProjectError(message);
@@ -32,7 +32,7 @@ function shareTarget(project, { platform, file }) {
     return { file: chosen, title: project.config.title, chosen: true };
   }
   if (platform !== undefined) {
-    if (!Object.hasOwn(PLATFORMS, platform)) fail(`there is no platform "${platform}". The platforms are ${oneOf(Object.keys(PLATFORMS))}.`);
+    if (!Object.hasOwn(PLATFORMS, platform)) fail(`there is no platform "${platform}". The platforms are ${allOf(Object.keys(PLATFORMS))}.`);
     const folder = packageDir(project, platform);
     const video = path.join(folder, 'video.mp4');
     let post;
@@ -153,7 +153,7 @@ function failure(e, project) {
     case 'not-sent': return `${e.message}. The video was not sent.`;
     case 'not-running': return `the hosted service isn't running at ${d.service} yet (it answered with HTTP ${d.status}). No share link was made. ${others}`;
     case 'key': return d.keyed
-      ? `the hosted service rejected the key in EXPLAINROO_CLOUD_KEY (HTTP 401${heard}). No share link was made, and the video was not shared without the key. Check the key and run the same command again.`
+      ? `the hosted service rejected the key in EXPLAINROO_CLOUD_KEY (HTTP 401${heard}). No share link was made, and explainroo did not try again without the key. Check the key and run the same command again.`
       : `the hosted service at ${d.service} wants a key (HTTP 401${heard}). No share link was made. Put a key from your explainroo.com account in EXPLAINROO_CLOUD_KEY and run the same command again.`;
     case 'file': return `the hosted service refused the file (HTTP ${d.status}${heard}). No share link was made. ${d.status === 413 ? 'The file is too large for it. A shorter video helps.' : d.status === 415 ? 'It takes MP4 and WebM files with a video stream.' : 'Change what it names and run the same command again.'}`;
     case 'busy': return `the hosted service has had too many uploads. Try again ${retryWords(d.retry_after)}. No share link was made.`;

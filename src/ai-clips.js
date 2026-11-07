@@ -327,7 +327,7 @@ export async function buyClip(project, request, { fresh = false, maxCost, dryRun
   // The job id is saved before anything else, so a run that dies can be picked up.
   job = updateJob(dir, job, { status: 'running', job_id: started.id });
   notice(`Job ${shortId(job)} went out at about ${usd(price.usd)}. If this stops, run the same command again. It will not buy again.`);
-  if (noWait) return stillRunning(project, job, 'It went out just now.');
+  if (noWait) return stillRunning(project, job, 'It went out a moment ago.');
   return followJob(project, job, { log });
 }
 
@@ -341,7 +341,7 @@ export function formatClip(r) {
       `Model:  ${r.model}`,
       `Length: ${r.seconds} seconds`,
       `Size:   ${r.aspect}, ${r.resolution}`,
-      `Sound:  ${r.audio ? 'on' : r.billed_audio ? 'off is not possible with this model, so the price counts it' : 'off'}`,
+      `Sound:  ${r.audio ? 'on' : r.billed_audio ? 'on, because this model always makes sound, and the price counts it' : 'off'}`,
       `Price:  about ${usd(r.price_usd)} (${usd(r.usd_per_second)} a second, from "${r.rate_name}"${r.minimum_usd ? `, with a minimum charge of ${usd(r.minimum_usd)}` : ''})`,
       'That is an estimate. The real cost goes in the record after the job, and a failed try may cost money too.',
     ];
@@ -354,7 +354,7 @@ export function formatClip(r) {
   }
   const rel = publicName(r);
   if (r.status === 'running') {
-    return `Job ${r.job} for ${rel}: ${r.why} Running the same command again will not buy again, or run: ${r.command}`;
+    return `Job ${r.job} for ${rel}: ${r.why} To get the clip, run the same command again, which buys nothing, or run: ${r.command}`;
   }
   const lines = r.reused
     ? [`${rel}  already bought on ${r.time.slice(0, 10)} (job ${r.job}), so nothing was spent. To buy it again, add --new.`]

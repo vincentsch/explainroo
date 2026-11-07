@@ -18,6 +18,12 @@ import { readEnvFile, saveKeys } from './env.js';
 import { ProjectError, rememberSecret } from './errors.js';
 import { configRoot } from './models.js';
 
+// Retry-After holds seconds or a date.
+function waitWords(value) {
+  if (!value) return '';
+  return /^\d+$/.test(value.trim()) ? ` ${value.trim()} seconds` : ` until ${value.trim()}`;
+}
+
 // A sign-in that waits longer than this has to start again. The services keep
 // their codes for minutes, so this only catches a link from another day.
 const SIGN_IN_MS = 60 * 60 * 1000;
@@ -187,7 +193,7 @@ export async function rotatingAccessToken({ source, names, refresh, name, comman
     const r = await refresh(old);
     if (!r.ok) {
       if (r.reason === 'invalid-grant') fail(`${name} no longer accepts the saved login (${r.message}). Run "${command}" again to sign in. Nothing was sent.`);
-      if (r.reason === 'busy') fail(`${name} has had too many requests and asks to wait${r.retry_after ? ` ${r.retry_after} seconds` : ''} before the next one. Nothing was sent, and nothing is sent again by itself.`);
+      if (r.reason === 'busy') fail(`${name} has had too many requests and asks to wait${waitWords(r.retry_after)} before the next one. Nothing was sent, and nothing is sent again by itself.`);
       fail(`the ${name} login could not be renewed: ${r.message}. Nothing was sent. Run the same command again in a moment.`);
     }
     const next = rememberSecret(r.json.refresh_token) || old;

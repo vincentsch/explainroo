@@ -78,7 +78,8 @@ export async function connect(args, flags, { print, log, notice }) {
   }
   if (!needsKey(service)) {
     const use = service.setup.use;
-    print(`${service.name} ${service.free ? 'is free and ' : ''}needs no setting up.\n${service.setup.steps.join('\n')}\n${use}`, { service: service.id, free: service.free, needs_key: false, steps: service.setup.steps, use });
+    const coming = service.status === 'coming' ? ' The service is coming, so it may not answer yet.' : '';
+    print(`${service.name} ${service.free ? 'is free and ' : ''}needs no setting up.${coming}\n${service.setup.steps.join('\n')}\n${use}`, { service: service.id, free: service.free, needs_key: false, ...(coming ? { coming: true } : {}), steps: service.setup.steps, use });
     return 0;
   }
   if (service.status === 'coming') throw new ProjectError(`${service.name} is not available yet.`);
@@ -127,7 +128,7 @@ export async function connect(args, flags, { print, log, notice }) {
   if (project) ensureIgnored(project, '.env');
   // The lookup order can put another value first, and the user should know.
   const shadowed = findEnv(env, lookIn) !== key;
-  const note = shadowed ? `\nNote: a different ${env} is set in the environment or in a .env file that is read first, so that one is still used.` : '';
+  const note = shadowed ? `\nA different ${env} is set in the environment or in a .env file that is read first, so that one is still used.` : '';
   print(`The key works, and it is saved in ${file}.\n${connector.name} is connected. ${service.setup.use}${note}`, { service: service.id, connected: true, file, env, use: service.setup.use, ...(shadowed ? { shadowed: true } : {}) });
   return 0;
 }
@@ -239,7 +240,7 @@ async function finishSignIn(service, connector, { address, again, file, lookIn, 
   if (project) ensureIgnored(project, '.env');
   const refreshName = Object.keys(values).find((name) => /REFRESH_TOKEN$/.test(name));
   const shadowed = findEnv(refreshName, lookIn) !== values[refreshName];
-  const note = shadowed ? `\nNote: a different ${refreshName} is set in the environment or in a .env file that is read first, so that one is still used.` : '';
+  const note = shadowed ? `\nA different ${refreshName} is set in the environment or in a .env file that is read first, so that one is still used.` : '';
   print(`Signed in to ${connector.name}${who ? ` as ${who}` : ''}. The login is saved in ${file}.\n${service.setup.use}${note}`, { service: service.id, connected: true, file, account: who ?? null, ...(shadowed ? { shadowed: true } : {}) });
   return 0;
 }

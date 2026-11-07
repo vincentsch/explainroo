@@ -22,6 +22,10 @@ export function oneOf(words) {
   return words.length < 2 ? words.join('') : `${words.slice(0, -1).join(', ')} or ${words.at(-1)}`;
 }
 
+export function allOf(words) {
+  return words.length < 2 ? words.join('') : `${words.slice(0, -1).join(', ')} and ${words.at(-1)}`;
+}
+
 // What video.json may say for each voice provider: its settings and defaults.
 export function voiceProviders() {
   return Object.fromEntries(SERVICES.filter((s) => s.voice).map((s) => [s.id, { name: s.name, ...s.voice }]));

@@ -154,7 +154,7 @@ async function test(key) {
   try {
     await call(null, 'GET', '/users/me/accounts', { key });
   } catch (e) {
-    if (e instanceof ServiceError && /rejected the key/.test(e.message)) throw new ProjectError('Blotato rejected the key. Check that you copied all of it, also any "=" at the end.');
+    if (e instanceof ServiceError && /rejected the key/.test(e.message)) throw new ProjectError('Blotato rejected the key. Check that you copied all of it, including any "=" at the end.');
     if (e instanceof ServiceError && /HTTP 403/.test(e.message)) throw new ProjectError(`${e.message.replace(/\.$/, '')}. The free trial has no API access.`);
     if (e instanceof ServiceError) throw new ProjectError(`${e.message}, so the key could not be tested. Try again in a moment.`);
     throw e;
