@@ -7,8 +7,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { parseScript } from './script.js';
 import { VOICES, LANGUAGES, voiceLanguage } from './models.js';
+import { ProjectError } from './errors.js';
 import { THEMES as LOOKS } from '../engine/themes.js';
 import { parseColor } from '../engine/util.js';
+
+export { ProjectError };
 
 export const THEMES = Object.keys(LOOKS);
 export const MUSIC_STYLES = ['warm', 'upbeat', 'calm', 'tech', 'playful'];
@@ -67,8 +70,6 @@ export const BRAND_KEYS = ['accent', 'background', 'ink', 'font', 'headline', 'l
 export const BRAND_COLORS = ['text', 'soft', 'muted', 'faint', 'line', 'field', 'surface', 'panel'];
 const FONT_FILE = /\.(woff2?|ttf|otf)$/i;
 const HEX = /^#[0-9a-f]{6}$/i;
-
-export class ProjectError extends Error {}
 
 function fail(msg) {
   throw new ProjectError(msg);
