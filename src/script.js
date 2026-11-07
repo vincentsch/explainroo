@@ -10,9 +10,10 @@ const ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 const ATTR_NUMBERS = new Set(['hold', 'min', 'lead', 'gap', 'max']);
 
 export class ScriptError extends Error {
-  constructor(message, line) {
-    super(line ? `script.md line ${line}: ${message}` : `script.md: ${message}`);
+  constructor(message, line, file = 'script.md') {
+    super(line ? `${file} line ${line}: ${message}` : `${file}: ${message}`);
     this.line = line;
+    this.detail = message;
   }
 }
 
@@ -123,7 +124,17 @@ export function tokenizeNarration(text, line = 0, language = 'en') {
   return units;
 }
 
-export function parseScript(source, { language = 'en' } = {}) {
+// `file` names the script in error messages, like script.es.md.
+export function parseScript(source, { language = 'en', file = 'script.md' } = {}) {
+  try {
+    return parseLines(source, language);
+  } catch (e) {
+    if (e instanceof ScriptError && file !== 'script.md') throw new ScriptError(e.detail, e.line, file);
+    throw e;
+  }
+}
+
+function parseLines(source, language) {
   const lines = String(source).replace(/\r\n?/g, '\n').split('\n');
   let title = null;
   const scenes = [];

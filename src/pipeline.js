@@ -38,8 +38,22 @@ export function makeState(project, timeline) {
     ...assets.map((a) => a + '@' + fileStamp(path.join(project.dir, a))),
     ...fs.readdirSync(project.dir).filter((f) => f.endsWith('.js') || f.endsWith('.mjs')).map((f) => f + '@' + fileStamp(path.join(project.dir, f))),
   ].join('|');
-  const version = crypto.createHash('sha1').update(stamp + JSON.stringify(timeline) + JSON.stringify(project.config)).digest('hex').slice(0, 12);
-  return { config: project.config, timeline, assets, version, title: project.config.title };
+  // The on-screen text of this language for s.str(). The page never reads JSON
+  // from the project, so it comes with the state. A video in one language
+  // without strings keeps the state and version it always had.
+  const text = textState(project);
+  const version = crypto.createHash('sha1').update(stamp + JSON.stringify(timeline) + JSON.stringify(project.config) + (text ? JSON.stringify(text) : '')).digest('hex').slice(0, 12);
+  return { config: project.config, timeline, assets, version, title: project.config.title, ...(text ? { text } : {}) };
+}
+
+function textState(project) {
+  const several = (project.languages?.length ?? 1) > 1;
+  if (!project.strings && !several) return null;
+  return {
+    strings: project.strings ?? null,
+    files: { script: path.basename(project.paths.script), strings: path.basename(project.paths.strings) },
+    ...(several ? { languages: project.languages } : {}),
+  };
 }
 
 // The Node files that shape frames and sound, next to the page engine.
@@ -98,5 +112,5 @@ export async function withEngine(project, timeline, { scale = 1, pages = 1, tran
 }
 
 export function reloadProject(project) {
-  return loadProject(project.dir, project.overrides ?? { size: project.sizeOverride });
+  return loadProject(project.dir, project.overrides ?? { size: project.sizeOverride, lang: project.language });
 }

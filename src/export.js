@@ -10,6 +10,7 @@ import { launch, openEngine } from './browser.js';
 import { ffmpeg, normalizeLoudness } from './ffmpeg.js';
 import { resolveTimes } from './qa.js';
 import { subtitleCues, toVtt } from './subtitles.js';
+import { projectUrl } from './timeline.js';
 
 export function localModules(dir, entry = 'scenes.js') {
   const files = new Map();
@@ -121,7 +122,8 @@ export async function exportPlayer(project, { out, log = () => {} } = {}) {
     // openEngine uses browser.newPage, so keep its requests in this context.
     const page = await openEngine(context, server.url);
     const cover = resolveTimes(timeline, [project.config.cover === 'auto' ? `${timeline.scenes[0].id}@end` : project.config.cover])[0].T;
-    const used = await page.evaluate(async cover => {
+    const build = projectUrl(project, project.paths.build);
+    const used = await page.evaluate(async ([cover, build]) => {
       const { boot } = await import('/engine/runtime.js');
       const { engine } = await boot({ canvas: document.createElement('canvas') });
       const assets = new Set();
@@ -159,15 +161,15 @@ export async function exportPlayer(project, { out, log = () => {} } = {}) {
         for (const sc of engine.timeline.scenes) engine.renderFrame(sc.start + sc.dur - 1 / engine.fps);
         await engine.prepareFrame(cover);
         engine.renderFrame(cover, undefined, { captions: false });
-        await upload('build/player-mix.wav', audio.encodeWav(sound.buffer));
-        await upload('build/player-poster.jpg', await new Promise(resolve => engine.canvas.toBlob(resolve, 'image/jpeg', 0.9)));
+        await upload(`${build}/player-mix.wav`, audio.encodeWav(sound.buffer));
+        await upload(`${build}/player-poster.jpg`, await new Promise(resolve => engine.canvas.toBlob(resolve, 'image/jpeg', 0.9)));
         if ([...engine.mathCache.values()].some(m => m?.error)) throw new Error('a formula could not be typeset. Run check and fix it before exporting.');
         return { assets: [...assets], fonts: [...fonts], text: [...chars].join(''), math: Object.fromEntries(engine.mathCache) };
       } finally {
         Object.defineProperty(proto, 'font', font);
         for (const [name, original] of drawing) proto[name] = original;
       }
-    }, cover);
+    }, [cover, build]);
     if (outside) throw new Error('the project uses an outside URL. Use local files before exporting.');
     used.modules = [...projectModules];
     for (const f of project.config.fonts) if (used.fonts.includes(f.family)) used.assets.push(f.src);

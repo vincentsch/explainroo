@@ -538,7 +538,7 @@ export class Engine {
         if (contrast(this.theme[key], this.theme.bg) < min) add('warn', null, null, `${this.config.theme}: ${key} has low contrast against bg; use colors with a contrast of at least ${min}`);
       }
     }
-    for (const id of this.extraScenes) add('warn', id, null, `scenes.js has a function "${id}" but script.md has no scene with that id, so it is never shown`);
+    for (const id of this.extraScenes) add('warn', id, null, `scenes.js has a function "${id}" but ${this.state.text?.files?.script ?? 'script.md'} has no scene with that id, so it is never shown`);
     const scratch = document.createElement('canvas');
     scratch.width = this.canvas.width;
     scratch.height = this.canvas.height;

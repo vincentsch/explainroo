@@ -8,7 +8,7 @@ import path from 'node:path';
 import cloud, { SHARE_TYPES, shareAnswer } from './connectors/cloud.js';
 import { ProjectError, ServiceError } from './errors.js';
 import { createJob, forgetJob, historyDir, jobKey, listAttempts, projectWord, readVersions, relativeFile, selfCommand, sha256File, updateJob, writePrivate } from './history.js';
-import { outputPath } from './project.js';
+import { langArg, outputPath } from './project.js';
 import { packageDir } from './package.js';
 import { PLATFORMS } from './post.js';
 import { oneOf, serviceUrl } from './services.js';
@@ -25,7 +25,7 @@ function when(iso) {
 // --file, and otherwise the final video.
 function shareTarget(project, { platform, file }) {
   const { dir } = project;
-  const run = (command) => `"${selfCommand()} ${command} ${projectWord(dir)}${command === 'package' ? ` --platform ${platform}` : ''}"`;
+  const run = (command) => `"${selfCommand()} ${command} ${projectWord(dir)}${langArg(project)}${command === 'package' ? ` --platform ${platform}` : ''}"`;
   if (file !== undefined) {
     const chosen = path.resolve(file);
     if (!fs.existsSync(chosen) || !fs.statSync(chosen).isFile()) fail(`${file} does not exist.`);
@@ -142,9 +142,10 @@ function retryWords(value) {
 }
 
 // What the user is told depends on what really happened, and it never claims more.
-function failure(e, dir) {
+function failure(e, project) {
   const d = e.details;
-  const others = `You can still put the video online yourself: "${selfCommand()} export ${projectWord(dir)}" writes a web player for your own site, and "${selfCommand()} package ${projectWord(dir)} --platform <name>" makes a folder to upload by hand.`;
+  const where = `${projectWord(project.dir)}${langArg(project)}`;
+  const others = `You can still put the video online yourself: "${selfCommand()} export ${where}" writes a web player for your own site, and "${selfCommand()} package ${where} --platform <name>" makes a folder to upload by hand.`;
   const heard = d.said ? `: ${d.said}` : '';
   switch (d.reason) {
     case 'unreachable': return `the hosted service doesn't answer at ${d.service} yet. The video was not sent. ${others}`;
@@ -222,7 +223,7 @@ export async function share(project, { platform, file, title, fresh = false, log
     // not from the request itself came before anything was sent, too.
     if (!(e instanceof ServiceError) || ['unreachable', 'insecure', 'not-sent'].includes(e.details.reason)) forgetJob(dir, job);
     else updateJob(dir, job, { status: e.outcome, error: e.message, reason: e.details.reason });
-    if (e instanceof ServiceError) throw new ProjectError(failure(e, dir));
+    if (e instanceof ServiceError) throw new ProjectError(failure(e, project));
     throw e;
   }
   // A claim link acts like a password for the video, so it stays out of tracked

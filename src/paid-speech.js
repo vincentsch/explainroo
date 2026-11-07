@@ -10,6 +10,7 @@ import { createJob, decide, historyDir, jobKey, listAttempts, listJobs, projectW
 import { serviceUrl } from './services.js';
 import { findConnector } from './connectors/index.js';
 import { readWav, writeWav } from './wav.js';
+import { langArg } from './project.js';
 
 // The connector of a voice that is bought per request, or null for free voices.
 export function speechConnector(config) {
@@ -46,6 +47,8 @@ export function openSpeech(project, paid, { force = false, fresh = false, log = 
   const { dir, config } = project;
   const boughtNow = new Set();
   const keyOf = (text) => speechKey(paid, config, text);
+  // A sentence of another language than the main one says so, for the command that continues it.
+  const version = langArg(project) ? { lang: project.language } : {};
 
   const decision = (key) => {
     if (boughtNow.has(key)) return decide(dir, key);
@@ -54,7 +57,7 @@ export function openSpeech(project, paid, { force = false, fresh = false, log = 
 
   const stopMessage = (stuck) => {
     const lines = stuck.map(({ job, reason, scene, text }) => `  ${shortId(job)} in scene ${scene}: "${text.slice(0, 60)}"\n    ${stopSentence(job, reason)}`);
-    const command = `${selfCommand()} voice ${projectWord(dir)} --new`;
+    const command = `${selfCommand()} voice ${projectWord(dir)}${langArg(project)} --new`;
     const check = stuck.some((s) => s.reason === 'unknown' || s.reason === 'lost')
       ? `\nTo check, run "${selfCommand()} history ${projectWord(dir)}" again in a few minutes: a run that is still working saves its answer by then. Your ${paid.name} account shows what was charged.`
       : '';
@@ -105,7 +108,7 @@ export function openSpeech(project, paid, { force = false, fresh = false, log = 
       if (d.action === 'buy') {
         let job;
         try {
-          job = createJob(dir, key, { kind: 'speech', provider: paid.id, attempt: d.attempt, scene: sceneId, characters: [...text].length, request: speechRequest(paid, config, text) });
+          job = createJob(dir, key, { kind: 'speech', provider: paid.id, attempt: d.attempt, scene: sceneId, characters: [...text].length, ...version, request: speechRequest(paid, config, text) });
         } catch (e) {
           if (e.code !== 'EEXIST') throw e;
           throw new ProjectError(stopMessage([{ job: listAttempts(dir, key).find((a) => a.attempt === d.attempt), reason: 'unknown', scene: sceneId, text }]));
@@ -120,7 +123,7 @@ export function openSpeech(project, paid, { force = false, fresh = false, log = 
           const outcome = e instanceof ServiceError ? e.outcome : 'lost';
           updateJob(dir, job, { status: outcome, error: e.message });
           if (outcome === 'refused') throw e;
-          throw new ServiceError(`${e.message.replace(/\.$/, '')}. That request may have cost money, so it is not sent again by itself. To buy it again, run: ${selfCommand()} voice ${projectWord(dir)} --new`, outcome);
+          throw new ServiceError(`${e.message.replace(/\.$/, '')}. That request may have cost money, so it is not sent again by itself. To buy it again, run: ${selfCommand()} voice ${projectWord(dir)}${langArg(project)} --new`, outcome);
         }
       }
       // A scene is built from the saved file every time, so a rebuild gives the
@@ -134,7 +137,7 @@ export function openSpeech(project, paid, { force = false, fresh = false, log = 
       const key = keyOf(text);
       const output = saveSpeech(dir, key, 1, samples, sampleRate);
       try {
-        createJob(dir, key, { kind: 'speech', provider: paid.id, status: 'done', imported: true, scene: sceneId, characters: [...text].length, output, request: speechRequest(paid, config, text) });
+        createJob(dir, key, { kind: 'speech', provider: paid.id, status: 'done', imported: true, scene: sceneId, characters: [...text].length, ...version, output, request: speechRequest(paid, config, text) });
       } catch (e) {
         if (e.code !== 'EEXIST') throw e;
       }

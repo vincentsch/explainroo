@@ -86,19 +86,25 @@ function checkWords(words, where, top) {
   }
 }
 
-// post.json next to video.json. It is optional, and a mistake in it is an error
-// that names the field.
-export function readPostFile(dir) {
-  const file = path.join(dir, 'post.json');
+// Which file the words came from, kept out of what is written anywhere.
+const FROM = Symbol('file');
+
+// post.json next to video.json, or post.<lang>.json when the version in another
+// language has one. It is optional, and a mistake in it is an error that names the
+// field. `project` can also be a project folder, for the main language.
+export function readPostFile(project) {
+  const own = typeof project === 'string' ? null : project.paths?.post;
+  const file = own && fs.existsSync(own) ? own : path.join(typeof project === 'string' ? project : project.dir, 'post.json');
+  const name = path.basename(file);
   if (!fs.existsSync(file)) return {};
   let words;
   try {
     words = JSON.parse(fs.readFileSync(file, 'utf8'));
   } catch (e) {
-    fail(`post.json is not valid JSON: ${e.message}`);
+    fail(`${name} is not valid JSON: ${e.message}`);
   }
-  checkWords(words, 'post.json', true);
-  return words;
+  checkWords(words, name, true);
+  return name === 'post.json' ? words : { ...words, [FROM]: name };
 }
 
 // Each field is settled in this order, and a later one wins: the defaults, then
@@ -112,7 +118,8 @@ export function settleWords(defaults, file, platform, flags = {}) {
   words.credits = [...(file.credits ?? []), ...(block.credits ?? [])];
   words.hashtags = hashtagList(words.hashtags, 'hashtags');
   words.category = String(words.category);
-  words.ai_label_from = block.ai_label !== undefined ? `post.json platforms.${platform}` : file.ai_label !== undefined ? 'post.json' : null;
+  const name = file[FROM] ?? 'post.json';
+  words.ai_label_from = block.ai_label !== undefined ? `${name} platforms.${platform}` : file.ai_label !== undefined ? name : null;
   return words;
 }
 
@@ -192,7 +199,7 @@ export function limitWarnings(platform, { title, box, hashtags, duration }) {
 // reads from the description. `box` is what goes in the platform's text box, which
 // description.txt holds: on YouTube and Shorts the title has its own field, so it
 // is the description with the hashtags, and elsewhere it is `text`.
-export function postWords(project, platform, { file = readPostFile(project.dir), flags = {}, chapters = '', duration = 0 } = {}) {
+export function postWords(project, platform, { file = readPostFile(project), flags = {}, chapters = '', duration = 0 } = {}) {
   const facts = aiFacts(project);
   const words = settleWords({ title: project.config.title, description: '', hashtags: [], ai_label: facts.reasons.length > 0, made_for_kids: false, category: DEFAULT_CATEGORY }, file, platform, flags);
   const title = words.title.trim();
@@ -203,7 +210,7 @@ export function postWords(project, platform, { file = readPostFile(project.dir),
   const reasons = words.ai_label_from ? [...facts.reasons, `set to ${words.ai_label} in ${words.ai_label_from}`] : facts.reasons;
   const credits = [...new Set([...facts.credits, ...words.credits.map((c) => c.trim()), 'Made with explainroo'])];
   const warnings = [
-    ...(written ? [] : ['there is no description yet. Write a few plain sentences about what the viewer learns as "description" in post.json next to video.json.']),
+    ...(written ? [] : [`there is no description yet. Write a few plain sentences about what the viewer learns as "description" in ${file[FROM] ?? 'post.json'} next to video.json.`]),
     ...facts.notes,
     ...limitWarnings(platform, { title, box, hashtags: words.hashtags, duration }),
   ];

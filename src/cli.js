@@ -1,7 +1,7 @@
 // explainroo command line.
 import fs from 'node:fs';
 import path from 'node:path';
-import { loadProject, ProjectError, THEMES, MUSIC_STYLES, FORMATS, resolveSize, normalizeConfig } from './project.js';
+import { loadProject, ProjectError, THEMES, MUSIC_STYLES, FORMATS, resolveSize, normalizeConfig, scriptName } from './project.js';
 import { layoutAreas } from '../engine/layout.js';
 import { ScriptError } from './script.js';
 import { prepare, makeState, VERSION } from './pipeline.js';
@@ -97,6 +97,8 @@ Reference
 
 Options: --size <size> and --no-watermark override video.json for preview, still, sheet, check and render.
          Their outputs get a suffix, like video-tiktok.mp4 or video-no-watermark.mp4. --out still wins.
+         --lang es picks the version from script.es.md, for voice, preview, still, sheet, check, render, verify,
+         export, package, share and publish. It builds into build/es/ and writes to out/es/.
          --json for machine-readable output. The project defaults to the current folder.
 Docs: "explainroo docs" (for coding agents) and https://www.explainroo.com/docs/`;
 
@@ -119,7 +121,7 @@ const BOOL = new Set(['json', 'draft', 'transparent', 'force', 'fetch', 'help', 
 
 // publish refuses any other flag. A flag it ignored could change what a person
 // thinks is posted, like a time for a post, when it goes out right away.
-const PUBLISH_FLAGS = new Set(['via', 'platform', 'privacy', 'media-url', 'channel', 'account', 'dry-run', 'yes', 'new', 'json', 'quiet']);
+const PUBLISH_FLAGS = new Set(['via', 'platform', 'privacy', 'media-url', 'channel', 'account', 'lang', 'dry-run', 'yes', 'new', 'json', 'quiet']);
 
 function num(v, name) {
   if (v === undefined) return undefined;
@@ -161,7 +163,7 @@ export async function main(argv) {
         return 0;
       }
       case 'voice': {
-        const project = loadProject(pos[0]);
+        const project = loadProject(pos[0], langOverride(flags));
         const paid = speechConnector(project.config);
         const before = paid ? boughtCharacters(project.dir) : 0;
         const { voices, timeline } = await prepare(project, { log, notice, force: !!flags.force, fresh: !!flags.new });
@@ -169,10 +171,10 @@ export async function main(argv) {
         const rows = project.script.scenes.map((s) => {
           const v = voices[s.id];
           return { scene: s.id, voice: v.duration, confirmed: v.matchRate, unconfirmed: v.unmatched, marks: v.marks,
-            ...(project.config.voice.provider === 'recording' && v.matchRate < 0.85 ? { message: 'The recording does not match script.md here. Make script.md say what was actually said.' } : {}) };
+            ...(project.config.voice.provider === 'recording' && v.matchRate < 0.85 ? { message: `The recording does not match ${scriptName(project)} here. Make ${scriptName(project)} say what was actually said.` } : {}) };
         });
         const mismatch = project.config.voice.provider === 'recording' && rows.some((r) => r.confirmed < 0.85)
-          ? '\nThe recording does not match script.md in those scenes. Make script.md say what was actually said.' : '';
+          ? `\nThe recording does not match ${scriptName(project)} in those scenes. Make ${scriptName(project)} say what was actually said.` : '';
         const wanted = project.config.speed * project.config.pace;
         const speed = paid ? paid.speed(wanted) : wanted;
         const speedNote = paid && speed !== wanted ? `\n${paid.name} speed ${wanted.toFixed(2)} is outside ${paid.speedRange.join(' to ')}; using ${speed}.` : '';
@@ -211,12 +213,12 @@ export async function main(argv) {
         return 0;
       }
       case 'package': {
-        const r = await packageVideo(pos[0], { platform: textFlag(flags, 'platform'), size: textFlag(flags, 'size'), title: textFlag(flags, 'title'), description: textFlag(flags, 'description'), hashtags: textFlag(flags, 'hashtags'), workers: num(flags.workers, 'workers'), log });
+        const r = await packageVideo(pos[0], { lang: textFlag(flags, 'lang'), platform: textFlag(flags, 'platform'), size: textFlag(flags, 'size'), title: textFlag(flags, 'title'), description: textFlag(flags, 'description'), hashtags: textFlag(flags, 'hashtags'), workers: num(flags.workers, 'workers'), log });
         print(formatPackage(r), r);
         return r.ok ? 0 : 1;
       }
       case 'share': {
-        const project = loadProject(pos[0]);
+        const project = loadProject(pos[0], langOverride(flags));
         const r = await share(project, { platform: textFlag(flags, 'platform'), file: textFlag(flags, 'file'), title: textFlag(flags, 'title'), fresh: !!flags.new, log });
         print(formatShare(r), r);
         return 0;
@@ -225,7 +227,7 @@ export async function main(argv) {
         const unknown = Object.keys(flags).filter((flag) => !PUBLISH_FLAGS.has(flag));
         if (unknown.length) throw new ProjectError(`publish does not take --${unknown[0]}. It takes ${[...PUBLISH_FLAGS].map((f) => `--${f}`).join(', ')}. It has no scheduler: a post goes out when the command runs. Nothing was sent.`);
         if (pos.length > 1) throw new ProjectError('usage: explainroo publish [project] --via youtube|buffer|blotato [--platform tiktok] [--dry-run] [--yes]. Nothing was sent.');
-        const project = loadProject(pos[0]);
+        const project = loadProject(pos[0], langOverride(flags));
         const r = await publish(project, { via: textFlag(flags, 'via'), platform: textFlag(flags, 'platform'), privacy: textFlag(flags, 'privacy'), mediaUrl: textFlag(flags, 'media-url'), channel: textFlag(flags, 'channel'), account: textFlag(flags, 'account'), dryRun: !!flags['dry-run'], yes: !!flags.yes, fresh: !!flags.new, log, notice });
         if (r.confirmed === false) {
           if (json) print(null, r);
@@ -236,13 +238,13 @@ export async function main(argv) {
         return r.stage === 'failed' ? 1 : 0;
       }
       case 'export': {
-        const project = loadProject(pos[0]);
+        const project = loadProject(pos[0], langOverride(flags));
         const r = await exportPlayer(project, { log, out: textFlag(flags, 'out') });
         print(`${r.out} (${r.duration.toFixed(1)}s)`, r);
         return 0;
       }
       case 'verify': {
-        const project = loadProject(pos[0]);
+        const project = loadProject(pos[0], langOverride(flags));
         const r = await verify(project, { file: flags.file, log });
         const lines = [
           `${r.file}: ${r.duration}s, ${r.video ? `${r.video.width}x${r.video.height}` : 'no video'}, loudness ${r.loudness?.integrated ?? '?'} LUFS, true peak ${r.loudness?.truePeak ?? '?'} dBFS`,
@@ -341,7 +343,7 @@ export async function main(argv) {
       case 'connect': return await connect(pos, flags, { print, log, notice });
       case 'history': {
         const project = loadProject(pos[0]);
-        const { current, unbuilt } = speechKeys(project);
+        const { current, unbuilt } = allSpeechKeys(project);
         const report = historyReport(project.dir, { current: (job) => job.kind !== 'speech' || current.has(job.key), needed: (job) => unbuilt.has(job.key), otherSpend: oldImageLog(project) });
         print(formatHistory(report), report);
         return 0;
@@ -364,6 +366,27 @@ export async function main(argv) {
   }
 }
 
+// The paid sentences of every language of the video, so that a sentence of one
+// language never looks like a leftover from an older script. A language whose
+// settings don't load has no sentences to continue yet.
+function allSpeechKeys(project) {
+  const current = new Set();
+  const unbuilt = new Set();
+  for (const lang of project.languages) {
+    let version;
+    try {
+      version = lang === project.language ? project : loadProject(project.dir, { lang });
+    } catch (e) {
+      if (e instanceof ProjectError || e instanceof ScriptError) continue;
+      throw e;
+    }
+    const keys = speechKeys(version);
+    keys.current.forEach((key) => current.add(key));
+    keys.unbuilt.forEach((key) => unbuilt.add(key));
+  }
+  return { current, unbuilt };
+}
+
 // A text flag given without a value (for example "--title" at the end of the
 // line) parses as true. Name the flag instead of failing deep in string code.
 function textFlag(flags, name) {
@@ -371,9 +394,14 @@ function textFlag(flags, name) {
   return flags[name];
 }
 
-// The settings of video.json that --size and --no-watermark replace for one run.
+// The settings of video.json that --size and --no-watermark replace for one run,
+// and the language that --lang picks.
 function runOverrides(flags) {
-  return { size: textFlag(flags, 'size'), watermark: flags['no-watermark'] ? false : undefined };
+  return { size: textFlag(flags, 'size'), watermark: flags['no-watermark'] ? false : undefined, ...langOverride(flags) };
+}
+
+function langOverride(flags) {
+  return { lang: textFlag(flags, 'lang') };
 }
 
 function init(dir, flags, print) {
@@ -412,9 +440,9 @@ async function preview(dir, flags, log) {
   let lastError = null;
   const server = await startServer({ projectDir: project.dir, getState: () => (lastError ? { ...state, error: lastError } : state), port: num(flags.port, 'port') ?? 4400 });
   log(`preview: ${server.url}  (Ctrl+C to stop)`);
-  const watched = ['video.json', 'script.md'];
   const stamp = () => {
-    const files = watched.map((f) => path.join(project.dir, f));
+    // The script and strings of the language shown, which --lang picks.
+    const files = [path.join(project.dir, 'video.json'), project.paths.script, project.paths.strings];
     // Read the current path too, so creating a missing look file clears its error.
     try {
       const { theme } = JSON.parse(fs.readFileSync(files[0], 'utf8'));
@@ -431,7 +459,7 @@ async function preview(dir, flags, log) {
     try {
       if (now !== last) {
         last = now;
-        log('script, settings or look changed, updating project');
+        log('script, strings, settings or look changed, updating project');
         project = loadProject(project.dir, project.overrides);
         ({ timeline } = await prepare(project, { log }));
         lastError = null;

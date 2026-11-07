@@ -16,6 +16,7 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { ProjectError, hideSecrets } from './errors.js';
 import { findService } from './services.js';
+import { LANGUAGES } from './models.js';
 
 const BIN = fileURLToPath(new URL('../bin/explainroo.js', import.meta.url));
 const JOB_FILE = /^([0-9a-f]+)(?:\.(\d+))?\.json$/;
@@ -396,7 +397,8 @@ export function projectWord(dir, cwd = process.cwd()) {
 // user's. That number comes from a file that a stranger's project can bring.
 const CONTINUE = {
   image: (job, where, again) => `image ${where} --resume ${shortId(job)}${again}`,
-  speech: (job, where, again) => `voice ${where}${again}`,
+  // A job file can come with a stranger's project, so only a known language goes in the command.
+  speech: (job, where, again) => `voice ${where}${typeof job.lang === 'string' && Object.hasOwn(LANGUAGES, job.lang) ? ` --lang ${job.lang}` : ''}${again}`,
   clip: (job, where, again, reason) => {
     const cap = Number(job.max_cost_usd);
     return `clip ${where} --resume ${shortId(job)}${again}${reason !== 'running' && cap > 0 ? ` --max-cost ${cap}` : ''}`;

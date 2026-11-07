@@ -12,6 +12,7 @@ import { phonemize, generateSpeech } from './phonemes.js';
 import { writeWav, readWav, resample, trimSilence } from './wav.js';
 import { openSpeech, speechConnector, speechKey } from './paid-speech.js';
 import { recordingFiles, decodeRecording, saveRecording, recordingCuts } from './recordings.js';
+import { scriptName } from './project.js';
 
 const PIPELINE = 7;
 
@@ -194,7 +195,7 @@ export async function synthesize(project, { force = false, fresh = false, log = 
     result[scene.id] = info;
     if (chunks.length) {
       const warn = info.matchRate < 0.85 ? (recordings
-        ? `, recording does not match script.md here (${Math.round(info.matchRate * 100)}% of words confirmed). Make script.md say what was actually said.`
+        ? `, recording does not match ${scriptName(project)} here (${Math.round(info.matchRate * 100)}% of words confirmed). Make ${scriptName(project)} say what was actually said.`
         : `, check pronunciation (${Math.round(info.matchRate * 100)}% of words confirmed)`) : '';
       log(`voice ${scene.id}: ${info.duration.toFixed(1)}s in ${((Date.now() - t0) / 1000).toFixed(1)}s${warn}`);
     }

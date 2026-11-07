@@ -3,6 +3,10 @@
 //   script.md    narration, one "## scene-id" per scene
 //   scenes.js    one drawing function per scene id
 //   assets/      optional images (logos, screenshots)
+// A video in several languages adds script.<lang>.md for each language beside
+// the main one, and strings.json or strings.<lang>.json holds the on-screen text.
+// The main language builds into build/ and out/, every other one into
+// build/<lang>/ and out/<lang>/.
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseScript } from './script.js';
@@ -41,6 +45,7 @@ export const DEFAULTS = {
   size: '16:9',
   fps: 30,
   language: 'en',
+  languages: null,
   voice: 'af_heart',
   speed: 0.9,
   pace: 1,
@@ -180,8 +185,46 @@ function musicFileSetting(music) {
   return file;
 }
 
-export function normalizeConfig(raw, dir = '.') {
+// The settings of one language: the general ones, with that language's own from
+// "languages" on top. The main voice speaks the main language, so another
+// language without a voice of its own gets its default voice.
+export function languageSettings(raw, language) {
+  const { languages, ...general } = raw;
+  if (language === (raw.language ?? DEFAULTS.language)) return general;
+  const { voice, ...rest } = general;
+  return { ...rest, ...(languages?.[language] ?? {}), language };
+}
+
+// "languages": { "es": { "voice": "ef_dora" } } holds the settings of one
+// language. They get the same checks as the main settings.
+function checkLanguages(raw, dir) {
+  const { languages } = raw;
+  if (languages === undefined || languages === null) return;
+  if (typeof languages !== 'object' || Array.isArray(languages)) fail('languages must be an object like { "es": { "voice": "ef_dora" } }');
+  const main = raw.language ?? DEFAULTS.language;
+  for (const [code, own] of Object.entries(languages)) {
+    if (!Object.hasOwn(LANGUAGES, code)) fail(`languages: "${code}" is not a language explainroo speaks. Use ${oneOf(Object.keys(LANGUAGES))}.`);
+    if (code === main) fail(`languages: ${code} is the main language, so its settings go at the top of video.json`);
+    if (!own || typeof own !== 'object' || Array.isArray(own)) fail(`languages.${code} must be an object with the settings of that language, like { "voice": "${LANGUAGES[code]}" }`);
+    const bad = Object.keys(own).filter((k) => (!(k in DEFAULTS) && !k.startsWith('_')) || k === 'language' || k === 'languages');
+    if (bad.length) fail(`languages.${code} has setting(s) that can't be set for one language: ${bad.join(', ')}`);
+    try {
+      normalizeConfig(languageSettings(raw, code), dir);
+    } catch (e) {
+      if (e instanceof ProjectError) fail(`languages.${code}: ${e.message}`);
+      throw e;
+    }
+  }
+}
+
+// `language` picks one language of a video in several languages. Its settings
+// come from languageSettings, and the result holds no "languages".
+export function normalizeConfig(input, dir = '.', { language: version } = {}) {
+  if (typeof (input.language ?? DEFAULTS.language) !== 'string' || !Object.hasOwn(LANGUAGES, input.language ?? DEFAULTS.language)) fail(`language must be one of ${Object.keys(LANGUAGES).join(', ')}`);
+  checkLanguages(input, dir);
+  const raw = version === undefined ? input : languageSettings(input, version);
   const cfg = { ...DEFAULTS, ...raw };
+  delete cfg.languages;
   if (typeof cfg.language !== 'string' || !Object.hasOwn(LANGUAGES, cfg.language)) fail(`language must be one of ${Object.keys(LANGUAGES).join(', ')}`);
   if (raw.voice === undefined) cfg.voice = LANGUAGES[cfg.language];
   const unknown = Object.keys(raw).filter((k) => !(k in DEFAULTS) && !k.startsWith('_'));
@@ -308,31 +351,153 @@ export function findProjectDir(arg) {
   fail('no video.json here. Run the command in a video folder or pass the project folder, for example "explainroo <command> videos/my-video".');
 }
 
+// The languages of a project: the main one first, then one for each
+// script.<lang>.md beside script.md. Other names, and a script named after the
+// main language, are not languages of the video, and check says so.
+export function projectLanguages(dir, main) {
+  const extra = fs.readdirSync(dir).map((f) => /^script\.([a-z]{2}(?:-[a-z]{2})?)\.md$/.exec(f)?.[1]).filter((code) => code && code !== main && Object.hasOwn(LANGUAGES, code));
+  return [main, ...extra.sort()];
+}
+
+// The files of one language: script.md, strings.json and post.json for the main
+// language, and script.<lang>.md, strings.<lang>.json and post.<lang>.json for
+// the others.
+export function languageFiles(dir, language, main) {
+  const suffix = language === main ? '' : `.${language}`;
+  return { script: path.join(dir, `script${suffix}.md`), strings: path.join(dir, `strings${suffix}.json`), post: path.join(dir, `post${suffix}.json`) };
+}
+
+// On-screen text as { key: text }, or null without a file. Nested groups become
+// dotted keys, like "intro.title". A value is a text or a list of texts.
+export function readStrings(file) {
+  if (!fs.existsSync(file)) return null;
+  const name = path.basename(file);
+  let json;
+  try {
+    json = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch (e) {
+    fail(`${name} is not valid JSON: ${e.message}`);
+  }
+  if (!json || typeof json !== 'object' || Array.isArray(json)) fail(`${name} must be an object like { "title": "How DNS works" }`);
+  const out = {};
+  const walk = (group, prefix) => {
+    for (const [k, v] of Object.entries(group)) {
+      const key = prefix + k;
+      if (typeof v === 'string' || (Array.isArray(v) && v.every((x) => typeof x === 'string'))) out[key] = v;
+      else if (v && typeof v === 'object' && !Array.isArray(v)) walk(v, `${key}.`);
+      else fail(`${name}: "${key}" must be a text, a list of texts or a group of texts`);
+    }
+  };
+  walk(json, '');
+  return out;
+}
+
+// What check says about the other languages: texts that one strings file has and
+// another lacks, scripts that are not a language of the video, and settings of
+// another language that don't work.
+export function languageIssues(project) {
+  const issues = [];
+  const warn = (message) => issues.push({ level: 'warn', scene: null, t: null, message });
+  const main = project.languages[0];
+  for (const f of fs.readdirSync(project.dir)) {
+    const code = /^script\.([a-z]{2}(?:-[a-z]{2})?)\.md$/.exec(f)?.[1];
+    if (code === main) warn(`${f} is not used: ${main} is the main language, and its narration is script.md`);
+    else if (code && !Object.hasOwn(LANGUAGES, code)) warn(`${f} is not used: explainroo speaks ${oneOf(Object.keys(LANGUAGES))}, and not ${code}`);
+  }
+  if (project.languages.length < 2) return issues;
+  let raw = {};
+  try {
+    raw = JSON.parse(fs.readFileSync(path.join(project.dir, 'video.json'), 'utf8'));
+  } catch {}
+  const all = project.languages.map((language) => {
+    const file = languageFiles(project.dir, language, main).strings;
+    const name = path.basename(file);
+    if (language === project.language) return { name, strings: project.strings };
+    try {
+      normalizeConfig(raw, project.dir, { language });
+    } catch (e) {
+      if (!(e instanceof ProjectError)) throw e;
+      warn(`the ${language} version can't be made: ${e.message}`);
+    }
+    try {
+      return { name, strings: readStrings(file) };
+    } catch (e) {
+      if (!(e instanceof ProjectError)) throw e;
+      warn(e.message);
+      return { name, strings: {}, broken: true };
+    }
+  });
+  const keys = [...new Set(all.flatMap((x) => Object.keys(x.strings ?? {})))];
+  for (const x of all) {
+    const missing = keys.filter((k) => !x.strings || !Object.hasOwn(x.strings, k));
+    if (!missing.length || x.broken) continue;
+    const list = missing.slice(0, 8).map((k) => `"${k}"`).join(', ') + (missing.length > 8 ? ` and ${missing.length - 8} more` : '');
+    warn(x.strings ? `${x.name} is missing ${missing.length} text${missing.length === 1 ? '' : 's'} that another language has: ${list}` : `there is no ${x.name}, and another language has ${missing.length} text${missing.length === 1 ? '' : 's'}: ${list}`);
+  }
+  return issues;
+}
+
+// The name of the script a project reads, for messages.
+export function scriptName(project) {
+  return path.basename(project.paths?.script ?? 'script.md');
+}
+
+// " --lang es" for a language other than the main one, so that a command in a
+// message works on the same version of the video.
+export function langArg(project) {
+  return project.languages && project.language !== project.languages[0] ? ` --lang ${project.language}` : '';
+}
+
 // `overrides` replace settings of video.json for one run, such as the size from
 // --size or the watermark from --no-watermark. The file itself stays as it is.
+// `lang` picks one language of a video in several languages.
 export function loadProject(arg, overrides = {}) {
   const dir = findProjectDir(arg);
-  const set = Object.fromEntries(Object.entries(overrides).filter(([, value]) => value !== undefined));
+  const set = Object.fromEntries(Object.entries(overrides).filter(([, value]) => value !== undefined && value !== null));
+  const { lang, ...settings } = set;
   let raw;
   try {
     raw = JSON.parse(fs.readFileSync(path.join(dir, 'video.json'), 'utf8'));
   } catch (e) {
     fail(`video.json is not valid JSON: ${e.message}`);
   }
-  const config = normalizeConfig({ ...raw, ...set }, dir);
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) fail('video.json must be an object like { "title": "How DNS works" }');
+  const main = raw.language ?? DEFAULTS.language;
+  if (typeof main !== 'string' || !Object.hasOwn(LANGUAGES, main)) normalizeConfig(raw, dir);
+  const languages = projectLanguages(dir, main);
+  if (lang !== undefined && !languages.includes(lang)) {
+    if (!Object.hasOwn(LANGUAGES, lang)) fail(`--lang must be one of ${oneOf(Object.keys(LANGUAGES))}, not "${lang}"`);
+    fail(`this video has no ${lang} version. Add script.${lang}.md for it. The languages it has: ${languages.join(', ')}`);
+  }
+  const language = lang ?? main;
+  const config = normalizeConfig({ ...raw, ...settings }, dir, { language });
   for (const f of [...config.fonts.map((x) => x.src), ...(config.brand?.logo ? [config.brand.logo] : []), ...(config.music?.src ? [config.music.src] : [])]) {
     if (!fs.existsSync(path.join(dir, f))) fail(`${f} is listed in video.json but the file is missing`);
   }
   if (config.music?.src && !fs.realpathSync(path.join(dir, config.music.src)).startsWith(path.join(fs.realpathSync(dir), 'assets') + path.sep)) fail('music.src must stay inside assets/, including links');
-  const scriptPath = path.join(dir, 'script.md');
-  if (!fs.existsSync(scriptPath)) fail(`${scriptPath} is missing`);
-  const script = parseScript(fs.readFileSync(scriptPath, 'utf8'), { language: config.language });
+  const files = languageFiles(dir, language, main);
+  if (!fs.existsSync(files.script)) fail(`${files.script} is missing`);
+  const script = parseScript(fs.readFileSync(files.script, 'utf8'), { language: config.language, file: path.basename(files.script) });
+  // The main title is in the main language, so another language takes the title of its own script.
+  if (language !== main && script.title && raw.languages?.[language]?.title === undefined) config.title = script.title;
   if (!config.title) config.title = script.title || path.basename(dir);
   const scenesPath = path.join(dir, 'scenes.js');
   if (!fs.existsSync(scenesPath)) fail(`${scenesPath} is missing`);
-  const build = path.join(dir, 'build');
-  const out = path.join(dir, 'out');
-  return { dir, config, script, overrides: set, sizeOverride: set.size, paths: { build, out, voice: path.join(build, 'voice'), scenes: scenesPath, script: scriptPath, look: config.look ? path.resolve(dir, config.theme) : null } };
+  const strings = readStrings(files.strings);
+  const sub = language === main ? [] : [language];
+  const build = path.join(dir, 'build', ...sub);
+  const out = path.join(dir, 'out', ...sub);
+  return {
+    dir,
+    config,
+    script,
+    language,
+    languages,
+    strings,
+    overrides: set,
+    sizeOverride: settings.size,
+    paths: { build, out, voice: path.join(build, 'voice'), scenes: scenesPath, script: files.script, strings: files.strings, post: files.post, look: config.look ? path.resolve(dir, config.theme) : null },
+  };
 }
 
 // An override gets its own name, like video-tiktok.mp4 or stills-no-watermark/,

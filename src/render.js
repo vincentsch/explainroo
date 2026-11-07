@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { prepare, renderIdentity, withEngine, VERSION } from './pipeline.js';
+import { projectUrl } from './timeline.js';
 import { frameEncoder, ffmpeg, normalizeLoudness } from './ffmpeg.js';
 import { subtitleCues, toSrt, toVtt } from './subtitles.js';
 import { buildChapters, toChaptersText, toChapterMetadata } from './chapters.js';
@@ -83,7 +84,7 @@ export async function encodeVideo(project, timeline, opts) {
       let norm;
       if (format !== 'gif') {
         const ta = Date.now();
-        const sound = await list[0].evaluate((p) => window.explainroo.soundtrack(p), 'build/mix.wav');
+        const sound = await list[0].evaluate((p) => window.explainroo.soundtrack(p), projectUrl(project, mix));
         log(`soundtrack: ${sound.cues} sound cues, mixed in ${((Date.now() - ta) / 1000).toFixed(1)}s`);
         norm = normalizeLoudness(mix, mixNorm, project.config.loudness);
         norm.catch(() => {});
@@ -226,7 +227,7 @@ export async function writeExtras(project, timeline, base, { plan, log = () => {
   if (coverTime) {
     const temp = path.join(project.paths.build, 'cover.jpg');
     try {
-      await withEngine(project, timeline, { scale: 1, log }, (page) => page.evaluate((T) => window.explainroo.stills([{ T, path: 'build/cover.jpg' }], { type: 'image/jpeg', quality: 0.9, captions: false }), coverTime.T));
+      await withEngine(project, timeline, { scale: 1, log }, (page) => page.evaluate(([T, file]) => window.explainroo.stills([{ T, path: file }], { type: 'image/jpeg', quality: 0.9, captions: false }), [coverTime.T, projectUrl(project, temp)]));
       files.cover = `${base}.cover.jpg`;
       fs.copyFileSync(temp, files.cover);
     } finally { fs.rmSync(temp, { force: true }); }

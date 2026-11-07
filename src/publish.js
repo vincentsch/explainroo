@@ -23,6 +23,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { ProjectError, ServiceError, hideSecrets } from './errors.js';
 import { createJob, historyDir, jobKey, listAttempts, projectWord, relativeFile, selfCommand, sha256File, shortId, updateJob, withNameLock, writePrivate } from './history.js';
 import { packageDir } from './package.js';
+import { langArg } from './project.js';
 import { DEFAULT_CATEGORY, PLATFORMS, withHashtags } from './post.js';
 import { liveShare } from './share.js';
 import { oneOf } from './services.js';
@@ -83,7 +84,7 @@ function pickPlatform(project, via, platform) {
   if (via === 'youtube') return 'youtube';
   const ready = Object.keys(ROUTES[via]).filter((name) => fs.existsSync(path.join(packageDir(project, name), 'post.json')));
   if (ready.length === 1) return ready[0];
-  if (!ready.length) fail(`there is no package to post through ${VIA[via].name} yet. Run "${selfCommand()} package ${projectWord(project.dir)} --platform <name>" first. ${VIA[via].name} takes ${oneOf(Object.keys(ROUTES[via]))}.`);
+  if (!ready.length) fail(`there is no package to post through ${VIA[via].name} yet. Run "${selfCommand()} package ${projectWord(project.dir)}${langArg(project)} --platform <name>" first. ${VIA[via].name} takes ${oneOf(Object.keys(ROUTES[via]))}.`);
   fail(`more than one package could go through ${VIA[via].name}: ${oneOf(ready)}. Say which one with --platform. Nothing was sent.`);
 }
 
@@ -99,7 +100,7 @@ function checkPair(via, platform) {
 function readPackage(project, platform) {
   const { dir } = project;
   const folder = packageDir(project, platform);
-  const again = `"${selfCommand()} package ${projectWord(dir)} --platform ${platform}"`;
+  const again = `"${selfCommand()} package ${projectWord(dir)}${langArg(project)} --platform ${platform}"`;
   const missingHint = platform === 'youtube' && fs.existsSync(path.join(packageDir(project, 'shorts'), 'post.json')) ? ' There is a shorts package. To post that one, add --platform shorts.' : '';
   let post;
   try {
@@ -164,7 +165,7 @@ function mediaFor(project, via, platform, pkg, flag) {
   if (via === 'blotato') return { url: null, from: 'upload', expires_at: null };
   const shared = liveShare(project, pkg.sha256);
   if (shared?.media_url) return { url: shared.media_url, from: 'share', expires_at: shared.expires_at };
-  return { url: null, from: null, expires_at: null, missing: `Buffer needs a public link to this exact file, and there is none. Run "${selfCommand()} share ${projectWord(project.dir)} --platform ${platform}" first, or pass --media-url with a link to this file.` };
+  return { url: null, from: null, expires_at: null, missing: `Buffer needs a public link to this exact file, and there is none. Run "${selfCommand()} share ${projectWord(project.dir)}${langArg(project)} --platform ${platform}" first, or pass --media-url with a link to this file.` };
 }
 
 // The one place a request is made. A dry run prints it, and a real run saves it in

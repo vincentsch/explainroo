@@ -69,6 +69,25 @@ export class Stage {
     return this._ui;
   }
 
+  // ---------- language ----------
+
+  // The language of the version being drawn, like "en" or "es".
+  get lang() {
+    return this.engine.config.language || 'en';
+  }
+
+  // On-screen text in that language, from strings.json for the main language or
+  // strings.<lang>.json for another one. A text or a list of texts.
+  str(key) {
+    const text = this.engine.state?.text;
+    const file = text?.files?.strings ?? 'strings.json';
+    const all = text?.strings;
+    if (!all) throw new SceneError(`s.str("${key}"): there is no ${file}. Put the on-screen text of this language there, like { "${key}": "..." }`);
+    if (Object.hasOwn(all, key)) return all[key];
+    const close = suggest(String(key), Object.keys(all), 4);
+    throw new SceneError(`s.str("${key}"): ${file} has no "${key}".${close.length ? ` Close keys: ${close.join(', ')}` : ''}`);
+  }
+
   // ---------- time ----------
 
   // Start time of the n-th time a word or phrase is spoken in this scene.
@@ -108,13 +127,15 @@ export class Stage {
     }
     const count = seen ? ` (it is spoken ${seen} time${seen > 1 ? 's' : ''})` : '';
     const hint = suggest(want[0], [...new Set(norms)], 6).join(', ');
-    throw new SceneError(`cue("${word}"${n > 1 ? `, ${n}` : ''}) is not in the narration of scene "${this.id}"${count}. Close words: ${hint}`);
+    // Each language says other words, so a cue that works in one fails in another.
+    const several = this.engine.state?.text?.languages ? ' Word cues differ between languages, so a scene that every language draws is safer with the same [#marker] in each script.' : '';
+    throw new SceneError(`cue("${word}"${n > 1 ? `, ${n}` : ''}) is not in the narration of scene "${this.id}"${count}. Close words: ${hint}${several ? `.${several}` : ''}`);
   }
 
   mark(name) {
     if (!(name in this.marks)) {
       const names = Object.keys(this.marks);
-      throw new SceneError(`mark("${name}") is not in scene "${this.id}". ${names.length ? 'Marks: ' + names.join(', ') : 'Add [#' + name + '] to the narration in script.md.'}`);
+      throw new SceneError(`mark("${name}") is not in scene "${this.id}". ${names.length ? 'Marks: ' + names.join(', ') : `Add [#${name}] to the narration in ${this.engine.state?.text?.files?.script ?? 'script.md'}.`}`);
     }
     return this.marks[name];
   }

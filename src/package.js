@@ -4,7 +4,7 @@
 // video, and verifies the file it wrote.
 import fs from 'node:fs';
 import path from 'node:path';
-import { loadProject, resolveSize, ProjectError } from './project.js';
+import { langArg, loadProject, resolveSize, ProjectError } from './project.js';
 import { prepare, renderIdentity, VERSION } from './pipeline.js';
 import { check, verify } from './qa.js';
 import { encodeVideo, planExtras, versionLine, writeExtras } from './render.js';
@@ -89,18 +89,19 @@ function setupWords(project) {
   return `the ${size} size (${width}x${height}), ${watermark === false ? 'without' : 'with'} the watermark`;
 }
 
-// Writes out/package/<platform>/. `title`, `description` and `hashtags` come from
-// the flags and win over post.json.
-export async function packageVideo(arg, { platform, size, title, description, hashtags, workers, log = () => {} } = {}) {
+// Writes out/package/<platform>/, or out/<lang>/package/<platform>/ for another
+// language than the main one. `title`, `description` and `hashtags` come from the
+// flags and win over post.json.
+export async function packageVideo(arg, { lang, platform, size, title, description, hashtags, workers, log = () => {} } = {}) {
   if (platform === undefined) fail(`package needs --platform ${oneOf(Object.keys(PLATFORMS))}`);
   if (!Object.hasOwn(PLATFORMS, platform)) fail(`there is no platform "${platform}". The platforms are ${oneOf(Object.keys(PLATFORMS))}.`);
   if (title !== undefined && !title.trim()) fail('--title needs words');
   const spec = PLATFORMS[platform];
-  const own = loadProject(arg);
+  const own = loadProject(arg, { lang });
   const overrides = packageOverrides(own, platform, size);
-  const project = loadProject(own.dir, overrides);
+  const project = loadProject(own.dir, { ...overrides, lang });
   const { dir } = project;
-  const file = readPostFile(dir);
+  const file = readPostFile(project);
   const flags = { title, description, hashtags: hashtags === undefined ? undefined : hashtagFlag(hashtags) };
   const setup = setupWords(project);
 
@@ -110,7 +111,7 @@ export async function packageVideo(arg, { platform, size, title, description, ha
   const errors = checked.issues.filter((i) => i.level === 'error');
   const folder = packageDir(project, platform);
   if (errors.length) {
-    const command = `${selfCommand()} check ${projectWord(dir)}${overrides.size ? ` --size ${overrides.size}` : ''}${overrides.watermark === false ? ' --no-watermark' : ''}`;
+    const command = `${selfCommand()} check ${projectWord(dir)}${langArg(project)}${overrides.size ? ` --size ${overrides.size}` : ''}${overrides.watermark === false ? ' --no-watermark' : ''}`;
     const moved = overrides.size ? ` A layout made for ${own.config.size} may not fit ${overrides.size}, so place things from s.safe.` : '';
     // A package from before shows an older state of the project. Without its
     // post.json, share and posting tools can't take it for the current one.

@@ -2,11 +2,18 @@
 // short hold; scenes without narration last `min` seconds (default 3).
 // `pace` shortens every lead-in, hold and transition (the voice is already
 // faster). All times are snapped to the frame grid.
+import path from 'node:path';
 
 export const TRANSITION_SECONDS = 0.7;
 
+// A folder of the project as the engine page asks for it, like "build/es/voice".
+export function projectUrl(project, dir) {
+  return path.relative(project.dir, dir).split(path.sep).join('/');
+}
+
 export function buildTimeline(project, voices) {
   const { config, script } = project;
+  const voiceDir = project.paths ? projectUrl(project, project.paths.voice) : 'build/voice';
   const fps = config.fps;
   const pace = config.pace || 1;
   const snap = (t) => Math.round(t * fps) / fps;
@@ -32,7 +39,7 @@ export function buildTimeline(project, voices) {
       lead,
       text: scene.text,
       transition,
-      voice: v.duration ? { url: `build/voice/${scene.id}.wav`, start: start + lead, dur: v.duration } : null,
+      voice: v.duration ? { url: `${voiceDir}/${scene.id}.wav`, start: start + lead, dur: v.duration } : null,
       words: v.words.map((w) => ({ text: w.text, start: lead + w.start, end: lead + w.end })),
       marks: Object.fromEntries(Object.entries(v.marks || {}).map(([k, m]) => [k, lead + m])),
       attrs: a,
