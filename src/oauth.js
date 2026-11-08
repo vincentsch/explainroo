@@ -13,10 +13,10 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { setTimeout as sleep } from 'node:timers/promises';
 import { readEnvFile, saveKeys } from './env.js';
 import { ProjectError, rememberSecret } from './errors.js';
 import { configRoot } from './models.js';
+import { lockAge, processGone, withLock } from './lock.js';
 
 // Retry-After holds seconds or a date.
 function waitWords(value) {
@@ -146,31 +146,20 @@ export function expiresAt(json, now = Date.now()) {
 }
 
 function lockFile(file) {
-  return path.join(configRoot(), 'locks', `${crypto.createHash('sha256').update(path.resolve(file)).digest('hex').slice(0, 16)}.lock`);
+  return path.join(configRoot(), 'locks', crypto.createHash('sha256').update(path.resolve(file)).digest('hex').slice(0, 16));
 }
 
-// One run at a time refreshes the tokens of one .env file.
+// One run at a time refreshes the tokens of one .env file. A lock counts as left
+// behind once its process is gone, or after LOCK_STALE_MS.
 async function withTokenLock(file, fn) {
   const lock = lockFile(file);
   fs.mkdirSync(path.dirname(lock), { recursive: true, mode: 0o700 });
-  const started = Date.now();
-  for (;;) {
-    try {
-      fs.closeSync(fs.openSync(lock, 'wx', 0o600));
-      break;
-    } catch (e) {
-      if (e.code !== 'EEXIST') throw e;
-      const stat = fs.statSync(lock, { throwIfNoEntry: false });
-      if (stat && Date.now() - stat.mtimeMs > LOCK_STALE_MS) fs.rmSync(lock, { force: true });
-      if (Date.now() - started > 2 * LOCK_STALE_MS) fail('another run has been renewing the login for a long time. Run the same command again in a minute.');
-      await sleep(100);
-    }
-  }
-  try {
-    return await fn();
-  } finally {
-    fs.rmSync(lock, { force: true });
-  }
+  return withLock(lock, fn, {
+    waitMs: 2 * LOCK_STALE_MS,
+    pauseMs: 100,
+    left: (owner) => processGone(owner) || lockAge(owner) > LOCK_STALE_MS,
+    busy: () => new ProjectError('another run has been renewing the login for a long time. Run the same command again in a minute.'),
+  });
 }
 
 // A working access token from tokens saved in a .env file, for a service that

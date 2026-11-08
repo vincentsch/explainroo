@@ -214,14 +214,20 @@ test('a damaged copy in history/replaced never costs the original', (t) => {
   assert.deepEqual(fs.readdirSync(historyDir(dir, 'replaced')), [path.basename(saved)]);
 });
 
+// The lock as a run makes it: a folder with the file of its holder.
+function nameLock(dir, key, pid, time) {
+  const lock = historyDir(dir, 'locks', sha(key).slice(0, 16));
+  fs.mkdirSync(lock, { recursive: true });
+  const file = path.join(lock, `held-by-${pid}-0123456789abcdef`);
+  fs.writeFileSync(file, `${pid}\n`);
+  if (time) fs.utimesSync(file, time, time);
+  return file;
+}
+
 test('a lock with a time in the future can\'t hold anyone up', (t) => {
   const dir = temp(t);
   const job = updateJob(dir, createJob(dir, 'abcd1234', { kind: 'image', request: { name: 'hero' } }), { status: 'done', output: saveOutput(dir, 'assets/hero.png', Buffer.from('bytes')) });
-  fs.mkdirSync(historyDir(dir, 'locks'));
-  const lock = historyDir(dir, 'locks', `${sha('abcd1234').slice(0, 16)}.lock`);
-  fs.writeFileSync(lock, '');
-  const future = new Date(Date.now() + 3600000);
-  fs.utimesSync(lock, future, future);
+  nameLock(dir, 'abcd1234', process.pid, new Date(Date.now() + 3600000));
   const started = Date.now();
   assert.equal(placeOutput(dir, job).job.output.file, 'assets/hero.png');
   assert.ok(Date.now() - started < 5000);
@@ -230,13 +236,29 @@ test('a lock with a time in the future can\'t hold anyone up', (t) => {
 test('a lock that a dead run left behind does not stop the next one for long', (t) => {
   const dir = temp(t);
   const job = updateJob(dir, createJob(dir, 'abcd1234', { kind: 'image', request: { name: 'hero' } }), { status: 'done', output: saveOutput(dir, 'assets/hero.png', Buffer.from('bytes')) });
-  fs.mkdirSync(historyDir(dir, 'locks'));
-  const lock = historyDir(dir, 'locks', `${sha('abcd1234').slice(0, 16)}.lock`);
-  fs.writeFileSync(lock, '');
-  const old = new Date(Date.now() - 60000);
-  fs.utimesSync(lock, old, old);
+  // One whose process still runs, after 15 seconds.
+  nameLock(dir, 'abcd1234', process.pid, new Date(Date.now() - 60000));
   assert.equal(placeOutput(dir, job).job.output.file, 'assets/hero.png');
   assert.deepEqual(fs.readdirSync(historyDir(dir, 'locks')), []);
+  // One whose process is gone, at once.
+  const gone = spawnSync(process.execPath, ['-e', 'console.log(process.pid)'], { encoding: 'utf8' });
+  nameLock(dir, 'abcd1234', Number(gone.stdout.trim()));
+  const started = Date.now();
+  assert.equal(placeOutput(dir, job).job.output.file, 'assets/hero.png');
+  assert.ok(Date.now() - started < 5000);
+  assert.deepEqual(fs.readdirSync(historyDir(dir, 'locks')), []);
+});
+
+test('a lock held by a run that still runs waits for it', (t) => {
+  const dir = temp(t);
+  const job = updateJob(dir, createJob(dir, 'abcd1234', { kind: 'image', request: { name: 'hero' } }), { status: 'done', output: saveOutput(dir, 'assets/hero.png', Buffer.from('bytes')) });
+  const held = nameLock(dir, 'abcd1234', process.pid);
+  // The holder lets go in a moment, from another process, while this one waits.
+  const child = spawn(process.execPath, ['-e', `setTimeout(() => require('fs').unlinkSync(${JSON.stringify(held)}), 400)`]);
+  const started = Date.now();
+  assert.equal(placeOutput(dir, job).job.output.file, 'assets/hero.png');
+  assert.ok(Date.now() - started >= 300, 'it waited for the holder');
+  child.kill();
 });
 
 test('versions keep every render, and a verify result joins the render with its hash', (t) => {

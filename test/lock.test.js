@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 
 const HISTORY = new URL('../src/history.js', import.meta.url).href;
 const RACE = new URL('./helpers/lock-race.js', import.meta.url).href;
@@ -155,4 +155,33 @@ test('a file where the lock goes stops the purchase with a plain message', async
   await assert.rejects(withProjectLock(dir, 'clip-purchase', () => { ran = true; }, { waitMs: 1000, busy: () => new Error('busy') }), (e) => e instanceof ProjectError && /history[\\/]locks[\\/]clip-purchase is a file, and explainroo needs that name for a lock\. Move the file somewhere else/.test(e.message));
   assert.equal(ran, false);
   assert.deepEqual(lockFiles(dir), ['clip-purchase'], 'the file stays, and nothing of the run is left');
+});
+
+// A service like Buffer gives a new refresh token each time and kills the old one,
+// so two runs must never both renew the login with the same one.
+test('two runs that renew a login while an old lock is left behind send one renewal', async (t) => {
+  const crypto = await import('node:crypto');
+  const { rotatingAccessToken } = await import('../src/oauth.js');
+  const config = temp(t);
+  const before = process.env.EXPLAINROO_CONFIG;
+  process.env.EXPLAINROO_CONFIG = config;
+  t.after(() => { process.env.EXPLAINROO_CONFIG = before; });
+  const file = path.join(temp(t), '.env');
+  fs.writeFileSync(file, `TEST_REFRESH=first\nTEST_ACCESS=old\nTEST_EXPIRES=${new Date(Date.now() - 1000).toISOString()}\n`);
+  const lock = path.join(config, 'locks', crypto.createHash('sha256').update(path.resolve(file)).digest('hex').slice(0, 16));
+  fs.mkdirSync(lock, { recursive: true });
+  const gone = spawnSync(process.execPath, ['-e', '']).pid;
+  fs.writeFileSync(path.join(lock, `held-by-${gone}-0123456789abcdef`), `${gone}\n`);
+  const sent = [];
+  const refresh = async (token) => {
+    sent.push(token);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    return { ok: true, json: { access_token: 'new', refresh_token: 'second', expires_in: 3600 } };
+  };
+  const names = { refresh: 'TEST_REFRESH', access: 'TEST_ACCESS', expires: 'TEST_EXPIRES' };
+  const renew = () => rotatingAccessToken({ source: { file }, names, refresh, name: 'Test', command: 'explainroo connect test' });
+  assert.deepEqual(await Promise.all([renew(), renew()]), ['new', 'new']);
+  assert.deepEqual(sent, ['first']);
+  assert.match(fs.readFileSync(file, 'utf8'), /^TEST_REFRESH=second$/m);
+  assert.deepEqual(fs.readdirSync(path.join(config, 'locks')), []);
 });

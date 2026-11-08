@@ -19,7 +19,7 @@ import { ProjectError, hideSecrets } from './errors.js';
 import { findService, localTime } from './services.js';
 import { LANGUAGES } from './models.js';
 import { isSize } from './project.js';
-import { withLock } from './lock.js';
+import { lockAge, processGone, withLock, withLockSync } from './lock.js';
 
 const BIN = fileURLToPath(new URL('../bin/explainroo.js', import.meta.url));
 const JOB_FILE = /^([0-9a-f]+)(?:\.(\d+))?\.json$/;
@@ -268,28 +268,11 @@ export function saveOutputFile(dir, name, temp) {
 }
 
 // One run at a time moves files under a public name, or moves a post to its next
-// stage. Either takes far less than the 15 seconds after which a lock counts as
-// left behind by a dead run.
+// stage. Either takes far less than the 15 seconds after which a lock counts as left
+// behind, also when its process still runs.
 export function withNameLock(dir, name, fn) {
-  fs.mkdirSync(historyDir(dir, 'locks'), { recursive: true });
-  const lock = historyDir(dir, 'locks', `${crypto.createHash('sha256').update(name).digest('hex').slice(0, 16)}.lock`);
-  const pause = new Int32Array(new SharedArrayBuffer(4));
-  for (;;) {
-    try {
-      fs.closeSync(fs.openSync(lock, 'wx'));
-      break;
-    } catch (e) {
-      if (e.code !== 'EEXIST') throw e;
-      const stat = fs.statSync(lock, { throwIfNoEntry: false });
-      if (stat && Math.abs(Date.now() - stat.mtimeMs) > 15000) fs.rmSync(lock, { force: true });
-      Atomics.wait(pause, 0, 0, 50);
-    }
-  }
-  try {
-    return fn();
-  } finally {
-    fs.rmSync(lock, { force: true });
-  }
+  const lock = historyDir(dir, 'locks', crypto.createHash('sha256').update(name).digest('hex').slice(0, 16));
+  return withLockSync(lock, fn, { left: (owner) => processGone(owner) || lockAge(owner) > 15000 });
 }
 
 // One run at a time in this project for a step that reads the record and then adds
