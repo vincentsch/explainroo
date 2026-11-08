@@ -290,6 +290,67 @@ test('a lock held by a run that still runs waits for it', (t) => {
   child.kill();
 });
 
+// Runs `move` once, right before or right after this process opens `target`, the
+// way another run moves a file while this one reads it.
+function moveWhenOpened(t, target, when, move) {
+  const realOpen = fs.openSync;
+  let pending = true;
+  fs.openSync = function openSync(file, ...rest) {
+    const hit = pending && String(file) === target;
+    if (hit && when === 'before') {
+      pending = false;
+      move();
+    }
+    const fd = realOpen.call(this, file, ...rest);
+    if (hit && when === 'after') {
+      pending = false;
+      move();
+    }
+    return fd;
+  };
+  t.after(() => { fs.openSync = realOpen; });
+}
+
+// Asking for a bought file again needs no lock until it is put in place. Another
+// run can move the copy meanwhile, and that used to end this run with ENOENT, or
+// with a message that the file had changed.
+test('a bought file that another run moves while this one looks for it is found where it went', (t) => {
+  const dir = temp(t);
+  const a = buy(dir, 'aaaa1111', 'version a');
+  buy(dir, 'bbbb2222', 'version b');
+  // A is kept in history/replaced/, and B has the name.
+  const kept = path.join(dir, listAttempts(dir, 'aaaa1111')[0].output.file);
+  const name = path.join(dir, 'assets/hero.png');
+  // The other run puts A in place, the way placeOutput does: B goes aside, A takes the name.
+  const swap = () => {
+    fs.copyFileSync(name, historyDir(dir, 'replaced', `${sha('version b')}.png`));
+    fs.rmSync(name);
+    fs.renameSync(kept, name);
+  };
+  // Gone between the look for it and the read.
+  moveWhenOpened(t, kept, 'before', swap);
+  assert.equal(goodOutput(dir, a), 'assets/hero.png');
+  assert.equal(fs.readFileSync(name, 'utf8'), 'version a');
+
+  // Gone from history/replaced/ after this run read the name and before it got there.
+  const dir2 = temp(t);
+  const a2 = buy(dir2, 'aaaa1111', 'version a');
+  buy(dir2, 'bbbb2222', 'version b');
+  const kept2 = path.join(dir2, listAttempts(dir2, 'aaaa1111')[0].output.file);
+  const name2 = path.join(dir2, 'assets/hero.png');
+  moveWhenOpened(t, name2, 'after', () => {
+    fs.copyFileSync(name2, historyDir(dir2, 'replaced', `${sha('version b')}.png`));
+    fs.rmSync(name2);
+    fs.renameSync(kept2, name2);
+  });
+  assert.equal(goodOutput(dir2, a2), 'assets/hero.png');
+  assert.equal(decide(dir2, 'aaaa1111').action, 'use');
+
+  // A file that is gone and stays gone is no output, after one look.
+  fs.rmSync(name2);
+  assert.equal(goodOutput(dir2, a2), null);
+});
+
 test('versions keep every render, and a verify result joins the render with its hash', (t) => {
   const dir = temp(t);
   assert.deepEqual(readVersions(dir), []);

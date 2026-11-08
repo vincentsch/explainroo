@@ -142,12 +142,38 @@ function outputPlaces(job) {
   return [];
 }
 
+// The hash of a file, or null when it isn't there.
+function hashIfThere(file) {
+  try {
+    return sha256File(file);
+  } catch (e) {
+    if (e.code === 'ENOENT' || e.code === 'ENOTDIR') return null;
+    throw e;
+  }
+}
+
+// What is at a place right now, to see whether anything moved.
+function placeState(file) {
+  const stat = fs.statSync(file, { throwIfNoEntry: false });
+  return stat ? `${stat.ino}:${stat.size}:${stat.mtimeMs}` : null;
+}
+
 // Where a job's output is now, but only if it is still the file that was
 // bought. A job never hands out a file with another hash.
+//
+// Another run may move the file while this one looks, without a lock: from
+// history/replaced/ to its name, or back when another purchase takes the name. It
+// can be gone from one place before this run gets to the other one. So a look that
+// finds it nowhere looks again, as long as something moved during that look.
 export function goodOutput(dir, job) {
   if (job.status !== 'done' || !job.output) return null;
-  for (const rel of outputPlaces(job)) {
-    if (fs.existsSync(path.join(dir, rel)) && sha256File(path.join(dir, rel)) === job.output.sha256) return rel;
+  const places = outputPlaces(job).map((rel) => ({ rel, file: path.join(dir, rel) }));
+  for (let look = 0; look < 5; look++) {
+    const before = places.map((p) => placeState(p.file));
+    for (const { rel, file } of places) {
+      if (hashIfThere(file) === job.output.sha256) return rel;
+    }
+    if (places.every((p, i) => placeState(p.file) === before[i])) return null;
   }
   return null;
 }
