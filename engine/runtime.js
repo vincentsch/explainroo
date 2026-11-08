@@ -6,7 +6,7 @@ import { getTheme, makeBackground, fontString, colorOf } from './themes.js';
 import { Pen } from './pen.js';
 import { drawTransition } from './transitions.js';
 import { buildPhrases, drawCaptions, buildChunks, drawBoldCaptions, captionHighlight } from './captions.js';
-import { AUDIO_FILE, clamp, hashStr, mulberry32, suggest, suggestColor, contrast, opaque, withAlpha, parseColor, mixColor, rgba, cssColor, newDefaults } from './util.js';
+import { AUDIO_FILE, clamp, hashStr, mulberry32, suggest, suggestColor, contrast, luminance, opaque, withAlpha, parseColor, mixColor, rgba, cssColor, newDefaults } from './util.js';
 import { overlapDepth, holds, crosses, bounds, inside, toEdge } from './geometry.js';
 import { layoutAreas } from './layout.js';
 import { loadClips, soundURL, ClipFrames, FREEZE_SECONDS, FIT_SPEEDS } from './clips.js';
@@ -783,13 +783,11 @@ export class Engine {
           const bg = opaque(own || pageColor(tx, H) || this.theme.bg, this.theme.bg);
           const fg = cssColor(tx.fg);
           if (fg && contrast(fg, bg) < 3) once(`contrast:${sc.id}:${tx.text}`, () => {
-            const suggestion = suggestColor(pixelColor(fg), pixelColor(bg), tx.size, named());
-            add('warn', sc.id, t, `"${label}" has low contrast against its background (${contrast(fg, bg).toFixed(1)}:1); use ${tx.option ?? 'color'}: '${suggestion.color}' (${suggestion.ratio.toFixed(1)}:1)`);
+            add('warn', sc.id, t, `"${label}" has low contrast against its background (${contrast(fg, bg).toFixed(1)}:1); ${contrastAdvice(tx.option ?? 'color', pixelColor(fg), pixelColor(bg), tx.size, named())}`);
           });
           const mark = own && cssColor(tx.mark);
           if (mark && contrast(mark, bg) < 3) once(`mark:${sc.id}:${tx.text}`, () => {
-            const suggestion = suggestColor(pixelColor(mark), pixelColor(bg), tx.size, named());
-            add('warn', sc.id, t, `the *starred* words in "${label}" have low contrast against its background (${contrast(mark, bg).toFixed(1)}:1); use mark: '${suggestion.color}' (${suggestion.ratio.toFixed(1)}:1)`);
+            add('warn', sc.id, t, `the *starred* words in "${label}" have low contrast against its background (${contrast(mark, bg).toFixed(1)}:1); ${contrastAdvice('mark', pixelColor(mark), pixelColor(bg), tx.size, named())}`);
           });
         }
         // Overlaps only count when both are fully shown, not mid-fade.
@@ -955,6 +953,19 @@ export class Engine {
 // Whether a box covers the whole frame, like a clip with full: true.
 function fillsFrame(b, W, H) {
   return b.x0 <= 1 && b.y0 <= 1 && b.x1 >= W - 1 && b.y1 >= H - 1;
+}
+
+// What to use for text that is hard to read: the nearest darker or lighter
+// shade of its own color that reads well, so the color keeps its meaning, and
+// then the look's ink, when that reads well too. Large text needs 3:1, and other
+// text 4.5:1.
+function contrastAdvice(option, fg, bg, size, named) {
+  const min = size >= 48 ? 3 : 4.5;
+  const shade = suggestColor(fg, bg, size);
+  const own = shade && shade.color !== fg ? `use ${option}: '${shade.color}' (${shade.ratio.toFixed(1)}:1), a ${luminance(shade.color) < luminance(fg) ? 'darker' : 'lighter'} shade of the same color` : null;
+  const ink = named.ink && contrast(named.ink, bg) >= min ? `${option}: 'ink' (${contrast(named.ink, bg).toFixed(1)}:1)` : null;
+  if (own && ink) return `${own}, or ${ink}`;
+  return own ?? (ink ? `use ${ink}` : `use another ${option}`);
 }
 
 // The canvas calls that put something on it.

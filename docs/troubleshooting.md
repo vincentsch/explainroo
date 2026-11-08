@@ -74,7 +74,8 @@ text. It finds text that is:
   gets a hint too
 - low in contrast against the page, a background from `s.bg` or
   `s.short.backdrop`, or its own sticker, box or `bg`, the `*starred*` words
-  too
+  too. It suggests a darker or lighter shade of the same color first, so the
+  color keeps its meaning, and the look's `ink` second
 - on top of other text, or under the captions
 - partly over a shape, like a note on the edge of a box. A shape's own text,
   text in its group and `overlap: true` don't count

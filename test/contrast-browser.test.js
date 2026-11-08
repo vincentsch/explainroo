@@ -8,10 +8,20 @@ import { loadProject } from '../src/project.js';
 import { withEngine } from '../src/pipeline.js';
 import { buildTimeline } from '../src/timeline.js';
 import { contrast } from '../engine/util.js';
-import { colorOf, getTheme } from '../engine/themes.js';
+import { getTheme } from '../engine/themes.js';
 
 let chrome;
 try { chrome = findChrome(); } catch {}
+
+// The hue of a hex color, in degrees.
+function hue(hex) {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+  const max = Math.max(r, g, b);
+  const d = max - Math.min(r, g, b);
+  if (!d) return 0;
+  const h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return (h * 60 + 360) % 360;
+}
 
 for (const theme of ['paper', 'midnight']) {
   test(`check suggests usable colors on ${theme} without changing the warning threshold`, { skip: !chrome }, async t => {
@@ -39,12 +49,16 @@ for (const theme of ['paper', 'midnight']) {
       assert.equal(issues.length, 4);
       for (const label of ['Small label', 'Large label']) {
         const warning = warnings.find(i => i.message.startsWith(`"${label}"`));
-        const match = /background \((\d+\.\d):1\); use color: '([^']+)' \((\d+\.\d):1\)$/.exec(warning.message);
+        // First a shade of the same color, so the color keeps its meaning, then the look's ink.
+        const match = /background \((\d+\.\d):1\); use color: '(#[0-9a-f]{6})' \((\d+\.\d):1\), a (darker|lighter) shade of the same color, or color: 'ink' \((\d+\.\d):1\)$/.exec(warning.message);
         assert.ok(match, warning.message);
         assert.equal(match[1], contrast(fg, bg).toFixed(1));
-        const ratio = contrast(colorOf(getTheme(theme), match[2]), bg);
+        const ratio = contrast(match[2], bg);
         assert.ok(ratio >= (label === 'Large label' ? 3 : 4.5));
         assert.equal(match[3], ratio.toFixed(1));
+        assert.equal(match[4], theme === 'paper' ? 'darker' : 'lighter');
+        assert.ok(Math.abs(hue(match[2]) - hue(fg)) < 4, `${match[2]} keeps the hue of ${fg}`);
+        assert.equal(match[5], contrast(getTheme(theme).ink, bg).toFixed(1));
       }
       assert.match(warnings.find(i => i.message.startsWith('"Own background"')).message, /use color: '#/);
       assert.match(warnings.find(i => i.message.startsWith('"CSS color"')).message, /use color: '#/);

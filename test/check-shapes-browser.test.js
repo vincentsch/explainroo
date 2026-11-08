@@ -164,10 +164,10 @@ test('check measures text and starred words against their sticker or box, and wi
   assert.deepEqual(issues.filter((i) => i.scene === 'green'), []);
   const red = messages(issues, 'red', 'low contrast');
   assert.equal(red.length, 1, JSON.stringify(issues));
-  assert.match(red[0], /^"sick" has low contrast against its background \(1\.1:1\); use keyColor: '#[0-9a-f]{6}' \(\d\.\d:1\)$/);
+  assert.match(red[0], /^"sick" has low contrast against its background \(1\.1:1\); use keyColor: '#[0-9a-f]{6}' \(\d\.\d:1\), a (darker|lighter) shade of the same color(, or keyColor: 'ink' \(\d+\.\d:1\))?$/);
   const box = messages(issues, 'box', 'low contrast');
   assert.equal(box.length, 1, JSON.stringify(issues));
-  assert.match(box[0], /^the \*starred\* words in "Saves time" have low contrast against its background \(1\.\d:1\); use mark: '.+' \(\d\.\d:1\)$/);
+  assert.match(box[0], /^the \*starred\* words in "Saves time" have low contrast against its background \(1\.\d:1\); use mark: '#[0-9a-f]{6}' \(\d+\.\d:1\), a lighter shade of the same color$/);
   // The default highlight reaches 4.5:1 on the sticker's own color, and stays
   // red where red already does.
   assert.ok(contrast(more.green, '#008000') >= 4.5, more.green);
@@ -227,6 +227,14 @@ test('with "defaults": "0.5", gap leaves that many pixels free at a point end, a
   // 40 pixels at each point end; no gap at a point without one; an arrow too short for its gaps keeps its ends.
   assert.deepEqual(await ends({ defaults: '0.5' }), [[340, 860], [300, 900], [300, 320]]);
   assert.deepEqual(await ends({}), [[300, 900], [300, 900], [300, 320]]);
+});
+
+test('check suggests a darker shade of the same color for orange text on paper, and ink second', { skip }, async (t) => {
+  const issues = await check(project(t, { theme: 'paper' }, { sun: `s.text('Sun time', { color: 'orange', size: 40, at: 0 });` }));
+  const [warning] = messages(issues, 'sun', 'low contrast');
+  const match = /^"Sun time" has low contrast against its background \((\d\.\d):1\); use color: '(#[0-9a-f]{6})' \((\d\.\d):1\), a darker shade of the same color, or color: 'ink' \((\d+\.\d):1\)$/.exec(warning);
+  assert.ok(match, warning);
+  assert.ok(Number(match[3]) >= 4.5);
 });
 
 test('an icon with a label returns the label\'s box and an outer box with both, and bottom stays the icon\'s own', { skip }, async (t) => {
