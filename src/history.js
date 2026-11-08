@@ -19,6 +19,7 @@ import { ProjectError, hideSecrets } from './errors.js';
 import { findService, localTime } from './services.js';
 import { LANGUAGES } from './models.js';
 import { isSize } from './project.js';
+import { withLock } from './lock.js';
 
 const BIN = fileURLToPath(new URL('../bin/explainroo.js', import.meta.url));
 const JOB_FILE = /^([0-9a-f]+)(?:\.(\d+))?\.json$/;
@@ -291,74 +292,12 @@ export function withNameLock(dir, name, fn) {
   }
 }
 
-// True while the process that wrote a lock file still runs. A file with no number in
-// it yet was just made, so it counts as held for a few seconds.
-function lockHeld(file) {
-  let text;
-  let stat;
-  try {
-    text = fs.readFileSync(file, 'utf8');
-    stat = fs.statSync(file);
-  } catch (e) {
-    if (e.code === 'ENOENT') return false;
-    throw e;
-  }
-  const pid = Number(text.trim());
-  if (!Number.isInteger(pid) || pid <= 0) return Math.abs(Date.now() - stat.mtimeMs) < 10000;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (e) {
-    return e.code === 'EPERM';
-  }
-}
-
 // One run at a time in this project for a step that reads the record and then adds
-// to it, like a clip purchase that has to see what the others are spending. The lock
-// is a file made with an exclusive open, holding the process id. A lock whose process
-// is gone counts as free. After waitMs, busy() says why this run stopped.
-export async function withProjectLock(dir, name, fn, { waitMs = 30000, busy }) {
-  fs.mkdirSync(historyDir(dir, 'locks'), { recursive: true });
-  const lock = historyDir(dir, 'locks', `${name}.lock`);
-  const deadline = Date.now() + waitMs;
-  for (;;) {
-    let fd = null;
-    try {
-      fd = fs.openSync(lock, 'wx');
-    } catch (e) {
-      if (e.code !== 'EEXIST') throw e;
-    }
-    if (fd !== null) {
-      try {
-        fs.writeSync(fd, String(process.pid));
-      } finally {
-        fs.closeSync(fd);
-      }
-      break;
-    }
-    if (!lockHeld(lock)) {
-      // Moved aside first, so two runs that both found it free don't both take it.
-      const gone = `${lock}.${process.pid}.gone`;
-      try {
-        fs.renameSync(lock, gone);
-        fs.rmSync(gone, { force: true });
-      } catch (e) {
-        if (e.code !== 'ENOENT') throw e;
-      }
-      continue;
-    }
-    if (Date.now() >= deadline) throw busy();
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  try {
-    return await fn();
-  } finally {
-    try {
-      if (fs.readFileSync(lock, 'utf8').trim() === String(process.pid)) fs.rmSync(lock, { force: true });
-    } catch (e) {
-      if (e.code !== 'ENOENT') throw e;
-    }
-  }
+// to it, like a clip purchase that has to see what the others are spending. A lock
+// whose process is gone counts as free, and taking it over keeps the others out
+// (src/lock.js). After waitMs, busy() says why this run stopped.
+export function withProjectLock(dir, name, fn, { waitMs = 30000, busy }) {
+  return withLock(historyDir(dir, 'locks', name), fn, { waitMs, busy });
 }
 
 // All at once, so a run that dies never leaves half a file under a public name.

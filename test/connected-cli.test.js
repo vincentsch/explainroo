@@ -789,23 +789,102 @@ test('two clip purchases at the same time stay within the budget, and a purchase
   assert.deepEqual(fs.readdirSync(path.join(dir, 'history/locks')), [], 'the lock is gone once the purchase went out');
 
   // A lock held by a process that still runs makes the next purchase wait, then stop.
-  const lock = path.join(dir, 'history/locks/clip-purchase.lock');
+  const holder = heldLock(dir, process.pid);
   const rain = ['clip', dir, 'Rain on a window at night, close up', '--seconds', '4', '--budget', '1'];
-  fs.writeFileSync(lock, String(process.pid));
   const waited = await cli(rain, { EXPLAINROO_CLIP_LOCK_MS: '300' });
   assert.equal(waited.code, 1);
   assert.match(waited.stderr, /^error: another clip purchase is running in this project, and this one waited 0\.3 seconds for it to finish its check of the budget\. Nothing was spent\. Run the same command again once that one has gone out\.$/m);
   assert.equal(posts(), 1);
-  assert.equal(fs.readFileSync(lock, 'utf8'), String(process.pid), 'another process\'s lock stays');
+  assert.equal(fs.existsSync(holder), true, 'another process\'s lock stays');
+  assert.deepEqual(fs.readdirSync(path.join(dir, 'history/locks')), ['clip-purchase'], 'the purchase that gave up left nothing of its own');
 
   // A lock whose process is gone counts as free.
+  fs.rmSync(path.dirname(holder), { recursive: true });
   const gone = spawn(process.execPath, ['-e', '']);
   await new Promise((resolve) => gone.on('close', resolve));
-  fs.writeFileSync(lock, String(gone.pid));
+  heldLock(dir, gone.pid);
   const freed = await cli(rain);
   assert.equal(freed.code, 0, freed.text);
   assert.equal(posts(), 2);
-  assert.equal(fs.existsSync(lock), false);
+  assert.deepEqual(fs.readdirSync(path.join(dir, 'history/locks')), []);
+});
+
+// The clip purchase lock as a run makes it: a folder with the file of its holder.
+function heldLock(dir, pid) {
+  const lock = path.join(dir, 'history/locks/clip-purchase');
+  fs.mkdirSync(lock, { recursive: true });
+  const file = path.join(lock, `held-by-${pid}-${crypto.randomBytes(8).toString('hex')}`);
+  fs.writeFileSync(file, `${pid}\n`);
+  return file;
+}
+
+const LOCK_RACE = new URL('./helpers/lock-race.js', import.meta.url).href;
+const withRace = (env = {}) => ({ NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --import=${LOCK_RACE}`.trim(), ...env });
+const FIELD = 'A wheat field moving in the wind at noon';
+
+// A purchase that dies while it claims its job leaves the lock behind. This gives
+// its process id.
+async function purchaseDied(dir, start) {
+  const run = start(clip(dir, 'A lighthouse on a cliff in a storm', '--budget', '1'), withRace({ EXPLAINROO_TEST_DIE_AT: 'openSync:[\\\\/]history[\\\\/]jobs[\\\\/]' }));
+  const died = await run.result;
+  assert.equal(died.signal, 'SIGKILL', died.text);
+  assert.equal(fs.readdirSync(path.join(dir, 'history/locks/clip-purchase')).length, 1, 'its lock is left behind');
+  assert.deepEqual(jobs(dir), []);
+  return run.child.pid;
+}
+
+// Each purchase finds that lock and checks whether its process still runs. They all
+// wait there until each one has, so they all saw the same lock left behind. Then the
+// first goes on and claims its job slowly, and the others try to take the lock over
+// while it is still inside.
+async function raceAfterCrash(t, prompts, budget) {
+  const s = await setup(t);
+  const dead = await purchaseDied(s.dir, s.start);
+  const race = temp(t);
+  const results = await Promise.all(prompts.map((prompt, i) => s.cli(clip(s.dir, prompt, '--budget', budget), withRace({
+    EXPLAINROO_TEST_RACE_PID: String(dead),
+    EXPLAINROO_TEST_RACE_DIR: race,
+    EXPLAINROO_TEST_RACE_PARTIES: String(prompts.length),
+    EXPLAINROO_TEST_RACE_DELAY: String(i * 200),
+    EXPLAINROO_TEST_SLOW_CLAIM: '600',
+  }))));
+  assert.equal(fs.readdirSync(race).length, prompts.length, 'every purchase found the lock of the one that died');
+  return { ...s, results };
+}
+
+test('two clip purchases that both find the lock of a purchase that died still take turns, and only one fits in the budget', async (t) => {
+  const { dir, fake, results } = await raceAfterCrash(t, [STREET, HARBOR], '0.30');
+  const bought = results.filter((r) => r.code === 0);
+  const refused = results.filter((r) => r.code !== 0);
+  assert.equal(bought.length, 1, results.map((r) => r.text).join('\n'));
+  assert.match(refused[0].stderr, /^error: this clip costs about \$0\.18, and \$0\.12 is left of the clip budget of \$0\.30 from --budget\. Nothing was spent\./m);
+  assert.equal(fake.count('openrouter', CLIP_POST), 1);
+  assert.deepEqual(jobs(dir).map((j) => j.estimated_usd), [0.18]);
+  assert.deepEqual(fs.readdirSync(path.join(dir, 'history/locks')), []);
+});
+
+test('clip purchases that all find a lock left behind never claim more than the budget together', async (t) => {
+  const { dir, fake, results } = await raceAfterCrash(t, [STREET, HARBOR, FIELD], '0.40');
+  assert.equal(results.filter((r) => r.code === 0).length, 2, results.map((r) => r.text).join('\n'));
+  const [refused] = results.filter((r) => r.code !== 0);
+  assert.match(refused.stderr, /this clip costs about \$0\.18, and \$0\.04 is left of the clip budget of \$0\.40/);
+  const claimed = jobs(dir).reduce((sum, j) => sum + j.estimated_usd, 0);
+  assert.ok(claimed <= 0.4 + 1e-9, `claimed ${claimed}`);
+  assert.equal(fake.count('openrouter', CLIP_POST), 2);
+});
+
+test('a clip purchase that dies while it takes over a lock left behind does not hold up the next one', async (t) => {
+  const { dir, start, cli, fake } = await setup(t);
+  await purchaseDied(dir, start);
+  // It deleted the file of the run before it, and died before the folder went.
+  const halfway = await cli(clip(dir, STREET, '--budget', '1'), withRace({ EXPLAINROO_TEST_DIE_AT: 'rmdirSync:clip-purchase$' }));
+  assert.equal(halfway.signal, 'SIGKILL', halfway.text);
+  assert.deepEqual(fs.readdirSync(path.join(dir, 'history/locks/clip-purchase')), []);
+  // The empty folder counts as free, so the next one gets in before its wait is over.
+  const next = await cli(clip(dir, STREET, '--budget', '1'), { EXPLAINROO_CLIP_LOCK_MS: '2000' });
+  assert.equal(next.code, 0, next.text);
+  assert.equal(fake.count('openrouter', CLIP_POST), 1);
+  assert.deepEqual(fs.readdirSync(path.join(dir, 'history/locks')), []);
 });
 
 // The budget changes no frame, so it stays out of the settings the render uses.
