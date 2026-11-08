@@ -328,6 +328,11 @@ test('the README installs with npx, its prompt runs the docs command, and clonin
   assert.ok(install.indexOf('git clone') > install.indexOf('To change the code'));
 });
 
+test('the init example on the start page and in making-a-video shows --size, which step 2 asks to pick', () => {
+  assert.ok(oneLine(start).includes('`explainroo init videos/<name> --theme paper --size 16:9 --title "..."`. Pick the look for the audience, and the size for the platform'));
+  assert.ok(page('making-a-video').includes('explainroo init videos/<name> --theme paper --size 16:9 --title "..."'));
+});
+
 test('the README headline is the first sentence of the package description', () => {
   const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
   const { description } = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));

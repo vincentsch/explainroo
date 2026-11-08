@@ -13,7 +13,7 @@ user. Read it first.
 2. **Create the project.**
 
    ```bash
-   explainroo init videos/<name> --theme paper --title "..."
+   explainroo init videos/<name> --theme paper --size 16:9 --title "..."
    ```
 
    A project can go in any folder. The examples here use `videos/<name>`. Each
