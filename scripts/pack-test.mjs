@@ -274,11 +274,21 @@ const steps = [
   },
   {
     // A sheet of chosen moments, in the order given, in a file of its own.
-    args: ['sheet', 'video', '--times', 'steps@1,2,hook', '--json'],
+    args: ['sheet', 'video', '--times', 'main@1,2,intro', '--json'],
     check: (r, { temp }) => {
       expect(r.file.startsWith(temp) && r.file.endsWith(path.join('out', 'sheet-times.jpg')) && fs.statSync(r.file).size > 0, `the sheet went to ${r.file}`);
-      expect(r.times.map((x) => x.label).join() === 'steps@1,t2.00,hook@end', `the sheet shows ${JSON.stringify(r.times)}`);
+      expect(r.times.map((x) => x.label).join() === 'main@1,t2.00,intro@end', `the sheet shows ${JSON.stringify(r.times)}`);
       return `${r.frames} chosen moments`;
+    },
+  },
+  {
+    // The spoken words of a scene with their times, for choosing cues.
+    args: ['words', 'video', 'intro', '--json'],
+    check: (r) => {
+      const [scene] = r.scenes;
+      expect(r.scenes.length === 1 && scene.scene === 'intro' && scene.words.length > 3, `words printed ${JSON.stringify(r).slice(0, 200)}`);
+      expect(scene.words.every((w, i) => i === 0 || w.start >= scene.words[i - 1].start), 'the word times go back');
+      return `${scene.words.length} words in intro`;
     },
   },
   {
