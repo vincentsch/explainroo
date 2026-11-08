@@ -83,6 +83,25 @@ export function parseColor(c) {
   return null;
 }
 
+// Any CSS color in a form the contrast math reads, like "green" as "#008000",
+// or null when the string is no color or there is no canvas to ask. The
+// canvas keeps its old color when given something that isn't one, so two
+// different old colors show that.
+let colorProbe = null;
+export function cssColor(color) {
+  if (typeof color !== 'string') return null;
+  if (parseColor(color)) return color;
+  if (typeof OffscreenCanvas === 'undefined') return null;
+  colorProbe ??= new OffscreenCanvas(1, 1).getContext('2d');
+  const read = (before) => {
+    colorProbe.fillStyle = before;
+    colorProbe.fillStyle = color;
+    return colorProbe.fillStyle;
+  };
+  const seen = read('#000000');
+  return seen === read('#ffffff') ? seen : null;
+}
+
 export function rgba({ r, g, b, a = 1 }) {
   return `rgba(${Math.round(r)},${Math.round(g)},${Math.round(b)},${Math.round(a * 1000) / 1000})`;
 }

@@ -207,6 +207,27 @@ export function pointAt(d, dist) {
   return { x: p.x, y: p.y };
 }
 
+// Points along a path about `step` units apart, both ends included, for check
+// to see where a line runs. Kept per path, since scenes draw the same paths
+// on every frame.
+const samples = new Map();
+export function samplePath(d, step = 5) {
+  const key = `${step}|${d}`;
+  let pts = samples.get(key);
+  if (pts) return pts;
+  const L = pathLength(d);
+  const n = Math.max(1, Math.ceil(L / step));
+  svgPath.setAttribute('d', d);
+  pts = [];
+  for (let k = 0; k <= n; k++) {
+    const p = svgPath.getPointAtLength((L * k) / n);
+    pts.push([p.x, p.y]);
+  }
+  if (samples.size > 4000) samples.clear();
+  samples.set(key, pts);
+  return pts;
+}
+
 // Shapes centred on 0,0.
 export function rectD(w, h, rr = 0) {
   const x = -w / 2;

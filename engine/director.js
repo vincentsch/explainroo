@@ -164,7 +164,9 @@ export function compose(focus, visible, view, frame, usable = { x0: 0, y0: 0, x1
       }
     }
   }
-  if (best) return best.shot;
+  // A shot that looks into an element, like a code window around its
+  // highlighted lines, says what it looks at, since it may cut that element.
+  if (best) return looking ? { ...best.shot, into: box } : best.shot;
   // Otherwise the frame as it was written. Its slow push stays off when it
   // would move something into the captions or the app's buttons.
   const full = frameBox(box, view, frame, 1);
@@ -447,6 +449,14 @@ export function cameraAt(plan, t, drift = true) {
 // True while the camera is in a move (not counting the slow drift).
 export function cameraMoving(plan, t) {
   return plan.moves.some((m) => t > m.start && t < m.start + m.dur);
+}
+
+// The shot the camera holds at t, or null while it moves.
+export function heldShot(plan, t) {
+  if (cameraMoving(plan, t)) return null;
+  let shot = plan.start;
+  for (const m of plan.moves) if (t >= m.start + m.dur) shot = m.to;
+  return shot;
 }
 
 // Whether scene B picks up where scene A left off: what A's last frame

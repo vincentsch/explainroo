@@ -6,41 +6,24 @@ import { getTheme, makeBackground, fontString, colorOf } from './themes.js';
 import { Pen } from './pen.js';
 import { drawTransition } from './transitions.js';
 import { buildPhrases, drawCaptions, buildChunks, drawBoldCaptions, captionHighlight } from './captions.js';
-import { AUDIO_FILE, clamp, hashStr, mulberry32, suggest, suggestColor, contrast, opaque, withAlpha, parseColor, mixColor, rgba } from './util.js';
+import { AUDIO_FILE, clamp, hashStr, mulberry32, suggest, suggestColor, contrast, opaque, withAlpha, parseColor, mixColor, rgba, cssColor } from './util.js';
+import { overlapDepth, holds, crosses } from './geometry.js';
 import { layoutAreas } from './layout.js';
 import { loadClips, soundURL, ClipFrames } from './clips.js';
 import { UI } from './ui.js';
 import { Short } from './short.js';
 import { playbackTextIssue } from './readability.js';
-import { planCamera, cameraAt, cameraMoving, continues, frameRect, backgroundShot } from './director.js';
+import { planCamera, cameraAt, cameraMoving, heldShot, continues, frameRect, backgroundShot } from './director.js';
 
 Stage.UI = UI;
 Stage.Short = Short;
-
-let colorContext = null;
-
-// Any CSS color in a form the contrast math reads, like "black" as "#000000",
-// or null when the string is no color. The canvas keeps its old color when it
-// is given something that isn't one, so two different old colors show that.
-function readableColor(color) {
-  if (typeof color !== 'string') return null;
-  if (parseColor(color)) return color;
-  colorContext ??= new OffscreenCanvas(1, 1).getContext('2d');
-  const read = (before) => {
-    colorContext.fillStyle = before;
-    colorContext.fillStyle = color;
-    return colorContext.fillStyle;
-  };
-  const seen = read('#000000');
-  return seen === read('#ffffff') ? seen : null;
-}
 
 // The color a scene painted behind a text, with s.bg or the kit's backdrop: a
 // gradient from top to bottom, read at the text's height.
 function pageColor(tx, H) {
   const p = tx.page;
-  const top = p && readableColor(p.top);
-  const bottom = p && readableColor(p.bottom);
+  const top = p && cssColor(p.top);
+  const bottom = p && cssColor(p.bottom);
   if (!top || !bottom) return null;
   return mixColor(top, bottom, clamp((tx.y0 + tx.y1) / 2 / H));
 }
@@ -132,6 +115,7 @@ export class Engine {
     this.sfxMode = config.sfx;
     this.recorder = null;
     this.textLog = null;
+    this.drawLog = null;
     this.errors = [];
     this.canvas = canvas;
     // H.264 needs even dimensions.
@@ -337,6 +321,27 @@ export class Engine {
     // is measured as one block that the camera must not cut.
     let raw = null;
     let api = s;
+    let ink = null;
+    if (this.drawLog && !this.layoutLog) {
+      // While check looks at a frame, what the scene draws straight on s.ctx
+      // counts as something on screen. The kit draws on its own and tells
+      // check itself, and a large fill is a background.
+      ink = boundsRecorder(ctx, this.scale, { W: this.W, H: this.H });
+      const pen = new Proxy(ctx, {
+        get: (target, prop) => (INK_CALLS.has(prop) && target.globalAlpha <= 0.01 ? target[prop].bind(target) : ink.proxy[prop]),
+        set: (target, prop, value) => {
+          target[prop] = value;
+          return true;
+        },
+      });
+      api = new Proxy(s, {
+        get: (target, prop) => {
+          if (prop === 'ctx') return pen;
+          const v = target[prop];
+          return typeof v === 'function' ? v.bind(target) : v;
+        },
+      });
+    }
     if (this.planning && this.layoutLog) {
       raw = boundsRecorder(ctx, this.scale, { W: this.W, H: this.H });
       // The UI kit draws on the same recorder; its panels and headlines
@@ -366,8 +371,13 @@ export class Engine {
           ctx.restore();
         }
       }
-      const ink = raw?.box();
-      if (ink) this.layoutLog.push({ kind: 'ink', at: 0, out: Infinity, box: ink });
+      const drawn = raw?.box();
+      if (drawn) this.layoutLog.push({ kind: 'ink', at: 0, out: Infinity, box: drawn });
+      const inked = ink?.box();
+      if (inked && this.drawLog) {
+        this.drawLog.shown++;
+        this.drawLog.ink = { x0: inked.x - inked.w / 2, y0: inked.y - inked.h / 2, x1: inked.x + inked.w / 2, y1: inked.y + inked.h / 2 };
+      }
     } catch (e) {
       const err = e instanceof Error ? e : new Error(String(e));
       err.scene = sc.id;
@@ -573,9 +583,10 @@ export class Engine {
 
   // Samples every scene and reports layout problems.
   check(step = 0.25, viewWidth = null) {
-    // check looks at the layout as written. The automatic camera only ever
-    // moves in, which makes text larger, and it may leave the edges out of
-    // a close-up on purpose.
+    // check looks at the layout as written, and then at what the automatic
+    // camera shows of it: text sizes, and what a held shot cuts at its edge.
+    // The camera only ever moves in, which makes text larger, and it may leave
+    // the edges out of a close-up on purpose.
     this.cameraOff = true;
     try {
       return this._check(step, viewWidth);
@@ -604,7 +615,7 @@ export class Engine {
     const uiMinSize = Math.round(Math.min(W, H) * 0.015);
     const colors = Object.fromEntries(['ink', 'accent', ...Object.keys(this.theme.colors)].map(name => [name, colorOf(this.theme, name)]));
     let colorCtx;
-    const cssColor = color => {
+    const pixelColor = color => {
       if (parseColor(color)) return color;
       if (!colorCtx) {
         const canvas = document.createElement('canvas');
@@ -618,35 +629,44 @@ export class Engine {
       const [r, g, b, a] = colorCtx.getImageData(0, 0, 1, 1).data;
       return rgba({ r, g, b, a: a / 255 });
     };
+    const named = () => Object.fromEntries(Object.entries(colors).map(([name, c]) => [name, pixelColor(c)]));
     const reported = new Set();
     const once = (key, fn) => {
       if (reported.has(key)) return;
       reported.add(key);
       fn();
     };
+    const short = (text) => (text.length > 40 ? text.slice(0, 37) + '...' : text);
+    const onScreen = (b) => b.x1 > 0 && b.y1 > 0 && b.x0 < W && b.y0 < H;
+    const inFrame = (b) => b.x0 >= -1 && b.y0 >= -1 && b.x1 <= W + 1 && b.y1 <= H + 1;
     this.cueNotes = [];
     this.soundsPlayed = new Map();
     for (const sc of this.timeline.scenes) {
       const entrances = [];
-      this.recorder = { push: (e) => entrances.push(e) };
+      // The automatic camera of this scene. check looks at the layout as
+      // written and, where the camera films the scene, at what it shows too.
+      const plan = this.cameraPlans?.get(sc.index) ?? null;
+      // Each text at the smallest size it is shown at while it is on screen.
+      const smallest = new Map();
+      let shownAt = null;
       const n = Math.ceil(sc.dur / step);
       for (let k = 0; k <= n; k++) {
         const t = Math.min(sc.dur - 0.001, k * step);
+        this.recorder = { push: (e) => entrances.push(e) };
         this.textLog = [];
+        this.drawLog = drawLog();
         try {
           this.drawScene(ctx, sc.index, t);
         } catch (e) {
           once(`err:${sc.id}:${e.message}`, () => add('error', sc.id, t, e.message));
           break;
         }
+        const laid = { texts: this.textLog.filter((x) => !x.problem), draw: this.drawLog };
         for (const pr of this.textLog.filter((x) => x.problem)) once(`problem:${sc.id}:${pr.key ?? pr.problem}`, () => add(pr.level ?? 'error', sc.id, t, pr.problem));
-        const texts = this.textLog.filter((x) => !x.problem && x.alpha > 0.5);
+        if (shownAt === null && laid.draw.shown > 0) shownAt = t;
+        const texts = laid.texts.filter((x) => x.alpha > 0.5);
         for (const tx of texts) {
-          if (viewWidth !== null) {
-            const message = playbackTextIssue(tx, W, H, viewWidth);
-            if (message) once(`playback:${sc.id}:${tx.text}`, () => add('warn', sc.id, t, message));
-          }
-          const label = tx.text.length > 40 ? tx.text.slice(0, 37) + '...' : tx.text;
+          const label = short(tx.text);
           // UI kit text (s.ui) may leave the frame on purpose while the
           // camera zooms or pans; app screens use smaller text than slides.
           const framed = !(tx.ui && tx.zoomed);
@@ -664,12 +684,19 @@ export class Engine {
           if (b && tx.y1 > b.top + 2 && tx.y0 < b.bottom - 2 && tx.x1 > b.left && tx.x0 < b.right) {
             once(`cap:${sc.id}:${tx.text}`, () => add('warn', sc.id, t, `"${label}" is in the caption band (y ${Math.round(b.top)} to ${Math.round(b.bottom)}), where captions can cover it; keep content above s.safe.bottom (${Math.round(this.safeArea.bottom)})`));
           }
-          const least = tx.ui ? uiMinSize : minSize;
-          if (!tx.block && Math.round(tx.size) < least) once(`small:${sc.id}:${tx.text}`, () => add('warn', sc.id, t, `"${label}" is ${Math.round(tx.size)}px, hard to read (use at least ${least}px)`));
-          const bg = opaque(tx.bg || pageColor(tx, H) || this.theme.bg, this.theme.bg);
-          if (typeof tx.fg === 'string' && contrast(tx.fg, bg) < 3) once(`contrast:${sc.id}:${tx.text}`, () => {
-            const suggestion = suggestColor(cssColor(tx.fg), cssColor(bg), tx.size, Object.fromEntries(Object.entries(colors).map(([name, c]) => [name, cssColor(c)])));
-            add('warn', sc.id, t, `"${label}" has low contrast against its background (${contrast(tx.fg, bg).toFixed(1)}:1); use color: '${suggestion.color}' (${suggestion.ratio.toFixed(1)}:1)`);
+          // Text on a sticker, a box or a card of its own is measured against
+          // that color, *starred* words too.
+          const own = cssColor(tx.bg);
+          const bg = opaque(own || pageColor(tx, H) || this.theme.bg, this.theme.bg);
+          const fg = cssColor(tx.fg);
+          if (fg && contrast(fg, bg) < 3) once(`contrast:${sc.id}:${tx.text}`, () => {
+            const suggestion = suggestColor(pixelColor(fg), pixelColor(bg), tx.size, named());
+            add('warn', sc.id, t, `"${label}" has low contrast against its background (${contrast(fg, bg).toFixed(1)}:1); use ${tx.option ?? 'color'}: '${suggestion.color}' (${suggestion.ratio.toFixed(1)}:1)`);
+          });
+          const mark = own && cssColor(tx.mark);
+          if (mark && contrast(mark, bg) < 3) once(`mark:${sc.id}:${tx.text}`, () => {
+            const suggestion = suggestColor(pixelColor(mark), pixelColor(bg), tx.size, named());
+            add('warn', sc.id, t, `the *starred* words in "${label}" have low contrast against its background (${contrast(mark, bg).toFixed(1)}:1); use mark: '${suggestion.color}' (${suggestion.ratio.toFixed(1)}:1)`);
           });
         }
         // Overlaps only count when both are fully shown, not mid-fade.
@@ -690,6 +717,63 @@ export class Engine {
             }
           }
         }
+        for (const f of shapeOverlaps(laid.draw.shapes)) once(`shapes:${sc.id}:${f.key}`, () => add('warn', sc.id, t, f.message));
+        for (const f of linesOverText(laid.draw.strokes, solid)) once(`line:${sc.id}:${f.key}`, () => add('warn', sc.id, t, f.message));
+        for (const f of labelsIntoShapes(laid.draw.strokes, solid, laid.draw.shapes)) once(`label:${sc.id}:${f.key}`, () => add('warn', sc.id, t, f.message));
+        // What the viewer sees: as the camera films it, when it films this scene.
+        let seen = texts;
+        if (plan) {
+          this.recorder = null;
+          this.textLog = [];
+          this.drawLog = drawLog();
+          this.cameraOff = false;
+          try {
+            this.drawScene(ctx, sc.index, t);
+          } catch {
+            // found above, without the camera
+          } finally {
+            this.cameraOff = true;
+          }
+          const filmed = { texts: this.textLog.filter((x) => !x.problem), draw: this.drawLog };
+          // While the camera holds still, nothing that fits the frame as
+          // written may be cut at its edge. Fully out of the shot is fine, and
+          // so is the element a close-up looks into, like a code window.
+          const held = heldShot(plan, t);
+          const into = held?.into;
+          const lookedInto = (b) => into && b.x0 <= into.x - into.w / 2 + 0.5 && b.x1 >= into.x + into.w / 2 - 0.5 && b.y0 <= into.y - into.h / 2 + 0.5 && b.y1 >= into.y + into.h / 2 - 0.5;
+          if (filmed.texts.length === laid.texts.length) {
+            seen = filmed.texts.filter((x) => x.alpha > 0.5);
+            if (held) {
+              laid.texts.forEach((tx, i) => {
+                const shot = filmed.texts[i];
+                if (tx.alpha > 0.95 && tx.settled && !tx.block && !lookedInto(tx) && inFrame(tx) && onScreen(shot) && !inFrame(shot)) once(`cut:${sc.id}:${tx.text}`, () => add('warn', sc.id, t, `the camera cuts off "${short(tx.text)}" at the edge of the frame while it holds still; keep this scene still with s.camera([]), or point the camera with s.focus`));
+              });
+            }
+          }
+          if (held && filmed.draw.shapes.length === laid.draw.shapes.length) {
+            laid.draw.shapes.forEach((sh, i) => {
+              const shot = filmed.draw.shapes[i];
+              if (sh.alpha > 0.95 && sh.settled && !lookedInto(sh.box) && inFrame(sh.box) && onScreen(shot.box) && !inFrame(shot.box)) once(`cut:${sc.id}:${shapeKey(sh)}`, () => add('warn', sc.id, t, `the camera cuts off ${shapeName(sh)} at the edge of the frame while it holds still; keep this scene still with s.camera([]), or point the camera with s.focus`));
+            });
+          }
+        }
+        for (const tx of seen) {
+          if (tx.block || !onScreen(tx)) continue;
+          const entry = smallest.get(tx.text) ?? { size: null, play: null };
+          if (!entry.size || tx.size < entry.size.tx.size - 0.01) entry.size = { tx, t };
+          if (tx.alpha > 0.95 && (!entry.play || tx.size < entry.play.tx.size - 0.01)) entry.play = { tx, t };
+          smallest.set(tx.text, entry);
+        }
+      }
+      this.drawLog = null;
+      // Text is judged at the smallest size it is shown at: the size the
+      // camera leaves it at when it shows the whole picture, or smaller where
+      // the scene zooms out itself.
+      for (const [text, { size, play }] of smallest) {
+        const least = size.tx.ui ? uiMinSize : minSize;
+        if (Math.round(size.tx.size) < least) once(`small:${sc.id}:${text}`, () => add('warn', sc.id, size.t, `"${short(text)}" is ${Math.round(size.tx.size)}px, hard to read (use at least ${least}px)`));
+        const message = viewWidth !== null && play ? playbackTextIssue(play.tx, W, H, viewWidth) : null;
+        if (message) once(`playback:${sc.id}:${text}`, () => add('warn', sc.id, play.t, message));
       }
       this.recorder = null;
       this.textLog = null;
@@ -702,12 +786,20 @@ export class Engine {
         if (e.kind === 'sound' && !this.soundsPlayed.has(e.src)) this.soundsPlayed.set(e.src, { scene: sc.id, t: e.at });
         if (e.at > sc.dur) once(`late:${sc.id}:${e.key}`, () => add('error', sc.id, e.at, `a ${e.kind} is set to appear at ${e.at.toFixed(2)}s but the scene ends at ${sc.dur.toFixed(2)}s`));
       }
+      // A scene that shows only its background for a while at the start. The
+      // first element's own time says how long, when there is one.
+      const first = times.find((x) => x >= 0);
+      const bare = shownAt === null ? null : first !== undefined && first > shownAt - step - 1e-6 && first <= shownAt + 1e-6 ? first : shownAt;
+      const emptyStart = bare !== null && bare > EMPTY_START;
+      if (emptyStart) add('hint', sc.id, 0, `the scene shows only its background for the first ${bare.toFixed(1)}s; put something on screen sooner, for example give the first element an earlier at`);
       if (!times.length) {
         add('warn', sc.id, null, 'nothing enters in this scene; add at least one element with an "at" time');
       } else {
         const marks = [0, ...times.filter((x) => x >= 0 && x <= sc.dur), sc.dur];
         for (let i = 1; i < marks.length; i++) {
           const gap = marks[i] - marks[i - 1];
+          // The empty start already has its hint.
+          if (emptyStart && i === 1) continue;
           if (gap > 6) add('hint', sc.id, marks[i - 1], `no new element for ${gap.toFixed(1)}s (from ${marks[i - 1].toFixed(1)}s); consider revealing something on a cue in that stretch`);
         }
       }
@@ -721,6 +813,94 @@ export class Engine {
     for (const { scene, t, tex } of this.lateMath.values()) add('error', scene, t, `math "${tex}" was not collected at the start; keep TeX strings fixed and always call s.math with at and out for timing`);
     return issues;
   }
+}
+
+// The canvas calls that put something on it.
+const INK_CALLS = new Set(['fill', 'stroke', 'fillRect', 'strokeRect', 'fillText', 'strokeText', 'drawImage']);
+
+// A scene may show only its background this long at the start, in seconds.
+const EMPTY_START = 1.5;
+// "cover": "auto" looks this far into the first scene, in seconds.
+const COVER_SECONDS = 3;
+
+// What check collects while it draws one moment of a scene: the shapes and
+// lines drawn, in design pixels, and how many elements are on screen.
+function drawLog() {
+  return { shapes: [], strokes: [], lives: [], shown: 0, order: 0 };
+}
+
+const SHAPE_NAMES = { box: 'box', icon: 'icon', image: 'image', code: 'code window', terminal: 'terminal', card: 'card', sticker: 'sticker' };
+
+// "the box "Rivers bring salt in"", or "the card at 200,300" without a name.
+function shapeName(sh) {
+  const kind = SHAPE_NAMES[sh.kind] ?? sh.kind;
+  const name = sh.name.length > 40 ? sh.name.slice(0, 37) + '...' : sh.name;
+  return name ? `the ${kind} "${name}"` : `the ${kind} at ${Math.round((sh.box.x0 + sh.box.x1) / 2)},${Math.round((sh.box.y0 + sh.box.y1) / 2)}`;
+}
+
+function shapeKey(sh) {
+  return `${sh.kind}|${sh.name}|${Math.round((sh.box.x0 + sh.box.x1) / 8)}|${Math.round((sh.box.y0 + sh.box.y1) / 8)}`;
+}
+
+// Shapes that partly overlap: they reach more than 4 pixels into each other
+// and neither holds the other. Only shapes that have fully arrived count. Two
+// in the same group, or in one panel, are one piece; a dialog, an open menu or
+// a toast covers what is under it; and overlap: true allows it.
+export function shapeOverlaps(shapes) {
+  const list = shapes.filter((s) => s.settled && s.alpha > 0.95 && !s.overlap && !s.cover);
+  const found = [];
+  for (let i = 0; i < list.length; i++) {
+    for (let j = i + 1; j < list.length; j++) {
+      const A = list[i];
+      const B = list[j];
+      if (A.group !== null && A.group === B.group) continue;
+      const depth = overlapDepth(A.poly, B.poly);
+      if (depth <= 4 || holds(A.poly, B.poly) || holds(B.poly, A.poly)) continue;
+      const key = [shapeKey(A), shapeKey(B)].sort().join('/');
+      found.push({ key, message: `${shapeName(A)} and ${shapeName(B)} partly overlap, by ${Math.round(depth)}px; move them apart, or give one of them overlap: true if that is meant` });
+    }
+  }
+  return found;
+}
+
+// The lines of arrows and annotations that run through text. An arrow's own
+// label doesn't count, nor does the text a mark is drawn around, nor text
+// drawn later on a card of its own, which covers the line.
+export function linesOverText(strokes, texts) {
+  const found = [];
+  for (const line of strokes) {
+    if (!line.settled || line.alpha <= 0.95) continue;
+    for (const tx of texts) {
+      if (tx.block || !tx.settled || (line.serial !== undefined && tx.owner === line.serial)) continue;
+      if (line.target && tx.x0 >= line.target.x0 - 2 && tx.y0 >= line.target.y0 - 2 && tx.x1 <= line.target.x1 + 2 && tx.y1 <= line.target.y1 + 2) continue;
+      if (tx.order > line.order && (tx.bg || tx.ui)) continue;
+      if (!crosses(line.points, tx)) continue;
+      const label = tx.text.length > 40 ? tx.text.slice(0, 37) + '...' : tx.text;
+      const advice = line.kind === 'arrow' ? 'move the text, or let the arrow start or end somewhere else' : 'mark a box that holds both, like s.annotate({ x, y, w, h }), or move the text';
+      found.push({ key: `${line.name}|${tx.text}`, message: `${line.name} crosses the text "${label}"; ${advice}` });
+    }
+  }
+  return found;
+}
+
+// An arrow's label that runs into a shape, like a box at the end of a short
+// arrow. Labels are body size, so a short arrow between two shapes may have no
+// room for one.
+export function labelsIntoShapes(strokes, texts, shapes) {
+  const found = [];
+  const arrows = new Map(strokes.filter((s) => s.serial !== undefined).map((s) => [s.serial, s]));
+  for (const tx of texts) {
+    const arrow = tx.owner !== null && tx.owner !== undefined ? arrows.get(tx.owner) : null;
+    if (!arrow || !tx.settled) continue;
+    const box = [[tx.x0, tx.y0], [tx.x1, tx.y0], [tx.x1, tx.y1], [tx.x0, tx.y1]];
+    for (const sh of shapes) {
+      if (!sh.settled || sh.alpha <= 0.95 || sh.cover || sh.overlap) continue;
+      if (overlapDepth(sh.poly, box) <= 4 || holds(sh.poly, box)) continue;
+      const label = tx.text.length > 40 ? tx.text.slice(0, 37) + '...' : tx.text;
+      found.push({ key: `${tx.owner}|${shapeKey(sh)}`, message: `the label "${label}" of ${arrow.name} runs into ${shapeName(sh)}; move it with labelSide or labelOffset, make it smaller with labelSize, or give the arrow more room` });
+    }
+  }
+  return found;
 }
 
 // Boots the engine for render, check or studio pages.
