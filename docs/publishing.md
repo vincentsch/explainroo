@@ -409,6 +409,11 @@ A draft counts as the post of this file to that channel. A second `publish` of
 the same package sends nothing, with or without `--draft`. `--new --draft`
 saves another draft, and `--new` alone posts the file.
 
+A run that stopped before anything went out goes on only with the same choice.
+After a post that was to go out right away stopped, a run with `--draft`
+stops before it sends anything, and after a draft stopped, a run without
+`--draft` does the same. `--new` starts a fresh one.
+
 The link to the video has to work until Buffer posts the draft, after you
 schedule it.
 

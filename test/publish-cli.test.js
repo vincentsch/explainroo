@@ -370,6 +370,50 @@ test('--draft saves the post as a draft in Buffer and reads it back, and a repea
   assert.equal(mutations(s.fake).length, 2);
 });
 
+test('a post that stopped before it went out is not sent by a run with --draft, and a draft that stopped is not posted by a run without it', async (t) => {
+  const media = ['--media-url', 'https://media.example/v.mp4'];
+  const busy = { status: 429, headers: { 'Retry-After': '1' }, body: { errors: [{ message: 'Too many requests', extensions: { code: 'RATE_LIMIT_EXCEEDED' } }] } };
+
+  // A post to go out now, then a retry that asks for a draft.
+  const now = await setup(t, { platforms: ['tiktok'], login: ['buffer'] });
+  now.fake.plan('buffer', GQL, {}, {}, busy);
+  assert.equal((await now.publish('--via', 'buffer', ...media, '--yes')).code, 1);
+  assert.equal(now.jobs()[0].stage, 'planned');
+  assert.equal(mutations(now.fake).length, 1);
+  const dry = await now.json('--via', 'buffer', ...media, '--draft', '--dry-run');
+  assert.equal(dry.code, 0, dry.text);
+  assert.equal(dry.out.would, 'stop');
+  assert.match(dry.out.reason, /^The post approved on .+ \(job \w+\) was to go out right away/);
+  assert.match((await now.publish('--via', 'buffer', ...media, '--draft', '--dry-run')).stdout, /^The post approved on .+ \(job \w+\) was to go out right away, and it stopped before it went out\. This run asks for a draft, so it does not go on with that post\. Nothing was sent\. To save a draft instead, run the same command with --new\.$/m);
+  for (const yes of [['--yes'], []]) {
+    const draft = await now.publish('--via', 'buffer', ...media, '--draft', ...yes);
+    assert.equal(draft.code, 1, draft.text);
+    assert.match(draft.stderr, /the post approved on .+ \(job \w+\) was to go out right away, and it stopped before it went out\. This run asks for a draft, so it does not go on with that post\. Nothing was sent\. To save a draft instead, run the same command with --new\./);
+  }
+  assert.equal(mutations(now.fake).length, 1, 'nothing more was sent');
+  const fresh = await now.json('--via', 'buffer', ...media, '--draft', '--new', '--yes');
+  assert.equal(fresh.code, 0, fresh.text);
+  assert.equal(fresh.out.post.status, 'draft');
+  const sent = mutations(now.fake).at(-1).body.variables.input;
+  assert.equal(sent.saveToDraft, true);
+  assert.notEqual(sent.mode, 'shareNow');
+
+  // A draft, then a retry without --draft.
+  const later = await setup(t, { platforms: ['tiktok'], login: ['buffer'] });
+  later.fake.plan('buffer', GQL, {}, {}, busy);
+  assert.equal((await later.publish('--via', 'buffer', ...media, '--draft', '--yes')).code, 1);
+  assert.equal(later.jobs()[0].stage, 'planned');
+  assert.equal((await later.json('--via', 'buffer', ...media, '--dry-run')).out.would, 'stop');
+  const post = await later.publish('--via', 'buffer', ...media, '--yes');
+  assert.equal(post.code, 1, post.text);
+  assert.match(post.stderr, /the draft approved on .+ \(job \w+\) stopped before it went out\. This run has no --draft, so it does not go on with that draft and post it now\. Nothing was sent\. To save that draft, add --draft\. To post it now instead, run the same command with --new\./);
+  assert.equal(mutations(later.fake).length, 1, 'nothing more was sent');
+  const kept = await later.json('--via', 'buffer', ...media, '--draft', '--yes');
+  assert.equal(kept.code, 0, kept.text);
+  assert.equal(kept.out.continued, true);
+  assert.equal(kept.out.post.status, 'draft');
+});
+
 test('only Buffer takes --draft, and the other routes refuse it before anything is read or sent', async (t) => {
   const s = await setup(t, { platforms: ['youtube', 'tiktok'], login: ['youtube', 'blotato'] });
   for (const args of [['--via', 'youtube'], ['--via', 'blotato', '--platform', 'tiktok'], ['--via', 'blotato', '--platform', 'youtube']]) {

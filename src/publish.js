@@ -672,6 +672,16 @@ function result(job, fields = {}) {
   };
 }
 
+// A run goes on with an earlier request only when both are drafts or both are posts,
+// so --draft never sends a post that goes out right away, and the other way round.
+function draftMismatch(job, draft) {
+  const earlier = job.plan?.draft === true;
+  if (earlier === draft) return null;
+  return earlier
+    ? `the draft approved on ${when(job.created)} (job ${shortId(job)}) stopped before it went out. This run has no --draft, so it does not go on with that draft and post it now. Nothing was sent. To save that draft, add --draft. To post it now instead, run the same command with --new.`
+    : `the post approved on ${when(job.created)} (job ${shortId(job)}) was to go out right away, and it stopped before it went out. This run asks for a draft, so it does not go on with that post. Nothing was sent. To save a draft instead, run the same command with --new.`;
+}
+
 function needYes(plan, request, continued) {
   const words = `${continued ? 'This goes on with a post that was approved before. ' : ''}Nothing was sent. There is no terminal here to type yes. Show this plan to the user, and if they say yes, run the same command with --yes.`;
   return { ok: false, dry_run: false, confirmed: false, error: words, plan, request };
@@ -725,12 +735,15 @@ export async function publish(project, { via, platform: asked, privacy: askedPri
     if (problem) missing.push(problem);
     let would = missing.length ? 'stop' : 'post';
     if (!missing.length && newest && !fresh) would = { planned: 'continue', media_uploaded: 'continue', sending: via === 'youtube' && readSession(dir, newest) ? 'resume' : 'stop', accepted: 'read', finished: 'nothing', failed: 'stop' }[stageOf(newest)] ?? 'stop';
-    // A run that goes on with an earlier post sends what was approved then.
+    // A run that goes on with an earlier post sends what was approved then, and
+    // stops when that one and this one are not both drafts or both posts.
+    const mismatch = (would === 'continue' || would === 'resume') && draftMismatch(newest, draft);
+    if (mismatch) would = 'stop';
     const earlier = would === 'continue' || would === 'resume';
     const changed = earlier && JSON.stringify(newest.request) !== JSON.stringify(request);
     // draft says whether the post the real run makes, or the one it finds, is a draft.
     const found = !missing.length && newest && !fresh;
-    return { dry_run: true, via, platform, network, would, draft: found ? newest.plan?.draft === true : draft, missing, ...(newest && !fresh ? { job: shortId(newest), stage: stageOf(newest) } : {}), ...(changed ? { changed: true } : {}), plan: withCheck(earlier ? newest.plan : plan, check), request: earlier ? newest.request : request };
+    return { dry_run: true, via, platform, network, would, draft: found ? newest.plan?.draft === true : draft, missing, ...(newest && !fresh ? { job: shortId(newest), stage: stageOf(newest) } : {}), ...(changed ? { changed: true } : {}), ...(mismatch ? { reason: mismatch.replace(/^\w/, (c) => c.toUpperCase()) } : {}), plan: withCheck(earlier ? newest.plan : plan, check), request: earlier ? newest.request : request };
   }
   if (missing.length) fail(`${missing.join(' ')} Nothing was sent.`);
 
@@ -741,7 +754,10 @@ export async function publish(project, { via, platform: asked, privacy: askedPri
     if (stage === 'accepted') return result(await follow(project, newest, { log }));
     if (stage === 'unknown' || (stage === 'sending' && via !== 'youtube')) fail(unknownOutcome(newest));
     // planned, media_uploaded, or a YouTube upload with a session: it goes on with
-    // the request that was approved, not with what post.json says now.
+    // the request that was approved, not with what post.json says now, and only when
+    // both runs are drafts or both are posts.
+    const mismatch = draftMismatch(newest, draft);
+    if (mismatch) fail(mismatch);
     if (!storedRequestFits(newest, { via, network, pkg, destination })) fail(`the record of the post approved on ${when(newest.created)} does not match this package or its own plan, so it was not used, and nothing was sent. To post the package as it is now, run the same command with --new.`);
     const changed = JSON.stringify(newest.request) !== JSON.stringify(request);
     const expiredLink = newest.plan?.media?.expires_at && Date.parse(newest.plan.media.expires_at) < Date.now() && !newest.media?.public_url;
@@ -803,7 +819,7 @@ export function formatPublish(r) {
       resume: `The upload of this post (job ${r.job}) stopped partway. The real run asks YouTube how much arrived and goes on from there after a yes.`,
       read: `This post was accepted before (job ${r.job}). The real run reads its status and posts nothing.`,
       nothing: r.draft ? `This file was already saved as a draft there (job ${r.job}). The real run sends nothing. To save another draft or post it anyway, add --new.` : `This file was already posted there (job ${r.job}). The real run prints its status and link and posts nothing.`,
-      stop: r.missing.length ? null : `An earlier try of this post (job ${r.job}) ${r.stage === 'failed' ? 'failed' : 'has no known outcome'}, so the real run stops. --new posts again.`,
+      stop: r.missing.length ? null : r.reason ?? `An earlier try of this post (job ${r.job}) ${r.stage === 'failed' ? 'failed' : 'has no known outcome'}, so the real run stops. --new posts again.`,
     }[r.would];
     if (would) lines.push(would);
     return lines.join('\n');
