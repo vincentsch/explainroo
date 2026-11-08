@@ -80,6 +80,9 @@ labels may move. The line changes these:
   it came in at the start of the scene and stayed empty until that line.
 - The default highlight of a sticker's `*keywords*` picks a red that reads on
   that sticker's color.
+- A `'plain'` hook from `s.short.hook` picks colors that read on what is
+  behind it. On a light look its keywords take the look's accent. Before, they
+  were yellow on every look.
 - A `brand.accent` that is hard to read on the caption background keeps its
   hue in the captions, made lighter or darker. Before, the captions used the
   look's highlight.

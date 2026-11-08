@@ -11,6 +11,7 @@ import { findChrome } from '../src/browser.js';
 import { loadProject } from '../src/project.js';
 import { withEngine } from '../src/pipeline.js';
 import { contrast } from '../engine/util.js';
+import { getTheme } from '../engine/themes.js';
 
 let chrome;
 try { chrome = findChrome(); } catch {}
@@ -177,6 +178,48 @@ test('check measures text and starred words against their sticker or box, and wi
   assert.ok(contrast(more.green, '#008000') >= 4.5, more.green);
   assert.ok(contrast(more.yellow, '#ffd43b') >= 4.5, more.yellow);
   assert.equal(more.white, '#c8102e');
+});
+
+// Every part of the short-video kit that draws text, with no colors given, on
+// the look's background and on the kit's backdrop.
+const KIT = {
+  slab: `s.short.hook('Your bread is *stale* again?', { kicker: 'Kitchen tip', kickerIcon: 'lightbulb' });`,
+  stroke: `s.short.hook('Your bread is *stale* again?', { style: 'stroke' });`,
+  plain: `s.short.hook('How *noise-cancelling* headphones work', { style: 'plain' });`,
+  kicker: `s.short.kicker('Quick tip', { icon: 'lightbulb' });`,
+  sticker: `s.short.sticker('*2* days');`,
+  step: `s.short.step(1, 2, { label: 'Paper bag' }); s.short.progress();`,
+  ...Object.fromEntries(['good', 'bad', 'info', 'dark'].map((tone) => [`payoff${tone[0].toUpperCase()}${tone.slice(1)}`, `s.short.payoff({ tone: '${tone}', title: 'Fresh for weeks', lines: ['Paper bag for two days', 'Freezer for longer'] });`])),
+};
+const KIT_SCENES = { ...KIT, ...Object.fromEntries(Object.entries(KIT).map(([id, body]) => [`${id}OnBackdrop`, `s.short.backdrop(); ${body}`])) };
+const LOOKS = ['paper', 'clean', 'chalk', 'blueprint', 'midnight', 'editorial'];
+
+for (const theme of LOOKS) {
+  test(`with "defaults": "0.5", every part of s.short reads in the ${theme} look with its own colors, so check gives no contrast warning`, { skip }, async (t) => {
+    const issues = await check(project(t, { theme, size: 'tiktok', defaults: '0.5' }, KIT_SCENES, { dur: 1.5 }));
+    assert.deepEqual(issues.filter((i) => i.message.includes('contrast')).map((i) => `${i.scene}: ${i.message}`), []);
+  });
+}
+
+test('without "defaults" a plain hook keeps its yellow keywords, and check measures it against the backdrop behind it', { skip }, async (t) => {
+  const { issues, more } = await check(project(t, { theme: 'clean', size: 'tiktok' }, { plain: KIT.plain, plainOnBackdrop: KIT_SCENES.plainOnBackdrop }, { dur: 1.5 }), (page) => page.evaluate(async (looks) => {
+    const { plainColors } = await import('/engine/short.js');
+    const { getTheme } = await import('/engine/themes.js');
+    return Object.fromEntries(looks.map((name) => [name, { own: plainColors(getTheme(name), getTheme(name).bg, 104), dark: plainColors(getTheme(name), '#0d1222', 104), small: plainColors(getTheme(name), getTheme(name).bg, 40) }]));
+  }, LOOKS));
+  assert.deepEqual(messages(issues, 'plain', 'contrast'), [`"NOISE-CANCELLING" has low contrast against its background (1.3:1); use keyColor: '#b08900' (3.0:1), a darker shade of the same color, or keyColor: 'ink' (16.4:1)`]);
+  assert.match(messages(issues, 'plainOnBackdrop', 'contrast')[0] ?? '', /^"HOW" has low contrast against its background \(1\.\d:1\); use color: /);
+  // On a light look the keywords take the look's accent, darker where it needs
+  // to be, and on a dark one, or on the backdrop, they stay yellow.
+  for (const name of LOOKS) {
+    const { own, dark, small } = more[name];
+    const look = getTheme(name);
+    assert.equal(own.ink, look.ink, name);
+    assert.equal(own.key, look.dark ? '#ffd43b' : look.colors[look.accent], name);
+    assert.ok(contrast(small.key, look.bg) >= 4.5, `${name}: ${small.key}`);
+    assert.equal(dark.key, '#ffd43b', name);
+    assert.equal(dark.ink, look.dark ? look.ink : '#ffffff', name);
+  }
 });
 
 test('check judges text at the size the camera shows it, and with "defaults": "0.5" arrow labels are body size', { skip }, async (t) => {

@@ -8,8 +8,8 @@
 // straight on the canvas, so the automatic camera keeps what it draws as one
 // block. A scene that wants a move sets s.camera with punch() or drift().
 
-import { fontStack } from './themes.js';
-import { contrast, cssColor, opaque, suggestColor, newDefaults } from './util.js';
+import { fontStack, colorOf } from './themes.js';
+import { contrast, cssColor, opaque, suggestColor, newDefaults, mixColor } from './util.js';
 
 const INK = '#0b0b10';
 const KEY = '#ffd43b';
@@ -60,6 +60,23 @@ export function stickerKey(color) {
   const bg = cssColor(color);
   if (!bg || contrast(KEY_RED, bg) >= 4.5) return KEY_RED;
   return suggestColor(KEY_RED, opaque(bg, '#ffffff'), 0)?.color ?? KEY_RED;
+}
+
+// The colors of a plain hook with "defaults": "0.5", on the color behind it. The
+// words are in the look's ink, or in white or near black where the ink does not
+// read there. Keywords are yellow, or in the look's accent where yellow is too
+// light, made darker or lighter until it reads. Both reach what check asks for
+// at that size: 3:1 from 48 pixels up, 4.5:1 below.
+export function plainColors(theme, behind, size) {
+  const hex = (c) => cssColor(c) ?? c;
+  const bg = hex(behind);
+  const min = size >= 48 ? 3 : 4.5;
+  const ownInk = hex(theme.ink);
+  const ink = contrast(ownInk, bg) >= min ? theme.ink : contrast('#ffffff', bg) >= contrast(INK, bg) ? '#ffffff' : INK;
+  if (contrast(KEY, bg) >= min) return { ink, key: KEY };
+  const accent = hex(colorOf(theme, 'accent'));
+  const key = suggestColor(accent, bg, size) ?? suggestColor(KEY, bg, size);
+  return { ink, key: key?.color ?? KEY };
 }
 
 function geom(x, y, w, h) {
@@ -196,6 +213,16 @@ export class Short {
     const x0 = align === 'center' ? x - w / 2 : align === 'right' ? x - w : x;
     const layer = this.s.ui._layer + 1;
     this.s._logText({ text: String(str), x0, y0: y - 0.58 * size, x1: x0 + w, y1: y + 0.58 * size, size, fg: /^#/.test(fg) ? fg : null, bg, ui: layer === 1 ? 0 : layer, zoomed: this.s._camMoved, option });
+  }
+
+  // The color behind text at height y of the frame: what the backdrop or s.bg
+  // painted there, or the look's background.
+  behind(y) {
+    const s = this.s;
+    const p = s._page;
+    const top = p && cssColor(p.top);
+    const bottom = p && cssColor(p.bottom);
+    return opaque(top && bottom ? mixColor(top, bottom, clamp(y / s.H)) : s.theme.bg, s.theme.bg);
   }
 
   // Wraps text into lines no wider than maxW.
@@ -429,6 +456,8 @@ export class Short {
     const maxLineW = Math.max(...lines.map((l) => l.w)) + pad * 2;
     this.reg(o.id, x - maxLineW / 2, top, maxLineW, blockH);
     const place = (fn) => (o.screen ? this.screen(fn) : fn());
+    // With "defaults": "0.5", a plain hook takes colors that read on what is behind it.
+    const plain = style === 'plain' && newDefaults(s.engine.config) ? plainColors(s.theme, this.behind(y), size) : null;
     if (o.kicker) place(() => this.kicker(o.kicker, { x, y: top - 44, color: o.kickerColor, icon: o.kickerIcon, at: first ? -1 : a, out: o.out }));
     if (!life) return geom(x, y, maxLineW, blockH);
     const c = this.c;
@@ -452,9 +481,11 @@ export class Short {
       for (const w of line.words) {
         const ww = this.measure(w.text, size, weight);
         if (w.key && style === 'slab') this.roundRect(wx - size * 0.1, -lh / 2 + size * 0.1, ww + size * 0.2, lh - size * 0.2, size * 0.12, o.keyBg ?? '#e5233d');
-        const color = style === 'slab' ? (w.key ? o.keyColor ?? '#ffffff' : o.color ?? INK) : w.key ? o.keyColor ?? KEY : o.color ?? (style === 'stroke' ? '#ffffff' : s.theme.ink);
-        const bg = style === 'slab' ? (w.key ? o.keyBg ?? '#e5233d' : o.slab ?? '#ffffff') : style === 'stroke' ? INK : s.theme.bg;
-        this.text(w.text, wx, size * 0.04, { size, weight, color, bg, stroke: style === 'stroke' ? INK : undefined, strokeW: size * 0.2, shadow: style === 'stroke' ? 'rgba(0,0,0,0.45)' : undefined });
+        const color = style === 'slab' ? (w.key ? o.keyColor ?? '#ffffff' : o.color ?? INK) : w.key ? o.keyColor ?? plain?.key ?? KEY : o.color ?? plain?.ink ?? (style === 'stroke' ? '#ffffff' : s.theme.ink);
+        // check measures a plain hook against what the scene painted behind it,
+        // like a backdrop, or else the look's background.
+        const bg = style === 'slab' ? (w.key ? o.keyBg ?? '#e5233d' : o.slab ?? '#ffffff') : style === 'stroke' ? INK : null;
+        this.text(w.text, wx, size * 0.04, { size, weight, color, bg, option: w.key ? 'keyColor' : 'color', stroke: style === 'stroke' ? INK : undefined, strokeW: size * 0.2, shadow: style === 'stroke' ? 'rgba(0,0,0,0.45)' : undefined });
         wx += ww + line.space;
       }
       c.restore();

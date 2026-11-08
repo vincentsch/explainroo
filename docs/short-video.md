@@ -122,6 +122,12 @@ block), `size`, `width`, `maxLines`, `upper: false`, `color`, `keyColor`,
 `at`, `out`, `sfx`, `id`, and `screen: true`, which keeps the title still while
 the camera moves. It returns the block's box.
 
+Keywords are yellow by default. With `"defaults": "0.5"`, a `'plain'` hook
+picks colors that read on what is behind it. On a light look the keywords take
+the look's accent, made darker if it needs that. When the look's ink is too
+dark for a backdrop, the words are white. `check` measures a plain hook against
+the backdrop or `s.bg` behind it.
+
 ### `kicker(text, options)`
 
 A small uppercase label in a pill, like "QUICK TIP". `x`, `y`, `size`, `color`,
