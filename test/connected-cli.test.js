@@ -899,7 +899,11 @@ test('a normal purchase: the request, a checked MP4 in assets/clips/, its cost i
   assert.equal(out.reused, false);
   assert.match(out.name, /^a-busy-street-at-dusk-[0-9a-f]{4}$/);
   assert.equal(out.file, path.join(dir, `assets/clips/${out.name}.mp4`));
-  assert.ok(out.clip_line.startsWith(`s.clip('assets/clips/${out.name}.mp4', `));
+  assert.equal(out.clip_line, `s.clip('assets/clips/${out.name}.mp4', { full: true, at: 0 });`);
+  assert.equal(out.clip_line_safe, `s.clip('assets/clips/${out.name}.mp4', { w: s.safe.w, h: s.safe.h, fit: 'cover', at: 0 });`);
+  // The text gives the line that fills the frame first, then the one inside the safe margins.
+  const text = (await cli(bought(dir, STREET))).stdout;
+  assert.ok(text.includes(`This fills the whole frame:\n  ${out.clip_line}\nThis fills the free area inside the safe margins:\n  ${out.clip_line_safe}\n`), text);
   assert.equal(out.cost_usd, 0.18);
   assert.equal(out.estimated_usd, 0.18);
   assert.equal(out.total_usd, 0.18);
@@ -966,7 +970,8 @@ test('sound stays off unless --audio is given, and a model that can\'t take the 
   assert.equal(withSound.code, 0);
   assert.equal(fake.requests('openrouter', CLIP_POST)[0].body.generate_audio, true);
   // s.clip is silent without a volume, so the line for a clip bought with sound has one.
-  assert.match(JSON.parse(withSound.stdout).clip_line, /fit: 'cover', volume: 1, at: 0 \}\);$/);
+  assert.match(JSON.parse(withSound.stdout).clip_line, /\{ full: true, volume: 1, at: 0 \}\);$/);
+  assert.match(JSON.parse(withSound.stdout).clip_line_safe, /fit: 'cover', volume: 1, at: 0 \}\);$/);
   assert.equal(jobs(dir)[0].estimated_usd, 0.3);
   // Its setting is unknown, so nothing is sent for it.
   assert.equal((await cli(bought(dir, HARBOR, '--model', 'x-ai/grok-imagine-video'))).code, 0);

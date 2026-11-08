@@ -6,7 +6,7 @@ import { clamp, lerp, ease, easeFn, rand01, noise1, hashStr, mulberry32, suggest
 import { colorOf, tintOf, fontString } from './themes.js';
 import { scalePath, quadD, polyD, pathLength, pointAt, parsePath, absolutize } from './pathdata.js';
 import { layoutText, lineStartX } from './text.js';
-import { clipFrame, clipURL, soundURL } from './clips.js';
+import { clipFrame, clipURL, soundURL, FIT_SPEEDS } from './clips.js';
 import { highlightLine, codeTokens, matchTokens, resolveCodeSteps, codeMorphState } from './code.js';
 
 const DEFAULT_DUR = { draw: 0.9, write: 0.8, pop: 0.6, rise: 0.75, fade: 0.6, zoom: 0.75, drop: 0.75, grow: 1.0, none: 0.001, 'slide-left': 0.75, 'slide-right': 0.75, 'slide-up': 0.75, 'slide-down': 0.75 };
@@ -1231,18 +1231,25 @@ export class Stage {
   }
 
   clip(src, o = {}) {
+    // A full clip fills the whole frame, edge to edge, and is simply there: no
+    // frame, shadow, rounded corners or entrance, whatever the look draws.
+    if (o.full) o = { ...o, x: this.W / 2, y: this.H / 2, w: this.W, h: this.H, frame: 'none', shadow: false, radius: 0, enter: 'none' };
     const clip = this.engine.clip(src);
     const from = o.from ?? 0;
-    const speed = o.speed ?? 1;
     const volume = o.volume ?? 0;
-    for (const [name, value, lo, hi] of [['from', from, 0, Infinity], ['speed', speed, 0.25, 4], ['volume', volume, 0, 1]]) {
-      if (!Number.isFinite(value) || value < lo || value > hi) throw new SceneError(`clip ${name} must be ${name === 'from' ? 'a non-negative number' : `from ${lo} to ${hi}`}`);
-    }
     const at = this.time(o.at ?? 0);
     const out = o.out === undefined ? this.dur : Math.min(this.dur, this.time(o.out));
-    const end = o.loop ? out : Math.min(out, at + Math.max(0, clip.duration - from) / speed);
+    // 'fit' plays the clip at the speed that makes it end with the scene, or at out,
+    // from half speed to twice the speed. Slower than that, it freezes at the end.
+    const fit = o.speed === 'fit';
+    const length = Math.max(0, clip.duration - from);
+    const speed = fit ? (out > at && length > 0 ? clamp(length / (out - at), FIT_SPEEDS[0], FIT_SPEEDS[1]) : 1) : o.speed ?? 1;
+    for (const [name, value, lo, hi] of [['from', from, 0, Infinity], ['speed', speed, 0.25, 4], ['volume', volume, 0, 1]]) {
+      if (!Number.isFinite(value) || value < lo || value > hi) throw new SceneError(`clip ${name} must be ${name === 'from' ? 'a non-negative number' : `from ${lo} to ${hi}`}${name === 'speed' ? ", or 'fit'" : ''}`);
+    }
+    const end = o.loop ? out : Math.min(out, at + length / speed);
     const n = this._clipSeq = (this._clipSeq || 0) + 1;
-    if (this.engine.recorder) this.engine.recorder.push({ kind: 'clip', key: `clip|${at}|${o.id ?? n}|${src}`, at, end, out, from, speed, loop: !!o.loop, volume, hasAudio: clip.hasAudio, duration: clip.duration, src: clip.src, url: clipURL('audio', clip.src) });
+    if (this.engine.recorder) this.engine.recorder.push({ kind: 'clip', key: `clip|${at}|${o.id ?? n}|${src}`, at, end, out, from, speed, fit, loop: !!o.loop, volume, hasAudio: clip.hasAudio, duration: clip.duration, src: clip.src, url: clipURL('audio', clip.src) });
     const frame = clipFrame(clip, this.t, { at, from, speed, loop: o.loop });
     return this._picture(src, () => frame === null ? null : this.engine.clipImage(clip, frame), clip.width, clip.height, o);
   }

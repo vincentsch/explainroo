@@ -8,7 +8,7 @@ import { drawTransition } from './transitions.js';
 import { buildPhrases, drawCaptions, buildChunks, drawBoldCaptions, captionHighlight } from './captions.js';
 import { AUDIO_FILE, clamp, hashStr, mulberry32, suggest, suggestColor, contrast, opaque, withAlpha, parseColor, mixColor, rgba } from './util.js';
 import { layoutAreas } from './layout.js';
-import { loadClips, soundURL, ClipFrames } from './clips.js';
+import { loadClips, soundURL, ClipFrames, FREEZE_SECONDS, FIT_SPEEDS } from './clips.js';
 import { UI } from './ui.js';
 import { Short } from './short.js';
 import { playbackTextIssue } from './readability.js';
@@ -696,8 +696,11 @@ export class Engine {
       const times = [...new Set(entrances.map((e) => Math.round(e.at * 100) / 100))].sort((a, b) => a - b);
       for (const e of entrances) {
         if (e.kind === 'clip') {
-          if (e.volume > 0 && e.speed !== 1) once(`clip-sound:${sc.id}:${e.key}`, () => add('warn', sc.id, e.at, `clip "${e.src}" stays silent at speed ${e.speed}; use speed: 1 for its sound`));
-          if (!e.loop && e.out - e.end > 1) once(`clip-freeze:${sc.id}:${e.key}`, () => add('hint', sc.id, e.end, `clip "${e.src}" freezes on its last frame from ${e.end.toFixed(2)}s until ${e.out.toFixed(2)}s; use loop: true or an earlier out`));
+          if (e.volume > 0 && e.speed !== 1) once(`clip-sound:${sc.id}:${e.key}`, () => add('warn', sc.id, e.at, `clip "${e.src}" stays silent at speed ${Math.round(e.speed * 100) / 100}${e.fit ? ", which speed: 'fit' picked" : ''}; use speed: 1 for its sound`));
+          const frozen = e.loop ? 0 : e.out - e.end;
+          if (frozen > FREEZE_SECONDS) once(`clip-freeze:${sc.id}:${e.key}`, () => add('warn', sc.id, e.end, `clip "${e.src}" freezes on its last frame for ${frozen.toFixed(1)}s, from ${e.end.toFixed(2)}s until ${e.out.toFixed(2)}s. ${e.fit
+            ? `speed: 'fit' goes no slower than ${FIT_SPEEDS[0]} times the clip's speed, and this one needs slower. Use loop: true, a longer clip or an earlier out`
+            : "speed: 'fit' plays it slower, so it ends with the scene, and loop: true repeats it"}`));
         }
         if (e.kind === 'sound' && !this.soundsPlayed.has(e.src)) this.soundsPlayed.set(e.src, { scene: sc.id, t: e.at });
         if (e.at > sc.dur) once(`late:${sc.id}:${e.key}`, () => add('error', sc.id, e.at, `a ${e.kind} is set to appear at ${e.at.toFixed(2)}s but the scene ends at ${sc.dur.toFixed(2)}s`));

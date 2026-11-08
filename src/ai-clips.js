@@ -86,9 +86,16 @@ export function clipJobRequest(project, id) {
 }
 
 const publicName = (request) => `assets/clips/${request.name}.mp4`;
-// Fills the frame and crops what doesn't fit, in any frame size. s.clip is silent
-// unless it has a volume, so a clip bought with sound gets one.
-const clipLine = (request) => `s.clip('${publicName(request)}', { w: s.safe.w, h: s.safe.h, fit: 'cover', ${request.audio ? 'volume: 1, ' : ''}at: 0 });`;
+// The whole frame, edge to edge, and the free area inside the safe margins. Both
+// crop what doesn't fit, in any frame size. s.clip is silent unless it has a
+// volume, so a clip bought with sound gets one.
+const clipLines = (request) => {
+  const sound = request.audio ? 'volume: 1, ' : '';
+  return {
+    full: `s.clip('${publicName(request)}', { full: true, ${sound}at: 0 });`,
+    safe: `s.clip('${publicName(request)}', { w: s.safe.w, h: s.safe.h, fit: 'cover', ${sound}at: 0 });`,
+  };
+};
 
 const cents = (n) => Math.round(n * 10000) / 10000;
 
@@ -166,7 +173,8 @@ function result(project, job, fields) {
     attempt: job.attempt,
     name: r.name,
     file: path.join(project.dir, publicName(r)),
-    clip_line: clipLine(r),
+    clip_line: clipLines(r).full,
+    clip_line_safe: clipLines(r).safe,
     model: r.model,
     seconds: r.seconds,
     aspect: r.aspect,
@@ -461,7 +469,7 @@ export function formatClip(r) {
   if (r.over_cap) lines.push(`It cost ${usd(r.cost_usd)}, which is above the cap of ${usd(r.max_cost_usd)}. The price before the job was an estimate.`);
   if (r.newer_attempt) lines.push(`A newer try, job ${r.newer_attempt}, has no good answer, so this is the earlier one.`);
   for (const m of r.moved) lines.push(moveLine(m));
-  lines.push(`Use it in a scene, and put the word it should start on in "at":\n  ${r.clip_line}`);
+  lines.push(`Use it in a scene, and put the word it should start on in "at". This fills the whole frame:\n  ${r.clip_line}\nThis fills the free area inside the safe margins:\n  ${r.clip_line_safe}`);
   if (!r.reused) lines.push('Look at a still of that scene before you use it. AI clips get details wrong.');
   return lines.join('\n');
 }

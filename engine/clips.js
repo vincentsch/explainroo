@@ -1,5 +1,10 @@
 export const VIDEO_FILE = /\.(mp4|mov|webm|m4v)$/i;
 
+// The slowest and the fastest speed that speed: 'fit' plays a clip at.
+export const FIT_SPEEDS = [0.5, 2];
+// check reports a clip that holds its last frame longer than this.
+export const FREEZE_SECONDS = 0.3;
+
 export function clipFrame(info, t, { at = 0, from = 0, speed = 1, loop = false } = {}) {
   if (t < at) return null;
   let time = from + (t - at) * speed;

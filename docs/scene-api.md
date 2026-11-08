@@ -203,14 +203,30 @@ layout, frame and timing options as `s.image` and returns the same box.
 Use `.mp4`, `.mov`, `.webm` or `.m4v` files.
 
 ```js
+s.clip('assets/clips/waves-3f2a.mp4', { full: true, speed: 'fit', at: 0 });
 s.clip('assets/signup.mp4', { w: 1200, frame: 'browser', url: 'app.example.com', at: 'signup' });
 s.clip('assets/demo.mov', { x: 1400, y: 540, h: 600, from: 12.5, speed: 1.5, at: '#demo', out: 9 });
 ```
 
+Like an image, a clip has no frame by default (`frame: 'none'`). It gets the
+look's shadow and rounded corners: `clean`, `midnight` and `editorial` draw a
+shadow, and `paper`, `chalk` and `blueprint` have none. It comes in with the
+look's entrance for images, which is `pop` in `paper`, `clean` and `midnight`,
+and `fade` in the other three. `shadow: false`, `radius: 0` and
+`enter: 'none'` turn these off.
+
+- `full: true` fills the whole frame, edge to edge, in any size. It has no
+  frame, shadow, rounded corners or entrance, and it ignores `x`, `y`, `w`
+  and `h`. Use it for a clip behind the whole scene.
 - `from` (0) is the second in the clip where playback starts.
-- `speed` (1) goes from 0.25 to 4. Playback starts at `at`.
+- `speed` (1) goes from 0.25 to 4. Playback starts at `at`. `speed: 'fit'`
+  plays the clip at the speed that makes it end with the scene, or at `out`,
+  from half speed to twice the speed. A clip that would need slower than half
+  speed plays at half speed and freezes at the end, and one that would need
+  faster than twice the speed is cut off when the scene ends.
 - `loop` (false) repeats the whole clip. Otherwise it holds the last frame.
-  `check` gives a hint when that freeze lasts more than a second.
+  `check` warns when that freeze lasts more than 0.3 seconds, and says how
+  long it is.
 - `volume` (0) goes from 0 to 1. Sound plays only at `speed: 1`.
   It stops at `out`, the clip's end or the scene's end. Loops repeat the
   sound too. Music ducks under clip sound as it does under the voice.

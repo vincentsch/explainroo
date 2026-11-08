@@ -83,15 +83,21 @@ shows what is left and whether the clip fits:
 explainroo clip videos/<name> "A busy street at dusk in the rain" --seconds 6 --dry-run --budget 0.40
 ```
 
-The file is `assets/clips/<name>.mp4`, and the command prints the line to use:
+The file is `assets/clips/<name>.mp4`, and the command prints two lines to use.
+The first fills the whole frame, edge to edge, and the second fills the free area
+inside the safe margins:
 
 ```js
+s.clip('assets/clips/a-busy-street-at-dusk-435f.mp4', { full: true, at: 0 });
 s.clip('assets/clips/a-busy-street-at-dusk-435f.mp4', { w: s.safe.w, h: s.safe.h, fit: 'cover', at: 0 });
 ```
 
-Put the word the clip should start on in `at`. Open a still of that scene with
-`explainroo still` and check the clip before you keep it. `check` can't read
-anything inside a clip.
+Put the word the clip should start on in `at`. A clip shorter than its scene
+holds its last frame until the scene ends. `speed: 'fit'` plays it slower or
+faster, so that it ends with the scene, and `check` warns about any freeze
+longer than 0.3 seconds. Open a still of that scene with `explainroo still`
+and check the clip before you keep it. `check` can't read anything inside a
+clip.
 
 | Option | What it does |
 | --- | --- |

@@ -48,7 +48,7 @@ test('stills use exact clip frames in any order and reuse extracted frames', { s
         }
         assert.ok(samples[5].every((v) => v > 220));
         const issues = await page.evaluate(() => window.explainroo.check());
-        assert.ok(issues.some((i) => i.level === 'hint' && /freezes.*3.50s.*6.00s/.test(i.message)));
+        assert.ok(issues.some((i) => i.level === 'warn' && /freezes on its last frame for 2\.5s, from 3\.50s until 6\.00s\. speed: 'fit' plays it slower/.test(i.message)), JSON.stringify(issues));
         if (run === 0) {
           await page.evaluate(() => window.explainroo.soundtrack('build/clip-mix.wav'));
           const { samples, sampleRate } = readWav(path.join(dir, 'build/clip-mix.wav'));
