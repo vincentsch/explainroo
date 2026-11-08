@@ -154,6 +154,7 @@ const steps = [
       const ignored = fs.readFileSync(path.join(r.dir, '.gitignore'), 'utf8').split('\n');
       expect(ignored.includes('.env'), 'the .gitignore of a new project does not list .env');
       expect(ignored.includes('history/private/'), 'the .gitignore of a new project does not list history/private/');
+      expect(ignored.includes('history/locks/'), 'the .gitignore of a new project does not list history/locks/');
     },
   },
   {

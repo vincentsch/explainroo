@@ -4,7 +4,8 @@ A project is a folder with these files:
 
 ```
 videos/<name>/
-  .gitignore    keeps build/, out/, .env and history/private/ out of git
+  .gitignore    keeps build/, out/, .env, history/private/ and history/locks/
+                out of git
   video.json    look, size, language, voice, music, captions, watermark
   script.md     the narration, one "## scene-id" per scene
   scenes.js     one drawing function per scene

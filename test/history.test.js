@@ -325,6 +325,18 @@ test('the first private file adds the folder to .gitignore, and git-ignored data
   assert.deepEqual(fs.readFileSync(path.join(dir, '.gitignore'), 'utf8').trim().split('\n'), ['history/private/']);
 });
 
+// The record goes into git, but a lock belongs to the runs on one computer. A lock
+// left behind by a run that died must not arrive with a commit on another one.
+test('the first lock in a project adds history/locks/ to its .gitignore, also in a project made before init wrote that line', async (t) => {
+  const { withProjectLock } = await import('../src/history.js');
+  const dir = temp(t);
+  fs.writeFileSync(path.join(dir, '.gitignore'), 'build/\nout/\n.env\nhistory/private/\n');
+  const job = updateJob(dir, createJob(dir, 'abcd1234', { kind: 'image', request: { name: 'hero' } }), { status: 'done', output: saveOutput(dir, 'assets/hero.png', Buffer.from('bytes')) });
+  placeOutput(dir, job);
+  await withProjectLock(dir, 'clip-purchase', () => {}, { waitMs: 1000, busy: () => new Error('busy') });
+  assert.deepEqual(fs.readFileSync(path.join(dir, '.gitignore'), 'utf8').trim().split('\n'), ['build/', 'out/', '.env', 'history/private/', 'history/locks/']);
+});
+
 test('no error text in the record can hold a key', (t) => {
   const dir = temp(t);
   rememberSecret('a-secret-for-this-test');

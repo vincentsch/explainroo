@@ -632,7 +632,9 @@ function init(dir, flags, print) {
   fs.writeFileSync(path.join(target, 'video.json'), JSON.stringify(config, null, 2) + '\n');
   fs.writeFileSync(path.join(target, 'script.md'), fs.readFileSync(path.join(tpl, 'script.md'), 'utf8').replace('{{title}}', title));
   fs.writeFileSync(path.join(target, 'scenes.js'), fs.readFileSync(path.join(tpl, 'scenes.js'), 'utf8').replace(/\{\{title\}\}/g, title.replace(/'/g, "\\'")));
-  fs.writeFileSync(path.join(target, '.gitignore'), 'build/\nout/\n.env\nhistory/private/\n');
+  // history/ goes into git, apart from what acts like a secret and the locks,
+  // which belong to the runs on this computer.
+  fs.writeFileSync(path.join(target, '.gitignore'), 'build/\nout/\n.env\nhistory/private/\nhistory/locks/\n');
   print(`created ${target}\nnext: write the narration in script.md, then run "${selfCommand()} voice ${dir}". After that, draw each scene in scenes.js and run "${selfCommand()} check ${dir}".`, { dir: target });
   return 0;
 }

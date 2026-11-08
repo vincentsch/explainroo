@@ -8,7 +8,7 @@
 //   history/failed-check/          what came back for a clip and failed its check
 //   history/downloads/             clips on their way in, kept out of git
 //   history/private/               links and addresses that act like secrets, kept out of git
-//   history/locks/                 one run at a time for a step, while it runs
+//   history/locks/                 one run at a time for a step, while it runs, kept out of git
 //
 // Keys never go in here.
 import fs from 'node:fs';
@@ -278,6 +278,7 @@ const nameLockMs = () => Number(process.env.EXPLAINROO_NAME_LOCK_MS) || 30 * 100
 // like "30 seconds" and the lock's folder. A lock whose run is gone counts as free
 // (src/lock.js).
 export function withNameLock(dir, name, fn, busy) {
+  ensureIgnored(dir, 'history/locks/');
   const lock = historyDir(dir, 'locks', crypto.createHash('sha256').update(name).digest('hex').slice(0, 16));
   const waitMs = nameLockMs();
   return withLockSync(lock, fn, { waitMs, busy: (held) => busy(secondsWords(waitMs), held) });
@@ -288,6 +289,7 @@ export function withNameLock(dir, name, fn, busy) {
 // whose process is gone counts as free, and taking it over keeps the others out
 // (src/lock.js). After waitMs, busy(lock) says why this run stopped.
 export function withProjectLock(dir, name, fn, { waitMs = 30000, busy }) {
+  ensureIgnored(dir, 'history/locks/');
   return withLock(historyDir(dir, 'locks', name), fn, { waitMs, busy });
 }
 
