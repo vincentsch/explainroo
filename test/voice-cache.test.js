@@ -118,7 +118,7 @@ test('a scene made by an older version keeps its narration when a marker moves, 
   }
 });
 
-test('an older scene gets the speech check of today from its transcript, without new speech and without saving', async (t) => {
+test('an older scene gets the speech check of today from its transcript once, without new speech, and the result is saved', async (t) => {
   const { dir, files } = olderProject(t, '# Test\n\n## intro\nIt contains a harmless piece of the virus, and {tabslip.com|tab slip dot com} sells it.\n', {
     transcript: 'It contains a harmless peace of the virus, and tabslip.com sells it.', unmatched: ['piece', 'tabslip.com'], matchRate: 0.786,
   });
@@ -128,13 +128,19 @@ test('an older scene gets the speech check of today from its transcript, without
   assert.deepEqual(voices.intro.unmatched, []);
   assert.ok(voices.intro.words.every((w) => w.matched));
   assert.deepEqual(voices.intro.nearly, [{ word: 'piece', heard: 'peace', alike: true }]);
-  assert.equal(fs.readFileSync(files.json, 'utf8'), before);
+  // Saved once with today's rules and the old times, so the next command takes it as it is.
+  const saved = JSON.parse(fs.readFileSync(files.json, 'utf8'));
+  assert.deepEqual([saved.check, saved.matchRate, saved.unmatched, saved.hash], [3, 1, [], JSON.parse(before).hash]);
+  assert.deepEqual(saved.words.map((w) => [w.start, w.end]), JSON.parse(before).words.map((w) => [w.start, w.end]));
+  const after = fs.readFileSync(files.json, 'utf8');
+  await synthesize(loadProject(dir), { transcribe: noSpeech });
+  assert.equal(fs.readFileSync(files.json, 'utf8'), after, 'nothing to save the second time');
   // The list keeps the order of the script, with words confirmed then and now.
   const merge = olderProject(t, '# Test\n\n## intro\nA merge adds one commit.\n', { transcript: 'Emerge adds one commit.', unmatched: ['A'], matchRate: 0.8 });
   const reviewed = (await synthesize(loadProject(merge.dir), { transcribe: noSpeech })).intro;
   assert.deepEqual(reviewed.nearly, [{ word: 'A', heard: 'Emerge', joined: true }, { word: 'merge', heard: 'Emerge', joined: true }]);
   // A scene checked with today's rules is taken as it is.
-  const today = { ...JSON.parse(before), check: 2 };
+  const today = { ...JSON.parse(before), check: 3 };
   assert.equal((await reviewSpeech(today, 'en')).matchRate, 0.786);
   const { issues } = speechFindings(loadProject(dir), voices);
   assert.ok(!issues.some((i) => i.level === 'warn'), JSON.stringify(issues));

@@ -6,7 +6,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { speechChunks, resolveMarks, normWord } from './script.js';
+import { speechChunks, resolveMarks, normWord, spokenWords } from './script.js';
 import { alignSpeech, alignWords, nearList } from './align.js';
 import { loadTTS, transcribeWords, TTS_MODEL, TTS_SAMPLE_RATE, ttsDtype, asrModel } from './models.js';
 import { phonemize, generateSpeech } from './phonemes.js';
@@ -18,8 +18,9 @@ import { estimateLength, estimateLine } from './timeline.js';
 
 const PIPELINE = 7;
 // The rules of the speech check that a scene was checked with. A scene checked
-// with older rules is looked at again from its transcript, without new speech.
-const CHECK = 2;
+// with older rules is looked at again from its transcript once, without new
+// speech, and the result is saved.
+const CHECK = 3;
 
 // The key of the narration itself: the spoken words, the gaps between them and
 // the voice settings. Markers and the shown text are not part of it.
@@ -129,7 +130,7 @@ function realign(info, language) {
 // A scene from the cache, with its near matches, looked at again with today's
 // speech check when it was made with older rules and has words it couldn't
 // confirm. A word that the check confirms now counts as confirmed, with its old
-// time. Nothing is saved and no speech is made.
+// time. No speech is made, and reviewed() saves the result.
 export async function reviewSpeech(info, language) {
   const base = { ...info, nearly: nearMatches(info, language) };
   if (info.check === CHECK || !Array.isArray(info.words) || info.words.every((w) => w.matched)) return base;
@@ -138,7 +139,7 @@ export async function reviewSpeech(info, language) {
   const now = (await alignSpeech(again.words, again.heard, again.heard.length, language)).words;
   const newly = info.words.map((w, k) => !w.matched && now[k].matched);
   if (!newly.some(Boolean)) return base;
-  const tokens = (w) => String(w.spoken ?? w.text).split(/\s+/).length;
+  const tokens = (w) => Math.max(1, spokenWords(w.spoken ?? w.text).length);
   const total = info.words.reduce((n, w) => n + tokens(w), 0);
   const gained = info.words.reduce((n, w, k) => n + (newly[k] ? tokens(w) : 0), 0);
   const unmatched = [...(info.unmatched ?? [])];
@@ -154,6 +155,16 @@ export async function reviewSpeech(info, language) {
     // In the order of the script, from the words confirmed then and now.
     nearly: nearList(again.words, now.map((a, k) => (info.words[k].matched || newly[k] ? a : { ...a, nearly: false }))),
   };
+}
+
+// A cached scene with today's speech check. A scene checked with older rules is
+// saved with the result, so the next command takes it as it is. Its times stay.
+async function reviewed(project, id, info) {
+  const now = await reviewSpeech(info, project.config.language);
+  if (info.check === CHECK || !Array.isArray(info.words)) return now;
+  const saved = { ...now, check: CHECK };
+  fs.writeFileSync(voicePaths(project, id).json, JSON.stringify(saved, null, 2));
+  return saved;
 }
 
 // The scene with its markers put back where an older cache had them: each
@@ -390,9 +401,9 @@ export async function synthesize(project, { force = false, fresh = false, log = 
     if (speech && chunks.length) addFinishedScene(project, speech, scene, chunks, cached, hash, log, notice);
     const keep = !force && cached && hasAudio && !speech?.needsNew(chunks);
     if (keep && cached.hash === hash) {
-      result[scene.id] = await reviewSpeech(cached, config.language);
+      result[scene.id] = await reviewed(project, scene.id, cached);
     } else if (keep && chunks.length && onlyMarkersMoved(project, scene, chunks, config, key, cached)) {
-      result[scene.id] = await reviewSpeech(withNewCues(project, scene, chunks, cached, hash, key), config.language);
+      result[scene.id] = await reviewed(project, scene.id, withNewCues(project, scene, chunks, cached, hash, key));
       log(`voice ${scene.id}: kept the narration, updated the cues`);
     } else if (only && !only.includes(scene.id) && cached) {
       result[scene.id] = await reviewSpeech(cached, config.language);
@@ -494,7 +505,7 @@ async function synthesizeScene(project, scene, chunks, hash, tts, speech, log, t
       if (!a.matched) unmatched.push(w.display);
     });
     nearly.push(...nearList(chunk.words, aligned.words));
-    const tokens = chunk.words.reduce((n, w) => n + (['ja', 'zh'].includes(config.language) ? Array.from(normWord(w.spoken).normalize('NFC')).length : w.spoken.split(/\s+/).length), 0);
+    const tokens = chunk.words.reduce((n, w) => n + (['ja', 'zh'].includes(config.language) ? Array.from(normWord(w.spoken).normalize('NFC')).length : Math.max(1, spokenWords(w.spoken).length)), 0);
     totalTokens += tokens;
     matchedTokens += aligned.matchRate * tokens;
     chunkInfo.push({ start, end: start + dur, text: chunk.text });
