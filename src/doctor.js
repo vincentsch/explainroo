@@ -5,8 +5,9 @@
 // of the project with the voice that language uses.
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { findChrome } from './browser.js';
-import { settingsEnvFile } from './env.js';
+import { saveKeys, settingValue, settingsEnvFile } from './env.js';
 import { ffmpegVersion } from './ffmpeg.js';
 import { projectWord, selfCommand } from './history.js';
 import { ASR_MODEL, asrModel, cacheRoot, downloadSize, LANGUAGE_NAMES, LANGUAGES, loadASR, loadTTS, MODEL_NAMES, MULTILINGUAL_ASR_MODEL, TTS_MODEL, ttsDtype } from './models.js';
@@ -65,9 +66,90 @@ export function setupNeeds(setup) {
 
 const names = (languages) => allOf(languages.map((language) => LANGUAGE_NAMES[language]));
 
+// The packages of espeak-ng on Debian and Ubuntu.
+export const ESPEAK_PACKAGES = ['espeak-ng', 'espeak-ng-data', 'libespeak-ng1', 'libpcaudio0', 'libsonic0'];
+
+// Starts the copy of espeak-ng next to it. The library folder depends on the
+// processor, like x86_64-linux-gnu, so it is found and not named. espeak-ng reads
+// only the first 159 characters of ESPEAK_DATA_PATH, so a longer path is given
+// from inside the folder.
+const LAUNCHER = `#!/bin/sh
+# Starts the copy of espeak-ng that "explainroo doctor --fetch" unpacked here.
+here=$(cd "$(dirname "$0")" && pwd)
+lib=$(dirname "$(find "$here/root/usr/lib" -name 'libespeak-ng.so*' | head -n 1)")
+export LD_LIBRARY_PATH="$lib\${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+data="$lib/espeak-ng-data"
+if [ \${#data} -gt 150 ]; then cd "$data" || exit 1; data=.; fi
+export ESPEAK_DATA_PATH="$data"
+exec "$here/root/usr/bin/espeak-ng" "$@"
+`;
+
+// A program on the PATH, or null.
+function onPath(name) {
+  for (const folder of (process.env.PATH || '').split(path.delimiter)) {
+    if (!folder) continue;
+    const file = path.join(folder, name);
+    try {
+      fs.accessSync(file, fs.constants.X_OK);
+      if (fs.statSync(file).isFile()) return file;
+    } catch {}
+  }
+  return null;
+}
+
+// On Debian and Ubuntu, a copy of espeak-ng that needs no root: the packages from
+// "apt-get download", unpacked with "dpkg -x" into the cache folder, with a
+// launcher there, and EXPLAINROO_ESPEAK in the settings file. It says what it
+// does before it starts. Null where apt-get and dpkg aren't there. A copy that
+// fails its own --version replaces nothing.
+export function setupEspeak({ notice = () => {} } = {}) {
+  if (process.platform === 'win32') return null;
+  const apt = onPath('apt-get');
+  const dpkg = onPath('dpkg');
+  if (!apt || !dpkg) return null;
+  const folder = path.join(cacheRoot(), 'espeak-ng');
+  const launcher = path.join(folder, 'espeak-ng');
+  const settings = settingsEnvFile();
+  notice(`espeak-ng is missing, so explainroo sets up a copy that needs no root. It downloads the packages ${ESPEAK_PACKAGES.join(', ')} with "apt-get download" and unpacks them with "dpkg -x" into ${folder}. It writes a launcher there and saves EXPLAINROO_ESPEAK=${launcher} in ${settings}.`);
+  const temp = `${folder}.${process.pid}.tmp`;
+  const packages = path.join(temp, 'packages');
+  const run = (program, args, what) => {
+    const r = spawnSync(program, args, { cwd: packages, encoding: 'utf8', timeout: 5 * 60 * 1000 });
+    if (r.error || r.status !== 0) {
+      const said = String(r.stderr || r.error?.message || '').trim().split('\n').filter(Boolean).at(-1) ?? `exit code ${r.status}`;
+      throw new ProjectError(`${what} failed: ${said}`);
+    }
+  };
+  let version;
+  try {
+    fs.rmSync(temp, { recursive: true, force: true });
+    fs.mkdirSync(packages, { recursive: true });
+    run(apt, ['download', ...ESPEAK_PACKAGES], '"apt-get download"');
+    const debs = fs.readdirSync(packages).filter((name) => name.endsWith('.deb')).sort();
+    if (!debs.length) throw new ProjectError('"apt-get download" got no packages');
+    for (const deb of debs) run(dpkg, ['-x', path.join(packages, deb), path.join(temp, 'root')], `"dpkg -x ${deb}"`);
+    fs.rmSync(packages, { recursive: true, force: true });
+    fs.writeFileSync(path.join(temp, 'espeak-ng'), LAUNCHER, { mode: 0o755 });
+    // It has to read a word, which needs its data too, not only start.
+    const check = spawnSync(path.join(temp, 'espeak-ng'), ['-q', '--ipa=1', '-v', 'es', 'hola'], { encoding: 'utf8', timeout: 10000 });
+    if (check.error || check.status !== 0 || !check.stdout.trim()) throw new ProjectError(`the unpacked copy did not read a word: ${String(check.stderr || check.error?.message || '').trim().split('\n').at(-1) || 'no answer'}`);
+    fs.rmSync(folder, { recursive: true, force: true });
+    fs.renameSync(temp, folder);
+  } catch (e) {
+    fs.rmSync(temp, { recursive: true, force: true });
+    throw e;
+  }
+  const started = spawnSync(launcher, ['--version'], { encoding: 'utf8', timeout: 10000 });
+  version = String(started.stdout || '').trim().split('\n')[0];
+  saveKeys(settings, { EXPLAINROO_ESPEAK: launcher });
+  // A value in the environment, or in the .env of a source checkout, comes first.
+  const used = settingValue('EXPLAINROO_ESPEAK');
+  return { folder, launcher, settings, version, ...(used !== launcher ? { shadowed: process.env.EXPLAINROO_ESPEAK ? 'the environment' : `the .env of ${ROOT}` } : {}) };
+}
+
 // `project` is a loaded project, `language` the codes of --language, or neither for
 // the default setup. Only `fetch` downloads anything, and it fetches the English models.
-export async function doctor({ project = null, language = null, fetch = false, log = () => {} } = {}) {
+export async function doctor({ project = null, language = null, fetch = false, log = () => {}, notice = log } = {}) {
   if (project && language !== null) throw new ProjectError('doctor checks a project or the languages of --language, not both. With a project it checks the languages in its video.json.');
   const setup = project ? projectSetup(project) : language !== null ? languageSetup(language) : DEFAULT_SETUP;
   const needs = setupNeeds(setup);
@@ -97,12 +179,24 @@ export async function doctor({ project = null, language = null, fetch = false, l
   }
   always('chrome', chrome, chrome, noChrome);
 
-  const espeak = espeakVersion();
+  let espeak = espeakVersion();
+  // --fetch sets up a copy that needs no root, where apt-get and dpkg can.
+  let copy = null;
+  let failed = null;
+  if (!espeak && fetch && needs.has('espeak-ng')) {
+    try {
+      copy = setupEspeak({ notice });
+    } catch (e) {
+      if (!(e instanceof ProjectError)) throw e;
+      failed = e.message;
+    }
+    espeak = espeakVersion();
+  }
   const espeakLanguages = Object.keys(LANGUAGES).filter((language) => phonemeProgram(language) === 'espeak-ng');
   some('espeak-ng', {
     found: espeak,
-    ready: (languages) => `${espeak}, for Kokoro voices in ${names(languages)}`,
-    missing: (languages) => `needed for Kokoro voices in ${names(languages)}. ${espeakInstall()}`,
+    ready: (languages) => `${espeak}, for Kokoro voices in ${names(languages)}${copy ? `. The copy without root is in ${copy.folder}, and ${copy.settings} names it` : ''}`,
+    missing: (languages) => `needed for Kokoro voices in ${names(languages)}. ${failed ? `The copy without root could not be set up: ${failed}. ` : ''}${copy?.shadowed ? `The copy without root is in ${copy.folder}, but EXPLAINROO_ESPEAK in ${copy.shadowed} comes first. Remove it there. ` : ''}${espeakInstall()}${fetch || process.platform === 'win32' || !onPath('apt-get') || !onPath('dpkg') ? '' : ` On this computer, "${command} doctor --fetch${language !== null ? ` --language ${language}` : project ? ` ${projectWord(project.dir)}` : ''}" sets up such a copy by itself.`}`,
     notNeeded: `only needed for Kokoro voices in ${names(espeakLanguages)}`,
     fails: true,
   });
@@ -149,6 +243,7 @@ export async function doctor({ project = null, language = null, fetch = false, l
 
   return {
     ok: rows.every((r) => r.ok || !r.fails),
+    ...(copy ? { espeak_copy: copy } : {}),
     project: project ? project.dir : null,
     languages: language !== null ? setup.map((s) => s.language) : null,
     setup: setup.map(({ language, voice }) => ({ language, voice: voiceRoute(voice) })),

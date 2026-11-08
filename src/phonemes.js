@@ -45,7 +45,8 @@ export function espeakInstall(platform = process.platform) {
 
 export function espeakVersion() {
   const r = spawnSync(binary(), ['--version'], { encoding: 'utf8', timeout: 5000 });
-  return !r.error && r.status === 0 ? r.stdout.trim().split('\n')[0] : null;
+  // Its first line, without where its data is, which is no part of the version.
+  return !r.error && r.status === 0 ? r.stdout.trim().split('\n')[0].replace(/\s+Data at:.*$/, '') : null;
 }
 
 export async function phonemize(texts, language) {

@@ -52,23 +52,35 @@ Only making the voice and the speech check use espeak-ng, so `voice`,
 `explainroo doctor --language es` checks what Spanish needs.
 
 To set `EXPLAINROO_ESPEAK` once, put the line in the settings file, the same
-`.env` that holds keys: `EXPLAINROO_ESPEAK=/home/me/espeak-run.sh`.
+`.env` that holds keys: `EXPLAINROO_ESPEAK=/usr/local/bin/espeak-ng`.
 `explainroo doctor` prints where that file is. A value set in the environment
 still wins.
 
 Without root, use a copy that is not installed for the whole system. On
-Debian or Ubuntu, `apt-get download espeak-ng espeak-ng-data libespeak-ng1
-libpcaudio0 libsonic0` gets the packages, and `dpkg -x <file> ~/espeak`
-unpacks each of them. The library folder depends on the processor, like
-`x86_64-linux-gnu` or `aarch64-linux-gnu`, so let the script find it. Write
-this to `~/espeak-run.sh` and make it executable with `chmod +x`:
+Debian or Ubuntu, `explainroo doctor --fetch --language es` sets it up by
+itself. It says what it does first: it downloads the packages with
+`apt-get download`, unpacks them with `dpkg -x` into
+`~/.cache/explainroo/espeak-ng`, writes a small script there that starts
+espeak-ng, and puts `EXPLAINROO_ESPEAK` with that script in the settings file.
+
+By hand, the same works like this. `apt-get download espeak-ng espeak-ng-data
+libespeak-ng1 libpcaudio0 libsonic0` gets the packages, and `dpkg -x <file>
+~/.cache/explainroo/espeak-ng/root` unpacks each of them. The library folder
+depends on the processor, like `x86_64-linux-gnu` or `aarch64-linux-gnu`, so
+let the script find it. espeak-ng reads only the first 159 characters of its
+data path, so the script starts it from inside a longer one. Write this to
+`~/.cache/explainroo/espeak-ng/espeak-ng` and make it executable with
+`chmod +x`:
 
 ```sh
 #!/bin/sh
-lib=$(dirname "$(find "$HOME/espeak/usr/lib" -name 'libespeak-ng.so*' | head -n 1)")
+here=$(cd "$(dirname "$0")" && pwd)
+lib=$(dirname "$(find "$here/root/usr/lib" -name 'libespeak-ng.so*' | head -n 1)")
 export LD_LIBRARY_PATH="$lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-export ESPEAK_DATA_PATH="$lib/espeak-ng-data"
-exec "$HOME/espeak/usr/bin/espeak-ng" "$@"
+data="$lib/espeak-ng-data"
+if [ ${#data} -gt 150 ]; then cd "$data" || exit 1; data=.; fi
+export ESPEAK_DATA_PATH="$data"
+exec "$here/root/usr/bin/espeak-ng" "$@"
 ```
 
 Then put `EXPLAINROO_ESPEAK=` and the full path of that script in the

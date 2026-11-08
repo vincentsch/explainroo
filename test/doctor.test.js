@@ -46,6 +46,14 @@ function doctor(args, { models = false, espeak = false, t }) {
 
 const row = (r, name) => r.json.checks.find((c) => c.name === name);
 
+// The advice for a missing espeak-ng. On a computer with apt-get and dpkg it also
+// says that doctor --fetch can set up a copy without root.
+function espeakAdvice(detail, start) {
+  const plain = `${start} ${espeakInstall()}`;
+  const escaped = plain.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  assert.match(detail, new RegExp(`^${escaped}( On this computer, ".+ doctor --fetch[^"]*" sets up such a copy by itself\\.)?$`));
+}
+
 test('an English setup needs no language model, espeak-ng or misaki, installed or not, and exits 0', (t) => {
   for (const models of [false, true]) {
     for (const espeak of [false, true]) {
@@ -78,7 +86,7 @@ test('a Spanish project with a Kokoro voice and no espeak-ng says how to install
   assert.deepEqual(r.json.setup, [{ language: 'es', voice: 'kokoro' }]);
   assert.equal(row(r, 'espeak-ng').state, 'missing');
   assert.equal(row(r, 'espeak-ng').ok, false);
-  assert.equal(row(r, 'espeak-ng').detail, `needed for Kokoro voices in Spanish. ${espeakInstall()}`);
+  espeakAdvice(row(r, 'espeak-ng').detail, 'needed for Kokoro voices in Spanish.');
   assert.equal(row(r, 'speech check model').state, 'not needed');
   // With espeak-ng it passes, and the language model comes with the first voice run.
   const ready = doctor([dir, '--json'], { espeak: true, t });
@@ -169,7 +177,7 @@ test('doctor --language checks what a language needs before the project exists',
   assert.deepEqual(r.json.languages, ['es']);
   assert.deepEqual(r.json.setup, [{ language: 'es', voice: 'kokoro' }]);
   assert.equal(row(r, 'espeak-ng').state, 'missing');
-  assert.equal(row(r, 'espeak-ng').detail, `needed for Kokoro voices in Spanish. ${espeakInstall()}`);
+  espeakAdvice(row(r, 'espeak-ng').detail, 'needed for Kokoro voices in Spanish.');
   assert.match(espeakInstall('linux'), /^Install it with "sudo apt install espeak-ng"\. A copy that is not installed for the whole system works too, also without root: set EXPLAINROO_ESPEAK to its espeak-ng program, or to a script that starts it\. To set it once, put the line EXPLAINROO_ESPEAK=<path> in .+\.env\.$/);
   assert.equal(row(r, 'language model').state, 'missing');
   assert.equal(row(r, 'speech check model').state, 'not needed');
@@ -204,7 +212,7 @@ test('EXPLAINROO_ESPEAK in the settings file is used, a missing espeak-ng names 
   };
   const missing = run({});
   assert.equal(row(missing, 'espeak-ng').state, 'missing');
-  assert.ok(row(missing, 'espeak-ng').detail.endsWith(`To set it once, put the line EXPLAINROO_ESPEAK=<path> in ${path.join(config, '.env')}.`), row(missing, 'espeak-ng').detail);
+  assert.ok(row(missing, 'espeak-ng').detail.includes(`To set it once, put the line EXPLAINROO_ESPEAK=<path> in ${path.join(config, '.env')}.`), row(missing, 'espeak-ng').detail);
   fs.writeFileSync(path.join(config, '.env'), `EXPLAINROO_ESPEAK=${process.execPath}\n`);
   const found = run({});
   assert.equal(row(found, 'espeak-ng').state, 'ready');
@@ -213,4 +221,125 @@ test('EXPLAINROO_ESPEAK in the settings file is used, a missing espeak-ng names 
   assert.equal(row(found, 'examples').detail, path.join(root, 'examples'));
   // The environment still wins.
   assert.equal(row(run({ EXPLAINROO_ESPEAK: path.join(os.tmpdir(), 'explainroo-no-espeak') }), 'espeak-ng').state, 'missing');
+});
+
+// A fake apt-get and dpkg on the PATH, for the copy of espeak-ng without root. apt-get
+// writes one file per package, and dpkg unpacks what each package holds. `log` gets
+// one line per call. With `fail`, apt-get stops like it does without the package lists.
+function fakeApt(t, { fail = false } = {}) {
+  const bin = temp(t);
+  const log = path.join(bin, 'calls.log');
+  fs.writeFileSync(path.join(bin, 'apt-get'), `#!/bin/sh
+echo "apt-get $* in $(pwd)" >> "${log}"
+${fail ? 'echo "E: Unable to locate package espeak-ng" >&2; exit 100' : 'shift; for p in "$@"; do echo "$p" > "$p"_1.0_amd64.deb; done'}
+`, { mode: 0o755 });
+  fs.writeFileSync(path.join(bin, 'dpkg'), `#!/bin/sh
+echo "dpkg $*" >> "${log}"
+p=$(cat "$2"); d="$3"
+case "$p" in
+  espeak-ng) mkdir -p "$d/usr/bin"; printf '#!/bin/sh\\n[ "$1" = --version ] && echo "eSpeak NG text-to-speech: 1.51 (fake) Data at: $ESPEAK_DATA_PATH" && exit 0\\n[ -d "$ESPEAK_DATA_PATH" ] && echo "ˈo_l_a"\\n' > "$d/usr/bin/espeak-ng"; chmod +x "$d/usr/bin/espeak-ng" ;;
+  libespeak-ng1) mkdir -p "$d/usr/lib/fake-linux-gnu"; touch "$d/usr/lib/fake-linux-gnu/libespeak-ng.so.1" ;;
+  espeak-ng-data) mkdir -p "$d/usr/lib/fake-linux-gnu/espeak-ng-data" ;;
+  *) mkdir -p "$d/usr/share/doc/$p" ;;
+esac
+`, { mode: 0o755 });
+  return { bin, calls: () => (fs.existsSync(log) ? fs.readFileSync(log, 'utf8').trim().split('\n') : []) };
+}
+
+// A run with that PATH, its own cache and settings folders, and no EXPLAINROO_ESPEAK.
+function aptEnv(t, apt) {
+  const env = { ...process.env, PATH: `${apt.bin}${path.delimiter}${process.env.PATH}`, EXPLAINROO_CACHE: temp(t), EXPLAINROO_CONFIG: temp(t), EXPLAINROO_OFFLINE: '1' };
+  delete env.EXPLAINROO_ESPEAK;
+  return env;
+}
+
+// Runs fn with exactly `env` as the environment, and puts the old one back after.
+async function withEnv(t, env, fn) {
+  const before = { ...process.env };
+  const use = (values) => {
+    for (const key of Object.keys(process.env)) if (!(key in values)) delete process.env[key];
+    Object.assign(process.env, values);
+  };
+  use(env);
+  try {
+    return await fn();
+  } finally {
+    use(before);
+  }
+}
+
+test('with apt-get and dpkg, a copy of espeak-ng without root goes into the cache folder, with a launcher named in the settings file', { skip: process.platform === 'win32' && 'no apt-get on Windows' }, async (t) => {
+  const { setupEspeak, ESPEAK_PACKAGES } = await import('../src/doctor.js');
+  const { espeakVersion } = await import('../src/phonemes.js');
+  const apt = fakeApt(t);
+  const env = aptEnv(t, apt);
+  await withEnv(t, env, async () => {
+    const said = [];
+    const folder = path.join(env.EXPLAINROO_CACHE, 'espeak-ng');
+    const r = setupEspeak({ notice: (line) => { said.push(line); assert.deepEqual(apt.calls(), [], 'it says what it does before it does it'); } });
+    assert.equal(said.length, 1);
+    assert.equal(said[0], `espeak-ng is missing, so explainroo sets up a copy that needs no root. It downloads the packages ${ESPEAK_PACKAGES.join(', ')} with "apt-get download" and unpacks them with "dpkg -x" into ${folder}. It writes a launcher there and saves EXPLAINROO_ESPEAK=${path.join(folder, 'espeak-ng')} in ${path.join(env.EXPLAINROO_CONFIG, '.env')}.`);
+    assert.deepEqual([r.folder, r.launcher, r.version], [folder, path.join(folder, 'espeak-ng'), `eSpeak NG text-to-speech: 1.51 (fake) Data at: ${folder}/root/usr/lib/fake-linux-gnu/espeak-ng-data`]);
+    const calls = apt.calls();
+    assert.match(calls[0], new RegExp(`^apt-get download ${ESPEAK_PACKAGES.join(' ')} in `));
+    assert.equal(calls.filter((c) => c.startsWith('dpkg -x ')).length, 5);
+    assert.equal(fs.readFileSync(path.join(env.EXPLAINROO_CONFIG, '.env'), 'utf8'), `EXPLAINROO_ESPEAK=${r.launcher}\n`);
+    // The packages go once they are unpacked, and nothing else is left in the cache.
+    assert.deepEqual(fs.readdirSync(env.EXPLAINROO_CACHE), ['espeak-ng']);
+    assert.deepEqual(fs.readdirSync(folder).sort(), ['espeak-ng', 'root']);
+    // Every command now finds it through the settings file.
+    assert.match(espeakVersion(), /^eSpeak NG text-to-speech: 1\.51 \(fake\)/);
+  });
+});
+
+test('without apt-get there is no copy, and when apt-get fails nothing is changed', { skip: process.platform === 'win32' && 'no apt-get on Windows' }, async (t) => {
+  const { setupEspeak } = await import('../src/doctor.js');
+  const { ProjectError } = await import('../src/errors.js');
+  const none = temp(t);
+  const env = { ...aptEnv(t, { bin: none }), PATH: none };
+  assert.notEqual(process.env.PATH, none);
+  await withEnv(t, env, () => {
+    assert.equal(setupEspeak(), null);
+    assert.deepEqual(fs.readdirSync(env.EXPLAINROO_CACHE), []);
+  });
+  const apt = fakeApt(t, { fail: true });
+  const failing = aptEnv(t, apt);
+  await withEnv(t, failing, () => {
+    assert.throws(() => setupEspeak(), (e) => e instanceof ProjectError && e.message === '"apt-get download" failed: E: Unable to locate package espeak-ng');
+    assert.deepEqual(fs.readdirSync(failing.EXPLAINROO_CACHE), []);
+    assert.equal(fs.existsSync(path.join(failing.EXPLAINROO_CONFIG, '.env')), false);
+  });
+});
+
+test('doctor --fetch --language es sets up the copy and says so, and without --fetch it says that --fetch can', { skip: process.platform === 'win32' && 'no apt-get on Windows', timeout: 120000 }, async (t) => {
+  const apt = fakeApt(t);
+  const env = aptEnv(t, apt);
+  // The English models that --fetch loads, from the real cache, read only, or empty folders.
+  const real = path.join(os.homedir(), '.cache', 'explainroo', 'models');
+  const models = [TTS_MODEL, ASR_MODEL].every((m) => fs.existsSync(path.join(real, m)));
+  if (!models) return t.skip('the English models are not downloaded here');
+  fs.symlinkSync(real, path.join(env.EXPLAINROO_CACHE, 'models'));
+  const run = (args) => spawnSync(process.execPath, [bin, 'doctor', ...args], { encoding: 'utf8', env });
+  const before = run(['--language', 'es']);
+  assert.equal(before.status, 1);
+  assert.match(before.stdout, /^missing +espeak-ng +needed for Kokoro voices in Spanish\. .* On this computer, ".*doctor --fetch --language es" sets up such a copy by itself\.$/m);
+  const fetched = run(['--fetch', '--language', 'es']);
+  assert.equal(fetched.status, 0, fetched.stdout + fetched.stderr);
+  assert.match(fetched.stderr, /^espeak-ng is missing, so explainroo sets up a copy that needs no root\./m);
+  assert.match(fetched.stdout, new RegExp(`^ready +espeak-ng +eSpeak NG text-to-speech: 1\\.51 \\(fake\\).*, for Kokoro voices in Spanish\\. The copy without root is in ${path.join(env.EXPLAINROO_CACHE, 'espeak-ng').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'm'));
+  const after = JSON.parse(run(['--language', 'es', '--json']).stdout);
+  assert.equal(after.checks.find((c) => c.name === 'espeak-ng').state, 'ready');
+  assert.doesNotMatch(fetched.stderr, /test guard: blocked/);
+});
+
+test('the launcher gives espeak-ng a long data path from inside the folder, because espeak-ng reads only 159 characters of it', { skip: process.platform === 'win32' && 'no apt-get on Windows' }, async (t) => {
+  const { setupEspeak } = await import('../src/doctor.js');
+  const apt = fakeApt(t);
+  const env = aptEnv(t, apt);
+  env.EXPLAINROO_CACHE = path.join(env.EXPLAINROO_CACHE, 'a-folder-name-that-makes-the-path-long'.repeat(3));
+  await withEnv(t, env, () => {
+    const r = setupEspeak();
+    assert.ok(path.join(r.folder, 'root/usr/lib/fake-linux-gnu/espeak-ng-data').length > 150);
+    assert.equal(r.version, 'eSpeak NG text-to-speech: 1.51 (fake) Data at: .');
+  });
 });

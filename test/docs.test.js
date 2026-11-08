@@ -529,7 +529,13 @@ test('the README says a budget makes --max-cost optional, and the recipe for esp
     assert.match(text, /The final cost is known only after the job, and it can come out a little higher/, name);
   }
   const languages = page('languages');
-  assert.match(languages, /lib=\$\(dirname "\$\(find "\$HOME\/espeak\/usr\/lib" -name 'libespeak-ng\.so\*' \| head -n 1\)"\)/);
+  assert.match(languages, /lib=\$\(dirname "\$\(find "\$here\/root\/usr\/lib" -name 'libespeak-ng\.so\*' \| head -n 1\)"\)/);
+  // The recipe is the launcher that doctor --fetch writes, and it stays out of the home folder.
+  const launcher = /```sh\n([\s\S]*?)```/.exec(languages)[1].split('\n').filter((line) => line && !line.startsWith('#'));
+  const written = fs.readFileSync(path.join(root, 'src/doctor.js'), 'utf8');
+  for (const line of launcher) assert.ok(written.includes(line.replace(/\$\{/g, '\\${')), line);
+  assert.ok(!/~\/espeak|\$HOME\/espeak/.test(languages), 'nothing in the top of the home folder');
+  assert.ok(oneLine(languages).includes('`explainroo doctor --fetch --language es` sets it up by itself'));
   assert.ok(!/x86_64-linux-gnu\/espeak-ng-data`/.test(languages), 'no fixed x86_64 data path');
   assert.ok(oneLine(languages).includes('put the line in the settings file, the same `.env` that holds keys'));
 });

@@ -84,7 +84,9 @@ languages need. With `--fetch` it also downloads the English speech models,
 about 400 MB, the first time only. Each part is `ready`, `missing` with how to get it, or
 `not needed` for this setup. `doctor videos/<name>` checks what that
 project's languages and voices need, and before the project exists,
-`doctor --language es` checks one language. Commands that work on a video take the
+`doctor --language es` checks one language. On Debian and Ubuntu,
+`doctor --fetch --language es` also sets up espeak-ng without root when it is
+missing. Commands that work on a video take the
 project folder first, and every command accepts `--json`.
 
 `npx --yes explainroo docs` prints this page, and

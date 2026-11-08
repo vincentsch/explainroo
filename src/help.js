@@ -151,8 +151,8 @@ export const COMMAND_HELP = {
   doctor: {
     usage: 'doctor [project] [options]',
     about: 'Checks ffmpeg, Chrome, espeak-ng, misaki and the models: each is ready, not needed or missing. It also prints the settings file and the folder explainroo runs from.',
-    options: [['--language <codes>', 'before there is a project, what these languages need, like es or es,fr'], ['--fetch', 'download the English models'], JSON_OUT],
-    example: 'doctor --language fr',
+    options: [['--language <codes>', 'before there is a project, what these languages need, like es or es,fr'], ['--fetch', 'download the English models, and on Debian and Ubuntu set up espeak-ng without root when a language needs it'], JSON_OUT],
+    example: 'doctor --fetch --language es',
   },
   docs: {
     usage: 'docs [topic] [section] [options]',

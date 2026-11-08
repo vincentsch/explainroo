@@ -292,7 +292,9 @@ For narration with Kokoro, the free voice, in Spanish, French, Italian,
 Portuguese or Hindi, also install
 [espeak-ng](https://github.com/espeak-ng/espeak-ng), for example with
 `sudo apt install espeak-ng` or `brew install espeak-ng`.
-`npx --yes explainroo doctor --language es` checks what Spanish needs. Japanese and
+`npx --yes explainroo doctor --language es` checks what Spanish needs. On Debian
+and Ubuntu without root, `npx --yes explainroo doctor --fetch --language es`
+puts a copy of espeak-ng in explainroo's cache folder instead. Japanese and
 Chinese need Python with [misaki](https://github.com/hexgrad/misaki) instead,
 as described in [docs/japanese-and-chinese.md](docs/japanese-and-chinese.md).
 German narration needs neither, and it works with ElevenLabs, Cartesia or your
