@@ -235,7 +235,7 @@ function shortLockWait(t, ms) {
   });
 }
 
-const BUSY = /^another run is moving files in this project right now, and this one waited 0\.3 seconds for it\. The file this run has is kept in the record\. Run the same command again in a minute, and it puts the file in place without buying it again\.$/;
+const BUSY = /^another run is moving files in this project right now, and this one waited 0\.3 seconds for it\. The record has the file, so the same command run again in a minute puts it in place without buying it again\.$/;
 
 test('a lock never runs out with time: a holder that still runs is waited for, however old or new its file is, and then the move stops with a message', async (t) => {
   const { startOf } = await import('../src/lock.js');

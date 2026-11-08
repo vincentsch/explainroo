@@ -304,7 +304,7 @@ export function moveFile(from, to) {
 }
 
 function placeBusy(words) {
-  return new ProjectError(`another run is moving files in this project right now, and this one waited ${words} for it. The file this run has is kept in the record. Run the same command again in a minute, and it puts the file in place without buying it again.`);
+  return new ProjectError(`another run is moving files in this project right now, and this one waited ${words} for it. The record has the file, so the same command run again in a minute puts it in place without buying it again.`);
 }
 
 // Puts a job's output under its public name. Whatever is there moves aside first,
