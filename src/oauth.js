@@ -16,7 +16,7 @@ import path from 'node:path';
 import { readEnvFile, saveKeys } from './env.js';
 import { ProjectError, rememberSecret } from './errors.js';
 import { configRoot } from './models.js';
-import { fileKey, secondsWords, withLock } from './lock.js';
+import { fileKey, lockWords, secondsWords, withLock } from './lock.js';
 
 // Retry-After holds seconds or a date.
 function waitWords(value) {
@@ -182,7 +182,7 @@ async function withTokenLock(file, name, fn) {
   return withLock(lock, fn, {
     waitMs,
     pauseMs: 100,
-    busy: () => new ProjectError(`another run is renewing the ${name} login right now, and this one waited ${secondsWords(waitMs)} for it. Nothing was sent. Run the same command again in a minute.`),
+    busy: (held) => new ProjectError(`another run is renewing the ${name} login right now, and this one waited ${secondsWords(waitMs)} for it. Nothing was sent. Run the same command again in a minute. ${lockWords(held)}`),
   });
 }
 

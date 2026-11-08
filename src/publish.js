@@ -25,6 +25,7 @@ import readline from 'node:readline';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { ProjectError, ServiceError, hideSecrets } from './errors.js';
 import { createJob, historyDir, jobKey, listAttempts, projectWord, relativeFile, selfCommand, sha256File, shortId, updateJob, withNameLock, writePrivate } from './history.js';
+import { lockWords } from './lock.js';
 import { packageDir } from './package.js';
 import { langArg } from './project.js';
 import { DEFAULT_CATEGORY, PLATFORMS, withHashtags } from './post.js';
@@ -473,7 +474,7 @@ function advance(dir, job, from, to, fields = {}, before = () => {}) {
     if (!from.includes(current?.stage)) throw new ProjectError(`another run is posting this right now, or did a moment ago. Run the same command again in a minute to see where it is. Nothing more was sent.`);
     before();
     return setStage(dir, current, to, fields);
-  }, (words) => new ProjectError(`another run is posting this right now, and this one waited ${words} for it. Nothing more was sent. Run the same command again in a minute to see where it is.`));
+  }, (words, lock) => new ProjectError(`another run is posting this right now, and this one waited ${words} for it. Nothing more was sent. Run the same command again in a minute to see where it is. ${lockWords(lock)}`));
 }
 
 function destinationWords(job) {

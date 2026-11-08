@@ -207,6 +207,12 @@ export function processGone(owner) {
   return true;
 }
 
+// The end of the message of a run that waited too long: where the lock is, and
+// when it is safe to move it away.
+export function lockWords(lock) {
+  return `The lock is the folder ${lock}. It is safe to move that folder away only when no explainroo command is running.`;
+}
+
 // How long a run waited, for a message.
 export function secondsWords(ms) {
   const seconds = Math.round(ms / 100) / 10;
@@ -328,14 +334,14 @@ export function lockFolder(lock, { left = processGone } = {}) {
 }
 
 // The same for a step that may not wait for a timer, like moving a file. It waits
-// for the lock up to `waitMs`, and then throws what busy() returns.
+// for the lock up to `waitMs`, and then throws what busy(lock) returns.
 export function withLockSync(lock, fn, { waitMs = Infinity, busy, ...options } = {}) {
   const handle = lockFolder(lock, options);
   const deadline = Date.now() + waitMs;
   const pause = new Int32Array(new SharedArrayBuffer(4));
   try {
     while (!handle.take()) {
-      if (Date.now() >= deadline) throw busy();
+      if (Date.now() >= deadline) throw busy(lock);
       Atomics.wait(pause, 0, 0, 50);
     }
   } catch (e) {
@@ -349,13 +355,13 @@ export function withLockSync(lock, fn, { waitMs = Infinity, busy, ...options } =
   }
 }
 
-// Waits for the lock up to `waitMs`, and then throws what busy() returns.
+// Waits for the lock up to `waitMs`, and then throws what busy(lock) returns.
 export async function withLock(lock, fn, { waitMs, busy, pauseMs = 50, ...options }) {
   const handle = lockFolder(lock, options);
   const deadline = Date.now() + waitMs;
   try {
     while (!handle.take()) {
-      if (Date.now() >= deadline) throw busy();
+      if (Date.now() >= deadline) throw busy(lock);
       await new Promise((resolve) => setTimeout(resolve, pauseMs));
     }
   } catch (e) {

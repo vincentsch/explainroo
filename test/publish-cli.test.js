@@ -8,7 +8,7 @@ import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { startFakeServices } from './helpers/fake-services.js';
 import { BLOTATO_KEY, BUFFER_CLIENT, BUFFER_REDIRECT } from './helpers/fake-publishing.js';
-import { DIE_BEFORE, GQL, NONE, PLACEHOLDER, SESSION, UPLOAD, anHourOld, bin, heldBy, jobs, linkChecks, mutations, pausedRun, setup, waitsForLock, writePackage } from './helpers/publishing.js';
+import { DIE_BEFORE, GQL, NONE, PLACEHOLDER, SESSION, UPLOAD, anHourOld, bin, heldBy, jobs, linkChecks, lockWords, mutations, pausedRun, setup, waitsForLock, writePackage } from './helpers/publishing.js';
 import { readEnvFile } from '../src/env.js';
 
 // --- The dry run shows what a real run sends ------------------------------------
@@ -706,7 +706,7 @@ test('a run that hangs while it renews the Buffer login keeps the lock: the next
   // A real run, so that the problem stops it.
   const waited = await s.cli(['publish', s.dir, '--via', 'buffer', ...media, '--yes'], { extra: { EXPLAINROO_LOGIN_LOCK_MS: '1500' } });
   assert.equal(waited.code, 1, waited.text);
-  assert.match(waited.stderr, /^error: another run is renewing the Buffer login right now, and this one waited 1\.5 seconds for it\. Nothing was sent\. Run the same command again in a minute\.$/m);
+  assert.ok(waited.stderr.includes(`\nerror: another run is renewing the Buffer login right now, and this one waited 1.5 seconds for it. Nothing was sent. Run the same command again in a minute. ${lockWords(path.dirname(held))}\n`), waited.stderr);
   assert.equal(s.fake.count('buffer-auth', 'POST /token'), 1, 'the waiting run sent no renewal');
   assert.deepEqual(s.changes(), NONE);
 
@@ -1068,7 +1068,7 @@ test('a run that hangs while it holds the lock of a post keeps it: the next run 
 
   const waited = await s.cli(post, { extra: { EXPLAINROO_NAME_LOCK_MS: '1500' } });
   assert.equal(waited.code, 1, waited.text);
-  assert.match(waited.stderr, /^error: another run is posting this right now, and this one waited 1\.5 seconds for it\. Nothing more was sent\. Run the same command again in a minute to see where it is\.$/m);
+  assert.ok(waited.stderr.includes(`error: another run is posting this right now, and this one waited 1.5 seconds for it. Nothing more was sent. Run the same command again in a minute to see where it is. ${lockWords(path.dirname(held))}\n`), waited.stderr);
   assert.equal(s.fake.count('blotato', 'POST /posts'), 0);
   assert.equal(fs.existsSync(held), true, 'the lock stays with the run that hangs');
 

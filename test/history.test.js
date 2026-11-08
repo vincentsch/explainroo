@@ -235,7 +235,7 @@ function shortLockWait(t, ms) {
   });
 }
 
-const BUSY = /^another run is moving files in this project right now, and this one waited 0\.3 seconds for it\. The record has the file, so the same command run again in a minute puts it in place without buying it again\.$/;
+const busy = (lock) => `another run is moving files in this project right now, and this one waited 0.3 seconds for it. The record has the file, so the same command run again in a minute puts it in place without buying it again. The lock is the folder ${lock}. It is safe to move that folder away only when no explainroo command is running.`;
 
 test('a lock never runs out with time: a holder that still runs is waited for, however old or new its file is, and then the move stops with a message', async (t) => {
   const { startOf } = await import('../src/lock.js');
@@ -252,7 +252,7 @@ test('a lock never runs out with time: a holder that still runs is waited for, h
   for (const holder of holders) {
     const file = nameLock(dir, 'abcd1234', process.pid, holder);
     const started = Date.now();
-    assert.throws(() => placeOutput(dir, job), (e) => e instanceof ProjectError && BUSY.test(e.message), JSON.stringify(holder));
+    assert.throws(() => placeOutput(dir, job), (e) => e instanceof ProjectError && e.message === busy(path.dirname(file)), JSON.stringify(holder));
     assert.ok(Date.now() - started >= 250, 'it waited for the holder');
     assert.equal(fs.existsSync(file), true, 'the holder keeps its lock');
     assert.equal(fs.existsSync(path.join(dir, 'assets/hero.png')), false);

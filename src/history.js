@@ -19,7 +19,7 @@ import { ProjectError, hideSecrets } from './errors.js';
 import { findService, localTime } from './services.js';
 import { LANGUAGES } from './models.js';
 import { isSize } from './project.js';
-import { fileKey, secondsWords, withLock, withLockSync } from './lock.js';
+import { fileKey, lockWords, secondsWords, withLock, withLockSync } from './lock.js';
 
 const BIN = fileURLToPath(new URL('../bin/explainroo.js', import.meta.url));
 const JOB_FILE = /^([0-9a-f]+)(?:\.(\d+))?\.json$/;
@@ -274,18 +274,19 @@ const nameLockMs = () => Number(process.env.EXPLAINROO_NAME_LOCK_MS) || 30 * 100
 
 // One run at a time moves files under a public name, or moves a post to its next
 // stage. While the run that holds the lock is still running, the others wait,
-// and after the wait busy(words) gives the error to stop with, from words like
-// "30 seconds". A lock whose run is gone counts as free (src/lock.js).
+// and after the wait busy(words, lock) gives the error to stop with, from words
+// like "30 seconds" and the lock's folder. A lock whose run is gone counts as free
+// (src/lock.js).
 export function withNameLock(dir, name, fn, busy) {
   const lock = historyDir(dir, 'locks', crypto.createHash('sha256').update(name).digest('hex').slice(0, 16));
   const waitMs = nameLockMs();
-  return withLockSync(lock, fn, { waitMs, busy: () => busy(secondsWords(waitMs)) });
+  return withLockSync(lock, fn, { waitMs, busy: (held) => busy(secondsWords(waitMs), held) });
 }
 
 // One run at a time in this project for a step that reads the record and then adds
 // to it, like a clip purchase that has to see what the others are spending. A lock
 // whose process is gone counts as free, and taking it over keeps the others out
-// (src/lock.js). After waitMs, busy() says why this run stopped.
+// (src/lock.js). After waitMs, busy(lock) says why this run stopped.
 export function withProjectLock(dir, name, fn, { waitMs = 30000, busy }) {
   return withLock(historyDir(dir, 'locks', name), fn, { waitMs, busy });
 }
@@ -303,8 +304,8 @@ export function moveFile(from, to) {
   }
 }
 
-function placeBusy(words) {
-  return new ProjectError(`another run is moving files in this project right now, and this one waited ${words} for it. The record has the file, so the same command run again in a minute puts it in place without buying it again.`);
+function placeBusy(words, lock) {
+  return new ProjectError(`another run is moving files in this project right now, and this one waited ${words} for it. The record has the file, so the same command run again in a minute puts it in place without buying it again. ${lockWords(lock)}`);
 }
 
 // Puts a job's output under its public name. Whatever is there moves aside first,

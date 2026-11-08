@@ -12,6 +12,7 @@ import { checkClipRequest, clipOptions, clipPrice, resolvedModel } from './clip-
 import { probe } from './ffmpeg.js';
 import { clipOptionsText, localDay, serviceUrl, usd } from './services.js';
 import openrouter from './connectors/openrouter.js';
+import { lockWords } from './lock.js';
 
 export const CLIP_MODELS = {
   cheap: 'google/veo-3.1-lite',
@@ -410,7 +411,7 @@ async function buy(project, request, { fresh = false, maxCost, budget = null, dr
   // budget is read again and the job is claimed in one step, so the next purchase
   // sees this one's estimate.
   const seconds = Math.round(lockWaitMs() / 100) / 10;
-  const busy = () => new ProjectError(`another clip purchase is running in this project, and this one waited ${seconds} seconds for it to finish its check of the budget. Nothing was spent. Run the same command again once that one has gone out.`);
+  const busy = (lock) => new ProjectError(`another clip purchase is running in this project, and this one waited ${seconds} seconds for it to finish its check of the budget. Nothing was spent. Run the same command again once that one has gone out. ${lockWords(lock)}`);
   let job = await withProjectLock(dir, 'clip-purchase', () => {
     const now = budget ? budgetState(project, budget.budget_usd, budget.budget_from) : null;
     checkBudget(now, maxCost);

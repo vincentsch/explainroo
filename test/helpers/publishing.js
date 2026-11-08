@@ -121,6 +121,9 @@ export function anHourOld(file) {
   fs.utimesSync(file, time, time);
 }
 
+// The end of the message of a run that waited too long for a lock, as plain text.
+export const lockWords = (lock) => `The lock is the folder ${lock}. It is safe to move that folder away only when no explainroo command is running.`;
+
 export const mutations = (fake) => fake.requests('buffer', GQL).filter((r) => /\bmutation\b/.test(r.body?.query ?? ''));
 
 // Every request that changes something at a posting service. A YouTube PUT with no

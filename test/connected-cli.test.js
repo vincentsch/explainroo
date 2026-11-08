@@ -823,7 +823,7 @@ test('two clip purchases at the same time stay within the budget, and a purchase
   const rain = ['clip', dir, 'Rain on a window at night, close up', '--seconds', '4', '--budget', '1'];
   const waited = await cli(rain, { EXPLAINROO_CLIP_LOCK_MS: '300' });
   assert.equal(waited.code, 1);
-  assert.match(waited.stderr, /^error: another clip purchase is running in this project, and this one waited 0\.3 seconds for it to finish its check of the budget\. Nothing was spent\. Run the same command again once that one has gone out\.$/m);
+  assert.ok(waited.stderr.includes(`error: another clip purchase is running in this project, and this one waited 0.3 seconds for it to finish its check of the budget. Nothing was spent. Run the same command again once that one has gone out. The lock is the folder ${path.dirname(holder)}. It is safe to move that folder away only when no explainroo command is running.\n`), waited.stderr);
   assert.equal(posts(), 1);
   assert.equal(fs.existsSync(holder), true, 'another process\'s lock stays');
   assert.deepEqual(fs.readdirSync(path.join(dir, 'history/locks')), ['clip-purchase'], 'the purchase that gave up left nothing of its own');
