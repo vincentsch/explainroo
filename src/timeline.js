@@ -194,6 +194,12 @@ export function estimateLine(e) {
   return `${line} The holds get longer to reach targetSeconds ${e.targetSeconds}.`;
 }
 
+// A time to wait, rounded the way a person says it: "5 s", "40 s", "1 min 40 s".
+export function roughTime(seconds) {
+  const rounded = seconds < 60 ? Math.max(5, Math.round(seconds / 5) * 5) : Math.round(seconds / 10) * 10;
+  return rounded < 60 ? `${rounded} s` : `${Math.floor(rounded / 60)} min${rounded % 60 ? ` ${rounded % 60} s` : ''}`;
+}
+
 // What voice and check say about "targetSeconds": a video that is longer, with
 // its three longest scenes, and holds that grew by more than 3 seconds.
 export function targetNotes(timeline, perMinute = null) {

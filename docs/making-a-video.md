@@ -36,7 +36,10 @@ user. Read it first.
 
    The command prints how long the voice speaks in each scene, how long the
    scene's narration is with its pauses, and how many words the speech check
-   confirmed. If a word is not confirmed, the voice said it wrong, or the
+   confirmed. Each scene's line starts with its number, like "scene 4/6", and
+   says about how long the rest will take. A long voice run can take longer
+   than your tool waits for a command, so run it in the background if your
+   tool can. If a word is not confirmed, the voice said it wrong, or the
    speech model heard it wrong. Under the scene, `voice` quotes what it heard
    there, with four words on each side, and says what to do. When the voice
    says a word wrong, fix it with `{shown|spoken}` in the script and run the

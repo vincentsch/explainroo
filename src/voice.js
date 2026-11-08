@@ -14,7 +14,7 @@ import { writeWav, readWav, resample, trimSilence } from './wav.js';
 import { openSpeech, speechConnector, speechKey } from './paid-speech.js';
 import { recordingFiles, decodeRecording, saveRecording, recordingCuts } from './recordings.js';
 import { scriptName } from './project.js';
-import { estimateLength, estimateLine } from './timeline.js';
+import { estimateLength, estimateLine, roughTime } from './timeline.js';
 
 const PIPELINE = 7;
 // The rules of the speech check that a scene was checked with. A scene checked
@@ -433,9 +433,18 @@ export async function synthesize(project, { force = false, fresh = false, log = 
     heardTake = await transcribe(resample(take.samples, take.sampleRate, 16000), { log, language: config.language });
     cuts = recordingCuts(project.script.scenes, heardTake.words, take.samples.length / take.sampleRate, config.language);
   }
-  for (const { scene, chunks, hash, key } of todo) {
+  // Each scene that is spoken has its number out of all of them, like "scene 4/6",
+  // and from the first one on, the time that is left, from how long its words took.
+  const spoken = todo.filter((t) => t.chunks.length);
+  const weight = (t) => Math.max(1, spokenWords(t.scene.spoken).length);
+  const all = spoken.reduce((n, t) => n + weight(t), 0);
+  const began = Date.now();
+  let done = 0;
+  for (const item of todo) {
+    const { scene, chunks, hash, key } = item;
     const t0 = Date.now();
-    const steps = progress(scene.id, log, chunks.length);
+    const number = chunks.length ? `scene ${spoken.indexOf(item) + 1}/${spoken.length} ` : '';
+    const steps = progress(`${number}${scene.id}`, log, chunks.length);
     let info;
     try {
       info = recordings && chunks.length
@@ -449,7 +458,9 @@ export async function synthesize(project, { force = false, fresh = false, log = 
       const warn = info.matchRate < 0.85 ? (recordings
         ? `, recording does not match ${scriptName(project)} here (${Math.round(info.matchRate * 100)}% of words confirmed). Make ${scriptName(project)} say what was actually said.`
         : `, check pronunciation (${Math.round(info.matchRate * 100)}% of words confirmed)`) : '';
-      log(`voice ${voiceLine(scene.id, info, (Date.now() - t0) / 1000, !!recordings)}${warn}`);
+      done += weight(item);
+      const left = done < all ? `, about ${roughTime(((Date.now() - began) / done) * (all - done) / 1000)} left` : '';
+      log(`voice ${number}${voiceLine(scene.id, info, (Date.now() - t0) / 1000, !!recordings)}${warn}${left}`);
     }
   }
   return result;

@@ -173,22 +173,44 @@ test('a long scene says the step it is on, one line per step, and in a terminal 
   };
   const lines = [];
   await synthesize(loadProject(dir), { transcribe: slow(['One sentence here.', 'Two sentences there.']), log: (line) => lines.push(line) });
-  const steps = lines.filter((line) => /^voice intro: (making speech|timing words|checking speech)$/.test(line));
+  const steps = lines.filter((line) => /^voice scene 1\/1 intro: (making speech|timing words|checking speech)$/.test(line));
   assert.ok(steps.length >= 2, lines.join('\n'));
   assert.equal(new Set(steps).size, steps.length, 'each step once');
-  assert.match(lines.at(-1), /^voice intro: .* of narration/);
+  assert.match(lines.at(-1), /^voice scene 1\/1 intro: .* of narration .*made in \d+\.\d s$/);
   // A terminal gets one line that names the sentence too.
   fs.rmSync(path.join(dir, 'build'), { recursive: true });
   const updates = [];
   const log = (line) => lines.push(line);
   log.update = (line) => updates.push(line);
   await synthesize(loadProject(dir), { transcribe: slow(['One sentence here.', 'Two sentences there.']), log });
-  assert.ok(updates.some((u) => /^voice intro: (making speech|timing words|checking speech), sentence 2 of 2$/.test(u)), updates.join('\n'));
+  assert.ok(updates.some((u) => /^voice scene 1\/1 intro: (making speech|timing words|checking speech), sentence 2 of 2$/.test(u)), updates.join('\n'));
   // A quick scene says nothing about its steps.
   fs.rmSync(path.join(dir, 'build'), { recursive: true });
   lines.length = 0;
   await synthesize(loadProject(dir), { transcribe: echo(['One sentence here.', 'Two sentences there.']), log: (line) => lines.push(line) });
   assert.ok(!lines.some((line) => /making speech|timing words|checking speech/.test(line)), lines.join('\n'));
+});
+
+test('each scene line of voice starts with its number out of the scenes it makes, and says the time left after each but the last', async (t) => {
+  const { dir } = await paidProject(t, '# Test\n\n## intro\nOne sentence here.\n\n## middle\nTwo sentences there, and more.\n\n## silent {min=2}\n\n## outro\nThat is all.\n');
+  fs.writeFileSync(path.join(dir, 'scenes.js'), 'export default { intro() {}, middle() {}, silent() {}, outro() {} };');
+  const lines = [];
+  await synthesize(loadProject(dir), { transcribe: echo(['One sentence here.', 'Two sentences there, and more.', 'That is all.']), log: (line) => lines.push(line) });
+  const scenes = lines.filter((line) => / of narration /.test(line));
+  assert.equal(scenes.length, 3, lines.join('\n'));
+  assert.match(scenes[0], /^voice scene 1\/3 intro: .* made in \d+\.\d s, about \d+ s left$/);
+  assert.match(scenes[1], /^voice scene 2\/3 middle: .* made in \d+\.\d s, about \d+ s left$/);
+  assert.match(scenes[2], /^voice scene 3\/3 outro: .* made in \d+\.\d s$/);
+  // Only the scenes it makes count, so a scene made again alone is 1/1.
+  fs.writeFileSync(path.join(dir, 'script.md'), '# Test\n\n## intro\nOne sentence here.\n\n## middle\nTwo sentences there, and more.\n\n## silent {min=2}\n\n## outro\nThat is all now.\n');
+  lines.length = 0;
+  await synthesize(loadProject(dir), { transcribe: echo(['That is all now.']), log: (line) => lines.push(line) });
+  assert.deepEqual(lines.filter((line) => / of narration /.test(line)).map((line) => line.split(':')[0]), ['voice scene 1/1 outro']);
+});
+
+test('a wait is said the way a person says it', async () => {
+  const { roughTime } = await import('../src/timeline.js');
+  assert.deepEqual([0.4, 12, 44, 59, 64, 100, 125.5].map(roughTime), ['5 s', '10 s', '45 s', '1 min', '1 min', '1 min 40 s', '2 min 10 s']);
 });
 
 test('before it makes speech, voice says how long the video will be about, and it says nothing when the narration is there', async (t) => {

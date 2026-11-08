@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { outdatedLine, outdatedRenders, prepare, renderIdentity, scriptStamp, withEngine, VERSION } from './pipeline.js';
-import { projectUrl } from './timeline.js';
+import { projectUrl, roughTime } from './timeline.js';
 import { AUDIO_CODECS, finishMix, frameEncoder, ffmpeg } from './ffmpeg.js';
 import { subtitleCues, toSrt, toVtt } from './subtitles.js';
 import { buildChapters, toChaptersText, toChapterMetadata } from './chapters.js';
@@ -104,8 +104,7 @@ export function renderEstimate(measured, { frames, pixels }) {
 
 // "about 1 min 40 s: 1,240 frames at about 14 a second here"
 export function estimateText({ seconds, frames, frames_per_second: rate }) {
-  const rounded = seconds < 60 ? Math.max(5, Math.round(seconds / 5) * 5) : Math.round(seconds / 10) * 10;
-  const time = rounded < 60 ? `${rounded} s` : `${Math.floor(rounded / 60)} min${rounded % 60 ? ` ${rounded % 60} s` : ''}`;
+  const time = roughTime(seconds);
   const speed = rate >= 10 ? Math.round(rate) : Math.round(rate * 10) / 10;
   return `about ${time}: ${frames.toLocaleString('en-US')} frames at about ${speed} a second here`;
 }
