@@ -6,7 +6,9 @@ import { prepare, withEngine } from './pipeline.js';
 import { dbtp, probe, loudness, ffmpeg, PEAK_CEILING } from './ffmpeg.js';
 import { transcribeWords } from './models.js';
 import { readWav } from './wav.js';
-import { alignSpeech, bareWord, nearList } from './align.js';
+import { alignSpeech, bareWord, editDistance, nearList, similar } from './align.js';
+import { hasPhonemizer } from './phonemes.js';
+import { normWord } from './script.js';
 import { heardInstead, heardQuote } from './voice.js';
 import { estimateLength, targetNotes } from './timeline.js';
 import { buildChapters, chapterHints } from './chapters.js';
@@ -75,7 +77,38 @@ function unconfirmedAdvice(overridden, others, script) {
 }
 
 // A saved word whose shown and spoken text differ, from {shown|spoken}.
-const hasOverride = (word) => word.spoken !== undefined && word.spoken !== word.text;
+const hasOverride = (word) => word.spoken !== undefined && word.spoken.replace(/\s+/g, ' ') !== word.text.replace(/\s+/g, ' ');
+
+// Each word of a scene that the speech check couldn't confirm, with what was heard
+// there, quoted as check quotes it, and what to do about it: another spoken
+// spelling for a word with {shown|spoken}, rewording for a word that was heard as
+// a word that sounds alike where explainroo can't compare sounds, and else a
+// spelling hint. Empty for a recording, which has advice of its own.
+export function unconfirmedWords(project, v) {
+  if (project.config.voice.provider === 'recording' || !Array.isArray(v?.words)) return [];
+  const { language } = project.config;
+  const missed = v.words.map((word, k) => ({ word, k })).filter(({ word }) => !word.matched);
+  if (!missed.length) return [];
+  const instead = heardInstead(v, language);
+  const script = scriptName(project);
+  return missed.map(({ word, k }) => {
+    const heard = instead[k] ?? null;
+    const quote = heardQuote(v, language, [k]);
+    let advice;
+    if (hasOverride(word)) advice = unconfirmedAdvice([{ word, heard }], false, script);
+    else if (heard && !hasPhonemizer(language) && soundsAlike(normWord(heard), normWord(word.text))) advice = `"${heard}" may sound the same, and in this language the speech check can't compare sounds, so {shown|spoken} can't help. Reword the sentence.`;
+    else advice = `If it is mispronounced, write it as {${bareWord(word.text)}|spoken spelling} in ${script}.`;
+    return { word: word.text, heard, quote, advice };
+  });
+}
+
+// Two spellings close enough to sound alike, also when they are short, like "Rad" and "Rat".
+const soundsAlike = (a, b) => similar(a, b) || (a.length > 1 && b.length > 1 && Math.max(a.length, b.length) <= 3 && editDistance(a, b) <= 1);
+
+// One line for each word voice couldn't confirm.
+export function unconfirmedLine(u) {
+  return `  "${bareWord(u.word)}": ${u.quote ? `it heard ${u.quote}` : 'nothing was heard there'}. ${u.advice}`;
+}
 
 // What check says about the speech check of each scene, from the narration that
 // voice made: the words it couldn't confirm and what to do about them, and the

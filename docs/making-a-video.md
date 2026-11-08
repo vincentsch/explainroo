@@ -37,9 +37,10 @@ user. Read it first.
    The command prints how long the voice speaks in each scene, how long the
    scene's narration is with its pauses, and how many words the speech check
    confirmed. If a word is not confirmed, the voice probably said it wrong.
-   Fix it with `{shown|spoken}` in the script and run the command again. If
-   the word already has `{shown|spoken}`, `check` says so and quotes what was
-   heard. Then try another spoken spelling, or reword the sentence. For a
+   Under the scene, `voice` quotes what it heard there, with four words on
+   each side, and says what to do. Fix it with `{shown|spoken}` in the script
+   and run the command again. If the word already has `{shown|spoken}`, try
+   another spoken spelling, or reword the sentence. For a
    recording, make script.md say what was actually said. `check` also lists
    the words that only nearly matched, like "Soundroo" heard as "Soundru". It
    lists words that sounded the same, like "peace" for "piece", and two words

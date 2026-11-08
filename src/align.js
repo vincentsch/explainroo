@@ -174,7 +174,7 @@ export function expand(word, language = 'en') {
 
 const isNumberToken = (t) => /^\d+$/.test(t) || ['hundred', 'thousand', 'million', 'billion', '100', '1000'].includes(t);
 
-function editDistance(a, b) {
+export function editDistance(a, b) {
   if (a === b) return 0;
   const m = a.length;
   const n = b.length;

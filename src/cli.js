@@ -8,7 +8,7 @@ import { ScriptError } from './script.js';
 import { prepare, makeState, outdatedLine, outdatedRenders, VERSION } from './pipeline.js';
 import { render } from './render.js';
 import { exportPlayer } from './export.js';
-import { check, formatVerify, stills, sheet, verify } from './qa.js';
+import { check, formatVerify, stills, sheet, unconfirmedLine, unconfirmedWords, verify } from './qa.js';
 import { startServer, ROOT } from './server.js';
 import { VOICES, LANGUAGES, voiceLanguage, loadTTS, TTS_SAMPLE_RATE } from './models.js';
 import { phonemize, generateSpeech } from './phonemes.js';
@@ -198,7 +198,7 @@ export async function main(argv) {
         const recorded = project.config.voice.provider === 'recording';
         const rows = project.script.scenes.map((s) => {
           const v = voices[s.id];
-          return { scene: s.id, voice: v.duration, narration: narrationTime(v), confirmed: v.matchRate, unconfirmed: v.unmatched, marks: v.marks,
+          return { scene: s.id, voice: v.duration, narration: narrationTime(v), confirmed: v.matchRate, unconfirmed: v.unmatched, heard: unconfirmedWords(project, v), marks: v.marks,
             ...(recorded && v.matchRate < 0.85 ? { message: `The recording does not match ${scriptName(project)} here. Make ${scriptName(project)} say what was actually said.` } : {}) };
         });
         // How long the voice speaks, and the narration with its pauses. A recording has its pauses in it.
@@ -216,7 +216,9 @@ export async function main(argv) {
         // A finished render of another size that says an older script.
         const outdated = outdatedRenders(project);
         const after = [...notes.map((n) => `${n.level.toUpperCase().padEnd(5)} ${n.message}`), ...outdated.map(outdatedLine)].map((line) => `\n${line}`).join('');
-        print(rows.map((r) => `${r.scene.padEnd(18)} ${length(r)}  ${Math.round(r.confirmed * 100)}% confirmed${r.unconfirmed.length ? '  unconfirmed: ' + r.unconfirmed.slice(0, 6).join(', ') : ''}`).join('\n') + `\ntotal ${timeline.duration.toFixed(1)}s${added}` + mismatch + usage + speedNote + after, {
+        // Each word it couldn't confirm, with what it heard there and what to do.
+        const heardLines = (r) => r.heard.slice(0, 6).map((u) => `\n${unconfirmedLine(u)}`).join('');
+        print(rows.map((r) => `${r.scene.padEnd(18)} ${length(r)}  ${Math.round(r.confirmed * 100)}% confirmed${r.unconfirmed.length ? '  unconfirmed: ' + r.unconfirmed.slice(0, 6).join(', ') : ''}${heardLines(r)}`).join('\n') + `\ntotal ${timeline.duration.toFixed(1)}s${added}` + mismatch + usage + speedNote + after, {
           scenes: rows, duration: timeline.duration, ...(paid ? { characters, speed, ...(speed !== wanted ? { requested_speed: wanted } : {}) } : {}),
           ...(estimate ? { estimate } : {}), ...(target ? { target } : {}), ...(notes.length ? { notes } : {}), ...(outdated.length ? { outdated } : {}),
         });

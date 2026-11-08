@@ -229,3 +229,28 @@ test('voice says what targetSeconds did, and how far over a longer video runs', 
   assert.equal(await main(['voice', long]), 0);
   assert.match(output, /^WARN  the video runs 2\.0 s, 1\.0 s over targetSeconds 1\. The longest scene is intro \(2\.0 s\)\.$/m);
 });
+
+test('voice says what it heard for each word it could not confirm, with the quote check gives and the advice that fits, also in JSON', async (t) => {
+  const { dir } = olderProject(t, '# Test\n\n## intro\nPublish it on {soundroo.com|sound roo dot com} and put the link over there today.\n', {
+    transcript: 'Publish it on Soundray.com and put the link over then today.', unmatched: ['soundroo.com', 'there'], matchRate: 0.8,
+  });
+  let output = '';
+  t.mock.method(process.stdout, 'write', (s) => { output += s; return true; });
+  t.mock.method(process.stderr, 'write', () => true);
+  assert.equal(await main(['voice', dir]), 0);
+  assert.match(output, /intro .* confirmed {2}unconfirmed: soundroo\.com, there\n/);
+  assert.match(output, /^ {2}"soundroo\.com": it heard "Publish it on Soundray\.com and put the link…"\. \{soundroo\.com\|sound roo dot com\} was heard as "Soundray\.com", so the override didn't help\. Try a different spoken spelling, like \{soundroo\.com\|another spelling\}, or reword the sentence\.$/m);
+  assert.match(output, /^ {2}"there": it heard "…put the link over then today\."\. If it is mispronounced, write it as \{there\|spoken spelling\} in script\.md\.$/m);
+  output = '';
+  assert.equal(await main(['voice', dir, '--json']), 0);
+  const [row] = JSON.parse(output).scenes;
+  assert.deepEqual(row.heard.map((u) => [u.word, u.heard]), [['soundroo.com', 'Soundray.com'], ['there', 'then']]);
+  assert.equal(row.heard[1].quote, '"…put the link over then today."');
+  assert.match(row.heard[1].advice, /^If it is mispronounced/);
+  // A word heard as a word that may sound the same, in a language whose sounds can't be compared.
+  const { unconfirmedWords } = await import('../src/qa.js');
+  const german = olderProject(t, '# Test\n\n## intro\nDas Rad dreht sich.\n', { transcript: 'Das Rat dreht sich.', unmatched: ['Rad'], matchRate: 0.75 });
+  fs.writeFileSync(path.join(german.dir, 'video.json'), JSON.stringify({ size: '320x180', fps: 24, lead: 0, hold: 0, end: 0, language: 'de', voice: { provider: 'elevenlabs', id: 'x' } }));
+  const v = JSON.parse(fs.readFileSync(german.files.json, 'utf8'));
+  assert.match(unconfirmedWords(loadProject(german.dir), v)[0].advice, /^"Rat" may sound the same, and in this language the speech check can't compare sounds, so \{shown\|spoken\} can't help\. Reword the sentence\.$/);
+});
