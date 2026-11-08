@@ -37,23 +37,84 @@ export function processRuns(pid) {
 
 let bootId;
 
+// Runs a program that reads a start time: quietly, in English and in UTC, without
+// a window on Windows, and for a few seconds at most. Its output, or it throws.
+function runQuietly(command, args) {
+  return execFileSync(command, args, { env: { ...process.env, LC_ALL: 'C', TZ: 'UTC0' }, stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000, windowsHide: true });
+}
+
+// Output as text. wmic writes UTF-16 when its output goes to a pipe.
+function outputText(out) {
+  if (!Buffer.isBuffer(out)) return String(out ?? '');
+  return (out.includes(0) ? out.toString('utf16le') : out.toString('latin1')).replace(/^\uFEFF/, '');
+}
+
+// Microseconds between 1601, where Windows counts from, and 1970.
+const FROM_1601_US = 11644473600000000n;
+
+// PowerShell's answer: when the process was created, in steps of 100 nanoseconds
+// since 1601, in UTC.
+export function fromFileTime(out) {
+  const text = outputText(out).trim();
+  if (!/^\d{1,20}$/.test(text)) return null;
+  const us = BigInt(text) / 10n - FROM_1601_US;
+  return us > 0n ? `win:${us}` : null;
+}
+
+// wmic's answer: CreationDate=20261108061234.567890+060, local time to the
+// microsecond and the minutes it is ahead of UTC.
+export function fromCimTime(out) {
+  const m = /CreationDate=(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})\.(\d{6})([+-])(\d{3})/.exec(outputText(out));
+  if (!m) return null;
+  const [, y, mo, d, h, mi, sec, micro, sign, offset] = m;
+  const local = BigInt(Date.UTC(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi), Number(sec))) * 1000n + BigInt(micro);
+  const us = local - (sign === '-' ? -1n : 1n) * BigInt(offset) * 60000000n;
+  return us > 0n ? `win:${us}` : null;
+}
+
+// The ways to read it on Windows, the quickest that is usually there first.
+// PowerShell comes with every Windows since 7, and pwsh is the newer PowerShell.
+// wmic is older and missing on new installs.
+function windowsReads(pid) {
+  const root = process.env.SystemRoot || process.env.windir || 'C:\\Windows';
+  const shell = ['-NoProfile', '-NonInteractive', '-Command', `(Get-Process -Id ${pid} -ErrorAction Stop).StartTime.ToFileTimeUtc()`];
+  return [
+    [path.win32.join(root, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'), shell, fromFileTime],
+    ['pwsh', shell, fromFileTime],
+    [path.win32.join(root, 'System32', 'wbem', 'WMIC.exe'), ['process', 'where', `ProcessId=${pid}`, 'get', 'CreationDate', '/value'], fromCimTime],
+  ];
+}
+
 // When a process started, as the system tells it, or null where it doesn't. Once a
 // process is gone, a new one can get the same id, and the start time tells the two
 // apart. Linux has it in /proc, in clock ticks since the computer started, so the
 // id of that boot goes with it. macOS and the BSDs give it through ps, to the
-// second, and a process id doesn't come back within the same second.
+// second, and a process id doesn't come back within the same second. Windows gives
+// it through PowerShell or wmic, to the microsecond. That takes a moment, so a run
+// reads its own start once, and a run that waits reads the holder's now and then.
 //
-// Windows has no quick way to read it from a script, so there a lock goes by the
-// process id alone, and so does any system where reading it fails. Then a holder
-// that died, whose id another process got by chance, still counts as running. The
-// next run waits for it and stops with a message, and it never takes over a lock
-// whose holder may still run.
+// Where reading it fails, a lock goes by the process id alone. Then a holder that
+// died, whose id another process got by chance, still counts as running. The next
+// run waits for it and stops with a message, and it never takes over a lock whose
+// holder may still run.
 //
 // A process that has ended and that its parent hasn't collected yet still has its
-// id. It gets " ended" after its start time, so it never passes for a holder.
-export function startOf(pid, platform = process.platform) {
+// id. It gets " ended" after its start time, so it never passes for a holder. On
+// Windows such a process already counts as gone.
+//
+// `run` runs a program and returns its output, for tests.
+export function startOf(pid, platform = process.platform, run = runQuietly) {
+  if (!Number.isInteger(pid) || pid <= 0) return null;
   try {
-    if (platform === 'win32') return null;
+    if (platform === 'win32') {
+      for (const [command, args, parse] of windowsReads(pid)) {
+        try {
+          const started = parse(run(command, args));
+          if (started) return started;
+        } catch {}
+      }
+      return null;
+    }
     if (platform === 'linux' || platform === 'android') {
       const stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf8');
       // The name of the program is in brackets and may hold spaces, so the fields
@@ -70,14 +131,26 @@ export function startOf(pid, platform = process.platform) {
       }
       return `${bootId}:${ticks}${/^[ZXx]/.test(fields[0]) ? ' ended' : ''}`;
     }
-    // In UTC and in English, so every run reads the same words for the same process.
-    const out = execFileSync('ps', ['-o', 'stat=', '-o', 'lstart=', '-p', String(pid)], { encoding: 'utf8', env: { ...process.env, LC_ALL: 'C', TZ: 'UTC0' }, stdio: ['ignore', 'pipe', 'ignore'], timeout: 10000, windowsHide: true });
+    const out = outputText(run('ps', ['-o', 'stat=', '-o', 'lstart=', '-p', String(pid)]));
     const [, state, started] = /^\s*(\S+)\s+(.+?)\s*$/.exec(out) ?? [];
     if (!started) return null;
     return `${started.replace(/\s+/g, ' ')}${state.startsWith('Z') ? ' ended' : ''}`;
   } catch {
     return null;
   }
+}
+
+// Whether two readings are of the same process. PowerShell counts in steps of 100
+// nanoseconds and wmic in microseconds, so on Windows two readings of one process
+// can be a microsecond apart. A new process that got a dead holder's id started
+// long after that holder took its lock.
+export function sameStart(a, b) {
+  if (a === b) return true;
+  const x = /^win:(\d+)$/.exec(a ?? '');
+  const y = /^win:(\d+)$/.exec(b ?? '');
+  if (!x || !y) return false;
+  const gap = BigInt(x[1]) - BigInt(y[1]);
+  return (gap < 0n ? -gap : gap) <= 1000n;
 }
 
 let ownStart;
@@ -108,8 +181,9 @@ function readHolder(file) {
 
 // Holders whose start time matched a moment ago. Reading it again only matters
 // once the process could have ended and its id gone to a new one, and a run that
-// waits asks many times a second. A holder kept here a little too long only makes
-// a run wait a little longer.
+// waits asks many times a second. A read that takes long, like PowerShell, is
+// repeated less often. A holder kept here a little too long only makes a run wait
+// a little longer.
 const confirmed = new Map();
 const CONFIRMED_MS = 1000;
 
@@ -122,11 +196,12 @@ export function processGone(owner) {
   if (!holder.started) return false;
   const key = `${owner.name}\n${holder.started}`;
   const seen = confirmed.get(key);
-  if (seen !== undefined && Date.now() - seen < CONFIRMED_MS) return false;
+  if (seen !== undefined && Date.now() - seen.at < Math.max(CONFIRMED_MS, 5 * seen.took)) return false;
+  const began = Date.now();
   const now = startOf(owner.pid);
-  if (now === null || now === holder.started) {
+  if (now === null || sameStart(now, holder.started)) {
     if (confirmed.size > 100) confirmed.clear();
-    confirmed.set(key, Date.now());
+    confirmed.set(key, { at: Date.now(), took: Date.now() - began });
     return false;
   }
   return true;

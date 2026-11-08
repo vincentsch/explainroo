@@ -159,7 +159,7 @@ test('a file where the lock goes stops the purchase with a plain message', async
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-test('a process has the same start time each time it is read, and none once it is gone or on Windows', async () => {
+test('a process has the same start time each time it is read, and none once it is gone', async () => {
   const { startOf } = await import('../src/lock.js');
   const gone = spawnSync(process.execPath, ['-e', '']).pid;
   // macOS and the BSDs read it with ps, which most Linux systems have too.
@@ -177,7 +177,6 @@ test('a process has the same start time each time it is read, and none once it i
     assert.notEqual(startOf(child.pid, 'linux'), startOf(process.pid, 'linux'), 'another process started at another time');
     child.kill();
   }
-  assert.equal(startOf(process.pid, 'win32'), null);
 });
 
 // A process that ended keeps its id until its parent collects it, and until then
@@ -321,4 +320,54 @@ test('runs that renew one login through links to its .env file send one renewal'
   assert.equal(fs.lstatSync(fileLink).isSymbolicLink(), true, 'the link stays a link');
   assert.deepEqual(fs.readdirSync(path.join(config, 'locks')), []);
   assert.deepEqual(fs.readdirSync(path.join(config, 'renewals')), []);
+});
+
+// Windows gives the start time through PowerShell or wmic. These are their answers
+// as the programs print them, for one moment: 2026-11-08 05:12:34.567890 UTC.
+test('on Windows the start time comes from PowerShell, or from wmic where PowerShell fails, and both readings of one process match', async () => {
+  const { fromCimTime, fromFileTime, sameStart, startOf } = await import('../src/lock.js');
+  const us = BigInt(Date.UTC(2026, 10, 8, 5, 12, 34)) * 1000n + 567890n;
+  const expected = `win:${us}`;
+  const fileTime = String((us + 11644473600000000n) * 10n + 7n);
+  assert.equal(fromFileTime(Buffer.from(`${fileTime}\r\n`)), expected);
+  // wmic gives local time and how many minutes it is ahead of UTC, in UTF-16 when it writes to a pipe.
+  const utf16 = (text) => Buffer.from(`\uFEFF${text}`, 'utf16le');
+  for (const local of ['20261108061234.567890+060', '20261108001234.567890-300', '20261108051234.567890+000']) {
+    assert.equal(fromCimTime(utf16(`\r\r\n\r\r\nCreationDate=${local}\r\r\n\r\r\n\r\r\n`)), expected, local);
+    assert.equal(fromCimTime(Buffer.from(`CreationDate=${local}\r\n`)), expected, local);
+  }
+  for (const bad of ['', 'Get-Process : Cannot find a process with the process identifier 4242.', '1.3407E+17', '-5']) assert.equal(fromFileTime(Buffer.from(bad)), null, bad);
+  for (const bad of ['', 'No Instance(s) Available.', 'CreationDate=']) assert.equal(fromCimTime(utf16(bad)), null, bad);
+
+  // The two kinds of reading of one process match, and a process that started 50 ms later doesn't.
+  assert.equal(sameStart(fromFileTime(Buffer.from(fileTime)), fromCimTime(Buffer.from('CreationDate=20261108061234.567890+060'))), true);
+  assert.equal(sameStart(expected, `win:${us + 50000n}`), false);
+  assert.equal(sameStart('a:1', 'a:1'), true);
+  assert.equal(sameStart('a:1', 'a:2'), false);
+  assert.equal(sameStart(null, expected), false);
+
+  // PowerShell first, then pwsh, then wmic. A program that fails or says something else is passed over.
+  const calls = [];
+  const answers = (table) => (command, args) => {
+    calls.push([command, args]);
+    const name = command.split(/[\\/]/).pop().toLowerCase();
+    if (!(name in table)) throw Object.assign(new Error('not there'), { code: 'ENOENT' });
+    return Buffer.from(table[name]);
+  };
+  assert.equal(startOf(4242, 'win32', answers({ 'powershell.exe': `${fileTime}\r\n` })), expected);
+  assert.equal(calls.length, 1);
+  assert.match(calls[0][0], /System32\\WindowsPowerShell\\v1\.0\\powershell\.exe$/);
+  assert.deepEqual(calls[0][1], ['-NoProfile', '-NonInteractive', '-Command', '(Get-Process -Id 4242 -ErrorAction Stop).StartTime.ToFileTimeUtc()']);
+  calls.length = 0;
+  assert.equal(startOf(4242, 'win32', answers({ 'powershell.exe': 'Access is denied.', 'wmic.exe': 'CreationDate=20261108051234.567890+000' })), expected);
+  assert.deepEqual(calls.map(([command]) => command.split(/[\\/]/).pop()), ['powershell.exe', 'pwsh', 'WMIC.exe']);
+  assert.deepEqual(calls[2][1], ['process', 'where', 'ProcessId=4242', 'get', 'CreationDate', '/value']);
+  assert.equal(startOf(4242, 'win32', answers({ pwsh: fileTime })), expected);
+  // Where nothing can read it, the lock goes by the process id alone.
+  assert.equal(startOf(4242, 'win32', answers({})), null);
+  assert.equal(startOf(4242, 'win32', () => { throw Object.assign(new Error('timed out'), { code: 'ETIMEDOUT' }); }), null);
+  // Only a whole number goes into the command.
+  calls.length = 0;
+  assert.equal(startOf('1; Remove-Item x', 'win32', answers({})), null);
+  assert.deepEqual(calls, []);
 });
