@@ -185,8 +185,9 @@ show their app. The agent rebuilds the app's screens from its code or its
 website, with the same colors, fonts and button labels. A mouse pointer then
 clicks through the screens and types into the fields. Tell your agent which
 product it is and where to find its code or website. `explainroo capture`
-saves the live site's screenshots, colors, fonts, logo and wording first, and
-a real screen recording can play inside a scene too.
+saves the live site's screenshots, colors, font files, logo and wording first,
+with the page's text and a list of its images. A real screen recording can
+play inside a scene too.
 
 <p align="center">
   <a href="https://www.explainroo.com/videos/unspar-product-demo/">

@@ -135,27 +135,19 @@ function inspectPage({ stylesheets, loadedFonts }) {
   samples.push({ color: colors.background, area: innerWidth * Math.min(8000, document.documentElement.scrollHeight) });
   const buttonSamples = buttons.map((el) => ({ color: hex(style(el).backgroundColor), area: area(el) }));
   const fonts = { body: family(style(body).fontFamily), headings: [...new Set(headings.map((el) => family(style(el).fontFamily)))], buttons: [...new Set(buttons.map((el) => family(style(el).fontFamily)))], families: [] };
-  const names = [...new Set([fonts.body, ...fonts.headings, ...fonts.buttons])].filter(Boolean);
-  const used = [body, ...elements];
-  for (const name of names) {
-    const uses = used.filter((el) => family(style(el).fontFamily) === name).map((el) => ({ weight: Number(style(el).fontWeight), style: style(el).fontStyle }));
-    fonts.families.push({ family: name, uses: [...new Map(uses.map((u) => [JSON.stringify(u), u])).values()], faces: [], sources: [] });
-  }
-  for (const face of document.fonts) {
-    const f = fonts.families.find((f) => f.family === family(face.family));
-    if (f) f.faces.push({ weight: face.weight, style: face.style, status: face.status });
-  }
+  // Every @font-face source by family, and whether the page loaded it.
   const loaded = new Set([...performance.getEntriesByType('resource').map((r) => r.name), ...loadedFonts]);
+  const sources = new Map();
   const readRules = (rules, base) => {
     for (const rule of rules) {
       if (rule.type === CSSRule.FONT_FACE_RULE) {
-        const f = fonts.families.find((f) => f.family === family(rule.style.getPropertyValue('font-family')));
-        if (!f) continue;
+        const name = family(rule.style.getPropertyValue('font-family'));
+        if (!sources.has(name)) sources.set(name, []);
         for (const match of rule.style.getPropertyValue('src').matchAll(/url\(\s*['"]?([^'"\s)]+)['"]?\s*\)/g)) {
           const url = new URL(match[1], base).href;
           const weight = rule.style.getPropertyValue('font-weight').replace(/normal/g, '400').replace(/bold/g, '700') || '400';
           const source = { url, weight, style: rule.style.getPropertyValue('font-style') || 'normal', loaded: loaded.has(url) };
-          if (!f.sources.some((s) => JSON.stringify(s) === JSON.stringify(source))) f.sources.push(source);
+          if (!sources.get(name).some((s) => JSON.stringify(s) === JSON.stringify(source))) sources.get(name).push(source);
         }
       } else if (rule.styleSheet) {
         try { readRules(rule.styleSheet.cssRules, rule.styleSheet.href || base); } catch {}
@@ -174,6 +166,31 @@ function inspectPage({ stylesheets, loadedFonts }) {
       readRules(sheet.cssRules, url);
     } catch {}
   }
+  // The families of the body, the headings and the buttons, then every other
+  // family the page loaded a file of, like the font of its code.
+  const names = [...new Set([fonts.body, ...fonts.headings, ...fonts.buttons, ...[...sources].filter(([, list]) => list.some((s) => s.loaded)).map(([name]) => name)])].filter(Boolean);
+  const used = [body, ...elements];
+  for (const name of names) {
+    const uses = used.filter((el) => family(style(el).fontFamily) === name).map((el) => ({ weight: Number(style(el).fontWeight), style: style(el).fontStyle }));
+    fonts.families.push({ family: name, uses: [...new Map(uses.map((u) => [JSON.stringify(u), u])).values()], faces: [], sources: sources.get(name) ?? [] });
+  }
+  for (const face of document.fonts) {
+    const f = fonts.families.find((f) => f.family === family(face.family));
+    if (f) f.faces.push({ weight: face.weight, style: face.style, status: face.status });
+  }
+  // The pictures of the page in page order, with what they show and whether a
+  // visitor sees them without scrolling. A data: address is cut short.
+  const seenImages = new Set();
+  const images = select('img').flatMap((el) => {
+    const src = el.currentSrc || el.getAttribute('src') || '';
+    const alt = el.getAttribute('alt');
+    if (!src || seenImages.has(src + '\0' + alt)) return [];
+    seenImages.add(src + '\0' + alt);
+    const r = el.getBoundingClientRect();
+    return [{ src: src.startsWith('data:') ? `${src.slice(0, 60)}…` : src.slice(0, 2000), alt, width: Math.round(r.width), height: Math.round(r.height), naturalWidth: el.naturalWidth, naturalHeight: el.naturalHeight, firstScreen: r.top < innerHeight && r.bottom > 0 && r.left < innerWidth && r.right > 0 }];
+  }).slice(0, 200);
+  // The readable text of the page in page order, as a visitor reads it.
+  const pageText = (body.innerText || '').replace(/[ \t\u00a0]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
   const siteName = clean(document.querySelector('meta[property="og:site_name"]')?.content) || location.hostname.replace(/^www\./, '').split('.')[0];
   const candidates = [];
   const firstHome = [...document.querySelectorAll('a[href]')].find((el) => {
@@ -207,8 +224,33 @@ function inspectPage({ stylesheets, loadedFonts }) {
     url: location.href, title: document.title, description: document.querySelector('meta[name="description"]')?.content || null,
     themeColor: hex(document.querySelector('meta[name="theme-color"]')?.content || 'transparent'),
     colors, samples, buttonSamples, fonts, candidates,
-    text: { h1: labels(select('h1')), h2: labels(select('h2')), navigation: labels(select('nav a, [role=navigation] a')), buttons: [...new Set(buttons.map((el) => clean(el.value || el.innerText || el.getAttribute('aria-label'))).filter(Boolean))].slice(0, 40), labels: labels(select('label')), placeholders: labels(select('input[placeholder], textarea[placeholder]'), 'placeholder') },
+    text: { h1: labels(select('h1')), h2: labels(select('h2')), navigation: labels(select('nav a, [role=navigation] a')), buttons: [...new Set(buttons.map((el) => clean(el.value || el.innerText || el.getAttribute('aria-label'))).filter(Boolean))].slice(0, 40), labels: labels(select('label')), placeholders: labels(select('input[placeholder], textarea[placeholder]'), 'placeholder'), body: pageText },
+    images,
   };
+}
+
+// capture.json keeps this much of the page's text.
+export const TEXT_BYTES = 30000;
+
+// The text up to `bytes` bytes, cut at the end of a line, or of a word when one
+// line is longer than that.
+export function cutText(text, bytes = TEXT_BYTES) {
+  if (Buffer.byteLength(text) <= bytes) return { text, cut: false };
+  let end = Buffer.from(text).subarray(0, bytes).toString('utf8').replace(/\uFFFD$/, '');
+  const line = end.lastIndexOf('\n');
+  const word = end.lastIndexOf(' ');
+  end = end.slice(0, line > bytes / 2 ? line : word > 0 ? word : end.length);
+  return { text: end.trimEnd(), cut: true };
+}
+
+// What kind of font file the bytes are, from their first bytes, or null.
+export function fontType(bytes) {
+  const head = bytes.subarray(0, 4);
+  if (head.toString('latin1') === 'wOF2') return '.woff2';
+  if (head.toString('latin1') === 'wOFF') return '.woff';
+  if (head.toString('latin1') === 'OTTO') return '.otf';
+  if (head.equals(Buffer.from([0, 1, 0, 0])) || head.toString('latin1') === 'true') return '.ttf';
+  return null;
 }
 
 async function loadPage(page, url) {
@@ -265,16 +307,24 @@ export async function capture(project, value, { mobile = false, name: pageName, 
     const page = await context.newPage();
     const cssResponses = [];
     const loadedFonts = [];
+    // The files of the fonts the page loaded, kept as they came, so none is asked for twice.
+    const fontFiles = new Map();
     page.on('response', (response) => {
       if (response.request().resourceType() === 'stylesheet') {
         cssResponses.push(response.text().then((css) => ({ css, url: response.url() })).catch(() => null));
       }
-      if (response.request().resourceType() === 'font' && response.ok()) loadedFonts.push(response.url());
+      if (response.request().resourceType() === 'font' && response.ok()) {
+        loadedFonts.push(response.url());
+        fontFiles.set(response.url(), response.body().catch(() => null));
+      }
     });
     await loadPage(page, url.href);
     const stylesheets = (await Promise.all(cssResponses)).filter(Boolean);
     const data = await page.evaluate(inspectPage, { stylesheets, loadedFonts });
     const { samples, buttonSamples, candidates, ...result } = data;
+    const pageText = cutText(result.text.body);
+    result.text.body = pageText.text;
+    result.text.bodyCut = pageText.cut;
     result.colors.accent = pickColors(buttonSamples).accent;
     result.colors.other = pickColors(samples, Object.values(result.colors).filter(Boolean)).other;
     result.brand = {};
@@ -303,30 +353,42 @@ export async function capture(project, value, { mobile = false, name: pageName, 
     }
     result.logo.picked = result.logo.candidates[0]?.file || null;
     if (result.logo.picked) result.brand.logo = result.logo.picked;
+    // Every font file the page loaded, for the families it uses, except the fonts
+    // that come with explainroo. fonts.json says where each file came from.
     const savedFonts = [];
+    const fontList = [];
     for (const f of result.fonts.families) {
       if (BUILT_IN_FONTS.has(f.family)) {
         result.notes.push(`${f.family} is built into explainroo. It needs no font files.`);
         continue;
       }
-      let saved = false;
+      let saved = 0;
+      let google = true;
       for (const source of f.sources) {
         const range = source.weight.split(/\s+/).map(Number);
         const used = f.uses.some((u) => u.weight >= range[0] && u.weight <= range.at(-1) && u.style === source.style);
-        if (!source.loaded || !used || !isGoogleFont(source.url, googleHostCheck)) continue;
+        if (!source.loaded || !used || !/^https?:/i.test(source.url)) continue;
         try {
-          const bytes = await download(context, source.url);
-          const ext = /\.(woff2?|ttf|otf)$/i.exec(new URL(source.url).pathname)?.[0] || '.woff2';
+          const bytes = (await fontFiles.get(source.url)) ?? await download(context, source.url);
+          const ext = fontType(bytes);
+          if (!ext) throw new Error('not a font file');
           const name = f.family.replace(/[^a-z0-9-]/gi, '-') || 'font';
           const file = `${relative}/fonts/${name}-${source.weight.replace(/\s+/g, '-')}-${savedFonts.length + 1}${ext}`;
           fs.mkdirSync(path.join(temp, 'fonts'), { recursive: true });
           fs.writeFileSync(path.join(temp, 'fonts', path.basename(file)), bytes);
-          savedFonts.push({ family: f.family, src: file, weight: range.length === 1 ? range[0] : source.weight, style: source.style });
-          saved = true;
-        } catch { result.notes.push(`Could not save ${f.family}. Get the font files and check the license.`); }
+          const style = source.style === 'normal' ? 'normal' : 'italic';
+          savedFonts.push({ family: f.family, src: file, weight: range.length === 1 ? range[0] : source.weight, style });
+          fontList.push({ family: f.family, weight: range.length === 1 ? range[0] : source.weight, style, file, source: source.url });
+          google &&= isGoogleFont(source.url, googleHostCheck);
+          saved++;
+        } catch { result.notes.push(`Could not save a file of ${f.family} from ${source.url}. Get the font files and check the license.`); }
       }
-      if (!saved) result.notes.push(`${f.family}: get the font files and check the license. Copy the license file next to them.`);
+      if (saved) result.notes.push(`${f.family}: saved ${saved} font file${saved === 1 ? '' : 's'}${google ? ' from Google Fonts' : ''} in ${relative}/fonts/, check the license before you publish.`);
+      else result.notes.push(`${f.family}: get the font files and check the license. Copy the license file next to them.`);
     }
+    if (fontList.length) fs.writeFileSync(path.join(temp, 'fonts', 'fonts.json'), JSON.stringify(fontList, null, 2) + '\n');
+    result.fonts.saved = fontList;
+    if (pageText.cut) result.notes.push(`The page's text is longer than ${TEXT_BYTES / 1000} KB, so capture.json keeps the first ${TEXT_BYTES / 1000} KB.`);
     if (mobile) {
       const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
       const mobilePage = await phone.newPage();
@@ -335,7 +397,7 @@ export async function capture(project, value, { mobile = false, name: pageName, 
     }
     result.suggestion = { brand: result.brand, fonts: savedFonts };
     const files = fs.readdirSync(temp).filter((name) => name !== 'fonts').map((name) => `${relative}/${name}`);
-    result.files = [...files, ...savedFonts.map((f) => f.src), `${relative}/capture.json`].sort();
+    result.files = [...files, ...savedFonts.map((f) => f.src), ...(fontList.length ? [`${relative}/fonts/fonts.json`] : []), `${relative}/capture.json`].sort();
     fs.writeFileSync(path.join(temp, 'capture.json'), JSON.stringify(result, null, 2) + '\n');
     swapIn(temp, dest, !pageName);
     return result;

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { capture, validateUrl, pickColors, rankLogos, isGoogleFont, isCaptureName } from '../src/capture.js';
+import { capture, cutText, fontType, validateUrl, pickColors, rankLogos, isGoogleFont, isCaptureName, TEXT_BYTES } from '../src/capture.js';
 
 test('capture accepts only HTTP URLs without login credentials', () => {
   assert.equal(validateUrl('https://example.com/demo').hostname, 'example.com');
@@ -84,4 +84,29 @@ test('a capture name uses letters, digits and hyphens, and is never fonts', asyn
     assert.match(empty.stderr, /^error: --name needs a value/);
     assert.deepEqual(fs.readdirSync(dir), ['video.json']);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// capture.json keeps the first 30 KB of a long page, cut at the end of a line.
+test('the page text is cut at 30 KB, at the end of a line or a word', () => {
+  assert.equal(TEXT_BYTES, 30000);
+  assert.deepEqual(cutText('Short page.'), { text: 'Short page.', cut: false });
+  const lines = Array.from({ length: 2000 }, (_, i) => `Line ${i} of a long page.`).join('\n');
+  const long = cutText(lines);
+  assert.equal(long.cut, true);
+  assert.ok(Buffer.byteLength(long.text) <= 30000);
+  assert.ok(lines.startsWith(long.text));
+  assert.match(long.text, /of a long page\.$/);
+  // One very long line is cut between words, and a letter is never split.
+  const words = cutText('ü'.repeat(10) + ' ' + 'wörd '.repeat(10000), 40);
+  assert.equal(words.cut, true);
+  assert.ok(!words.text.includes('\uFFFD') && Buffer.byteLength(words.text) <= 40);
+  assert.ok(!words.text.endsWith(' '));
+});
+
+test('a font file is told by its first bytes', () => {
+  assert.equal(fontType(Buffer.from('wOF2rest')), '.woff2');
+  assert.equal(fontType(Buffer.from('wOFFrest')), '.woff');
+  assert.equal(fontType(Buffer.from('OTTOrest')), '.otf');
+  assert.equal(fontType(Buffer.from([0, 1, 0, 0, 9])), '.ttf');
+  assert.equal(fontType(Buffer.from('<html>Not found</html>')), null);
 });

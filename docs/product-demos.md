@@ -8,7 +8,7 @@ talks about.
 [examples/unspar-demo](https://github.com/vincentsch/explainroo/tree/main/examples/unspar-demo)
 is a complete one.
 
-**Capture the live site first.**
+## Capture the live site first
 
 ```bash
 explainroo capture videos/<name> https://example.com --mobile
@@ -22,16 +22,23 @@ saves what a demo needs in `assets/capture/<hostname>/`:
   camera zooms in. `--mobile` adds `mobile.png` and `mobile-full.png`.
 - `capture.json` with the colors, fonts, logo candidates and the page's
   wording: headings, navigation, buttons and form labels. Copy the wording
-  exactly.
-- Up to three logo files, and the font files that come from Google Fonts, in
-  the weights the page uses.
+  exactly. `text.body` has the readable text of the whole page in page
+  order, up to 30 KB, so you can check claims and example values against it.
+  `images` lists the page's pictures with their address, alt text and size,
+  and says whether each one is on the first screen.
+- Up to three logo files.
+- The font files the page loaded, in the weights it uses, in `fonts/`. Their
+  `fonts.json` gives each file's family, weight, style and the address it
+  came from. Fonts that come with explainroo are not copied.
 
-It prints a `brand` and `fonts` block to paste into `video.json`. Check it
-against the screenshots. Fonts built into explainroo need no files. For other
-fonts, get the files, check the license and copy the license file next to
-them. Cookie banners and chat widgets can appear in the screenshots, as they
-do for any visitor. Use a screenshot, or a part of one, without them.
-Capturing the same site again replaces these files.
+It prints a `brand` and `fonts` block to paste into `video.json`, and one line
+for each font it saved. Check the block against the screenshots. A font on a
+website isn't always free to use in a video, so check the license of each
+saved font before you publish, and copy the license file next to it. For a
+font it could not save, get the files yourself. Cookie banners and chat
+widgets can appear in the screenshots, as they do for any visitor. Use a
+screenshot, or a part of one, without them. Capturing the same site again
+replaces these files.
 
 To keep several pages of one site, give each page a name:
 
@@ -49,7 +56,9 @@ can't be `fonts`, because a capture without a name keeps its fonts there.
 You can also show a real screen recording with `s.clip` in a `browser`
 frame. Use `s.camera` to zoom in on the detail the voice mentions.
 
-**Keep it true.** A demo is advertising, so everything in it has to be right.
+## Keep it true
+
+A demo is advertising, so everything in it has to be right.
 
 - Take the wording from the app itself: its templates and language files
   (for example `lang/en/*.php`, `locales/`, or the components). Copy labels,
@@ -62,7 +71,9 @@ frame. Use `s.camera` to zoom in on the detail the voice mentions.
   only if the website shows them.
 - Ask the user if the website and the app say different things.
 
-**Set up the brand** in `video.json`. Use the `clean` look.
+## Set up the brand
+
+Set up the brand in `video.json`. Use the `clean` look.
 
 ```json
 {
@@ -98,8 +109,10 @@ frame. Use `s.camera` to zoom in on the detail the voice mentions.
   italic: false }` to `u.headline()`.
 - `logo` is the product's logo from the app or website, best as SVG.
 
-**Build a scene** in this order: background, camera, headline, screens,
-cursor last so it stays on top.
+## Build a scene
+
+Build a scene in this order: background, camera, headline, screens, cursor
+last so it stays on top.
 
 ```js
 hook(s) {
@@ -137,8 +150,10 @@ can cover what is there, so keep important text out of that corner.
 Use the product's name as plain text in the first frame. Many apps show the
 first frame as the cover.
 
-**`s.ui` reference.** Positions are in the frame (1920 wide for 16:9). Times
-take seconds, spoken words or `"#markers"`, like everywhere else.
+## The s.ui reference
+
+Positions are in the frame (1920 wide for 16:9). Times take seconds, spoken
+words or `"#markers"`, like everywhere else.
 
 | Call | What it draws |
 |---|---|

@@ -72,7 +72,8 @@ Post a video
                         the package's size, unless you add --media-url-unchecked
 
 Product demos
-  capture [project] <url>  save screenshots, wording, colors, fonts and logo of a live site (--mobile).
+  capture [project] <url>  save screenshots, wording, colors, fonts and logo of a live site, with its text
+                        and a list of its images (--mobile).
                         --name pricing saves to assets/capture/<site>/pricing/, so several pages of one site
                         stay side by side
 
@@ -179,7 +180,9 @@ export async function main(argv) {
         if (pos.length < 1 || pos.length > 2) throw new ProjectError('usage: explainroo capture [project] <url> [--name <name>] [--mobile] [--json]');
         const r = await capture(pos.length === 2 ? pos[0] : undefined, pos.at(-1), { mobile: !!flags.mobile, name: textFlag(flags, 'name') });
         const families = r.fonts.families.map((f) => f.family).join(', ') || 'none found';
-        print(`saved:\n${r.files.map((f) => '  ' + f).join('\n')}\naccent: ${r.colors.accent || 'none found'}\nfonts: ${families}\nlogo: ${r.logo.picked || 'none found'}\n${r.notes.join('\n')}\nPaste into video.json:\n${JSON.stringify(r.suggestion, null, 2)}\nOpen the screenshots and check them before you use them.`, r);
+        const onFirst = r.images.filter((i) => i.firstScreen).length;
+        const page = `page: ${r.text.body.length.toLocaleString('en-US')} characters of text${r.text.bodyCut ? ', the first 30 KB,' : ''} and ${r.images.length} image${r.images.length === 1 ? '' : 's'} (${onFirst} on the first screen) in capture.json`;
+        print(`saved:\n${r.files.map((f) => '  ' + f).join('\n')}\naccent: ${r.colors.accent || 'none found'}\nfonts: ${families}\nlogo: ${r.logo.picked || 'none found'}\n${page}\n${r.notes.join('\n')}\nPaste into video.json:\n${JSON.stringify(r.suggestion, null, 2)}\nOpen the screenshots and check them before you use them.`, r);
         return 0;
       }
       case 'voice': {

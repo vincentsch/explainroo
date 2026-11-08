@@ -48,6 +48,29 @@ test('capture saves a local site, its loaded fonts and desktop and phone screens
     assert.equal(result.suggestion.fonts[0].weight, 400);
     assert.equal(site.requests.includes('/unused.woff2'), false);
     assert.deepEqual(fs.readFileSync(path.join(dir, result.suggestion.fonts[0].src)), fs.readFileSync(path.join(site.dir, 'fixture.woff2')));
+    // fonts.json says where each saved file came from. Inter comes with explainroo, so it stays out.
+    const saved = JSON.parse(fs.readFileSync(path.join(root, 'fonts/fonts.json'), 'utf8'));
+    assert.deepEqual(saved, [{ family: 'Fixture Sans', weight: 400, style: 'normal', file: result.suggestion.fonts[0].src, source: saved[0].source }]);
+    assert.match(saved[0].source, /^http:\/\/127\.0\.0\.1:\d+\/fixture\.woff2$/);
+    assert.deepEqual(result.fonts.saved, saved);
+    assert.deepEqual(result.fonts.families.map((f) => f.family), ['Fixture Sans', 'Inter']);
+    // The desktop and the phone page each load the fonts once.
+    assert.equal(site.requests.filter((r) => r === '/inter.woff2').length, 2);
+    assert.ok(result.notes.includes('Inter is built into explainroo. It needs no font files.'));
+    assert.ok(result.notes.includes('Fixture Sans: saved 1 font file from Google Fonts in assets/capture/127.0.0.1/fonts/, check the license before you publish.'), result.notes.join('\n'));
+    // The file came with the page, so capture didn't ask for it again.
+    assert.equal(site.requests.filter((r) => r === '/fixture.woff2').length, 2);
+    // The readable text in page order, without what is hidden.
+    const text = result.text.body;
+    assert.equal(result.text.bodyCut, false);
+    for (const words of ['Fixture Studio', 'Build a clear product demo', 'Keep your colors, fonts and wording together. Start it with npx explainroo.', 'Capture once, use the files', 'A long page checks the screenshot height limit.']) assert.ok(text.includes(words), words);
+    assert.ok(text.indexOf('Build a clear product demo') < text.indexOf('Keep your colors') && text.indexOf('Keep your colors') < text.indexOf('Your brand on every screen'));
+    assert.doesNotMatch(text, /Hidden action|Hidden placeholder/);
+    // The images in page order, with what they show and whether they are on the first screen.
+    assert.deepEqual(result.images, [
+      { src: `${site.url}/photo.png`, alt: 'The demo editor with two scenes', width: 320, height: 180, naturalWidth: 1, naturalHeight: 1, firstScreen: true },
+      { src: `${site.url}/social.png`, alt: '', width: 64, height: 64, naturalWidth: 1, naturalHeight: 1, firstScreen: false },
+    ]);
     assert.deepEqual(result.text.h1, ['Build a clear product demo']);
     assert.deepEqual(result.text.h2, ['Your brand on every screen', 'Capture once, use the files']);
     assert.deepEqual(result.text.navigation, ['Features', 'Plans']);
@@ -74,14 +97,17 @@ test('capture saves a local site, its loaded fonts and desktop and phone screens
     const cli = await run(process.execPath, [bin, 'capture', dir, site.url, '--json'], { timeout: 60000 });
     const json = JSON.parse(cli.stdout);
     assert.equal(json.colors.accent, '#245cff');
-    assert.equal(json.suggestion.fonts.length, 0);
-    assert.match(json.notes.join(' '), /Fixture Sans: get the font files and check the license/);
+    // Any font the page loaded is saved, not only those from Google Fonts.
+    assert.equal(json.suggestion.fonts.length, 1);
+    assert.ok(json.notes.includes('Fixture Sans: saved 1 font file in assets/capture/127.0.0.1/fonts/, check the license before you publish.'), json.notes.join('\n'));
     assert.equal(fs.existsSync(path.join(root, 'stale.txt')), false);
     assert.equal(fs.existsSync(path.join(root, 'mobile.png')), false);
     const human = await run(process.execPath, [bin, 'capture', '--mobile', site.url], { cwd: dir, timeout: 60000 });
     assert.match(human.stdout, /accent: #245cff/);
     assert.match(human.stdout, /logo: assets\/capture\/127.0.0.1\/logo.svg/);
     assert.match(human.stdout, /Paste into video.json:/);
+    assert.match(human.stdout, /^page: [\d,]+ characters of text and 2 images \(1 on the first screen\) in capture\.json$/m);
+    assert.match(human.stdout, /^Fixture Sans: saved 1 font file in assets\/capture\/127\.0\.0\.1\/fonts\/, check the license before you publish\.$/m);
     assert.ok(fs.existsSync(path.join(root, 'mobile.png')));
   } finally {
     await site.close();
@@ -101,7 +127,7 @@ test('named captures of one site stay side by side, and a capture without a name
       const r = await capture(dir, site.url, { name, ...fonts });
       const folder = `assets/capture/127.0.0.1/${name}`;
       assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dir, folder, 'capture.json'))), r);
-      assert.deepEqual(r.files, [`${folder}/capture.json`, `${folder}/fonts/Fixture-Sans-400-1.woff2`, `${folder}/full.png`, `${folder}/logo-2.svg`, `${folder}/logo-3.png`, `${folder}/logo.svg`, `${folder}/page.png`]);
+      assert.deepEqual(r.files, [`${folder}/capture.json`, `${folder}/fonts/Fixture-Sans-400-1.woff2`, `${folder}/fonts/fonts.json`, `${folder}/full.png`, `${folder}/logo-2.svg`, `${folder}/logo-3.png`, `${folder}/logo.svg`, `${folder}/page.png`]);
       assert.ok(r.files.every((file) => fs.existsSync(path.join(dir, file))));
       assert.equal(r.brand.logo, `${folder}/logo.svg`);
       assert.deepEqual(r.suggestion.fonts.map((f) => f.src), [`${folder}/fonts/Fixture-Sans-400-1.woff2`]);
