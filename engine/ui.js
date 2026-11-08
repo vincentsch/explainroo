@@ -258,7 +258,7 @@ export class UI {
     }
     c.restore();
     // check compares cards with other shapes once they have arrived.
-    if (!this.hidden) this.s._logShape('card', { x: x + w / 2, y: y + h / 2, w, h }, this.s._unsettled === 0, o, o.name ?? '');
+    if (!this.hidden) this.s._logShape('card', { x: x + w / 2, y: y + h / 2, w, h }, this.s._unsettled === 0, o, o.name ?? '', { border: o.border === false ? 0 : o.borderWidth ?? 1.5 });
   }
 
   // A card that pops up at `at`, then fn(x, y, w, h) draws inside it.

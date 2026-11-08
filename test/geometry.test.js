@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ring, bounds, overlapDepth, holds, crosses, along, rayThrough } from '../engine/geometry.js';
+import { ring, bounds, overlapDepth, holds, crosses, along, rayThrough, grow } from '../engine/geometry.js';
 
 const box = (x0, y0, x1, y1) => [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
 
@@ -40,4 +40,14 @@ test('a line crosses a box when a point along it lies inside the box', () => {
 test('a ray enters and leaves a box', () => {
   assert.deepEqual(rayThrough({ x: 0, y: 0 }, 0, 1, { x0: -10, y0: 50, x1: 10, y1: 80 }), [50, 80]);
   assert.equal(rayThrough({ x: 0, y: 0 }, 1, 0, { x0: -10, y0: 50, x1: 10, y1: 80 }), null);
+});
+
+test('a shape grows by the width of half its border, or shrinks to the inner edge', () => {
+  assert.deepEqual(grow(box(0, 0, 100, 50), 2), box(-2, -2, 102, 52));
+  assert.deepEqual(grow(box(0, 0, 100, 50), -2), box(2, 2, 98, 48));
+  assert.equal(grow(box(0, 0, 100, 50), 0).length, 4);
+  // A box never turns inside out.
+  assert.deepEqual(grow(box(0, 0, 10, 10), -8), box(5, 5, 5, 5));
+  const round = bounds(grow(ring(0, 0, 100, 50), 3));
+  assert.ok(Math.abs(round.x1 - 103) < 0.01 && Math.abs(round.y1 - 53) < 0.01, JSON.stringify(round));
 });

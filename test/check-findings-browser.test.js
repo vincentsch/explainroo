@@ -256,6 +256,37 @@ test('check warns about text that partly overlaps a shape, and not about a shape
   assert.match(found[0].message, /^"Mail, maps, music and photos" and the box "Your phone" partly overlap, by \d+px; move them apart, or give one of them overlap: true if that is meant$/);
 });
 
+// The clean look draws a box's border 3.5 pixels wide on its outline, so half of
+// it lies outside. The box runs from y 300 to 500.
+test('check warns about text that reaches more than 4 pixels into a box\'s drawn border, from outside or inside, and not about text that only touches it', { skip }, async (t) => {
+  const box = "s.box({ x: 960, y: 400, w: 600, h: 200, at: 0 });";
+  const issues = await check(project(t, {}, {
+    // 3 pixels past the outline is 4.75 into the drawn border.
+    onTop: `${box} s.text('replaces', { x: 960, y: 303, valign: 'bottom', size: 48, at: 0 });`,
+    touching: `${box} s.text('replaces', { x: 960, y: 301, valign: 'bottom', size: 48, at: 0 });`,
+    above: `${box} s.text('replaces', { x: 960, y: 290, valign: 'bottom', size: 48, at: 0 });`,
+    inside: `${box} s.text('replaces', { x: 960, y: 304, valign: 'top', size: 48, at: 0 });`,
+    fromInside: `${box} s.text('replaces', { x: 960, y: 297, valign: 'top', size: 48, at: 0 });`,
+    noBorder: "s.box({ x: 960, y: 400, w: 600, h: 200, border: false, at: 0 }); s.text('replaces', { x: 960, y: 303, valign: 'bottom', size: 48, at: 0 });",
+  }));
+  const found = issues.filter((i) => /partly overlap/.test(i.message));
+  assert.deepEqual(found.map((i) => i.scene).sort(), ['fromInside', 'onTop'], JSON.stringify(issues));
+  assert.match(found.find((i) => i.scene === 'onTop').message, /^"replaces" and the box at 960,400 partly overlap, by 5px; move them apart, or give one of them overlap: true if that is meant$/);
+});
+
+// The last scene of a LinkedIn video, in the layout that put "replaces" on the top
+// border of the box under it: the box's label wraps onto two lines and grows up.
+test('check finds a word on the top border of a box whose label wraps', { skip }, async (t) => {
+  const issues = await check(project(t, { size: 'linkedin', captions: 'auto' }, {
+    guard: `const { top, h, w } = s.safe;
+    const u = Math.min(w, h) / 100;
+    const card = s.box('1 test first', { y: top + h * 0.3, size: u * 9, color: 'green', icon: 'flask-conical', minW: w * 0.8, at: 0 });
+    s.text('replaces', { y: card.bottom + h * 0.1, size: u * 5.5, color: 'muted', at: 0.2 });
+    s.box('many checks by hand', { y: card.bottom + h * 0.27, size: u * 6.5, color: 'red', icon: 'hourglass', minW: w * 0.8, at: 0.4 });`,
+  }, { dur: 3 }));
+  assert.deepEqual(issues.filter((i) => /partly overlap/.test(i.message)).map((i) => i.message.replace(/by \d+px/, 'by Npx')), ['"replaces" and the box "many checks by hand" partly overlap, by Npx; move them apart, or give one of them overlap: true if that is meant'], JSON.stringify(issues));
+});
+
 // A diagram whose arrows run between points, through a circle on their way, and
 // one that ends a few pixels from the edge of the frame.
 test('check warns about an arrow through a shape that is not one of its ends, and about an arrow line off the frame or near its edge', { skip }, async (t) => {

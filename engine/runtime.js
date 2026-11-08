@@ -7,7 +7,7 @@ import { Pen } from './pen.js';
 import { drawTransition } from './transitions.js';
 import { buildPhrases, drawCaptions, buildChunks, drawBoldCaptions, captionHighlight } from './captions.js';
 import { AUDIO_FILE, clamp, hashStr, mulberry32, suggest, suggestColor, contrast, luminance, opaque, withAlpha, parseColor, mixColor, rgba, cssColor, newDefaults } from './util.js';
-import { overlapDepth, holds, crosses, bounds, inside, toEdge } from './geometry.js';
+import { overlapDepth, holds, crosses, bounds, inside, toEdge, grow } from './geometry.js';
 import { layoutAreas } from './layout.js';
 import { loadClips, soundURL, ClipFrames, FREEZE_SECONDS, FIT_SPEEDS } from './clips.js';
 import { UI } from './ui.js';
@@ -1114,10 +1114,13 @@ export function linesOverText(strokes, texts) {
   return found;
 }
 
-// Text that partly covers a shape, like a note on the edge of a box: they reach
-// more than 4 pixels into each other and neither holds the other. A shape's own
-// text, text in the same group, app screens, arrow labels (which have a check of
-// their own) and overlap: true on either don't count.
+// Text that partly covers a shape, like a note on the edge of a box: text that
+// reaches more than 4 pixels into the line drawn on the shape's outline, from
+// outside or from inside. The line counts as wide as it is drawn, so a word
+// sitting on a box's border is found also where the browser measures letters a
+// little smaller. Text fully inside or fully outside, a shape's own text, text in
+// the same group, app screens, arrow labels (which have a check of their own)
+// and overlap: true on either don't count.
 export function textsIntoShapes(texts, shapes) {
   const list = shapes.filter((s) => s.settled && s.alpha > 0.95 && !s.overlap && !s.cover && !s.ui);
   const found = [];
@@ -1126,8 +1129,11 @@ export function textsIntoShapes(texts, shapes) {
     const box = [[tx.x0, tx.y0], [tx.x1, tx.y0], [tx.x1, tx.y1], [tx.x0, tx.y1]];
     for (const sh of list) {
       if ((tx.shape !== null && tx.shape === sh.serial) || (sh.group !== null && sh.group === tx.group)) continue;
-      const depth = overlapDepth(sh.poly, box);
-      if (depth <= 4 || holds(sh.poly, box) || holds(box, sh.poly)) continue;
+      // The outer and the inner edge of the drawn border.
+      const outer = grow(sh.poly, sh.edge ?? 0);
+      const inner = grow(sh.poly, -(sh.edge ?? 0));
+      const depth = overlapDepth(outer, box);
+      if (depth <= 4 || holds(inner, box) || holds(box, outer)) continue;
       const label = tx.text.length > 40 ? tx.text.slice(0, 37) + '...' : tx.text;
       found.push({ key: `${shapeKey(sh)}/${tx.text}`, message: `"${label}" and ${shapeName(sh)} partly overlap, by ${Math.round(depth)}px; move them apart, or give one of them overlap: true if that is meant` });
     }

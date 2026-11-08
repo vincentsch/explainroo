@@ -394,15 +394,18 @@ export class Stage {
 
   // A shape for check: a box or, with `round`, an ellipse around x, y in the
   // current transform. `o.overlap: true` says it may overlap other shapes.
-  // Returns its number in the scene, so its own text can say whose it is.
-  _logShape(kind, { x = 0, y = 0, w, h, round = false }, settled, o = {}, name = '') {
+  // `border` is the width of the line drawn on its outline, half of which lies
+  // outside it. Returns its number in the scene, so its own text can say whose it is.
+  _logShape(kind, { x = 0, y = 0, w, h, round = false }, settled, o = {}, name = '', { border = 0 } = {}) {
     const log = this.engine.drawLog;
     const serial = ++this._shapeCalls;
     if (!log || this._suppress > 0 || !(w > 0) || !(h > 0)) return serial;
     this._seen(null);
     const local = round ? ring(x, y, w / 2, h / 2) : [[x - w / 2, y - h / 2], [x + w / 2, y - h / 2], [x + w / 2, y + h / 2], [x - w / 2, y + h / 2]];
     const poly = this._designPoints(local);
-    log.shapes.push({ kind, name: String(name ?? ''), id: o.id === undefined || o.id === null ? null : String(o.id), serial, poly, box: bounds(poly), settled, alpha: this.ctx.globalAlpha, group: this._groups[0] ?? null, overlap: o.overlap === true, cover: this._cover > 0, ui: this._ui ? this._ui._layer + 1 : 0, order: log.order++ });
+    const m = this._matrix();
+    const edge = border > 0 ? (border / 2) * Math.hypot(m.a, m.b) : 0;
+    log.shapes.push({ kind, name: String(name ?? ''), id: o.id === undefined || o.id === null ? null : String(o.id), serial, poly, box: bounds(poly), edge, settled, alpha: this.ctx.globalAlpha, group: this._groups[0] ?? null, overlap: o.overlap === true, cover: this._cover > 0, ui: this._ui ? this._ui._layer + 1 : 0, order: log.order++ });
     return serial;
   }
 
@@ -1116,7 +1119,7 @@ export class Stage {
     if (!life) return g;
     this._push(x, y, life, o);
     const settled = this._settled(life);
-    const own = this._logShape('box', { w, h, round: shape === 'ellipse' || shape === 'circle' }, settled, o, plain || o.id);
+    const own = this._logShape('box', { w, h, round: shape === 'ellipse' || shape === 'circle' }, settled, o, plain || o.id, { border: o.border === false ? 0 : o.width ?? th.stroke.width });
     const prog = this._drawProgress(life);
     const stroke = colorOf(th, o.stroke ?? o.color, 'ink');
     const fill = o.fill !== undefined ? colorOf(th, o.fill) : o.color ? tintOf(th, o.color) : th.surface;
@@ -1452,7 +1455,7 @@ export class Stage {
     this._push(x, y, life, o);
     const settled = this._settled(life);
     // check compares what is drawn: the background, or else the lines of the icon.
-    const own = this._logShape('icon', o.bg ? { w: bgSize, h: bgSize, round: o.bg !== 'square' } : this._glyphBox(name, size, o.weight), settled, o, name);
+    const own = this._logShape('icon', o.bg ? { w: bgSize, h: bgSize, round: o.bg !== 'square' } : this._glyphBox(name, size, o.weight), settled, o, name, { border: o.bg && th.stroke.rough ? th.stroke.width * 0.8 : 0 });
     const prog = this._drawProgress(life);
     const color = colorOf(th, o.color, 'ink');
     if (o.bg) {
@@ -1532,7 +1535,9 @@ export class Stage {
     const g = geom(x, y, fw, fh);
     if (!life) return g;
     this._push(x, y, life, o);
-    this._logShape('image', { w: fw, h: fh }, this._settled(life), o, src);
+    // The line on the outline: a rough card's, a window's, or o.border on a bare image.
+    const border = frame === 'card' && th.stroke.rough ? th.stroke.width * 0.8 : bar ? 2 : frame === 'none' && o.border ? th.stroke.width : 0;
+    this._logShape('image', { w: fw, h: fh }, this._settled(life), o, src, { border });
     const ctx = this.ctx;
     const r = o.radius ?? (frame === 'phone' ? 46 : th.radius);
     if (frame === 'phone') {
@@ -2064,7 +2069,7 @@ export class Stage {
     }
     if (!life) return geom(x, y, w, h);
     this._push(x, y, life, o);
-    this._logShape('code', { w, h }, this._settled(life), o, o.title || 'code');
+    this._logShape('code', { w, h }, this._settled(life), o, o.title || 'code', { border: th.stroke.rough ? th.stroke.width * 0.8 : 0 });
     this.pen.draw(ctx, { kind: 'rect', w, h, r: Math.min(th.radius, 18) }, { fill: C.bg, stroke: th.stroke.rough ? C.border : 'none', width: th.stroke.width * 0.8, seed: this._seed('codebg', o), shadow: this._shadow(undefined, { color: 'rgba(0,0,0,0.2)', blur: 24, y: 10 }), rough: th.stroke.rough, fillStyle: 'solid' }, { stroke: 1, fill: 1 });
     const left = -w / 2 + pad;
     const top = -h / 2 + barH + pad * 0.8;
@@ -2246,7 +2251,7 @@ export class Stage {
     }
     if (!life) return geom(x, y, w, h);
     this._push(x, y, life, o);
-    this._logShape('terminal', { w, h }, this._settled(life), o, o.title ?? 'terminal');
+    this._logShape('terminal', { w, h }, this._settled(life), o, o.title ?? 'terminal', { border: th.stroke.rough ? th.stroke.width * 0.8 : 0 });
     this.pen.draw(ctx, { kind: 'rect', w, h, r: Math.min(th.radius, 16) }, { fill: T.bg, stroke: th.stroke.rough ? th.ink : 'none', width: th.stroke.width * 0.8, seed: this._seed('termbg', o), shadow: this._shadow(undefined, { color: 'rgba(0,0,0,0.22)', blur: 26, y: 10 }), rough: th.stroke.rough, fillStyle: 'solid' }, { stroke: 1, fill: 1 });
     ctx.save();
     const clip = new Path2D();

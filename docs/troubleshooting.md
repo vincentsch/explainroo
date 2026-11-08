@@ -77,8 +77,11 @@ text. It finds text that is:
   too. It suggests a darker or lighter shade of the same color first, so the
   color keeps its meaning, and the look's `ink` second
 - on top of other text, or under the captions
-- partly over a shape, like a note on the edge of a box. A shape's own text,
-  text in its group and `overlap: true` don't count
+- partly over a shape, like a note on the edge of a box or a word that sits
+  on its border: text that reaches more than 4 pixels into the line drawn
+  around the shape, from outside or from inside. Text fully inside or fully
+  outside is fine. A shape's own text, text in its group and `overlap: true`
+  don't count
 - crossed by the line of an arrow or of a mark from `s.annotate`
 - cut at the edge of the frame by the camera while the shot holds still
 
