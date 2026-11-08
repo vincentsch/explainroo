@@ -406,7 +406,8 @@ scribble, cards pop, arrows whoosh, list items play rising notes, numbers
 tick, typing clicks, and scenes change with a swipe. `sfx: false` silences
 one element. `s.quiet()` at the top of a scene turns off the entrance sounds
 of everything after it in that scene, for example when twelve circles appear
-and one sound is enough. Give that one `sfx: true`. `"sfx": "minimal"` in
+and one sound is enough. Give that one `sfx: true`. The chime of `s.ui.toast`
+and the swipe of `s.ui.wipe` count as their entrance sounds too. `"sfx": "minimal"` in
 `video.json` keeps only the transitions and the sounds you add yourself, and
 `sfx: true` there plays an element's usual sound too.
 

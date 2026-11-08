@@ -131,8 +131,10 @@ export class UI {
   }
 
   // An entrance, so `check` knows something new appears and a sound can play.
-  _enter(at, dur, sfx) {
-    this.s._record('ui', at, dur, { sfx: sfx ?? null });
+  // `sfx` is the sound the scene chose, if any, and `usual` the part's own
+  // sound, which s.quiet() and "sfx": "minimal" turn off and sfx: true asks for.
+  _enter(at, dur, sfx, usual = null) {
+    this.s._record('ui', at, dur, sfx === undefined ? {} : { sfx }, { sfx: usual });
     // Arriving parts get motion blur in the final render.
     if (this.s.t >= at && this.s.t < at + dur / this.s.pace) this.s.engine.moving = true;
   }
@@ -268,7 +270,7 @@ export class UI {
     const serial = ++s._groupCalls;
     const a = this.at(o.at ?? 0);
     const dur = o.dur ?? 0.6;
-    this._enter(a, dur, o.sfx);
+    this._enter(a, dur, o.sfx, o._sfx ?? null);
     s._logLayout('panel', a, o.out === undefined ? Infinity : this.at(o.out), x + w / 2, y + h / 2, w, h, o.camera === false ? { camera: false } : null);
     if (s.t < a) return 0;
     const p = clamp((s.t - a) / (dur / s.pace));
@@ -361,7 +363,7 @@ export class UI {
     const y = o.y ?? s.H - 150;
     const tone = TONES[o.tone ?? 'green'] || TONES.green;
     this.covering(() => {
-      this.panel(x, y, w, 72, { at: a, out: o.out, r: 16, lift: 0.9, rise: 40, from: 0.9, sfx: o.sfx === undefined ? 'chime' : o.sfx }, () => {
+      this.panel(x, y, w, 72, { at: a, out: o.out, r: 16, lift: 0.9, rise: 40, from: 0.9, sfx: o.sfx, _sfx: 'chime' }, () => {
         let tx = x + 32;
         if (o.icon !== false) {
           this.icon(o.icon ?? 'circle-check', x + 40, y + 36, 30, tone.fg, 2.2);
@@ -377,7 +379,9 @@ export class UI {
     const s = this.s;
     const a = this.at(at);
     if (s.t < a) return 0;
-    if (o.sfx !== null) s.sfx(o.sfx ?? 'swipe', a);
+    // Its swipe is its entrance sound: s.quiet() turns it off unless the scene chose one.
+    const sound = o.sfx === undefined ? (s._quiet ? null : 'swipe') : o.sfx === true ? 'swipe' : o.sfx;
+    if (sound) s.sfx(sound, a);
     const p = this._p(a, o.dur ?? 0.7, 'inOut');
     if (p > 0) s._seen(null);
     const x = o.x ?? s.W / 2;

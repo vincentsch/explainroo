@@ -42,7 +42,7 @@ function fakeCanvas() {
 }
 
 // The sounds a scene asks for: [kind, at, sound].
-function sounds(scene, { sfx = true } = {}) {
+function sounds(scene, { sfx = true, t = 0 } = {}) {
   const events = [];
   const engine = {
     theme: getTheme('clean'),
@@ -55,13 +55,13 @@ function sounds(scene, { sfx = true } = {}) {
     fps: 30,
     scale: 1,
     sfxMode: sfx,
-    sfxNames: ['pop', 'ding', 'chime', 'whoosh', 'blip'],
+    sfxNames: ['pop', 'ding', 'chime', 'whoosh', 'blip', 'swipe'],
     icons: { star: ['M2 2L22 22'] },
     iconCache: new Map(),
     recorder: { push: (e) => events.push(e) },
     textLog: null,
   };
-  const s = new Stage(engine, fakeCanvas(), { start: 0, dur: 10, id: 'demo', index: 0, words: [], marks: {}, voice: null, lead: 0 }, 0);
+  const s = new Stage(engine, fakeCanvas(), { start: 0, dur: 10, id: 'demo', index: 0, words: [], marks: {}, voice: null, lead: 0 }, t);
   scene(s);
   return events.filter((e) => e.sfx).map((e) => [e.kind, Math.round(e.at * 100) / 100, e.sfx]);
 }
@@ -100,4 +100,20 @@ test('sfx: true plays the usual sound with "sfx": "minimal" too', () => {
     s.box('Heard', { at: 2, sfx: true });
     s.short.sticker('Heard too', { at: 3, sfx: true });
   }, { sfx: 'minimal' }), [['shape', 2, 'pop'], ['short', 3, 'pop']]);
+});
+
+test('a toast and a wipe have usual sounds that s.quiet() turns off, sfx: true plays and a sound of their own replaces', () => {
+  const kit = (quiet, o = {}) => sounds((s) => {
+    if (quiet) s.quiet();
+    s.ui.toast('Saved', { at: 1, icon: false, ...o });
+    s.ui.wipe(2, o);
+  }, { t: 2.5 });
+  assert.deepEqual(kit(false), [['ui', 1, 'chime'], ['sfx', 2, 'swipe']]);
+  assert.deepEqual(kit(true), []);
+  assert.deepEqual(kit(true, { sfx: true }), [['ui', 1, 'chime'], ['sfx', 2, 'swipe']]);
+  assert.deepEqual(kit(false, { sfx: true }), [['ui', 1, 'chime'], ['sfx', 2, 'swipe']]);
+  assert.deepEqual(kit(true, { sfx: 'pop' }), [['ui', 1, 'pop'], ['sfx', 2, 'pop']]);
+  assert.deepEqual(kit(false, { sfx: false }), []);
+  // A panel has no sound of its own, so sfx: true finds none, and a chosen one plays.
+  assert.deepEqual(sounds((s) => { s.ui.panel(0, 0, 100, 100, { at: 1, sfx: true }); s.ui.panel(0, 0, 100, 100, { at: 2, sfx: 'pop' }); }), [['ui', 2, 'pop']]);
 });
