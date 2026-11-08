@@ -64,6 +64,16 @@
   circle, draw both with `s.draw`.
 - A render that stops with a closed browser or `EPIPE` on a busy computer.
   Run it again with fewer pages, for example `render --workers 2`.
+- Running explainroo on one project from two computers at once, or from a
+  container and its host, through a network drive, a synced folder or a
+  shared mount. Its locks only work within one computer, so a purchase or a
+  post there isn't protected from a second run.
+- "Another run is busy" when no other explainroo command runs, for example
+  after a crash on Windows, where the process id went to another program.
+  Each lock is a folder: in the project's `history/locks/` for posts, clip
+  purchases and files put in place, and for sign-ins in `locks/` next to the
+  keys file that `explainroo doctor` prints. Move that folder away only while
+  no explainroo command runs.
 
 `check` looks at text and math formulas, and an arrow's label counts as
 text. It finds text that is:
