@@ -59,8 +59,8 @@ number still counting have not arrived yet. Without `"defaults"` it
 is 1.0 second into the first scene. `check` gives a hint when the cover shows
 only text on an empty background. A cover has no captions. A `cover` of your
 own goes at the top of `video.json` or in the block of the size, like
-`"hook@2.5"`, and needs no new render: `package` keeps the video and writes
-only the new cover.
+`"hook@2.5"`, and needs no new render: `render` and `package` keep the video
+and write only the new cover.
 
 ## The caption band
 

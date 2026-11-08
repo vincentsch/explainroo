@@ -54,6 +54,51 @@ test('a full render is copied and all the files next to it are written again, an
   assert.equal(tiktok.verified, 'now');
 });
 
+test('a new cover leaves a rendered video as it is: render keeps the file, writes only the new cover and says so', { skip, timeout: 300000 }, async (t) => {
+  const dir = tiny(t, { size: '16:9' }, { narrated: false });
+  // Dark at first, light after half a second, so the two covers differ.
+  const scenes = (text) => fs.writeFileSync(path.join(dir, 'scenes.js'), `export default { intro(s) { s.bg(s.t < 0.5 ? '#101010' : '#f0f0f0'); s.text('${text}', { y: s.safe.y + s.safe.h / 2, size: 80, at: 0 }); } };`);
+  scenes('Tiny');
+  const settings = read(path.join(dir, 'video.json'));
+  const cover = (spec) => fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ ...settings, cover: spec }));
+  const render = async (...flags) => {
+    const r = await cli(['render', dir, '--workers', '1', '--draft', ...flags]);
+    assert.equal(r.code, 0, r.text);
+    assert.doesNotMatch(r.stderr, /test guard: blocked/);
+    return r;
+  };
+  const video = path.join(dir, 'out/draft.mp4');
+  const image = path.join(dir, 'out/draft.cover.jpg');
+  cover('intro@0.2');
+  const first = JSON.parse((await render('--json')).stdout);
+  assert.equal(first.kept, undefined);
+  const made = fs.statSync(video).mtimeMs;
+  const dark = fs.readFileSync(image);
+  cover('intro@0.8');
+  const again = await render();
+  assert.match(again.stderr, /^\S*out\/draft\.mp4 is still this exact video and only "cover" changed, so the video stays\. Cover: made again from intro@0\.8$/m);
+  assert.doesNotMatch(again.stderr, /^rendering /m);
+  assert.equal(fs.statSync(video).mtimeMs, made);
+  assert.equal(sha256File(video), first.sha256);
+  assert.notDeepEqual(fs.readFileSync(image), dark, 'the cover is new');
+  assert.equal(readVersions(dir).at(-1).cover, 'intro@0.8');
+  assert.match((await cli(['history', dir])).stdout, /out\/draft\.mp4 .*the same video with a new cover/);
+  // The same settings again render again, as before.
+  assert.equal(JSON.parse((await render('--json')).stdout).kept, undefined);
+  // With --json the result says it, and a final is its own video.
+  cover('intro@0.2');
+  const json = JSON.parse((await render('--json')).stdout);
+  assert.equal(json.kept, true);
+  assert.deepEqual(json.cover_made, { how: 'made again', at: 'intro@0.2' });
+  cover('intro@0.8');
+  const final = await cli(['render', dir, '--workers', '1', '--json']);
+  assert.equal(JSON.parse(final.stdout).kept, undefined);
+  // A change to a scene renders again, also when the cover changes with it.
+  scenes('Changed');
+  cover('intro@0.3');
+  assert.equal(JSON.parse((await render('--json')).stdout).kept, undefined);
+});
+
 test('a new cover leaves the video as it is: package keeps the file and writes only the new cover', { skip, timeout: 300000 }, async (t) => {
   const dir = tiny(t, { size: '16:9' }, { narrated: false });
   // Dark at first, light after half a second, so the two covers differ.

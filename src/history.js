@@ -458,7 +458,7 @@ export function historyReport(dir, { current = () => true, needed = () => false,
 }
 
 function versionLine(v) {
-  const kind = [v.draft ? 'draft' : 'final', ...(!v.draft && v.motionBlur === false ? ['no motion blur'] : []), v.full ? 'full video' : `${v.range?.from}s to ${v.range?.to}s`, ...(v.scale === 1 ? [] : [`scale ${v.scale}`]), `watermark ${v.watermark ? 'on' : 'off'}`, ...(v.event === 'package' ? [`package for ${v.platform}`] : [])];
+  const kind = [v.draft ? 'draft' : 'final', ...(!v.draft && v.motionBlur === false ? ['no motion blur'] : []), v.full ? 'full video' : `${v.range?.from}s to ${v.range?.to}s`, ...(v.scale === 1 ? [] : [`scale ${v.scale}`]), `watermark ${v.watermark ? 'on' : 'off'}`, ...(v.event === 'package' ? [`package for ${v.platform}`] : []), ...(v.kept ? ['the same video with a new cover'] : [])];
   const checked = v.verify ? `verify ${v.verify.ok ? 'passed' : 'found errors'}${v.verify.understood == null ? '' : `, ${Math.round(v.verify.understood * 100)}% understood`}` : 'not verified';
   return `  ${oneLine(`${when(v.time)}  ${v.file}  ${v.format} ${v.width}x${v.height}, ${Number(v.duration).toFixed(1)}s, ${kind.join(', ')}, ${checked}`, 400)}`;
 }

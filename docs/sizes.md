@@ -66,6 +66,7 @@ background, and with `"defaults": "0.5"` when it shows something half typed or
 counted. The cover leaves out the
 captions, also when the video has them. A new `cover` needs no new render:
 `package` keeps the finished video and writes only the new cover image.
+`render` does the same when its video is otherwise the same, and says so.
 
 ## One project, several sizes
 
