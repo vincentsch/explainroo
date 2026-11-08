@@ -7,7 +7,9 @@ never buys twice, so it is safe after a crash or a timeout.
 
 Clips cost money, so the user decides. Run `explainroo services clips --json` and
 tell the user the options, free ones first. Their own footage is free. The list
-also shows today's price per second of the cheap and the quality model.
+also shows today's price per second of the cheap and the quality model, and the
+lengths each one takes. When the user has already chosen clips and given a
+budget, use them and don't ask again.
 
 If the user chose clips and has no key, run `explainroo connect openrouter` and
 show the user what it prints. One OpenRouter key makes images and clips, so a key
@@ -58,8 +60,8 @@ say otherwise. In a project the aspect follows the project's frame, and the dry
 run also says whether the record already has this clip. A dry run writes nothing, with or without a project. Buying needs a
 project, because the clip goes into its `assets/clips/` and its record.
 
-Show the price to the user and ask how much they want to spend. Then pass that
-amount in US dollars as the cap:
+Show the price to the user and ask how much they want to spend, unless they
+already said. Then pass that amount in US dollars as the cap:
 
 ```bash
 explainroo clip videos/<name> "A busy street at dusk in the rain" --seconds 6 --max-cost 2
