@@ -117,19 +117,20 @@ test('every row has ok, and every row but the keys file has one of three states'
   const settings = temp(t);
   const r = spawnSync(process.execPath, [bin, 'doctor', '--json'], { encoding: 'utf8', env: { ...process.env, EXPLAINROO_CONFIG: settings, EXPLAINROO_PYTHON: path.join(settings, 'none') } });
   const { checks } = JSON.parse(r.stdout);
-  assert.deepEqual(checks.map((c) => c.name), ['node', 'ffmpeg', 'chrome', 'espeak-ng', 'misaki ja', 'misaki zh', 'voice model', 'speech check model', 'language model', 'keys file']);
+  assert.deepEqual(checks.map((c) => c.name), ['node', 'ffmpeg', 'chrome', 'espeak-ng', 'misaki ja', 'misaki zh', 'voice model', 'speech check model', 'language model', 'keys file', 'runs from', 'examples']);
   for (const check of checks) {
     assert.equal(typeof check.ok, 'boolean', check.name);
-    if (check.name === 'keys file') continue;
+    if (check.info) continue;
     assert.ok(['ready', 'not needed', 'missing'].includes(check.state), check.name);
     assert.equal(check.ok, check.state !== 'missing', check.name);
   }
-  assert.deepEqual(checks.at(-1), { name: 'keys file', ok: true, info: true, detail: `${path.join(settings, '.env')}; only needed for services that use your own key` });
-  // The text prints the keys file as one line after the rows.
+  assert.deepEqual(checks.at(-3), { name: 'keys file', ok: true, info: true, detail: `${path.join(settings, '.env')}; only needed for services that use your own key, and for settings like EXPLAINROO_ESPEAK that every command reads` });
+  // The text prints the keys file and where explainroo is as lines after the rows.
   const text = spawnSync(process.execPath, [bin, 'doctor'], { encoding: 'utf8', env: { ...process.env, EXPLAINROO_CONFIG: settings, EXPLAINROO_PYTHON: path.join(settings, 'none') } }).stdout.trim().split('\n');
-  assert.equal(text.at(-1), `keys file: ${path.join(settings, '.env')}; only needed for services that use your own key`);
+  assert.equal(text.at(-3), `keys file: ${path.join(settings, '.env')}; only needed for services that use your own key, and for settings like EXPLAINROO_ESPEAK that every command reads`);
+  assert.match(text.at(-2), /^runs from: \//);
   assert.equal(text.length, checks.length + 1);
-  for (const line of text.slice(1, -1)) assert.match(line, /^(ready {7}|not needed {2}|missing {5})\S/);
+  for (const line of text.slice(1, -3)) assert.match(line, /^(ready {7}|not needed {2}|missing {5})\S/);
 });
 
 test('doctor judges each language of a project with the voice it uses, and a folder without video.json fails', (t) => {
@@ -169,7 +170,7 @@ test('doctor --language checks what a language needs before the project exists',
   assert.deepEqual(r.json.setup, [{ language: 'es', voice: 'kokoro' }]);
   assert.equal(row(r, 'espeak-ng').state, 'missing');
   assert.equal(row(r, 'espeak-ng').detail, `needed for Kokoro voices in Spanish. ${espeakInstall()}`);
-  assert.match(espeakInstall('linux'), /^Install it with "sudo apt install espeak-ng"\. A copy that is not installed for the whole system works too, also without root: set EXPLAINROO_ESPEAK to its espeak-ng program, or to a script that starts it\.$/);
+  assert.match(espeakInstall('linux'), /^Install it with "sudo apt install espeak-ng"\. A copy that is not installed for the whole system works too, also without root: set EXPLAINROO_ESPEAK to its espeak-ng program, or to a script that starts it\. To set it once, put the line EXPLAINROO_ESPEAK=<path> in .+\.env\.$/);
   assert.equal(row(r, 'language model').state, 'missing');
   assert.equal(row(r, 'speech check model').state, 'not needed');
   const ready = doctor(['--language', 'es'], { espeak: true, t });
@@ -188,4 +189,28 @@ test('doctor --language checks what a language needs before the project exists',
   assert.match(doctor(['--language'], { t }).stderr, /^error: --language needs a value/);
   const dir = project(t, { language: 'es' }, { 'script.md': '## intro\nHola.\n' });
   assert.match(doctor([dir, '--language', 'fr'], { t }).stderr, /^error: doctor checks a project or the languages of --language, not both\./);
+});
+
+// EXPLAINROO_ESPEAK set once in the settings file counts for every command, and
+// doctor says where explainroo runs from.
+test('EXPLAINROO_ESPEAK in the settings file is used, a missing espeak-ng names that file, and doctor says where explainroo and its examples are', (t) => {
+  const config = temp(t);
+  const run = (extra) => {
+    const env = { ...process.env, EXPLAINROO_CACHE: cache(t, false), EXPLAINROO_PYTHON: path.join(os.tmpdir(), 'explainroo-no-python'), EXPLAINROO_CONFIG: config };
+    delete env.EXPLAINROO_ESPEAK;
+    Object.assign(env, extra);
+    const r = spawnSync(process.execPath, [bin, 'doctor', '--language', 'fr', '--json'], { encoding: 'utf8', env });
+    return { status: r.status, json: JSON.parse(r.stdout) };
+  };
+  const missing = run({});
+  assert.equal(row(missing, 'espeak-ng').state, 'missing');
+  assert.ok(row(missing, 'espeak-ng').detail.endsWith(`To set it once, put the line EXPLAINROO_ESPEAK=<path> in ${path.join(config, '.env')}.`), row(missing, 'espeak-ng').detail);
+  fs.writeFileSync(path.join(config, '.env'), `EXPLAINROO_ESPEAK=${process.execPath}\n`);
+  const found = run({});
+  assert.equal(row(found, 'espeak-ng').state, 'ready');
+  const root = path.dirname(path.dirname(bin));
+  assert.equal(row(found, 'runs from').detail, root);
+  assert.equal(row(found, 'examples').detail, path.join(root, 'examples'));
+  // The environment still wins.
+  assert.equal(row(run({ EXPLAINROO_ESPEAK: path.join(os.tmpdir(), 'explainroo-no-espeak') }), 'espeak-ng').state, 'missing');
 });

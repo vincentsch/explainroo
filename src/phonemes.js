@@ -1,5 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { settingValue, settingsEnvFile } from './env.js';
 
 const ESPEAK_LANGUAGES = { es: 'es', fr: 'fr-fr', it: 'it', 'pt-br': 'pt-br', hi: 'hi' };
 // Adapted from misaki's EspeakG2P (Apache-2.0, see licenses/).
@@ -16,11 +17,16 @@ export function mapPhonemes(ipa) {
   return ps.replaceAll('^', '').replaceAll('-', '').replaceAll('«', '(').replaceAll('»', ')');
 }
 
+// The espeak-ng program: EXPLAINROO_ESPEAK from the environment or the settings
+// file, or the one installed for the whole system.
 function binary() {
-  return process.env.EXPLAINROO_ESPEAK || 'espeak-ng';
+  return settingValue('EXPLAINROO_ESPEAK') || 'espeak-ng';
 }
 
-const INSTALL = 'espeak-ng is needed for this language. Linux: sudo apt install espeak-ng. macOS: brew install espeak-ng. Windows: use the installer at https://github.com/espeak-ng/espeak-ng/releases. For a copy that is not installed for the whole system, also without root, set EXPLAINROO_ESPEAK to its espeak-ng program, or to a script that starts it.';
+// How to set EXPLAINROO_ESPEAK once, for every command.
+const setOnce = () => `To set it once, put the line EXPLAINROO_ESPEAK=<path> in ${settingsEnvFile()}.`;
+
+const INSTALL = () => `espeak-ng is needed for this language. Linux: sudo apt install espeak-ng. macOS: brew install espeak-ng. Windows: use the installer at https://github.com/espeak-ng/espeak-ng/releases. For a copy that is not installed for the whole system, also without root, set EXPLAINROO_ESPEAK to its espeak-ng program, or to a script that starts it. ${setOnce()}`;
 
 // The program Kokoro needs to read a language: espeak-ng, or Python with misaki for
 // Japanese and Chinese. English needs neither.
@@ -34,7 +40,7 @@ export function espeakInstall(platform = process.platform) {
   const how = platform === 'darwin' ? 'Install it with "brew install espeak-ng"'
     : platform === 'win32' ? 'Install it from https://github.com/espeak-ng/espeak-ng/releases'
       : 'Install it with "sudo apt install espeak-ng"';
-  return `${how}. A copy that is not installed for the whole system works too, also without root: set EXPLAINROO_ESPEAK to its espeak-ng program, or to a script that starts it.`;
+  return `${how}. A copy that is not installed for the whole system works too, also without root: set EXPLAINROO_ESPEAK to its espeak-ng program, or to a script that starts it. ${setOnce()}`;
 }
 
 export function espeakVersion() {
@@ -65,7 +71,7 @@ export async function phonemize(texts, language) {
     let stderr = '';
     child.stdout.setEncoding('utf8').on('data', data => { stdout += data; });
     child.stderr.setEncoding('utf8').on('data', data => { stderr += data; });
-    child.on('error', e => reject(new Error(['ENOENT', 'EACCES'].includes(e.code) ? INSTALL : 'espeak-ng could not start. Check EXPLAINROO_ESPEAK.')));
+    child.on('error', e => reject(new Error(['ENOENT', 'EACCES'].includes(e.code) ? INSTALL() : 'espeak-ng could not start. Check EXPLAINROO_ESPEAK.')));
     child.stdin.on('error', () => {});
     child.on('close', code => {
       if (code !== 0) return reject(new Error('espeak-ng could not read the text. Check its installation and EXPLAINROO_ESPEAK.'));

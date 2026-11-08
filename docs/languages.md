@@ -46,17 +46,33 @@ On Windows, use the installer from the
 [espeak-ng releases page](https://github.com/espeak-ng/espeak-ng/releases).
 If the program is in another place, set `EXPLAINROO_ESPEAK` to its binary.
 English, Japanese, Chinese, paid voices and recordings do not need it.
-Before the project exists, `explainroo doctor --language es` checks what
-Spanish needs.
+Only making the voice and the speech check use espeak-ng, so `voice`,
+`check`, `render` and `verify` need it when they make or check narration, and
+`still`, `sheet` and `preview` never do. Before the project exists,
+`explainroo doctor --language es` checks what Spanish needs.
+
+To set `EXPLAINROO_ESPEAK` once, put the line in the settings file, the same
+`.env` that holds keys: `EXPLAINROO_ESPEAK=/home/me/espeak-run.sh`.
+`explainroo doctor` prints where that file is. A value set in the environment
+still wins.
 
 Without root, use a copy that is not installed for the whole system. On
 Debian or Ubuntu, `apt-get download espeak-ng espeak-ng-data libespeak-ng1
 libpcaudio0 libsonic0` gets the packages, and `dpkg -x <file> ~/espeak`
-unpacks each of them. Then write a small script that sets `LD_LIBRARY_PATH`
-to `~/espeak/usr/lib/x86_64-linux-gnu` and `ESPEAK_DATA_PATH` to
-`~/espeak/usr/lib/x86_64-linux-gnu/espeak-ng-data`, and starts
-`~/espeak/usr/bin/espeak-ng` with the same arguments. Set `EXPLAINROO_ESPEAK`
-to that script. Every later command needs it, so tell the user to keep it set.
+unpacks each of them. The library folder depends on the processor, like
+`x86_64-linux-gnu` or `aarch64-linux-gnu`, so let the script find it. Write
+this to `~/espeak-run.sh` and make it executable with `chmod +x`:
+
+```sh
+#!/bin/sh
+lib=$(dirname "$(find "$HOME/espeak/usr/lib" -name 'libespeak-ng.so*' | head -n 1)")
+export LD_LIBRARY_PATH="$lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export ESPEAK_DATA_PATH="$lib/espeak-ng-data"
+exec "$HOME/espeak/usr/bin/espeak-ng" "$@"
+```
+
+Then put `EXPLAINROO_ESPEAK=` and the full path of that script in the
+settings file.
 
 The first speech check in another language downloads multilingual Whisper
 small. `doctor --fetch` still fetches only the English models. `verify`

@@ -70,3 +70,9 @@ export function findEnvSource(name, projectDir, root = ROOT) {
 export function findEnv(name, projectDir, root = ROOT) {
   return findEnvSource(name, projectDir, root)?.value ?? null;
 }
+
+// A setting for every project, like EXPLAINROO_ESPEAK: from the environment, or
+// else from the .env of a source checkout or the settings file, so it is set once.
+export function settingValue(name, root = ROOT) {
+  return findEnv(name, root, root);
+}
