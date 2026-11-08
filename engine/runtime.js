@@ -880,9 +880,10 @@ export class Engine {
         const least = size.tx.ui ? uiMinSize : minSize;
         if (Math.round(size.tx.size) < least) once(`small:${sc.id}:${text}`, () => add('warn', sc.id, size.t, `"${short(text)}" is ${Math.round(size.tx.size)}px, hard to read (use at least ${least}px)`));
         // Above that, text that shows small on a phone gets a hint, as the
-        // camera shows it at its widest once it has arrived. App screens and
-        // code use smaller text on purpose.
-        else if (calm && !calm.tx.ui && !calm.tx.block && Math.round(calm.tx.size) < readable) once(`smallish:${sc.id}:${text}`, () => add('hint', sc.id, calm.t, `"${short(text)}" shows ${Math.round(calm.tx.size)}px tall at ${calm.t.toFixed(1)}s, small on a phone, where labels read best at ${Math.round(40 * scale1080)} to ${Math.round(56 * scale1080)}px; make it bigger, or give the picture more of the frame`));
+        // camera shows it at its widest once it has arrived, once per video for
+        // a label that comes back in later scenes. App screens and code use
+        // smaller text on purpose.
+        else if (calm && !calm.tx.ui && !calm.tx.block && Math.round(calm.tx.size) < readable) once(`smallish:${text}`, () => add('hint', sc.id, calm.t, `"${short(text)}" shows ${Math.round(calm.tx.size)}px tall at ${calm.t.toFixed(1)}s, small on a phone, where labels read best at ${Math.round(40 * scale1080)} to ${Math.round(56 * scale1080)}px; make it bigger, or give the picture more of the frame`));
         const message = viewWidth !== null && play ? playbackTextIssue(play.tx, W, H, viewWidth) : null;
         if (message) once(`playback:${sc.id}:${text}`, () => add('warn', sc.id, play.t, message));
       }
