@@ -54,7 +54,8 @@ starts with something else to look at.
 The cover that `render` and `package` write shows the hook too. With
 `"cover": "auto"` and `"defaults": "0.5"` it is the frame of the first scene
 with the most elements fully arrived, a frame with a picture first, so it
-shows the hook with the picture when both are there. Without `"defaults"` it
+shows the hook with the picture when both are there. Code still typing and a
+number still counting have not arrived yet. Without `"defaults"` it
 is 1.0 second into the first scene. `check` gives a hint when the cover shows
 only text on an empty background. A cover has no captions. A `cover` of your
 own goes at the top of `video.json` or in the block of the size, like

@@ -104,6 +104,43 @@ test('check gives a hint when the cover shows only text on an empty background, 
   assert.match((await hints(words, null, true)).message, /^"cover": "auto" picks hook@\d\.\d, the fullest frame of the first scene, and no frame of that scene shows a picture; show a shape, an icon or an image with the text there, or set "cover" to a moment of another scene that has one$/);
 });
 
+// A bug icon from the start, and code that types itself from 0.5 s to about
+// 1.6 s. A counter that counts from 2 s to 3.4 s, and code on screen from the
+// first frame that is still typing when the scene ends.
+const TYPING = `s.icon('bug', { y: 300, size: 200, at: 0, enter: 'none' });
+    s.code('function total(price, qty) {', { title: 'cart.js', y: 700, at: 0.15, cps: 30 });`;
+const COUNTING = `s.icon('timer', { y: 300, size: 200, at: 0, enter: 'none' });
+    s.number(250, { y: 700, at: 2, dur: 1.4 });`;
+const SLOW = `s.icon('bug', { y: 300, size: 200, at: 0, enter: 'none' });
+    s.code('function total(price, qty) {', { title: 'cart.js', y: 700, at: 0, enter: 'none', cps: 4 });`;
+
+test('with "defaults": "0.5", the cover never takes code that is still typing or a number that is still counting, and check says when it shows one', { skip }, async (t) => {
+  const seen = (p) => inPage(p, (page) => page.evaluate(() => {
+    const T = window.explainroo.coverMoment();
+    return { T, frame: window.explainroo.framed(0, T), issue: window.explainroo.coverIssue(null, true) };
+  }));
+  const typed = await seen(project(t, NEW, { hook: TYPING }));
+  // The first frame with the code all there, and no hint.
+  assert.ok(typed.T > 1.4 && typed.T < 1.8, JSON.stringify(typed));
+  assert.deepEqual(typed.frame.partial, []);
+  assert.equal(typed.issue, null);
+  const counted = await seen(project(t, NEW, { hook: COUNTING }));
+  assert.ok(counted.T >= 3.4 && counted.T < 3.6, JSON.stringify(counted));
+  // Code that never finishes: the cover has the most there is, and the hint says
+  // the code is still typing there.
+  const slow = await seen(project(t, NEW, { hook: SLOW }));
+  assert.equal(slow.issue.level, 'hint');
+  assert.match(slow.issue.message, /^"cover": "auto" picks hook@\d\.\d, where the code "cart\.js" is still typing; set "cover" to a moment when it is all there, or let it finish sooner$/);
+  // A cover set by hand on a half typed frame gets the moment after it.
+  const set = await inPage(project(t, NEW, { hook: TYPING }), (page) => page.evaluate(() => window.explainroo.coverIssue(1, false)));
+  assert.match(set.message, /^the cover at hook@1\.0, where the code "cart\.js" is still typing; set "cover": "hook@1\.[5-9]", when it is all there$/);
+  // Without the line nothing changes: the half typed frame counts, and there is no such hint.
+  const old = await inPage(project(t, {}, { hook: TYPING }), (page) => page.evaluate(() => ({ frame: window.explainroo.framed(0, 1), issue: window.explainroo.coverIssue(1, false) })));
+  assert.deepEqual(old.frame.partial, []);
+  assert.equal(old.frame.count, typed.frame.count);
+  assert.equal(old.issue, null);
+});
+
 test('render writes the automatic cover at that frame, without captions, and check runs the hint', { skip, timeout: 240000 }, async (t) => {
   const dir = tinyProject(t, { size: '640x360', captions: true, defaults: '0.5' }, { narrated: false });
   fs.writeFileSync(path.join(dir, 'scenes.js'), `export default { intro(s) {

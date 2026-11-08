@@ -439,7 +439,7 @@ export class Stage {
   // current transform. `o.overlap: true` says it may overlap other shapes.
   // `border` is the width of the line drawn on its outline, half of which lies
   // outside it. Returns its number in the scene, so its own text can say whose it is.
-  _logShape(kind, { x = 0, y = 0, w, h, round = false }, settled, o = {}, name = '', { border = 0, call = null } = {}) {
+  _logShape(kind, { x = 0, y = 0, w, h, round = false }, settled, o = {}, name = '', { border = 0, call = null, partial = null } = {}) {
     const log = this.engine.drawLog;
     const serial = ++this._shapeCalls;
     if (!log || this._suppress > 0 || !(w > 0) || !(h > 0)) return serial;
@@ -448,7 +448,7 @@ export class Stage {
     const poly = this._designPoints(local);
     const m = this._matrix();
     const edge = border > 0 ? (border / 2) * Math.hypot(m.a, m.b) : 0;
-    log.shapes.push({ kind, name: String(name ?? ''), id: o.id === undefined || o.id === null ? null : String(o.id), serial, poly, box: bounds(poly), edge, call, settled, alpha: this.ctx.globalAlpha, group: this._groups[0] ?? null, overlap: o.overlap === true, cover: this._cover > 0, ui: this._ui ? this._ui._layer + 1 : 0, order: log.order++ });
+    log.shapes.push({ kind, name: String(name ?? ''), id: o.id === undefined || o.id === null ? null : String(o.id), serial, poly, box: bounds(poly), edge, call, partial, settled, alpha: this.ctx.globalAlpha, group: this._groups[0] ?? null, overlap: o.overlap === true, cover: this._cover > 0, ui: this._ui ? this._ui._layer + 1 : 0, order: log.order++ });
     return serial;
   }
 
@@ -459,6 +459,14 @@ export class Stage {
     const log = this.engine.revealLog;
     if (!log || this._suppress > 0 || log.has(`${this.id}|${key}`)) return;
     log.set(`${this.id}|${key}`, info);
+  }
+
+  // For the cover: an element on screen that is still typing, showing its lines,
+  // counting or writing itself, as { name, doing }.
+  _partial(p) {
+    const log = this.engine.drawLog;
+    if (p && log && this._suppress === 0 && this.ctx.globalAlpha > 0.01) (log.partial ??= []).push(p);
+    return p;
   }
 
   // For check: a code window or a terminal that comes in at `at` and shows its
@@ -690,6 +698,8 @@ export class Stage {
       owner: entry.owner ?? null,
       // The shape it belongs to, like a box's own text, its group, and overlap: true.
       shape: entry.shape ?? null,
+      // Still showing itself bit by bit, like code that types: { name, doing }.
+      partial: entry.partial ?? null,
       group: this._groups[0] ?? null,
       overlap: entry.overlap === true,
       order: drawn ? drawn.order++ : 0,
@@ -1086,7 +1096,9 @@ export class Stage {
       });
     }
     const marked = o.bg && lay.lines.some((line) => line.words.some((w) => w.accent));
-    this._logText({ text: plain, x0: ox, y0: oy, x1: -ox, y1: -oy, size, fg: color, bg: o.bg ? colorOf(th, o.bg === true ? 'surface' : o.bg) : null, settled: this._settled(life), mark: marked ? accent : null, overlap: o.overlap });
+    const label = plain.length > 40 ? plain.slice(0, 37) + '...' : plain;
+    const partial = this._partial(o._counting ?? (['type', 'write', 'words', 'sync'].includes(life.enter) && life.p < 1 ? { name: `"${label}"`, doing: life.enter === 'type' ? 'still typing' : 'still writing itself' } : null));
+    this._logText({ text: plain, x0: ox, y0: oy, x1: -ox, y1: -oy, size, fg: color, bg: o.bg ? colorOf(th, o.bg === true ? 'surface' : o.bg) : null, settled: this._settled(life), mark: marked ? accent : null, overlap: o.overlap, partial });
     ctx.restore();
     return g;
   }
@@ -1861,7 +1873,8 @@ export class Stage {
       return (n < 0 ? '-' : '') + grouped + (dec ? '.' + dec : '');
     };
     const str = `${o.prefix ?? ''}${fmt(v)}${o.suffix ?? ''}`;
-    return this._text(str, { font: 'display', size: 150, color: o.color ?? 'accent', ...o, at, sfx: null, enter: o.enter ?? th.enter.number ?? 'fade', dur: o.enterDur ?? 0.4, id: o.id }, 'number');
+    const counting = cp < 1 ? { name: `the number counting to ${value}`, doing: 'still counting' } : null;
+    return this._text(str, { font: 'display', size: 150, color: o.color ?? 'accent', ...o, at, sfx: null, enter: o.enter ?? th.enter.number ?? 'fade', dur: o.enterDur ?? 0.4, id: o.id, _counting: counting }, 'number');
   }
 
   bars(data, o = {}) {
@@ -2154,7 +2167,12 @@ export class Stage {
     }
     if (!life) return geom(x, y, w, h);
     this._push(x, y, life, o);
-    this._logShape('code', { w, h }, this._settled(life), o, o.title || '', { border: th.stroke.rough ? th.stroke.width * 0.8 : 0, call });
+    // The first step types itself or shows its lines one by one. A step that
+    // changes into the next is no reveal.
+    const revealing = morph?.to ? 'none' : reveal;
+    const doing = revealing === 'type' && this.t < startText + typeDur ? 'still typing' : revealing === 'lines' && this.t < startText + (lines.length - 1) * lineDelay ? 'still showing its lines' : null;
+    const partial = this._partial(doing && { name: this._named('code', call, o.title, o.id), doing });
+    this._logShape('code', { w, h }, this._settled(life), o, o.title || '', { border: th.stroke.rough ? th.stroke.width * 0.8 : 0, call, partial });
     this.pen.draw(ctx, { kind: 'rect', w, h, r: Math.min(th.radius, 18) }, { fill: C.bg, stroke: th.stroke.rough ? C.border : 'none', width: th.stroke.width * 0.8, seed: this._seed('codebg', o), shadow: this._shadow(undefined, { color: 'rgba(0,0,0,0.2)', blur: 24, y: 10 }), rough: th.stroke.rough, fillStyle: 'solid' }, { stroke: 1, fill: 1 });
     const left = -w / 2 + pad;
     const top = -h / 2 + barH + pad * 0.8;
@@ -2270,7 +2288,7 @@ export class Stage {
       });
     }
     ctx.restore();
-    this._logText({ text: 'code', x0: -w / 2, y0: -h / 2, x1: w / 2, y1: h / 2, size, fg: C.fg, bg: C.bg, block: true });
+    this._logText({ text: 'code', x0: -w / 2, y0: -h / 2, x1: w / 2, y1: h / 2, size, fg: C.fg, bg: C.bg, block: true, partial });
     ctx.restore();
     return geom(x, y, w, h);
   }
@@ -2348,7 +2366,11 @@ export class Stage {
     }
     if (!life) return geom(x, y, w, h);
     this._push(x, y, life, o);
-    this._logShape('terminal', { w, h }, this._settled(life), o, o.title ?? '', { border: th.stroke.rough ? th.stroke.width * 0.8 : 0, call });
+    // A command that is typing, or lines that are still to come.
+    const typing = timed.some((r) => r.cmd !== undefined && this.t >= r.start && this.t < r.end);
+    const pending = this.t < Math.max(at, ...timed.map((r) => r.end));
+    const partial = this._partial(typing || pending ? { name: this._named('terminal', call, o.title, o.id), doing: typing ? 'still typing' : 'still showing its lines' } : null);
+    this._logShape('terminal', { w, h }, this._settled(life), o, o.title ?? '', { border: th.stroke.rough ? th.stroke.width * 0.8 : 0, call, partial });
     this.pen.draw(ctx, { kind: 'rect', w, h, r: Math.min(th.radius, 16) }, { fill: T.bg, stroke: th.stroke.rough ? th.ink : 'none', width: th.stroke.width * 0.8, seed: this._seed('termbg', o), shadow: this._shadow(undefined, { color: 'rgba(0,0,0,0.22)', blur: 26, y: 10 }), rough: th.stroke.rough, fillStyle: 'solid' }, { stroke: 1, fill: 1 });
     ctx.save();
     const clip = new Path2D();
@@ -2420,7 +2442,7 @@ export class Stage {
       ctx.fillRect(cursor.x + 4, cursor.y + size * 0.08, size * 0.55, size * 1.05);
     }
     ctx.restore();
-    this._logText({ text: 'terminal', x0: -w / 2, y0: -h / 2, x1: w / 2, y1: h / 2, size, fg: T.fg, bg: T.bg, block: true });
+    this._logText({ text: 'terminal', x0: -w / 2, y0: -h / 2, x1: w / 2, y1: h / 2, size, fg: T.fg, bg: T.bg, block: true, partial });
     ctx.restore();
     return geom(x, y, w, h);
   }

@@ -611,6 +611,8 @@ export class Engine {
 
   // What a frame shows as the camera films it: how many elements are fully on
   // screen, and whether those are only text. `t` is seconds into scene `index`.
+  // With "defaults": "0.5", an element that is still typing, showing its lines,
+  // counting or writing itself has not arrived, and `partial` lists those.
   framed(index, t) {
     const scratch = (this._framedCanvas ??= Object.assign(document.createElement('canvas'), { width: 16, height: 16 }));
     const saved = { textLog: this.textLog, drawLog: this.drawLog, recorder: this.recorder };
@@ -624,27 +626,31 @@ export class Engine {
       texts = this.textLog;
       log = this.drawLog;
     } catch {
-      return { count: 0, onlyText: false };
+      return { count: 0, onlyText: false, partial: [] };
     } finally {
       Object.assign(this, saved);
     }
+    const fresh = newDefaults(this.config);
+    const arrived = (x) => !(fresh && x.partial);
     const inside = (b) => b.x0 >= -1 && b.y0 >= -1 && b.x1 <= this.W + 1 && b.y1 <= this.H + 1;
-    const words = texts.filter((x) => !x.problem && x.settled && x.alpha > 0.95 && inside(x)).length;
+    const words = texts.filter((x) => !x.problem && x.settled && x.alpha > 0.95 && inside(x) && arrived(x)).length;
     // A picture is a shape, icon, image, clip, chart or drawing. Lines and
     // arrows count as elements, but no picture. A clip or image that fills the
     // frame counts too, also while the camera crops it.
-    const pictures = log.shapes.filter((s) => s.settled && s.alpha > 0.95 && (inside(s.box) || fillsFrame(s.box, this.W, this.H))).length
+    const pictures = log.shapes.filter((s) => s.settled && s.alpha > 0.95 && arrived(s) && (inside(s.box) || fillsFrame(s.box, this.W, this.H))).length
       + log.lives.filter((l) => l.settled && ['chart', 'custom'].includes(l.kind)).length
       + (log.ink ? 1 : 0);
     const lines = log.strokes.filter((s) => s.settled && s.alpha > 0.95).length
       + log.lives.filter((l) => l.settled && l.kind === 'line').length;
-    return { count: words + pictures + lines, picture: pictures > 0, onlyText: words > 0 && pictures + lines === 0 };
+    const partial = fresh ? [...new Map(log.partial.map((p) => [p.name, p])).values()] : [];
+    return { count: words + pictures + lines, picture: pictures > 0, onlyText: words > 0 && pictures + lines === 0, partial };
   }
 
   // The moment "cover": "auto" takes with "defaults": "0.5": the frame of the
-  // first scene with the most elements fully on screen, entrances finished,
-  // where a frame with a picture comes before any frame without one, and the
-  // earliest of those. Seconds into the video.
+  // first scene with the most elements fully on screen, entrances finished and
+  // nothing still typing or counting, where a frame with a picture comes before
+  // any frame without one, then a frame where nothing shows itself half way, and
+  // the earliest of those. Seconds into the video.
   coverMoment() {
     const sc = this.timeline.scenes[0];
     const last = Math.max(0, Math.floor((sc.dur - 1e-6) * this.fps));
@@ -653,7 +659,8 @@ export class Engine {
     let best = null;
     for (let f = 0; f <= last; f += step) {
       const seen = this.framed(sc.index, f / this.fps);
-      if (!best || (seen.picture && !best.picture) || (seen.picture === best.picture && seen.count > best.count)) best = { T: sc.start + f / this.fps, ...seen };
+      const fuller = seen.count > best?.count || (seen.count === best?.count && seen.partial.length < best.partial.length);
+      if (!best || (seen.picture && !best.picture) || (seen.picture === best.picture && fuller)) best = { T: sc.start + f / this.fps, ...seen };
     }
     return best.T;
   }
@@ -667,8 +674,24 @@ export class Engine {
     const i = this.sceneAt(at);
     const sc = this.timeline.scenes[i];
     const seen = this.framed(i, at - sc.start);
-    if (T === null ? seen.picture || !seen.count : !seen.onlyText) return null;
     const label = `${sc.id}@${(at - sc.start).toFixed(1)}`;
+    // With "defaults": "0.5", a cover that shows something half typed or counted,
+    // and the first moment after it when nothing is.
+    if (seen.partial.length) {
+      let done = null;
+      for (let t = at - sc.start; t < sc.dur - 0.05; t += 0.25) {
+        const f = this.framed(i, t);
+        if (!f.partial.length && f.count > 0) {
+          done = t;
+          break;
+        }
+      }
+      const where = auto ? `"cover": "auto" picks ${label}` : `the cover at ${label}`;
+      const what = seen.partial.map((p) => `${p.name} is ${p.doing}`).join(', and ');
+      const advice = done === null ? 'set "cover" to a moment when it is all there, or let it finish sooner' : `set "cover": "${sc.id}@${(Math.ceil(done * 10) / 10).toFixed(1)}", when it is all there`;
+      return { level: 'hint', scene: sc.id, t: Math.round((at - sc.start) * 100) / 100, message: `${where}, where ${what}; ${advice}` };
+    }
+    if (T === null ? seen.picture || !seen.count : !seen.onlyText) return null;
     if (T === null) return { level: 'hint', scene: sc.id, t: Math.round((at - sc.start) * 100) / 100, message: `"cover": "auto" picks ${label}, the fullest frame of the first scene, and no frame of that scene shows a picture; show a shape, an icon or an image with the text there, or set "cover" to a moment of another scene that has one` };
     // The first moment of that scene that shows the most, with a picture.
     let better = null;
@@ -1091,7 +1114,7 @@ const COVER_FRAMES = 600;
 // What check collects while it draws one moment of a scene: the shapes and
 // lines drawn, in design pixels, and how many elements are on screen.
 function drawLog() {
-  return { shapes: [], strokes: [], lives: [], shown: 0, order: 0 };
+  return { shapes: [], strokes: [], lives: [], partial: [], shown: 0, order: 0 };
 }
 
 const SHAPE_NAMES = { box: 'box', icon: 'icon', image: 'image', code: 'code window', terminal: 'terminal', card: 'card', sticker: 'sticker', drawing: 'drawing' };
