@@ -34,7 +34,7 @@ videos/<name>/
 | `music` | `true` | `true` (the look's style), `warm`, `upbeat`, `calm`, `tech`, `playful`, `{ "style", "volume" }`, `false`, or your own file as `{ "src", "volume", "credit", "loop" }`, see `explainroo docs music` |
 | `sfx` | `true` | sound effects: `true`, `"minimal"` or `false` |
 | `captions` | `"auto"` | text of the narration at the bottom; `"auto"` turns it on for vertical, 4:5 and square videos, and leaves it off for 16:9; `"bold"` shows 2 to 4 big words at a time, with numbers, money and `*starred*` words in color |
-| `cover` | `"auto"` | full-size JPEG, without captions. `"auto"` takes the frame in the first 3 seconds of the first scene with the most elements fully on screen. Or a still spec: `12.5`, `"intro"`, `"intro@2.4"`, `"intro@end"`. A new cover needs no new render |
+| `cover` | `"auto"` | full-size JPEG, without captions. With `"defaults": "0.5"`, `"auto"` takes the frame of the first scene with the most elements fully arrived, a frame with a shape, icon, image or clip first. Without it, `"auto"` is the end of the first scene, or 1.0 second into it on Shorts, TikTok and Reels. Or a still spec: `12.5`, `"intro"`, `"intro@2.4"`, `"intro@end"`. A new cover needs no new render |
 | `transition` | `"auto"` | the look's default, or `fade`, `slide`, `wipe`, `zoom`, `brush`, `cut` |
 | `camera` | `"auto"` | `"auto"` films each scene with a camera that follows the narration; `"still"` keeps every frame as written |
 | `motionBlur` | `true` | motion blur on moving frames in the final render; `render --quality fast` leaves it out for one run |
@@ -48,6 +48,32 @@ videos/<name>/
 | `clipBudget` | none | the most all AI clips of the project may cost together, in US dollars, like `0.40`. `clip` stops before a clip that would go over it; see `explainroo docs clips` |
 | `brand` | none | colors, fonts and logo for `s.ui`; its `accent` also colors the spoken word in captions; see `explainroo docs product-demos` |
 | `fonts` | none | the video's own font files, see `explainroo docs product-demos` |
+| `defaults` | none | `"0.5"` gives the project the defaults of explainroo 0.5, see below. `init` writes it |
+
+### The defaults of a version
+
+Some defaults change how a video looks. So that a finished video comes out
+the same after an update, they apply only to a project with `"defaults":
+"0.5"` in `video.json`. `init` writes that line. A project without it keeps
+the look it had, frame for frame, also its cover. To give an older project
+the new look, add the line, then look at `still` and `sheet` again, because
+labels may move. The line changes these:
+
+- Arrow labels are body size, 48 pixels, and sit 44 pixels from the arrow.
+  Before, they were 34 pixels, 34 pixels from it.
+- An arrow to or from an icon with a label starts and ends outside the label.
+- `gap` on an arrow leaves that many pixels free at a point end too, not only
+  at an element.
+- When the camera moves to an element, the shot also takes in the arrows and
+  marks attached to it.
+- The default highlight of a sticker's `*keywords*` picks a red that reads on
+  that sticker's color.
+- A `brand.accent` that is hard to read on the caption background keeps its
+  hue in the captions, made lighter or darker. Before, the captions used the
+  look's highlight.
+- `"cover": "auto"` takes the fullest frame of the first scene, as above.
+
+`check` finds the same problems with or without the line.
 
 The looks:
 

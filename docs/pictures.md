@@ -101,8 +101,8 @@ the scene it pulls back, so the last frame shows the whole idea. During each
 scene it also pushes in very slowly.
 
 While a shot holds, every card and label is either fully in the shot or out
-of it. When the camera moves to an element, the arrows that point at it and
-the marks around it come along whole. Other arrows and lines may run off the
+of it. With `"defaults": "0.5"`, when the camera moves to an element, the
+arrows that point at it and the marks around it come along whole. Other arrows and lines may run off the
 edge, but their labels stay whole, and so do the labels of charts. While the
 camera moves from one shot to the next, things may pass the edge of the frame
 for a moment. `camera: false` on an element keeps the camera from moving to it.

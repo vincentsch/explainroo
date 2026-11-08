@@ -8,7 +8,8 @@ import { AUDIO_CODECS, finishMix, frameEncoder, ffmpeg } from './ffmpeg.js';
 import { subtitleCues, toSrt, toVtt } from './subtitles.js';
 import { buildChapters, toChaptersText, toChapterMetadata } from './chapters.js';
 import { resolveTimes } from './qa.js';
-import { outputPath, scriptName } from './project.js';
+import { outputPath, scriptName, TALL_FORMATS } from './project.js';
+import { newDefaults } from '../engine/util.js';
 import { recordVersion, relativeFile, sha256File } from './history.js';
 import { cacheRoot } from './models.js';
 
@@ -269,18 +270,23 @@ export function versionLine(project, video) {
   };
 }
 
-// The moment of the cover, as a still spec, or "auto". The page works out
-// "auto": the frame within the first 3 seconds of the first scene with the
-// most elements fully on screen, the earliest of those, at every size.
-export function coverSpec(config) {
-  return config.cover;
+// The moment of the cover, as a still spec, or "auto" for a time the page works
+// out. With "defaults": "0.5", "auto" is the fullest frame of the first scene,
+// a frame with a picture first, the earliest of those, at every size. Before,
+// "auto" was the end of the first scene, and 1.0 second into it for Shorts,
+// TikTok and Reels, which open on a hook title that may leave before its end.
+export function coverSpec(config, timeline) {
+  if (config.cover !== 'auto' || newDefaults(config)) return config.cover;
+  return `${timeline.scenes[0].id}@${TALL_FORMATS.includes(config.format) ? '1.0' : 'end'}`;
 }
 
-// The time of the cover as resolveTimes gives it, or { auto: true } for a time
-// the page works out.
+// The time of the cover as resolveTimes gives it, or { auto: true, T: null }
+// for a time the page works out. A cover that "auto" picked says so.
 export function coverTime(config, timeline) {
-  const spec = coverSpec(config);
-  return spec === 'auto' ? { auto: true, T: null, label: 'auto' } : resolveTimes(timeline, [spec])[0];
+  const spec = coverSpec(config, timeline);
+  if (spec === 'auto') return { auto: true, T: null, label: 'auto' };
+  const [time] = resolveTimes(timeline, [spec]);
+  return config.cover === 'auto' ? { ...time, auto: true } : time;
 }
 
 // What goes next to a video: its caption cues, its chapters and the time of its

@@ -52,9 +52,10 @@ frame says what the video is about. Give it a later `at` only when the scene
 starts with something else to look at.
 
 The cover that `render` and `package` write shows the hook too. With
-`"cover": "auto"` it is the frame in the first 3 seconds of the first scene
-with the most elements fully on screen, so it shows the hook with the first
-picture when both are there by then. `check` gives a hint when the cover shows
+`"cover": "auto"` and `"defaults": "0.5"` it is the frame of the first scene
+with the most elements fully arrived, a frame with a picture first, so it
+shows the hook with the picture when both are there. Without `"defaults"` it
+is 1.0 second into the first scene. `check` gives a hint when the cover shows
 only text on an empty background. A cover has no captions. A `cover` of your
 own goes at the top of `video.json` or in the block of the size, like
 `"hook@2.5"`, and needs no new render: `package` keeps the video and writes
@@ -128,8 +129,8 @@ A small uppercase label in a pill, like "QUICK TIP". `x`, `y`, `size`, `color`,
 ### `sticker(text, options)`
 
 A tilted box with bold text for one fact, like "*2* days". `x`, `y`,
-`size`, `color` (the box), `textColor`, `keyColor` (a red that reads at 4.5:1
-on the box's color by default), `rotate` (degrees, -4 by default), `border`,
+`size`, `color` (the box), `textColor`, `keyColor` (red, made to read at
+4.5:1 on the box's color with `"defaults": "0.5"`), `rotate` (degrees, -4 by default), `border`,
 `at`, `out`, `sfx`, `id`, `overlap`. `check` measures the text and the
 keywords against the box's color, and warns when the sticker partly covers
 another shape. `overlap: true` says that is meant.

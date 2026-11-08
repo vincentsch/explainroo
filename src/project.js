@@ -81,7 +81,15 @@ export const DEFAULTS = {
   // The most that all AI clips of the project may cost, in US dollars. It changes
   // no frame, so it stays out of the resolved settings and the render identity.
   clipBudget: null,
+  // "0.5" gives a project the defaults of explainroo 0.5, which change how some
+  // things look, like the size of arrow labels. Without it a project keeps the
+  // look it had, and renders the same frames. Left out of the settings when it
+  // isn't set, so such a project keeps its render identity too.
+  defaults: undefined,
 };
+
+// The values "defaults" takes, oldest first.
+export const DEFAULTS_VERSIONS = ['0.5'];
 
 // Settings for the UI kit (s.ui), for product demos in a brand's own look.
 export const BRAND_KEYS = ['accent', 'background', 'ink', 'font', 'headline', 'logo', 'colors'];
@@ -256,8 +264,11 @@ function checkLanguages(raw) {
     if (code === main) fail(`languages: ${code} is the main language, so its settings go at the top of video.json`);
     const voice = LANGUAGES[code] ? `"${LANGUAGES[code]}"` : `{ "provider": "recording", "src": "assets/narration-${code}.m4a" }`;
     if (!own || typeof own !== 'object' || Array.isArray(own)) fail(`languages.${code} must be an object with the settings of that language, like { "voice": ${voice} }`);
-    const bad = Object.keys(own).filter((k) => (!(k in DEFAULTS) && !k.startsWith('_')) || k === 'language' || k === 'languages' || k === 'sizes');
-    if (bad.length) fail(`languages.${code} has setting(s) that can't be set for one language: ${bad.join(', ')}`);
+    const bad = Object.keys(own).filter((k) => (!(k in DEFAULTS) && !k.startsWith('_')) || ['language', 'languages', 'sizes', 'clipBudget', 'defaults'].includes(k));
+    if (bad.length) {
+      const why = bad.includes('clipBudget') ? ' "clipBudget" is for all clips of the project, so it goes at the top of video.json.' : bad.includes('defaults') ? ' "defaults" is for the whole project, so it goes at the top of video.json.' : '';
+      fail(`languages.${code} has setting(s) that can't be set for one language: ${bad.join(', ')}${why ? `.${why}` : ''}`);
+    }
   }
   return Object.keys(languages);
 }
@@ -427,6 +438,8 @@ function settingsOf(raw, input, dir, block = null) {
     if (!(typeof cfg[k] === 'number' && cfg[k] >= 0 && cfg[k] <= 10)) fail(`${k} must be a number of seconds between 0 and 10`);
   }
   if (!(cfg.loudness <= -8 && cfg.loudness >= -30)) fail('loudness must be between -30 and -8 LUFS');
+  if (cfg.defaults === null || cfg.defaults === undefined) delete cfg.defaults;
+  else if (!DEFAULTS_VERSIONS.includes(cfg.defaults)) fail(`defaults must be ${DEFAULTS_VERSIONS.map((v) => `"${v}"`).join(' or ')}, which gives the project the defaults of that version of explainroo, or be left out for the look from before`);
   // null in the block of a size turns off a target set at the top.
   if (cfg.targetSeconds === null || cfg.targetSeconds === undefined) delete cfg.targetSeconds;
   else if (!(typeof cfg.targetSeconds === 'number' && cfg.targetSeconds >= 1 && cfg.targetSeconds <= 3600)) {

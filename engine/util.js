@@ -224,3 +224,17 @@ export function normWord(w) {
     .replace(/[^\p{L}\p{M}\p{N}%$€£+#@.]/gu, '')
     .replace(/^\.+|\.+$/g, '');
 }
+
+// Whether a project asked for the defaults of explainroo `version` or a later one,
+// with "defaults" in video.json. Defaults that change how a project looks wait
+// for that line, so a project made before them renders the frames it did.
+export function newDefaults(config, version = '0.5') {
+  const asked = config?.defaults;
+  if (typeof asked !== 'string') return false;
+  const parts = (v) => v.split('.').map(Number);
+  const [a, b] = [parts(asked), parts(version)];
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) > (b[i] ?? 0);
+  }
+  return true;
+}

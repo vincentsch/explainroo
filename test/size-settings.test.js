@@ -85,6 +85,12 @@ test('a block takes captions, cover, pace, watermark and targetSeconds with the 
     [{ sizes: { tiktok: { watermark: 'x'.repeat(41) } } }, /^sizes\.tiktok: watermark must be false or a short text/],
     [{ speed: 1.2, sizes: { tiktok: { pace: 1.6 } } }, /^sizes\.tiktok: speed 1\.2 times pace 1\.6 makes the voice too fast/],
     [{ languages: { es: { sizes: { tiktok: { pace: 1.2 } } } } }, /^languages\.es has setting\(s\) that can't be set for one language: sizes$/],
+    // A budget and the defaults belong to the whole project.
+    [{ languages: { es: { clipBudget: 0.4 } } }, /^languages\.es has setting\(s\) that can't be set for one language: clipBudget\. "clipBudget" is for all clips of the project, so it goes at the top of video\.json\.$/],
+    [{ languages: { es: { defaults: '0.5' } } }, /^languages\.es has setting\(s\) that can't be set for one language: defaults\. "defaults" is for the whole project, so it goes at the top of video\.json\.$/],
+    [{ sizes: { tiktok: { defaults: '0.5' } } }, /^sizes\.tiktok has setting\(s\) that can't be set for one size: defaults\./],
+    [{ defaults: '0.4' }, /^defaults must be "0\.5", which gives the project the defaults of that version of explainroo, or be left out for the look from before$/],
+    [{ defaults: 0.5 }, /^defaults must be "0\.5"/],
   ]) {
     assert.throws(() => normalizeConfig(settings), (e) => e instanceof ProjectError && message.test(e.message), JSON.stringify(settings));
   }
@@ -120,6 +126,12 @@ test('"sizes" leaves the resolved settings, so one block never changes another s
   const sized = project(t, { sizes: { youtube: { watermark: false }, '16:9': { watermark: false } } });
   assert.equal(outputPath(loadProject(sized), 'video', '.mp4'), path.join(sized, 'out', 'video.mp4'));
   assert.equal(outputPath(loadProject(sized, { size: 'youtube' }), 'video', '.mp4'), path.join(sized, 'out', 'video-youtube.mp4'));
+});
+
+test('"defaults": "0.5" is in the settings only when it is set, so a project without it keeps its settings and render identity', () => {
+  assert.equal(normalizeConfig({ defaults: '0.5' }).defaults, '0.5');
+  assert.equal('defaults' in normalizeConfig({}), false);
+  assert.equal('defaults' in normalizeConfig({ defaults: null }), false);
 });
 
 test('every example resolves to the settings it had before size blocks, as it is and as a TikTok package', () => {
@@ -174,13 +186,19 @@ test('package uses the platform\'s own block first, and a project without blocks
   assert.deepEqual(packageOverrides(tiktok, 'tiktok'), { watermark: false }, 'the project\'s own size stays, with its block');
 });
 
-test('an automatic cover is worked out in the page at every size, and a cover that is set wins', (t) => {
-  const dir = project(t);
+test('with "defaults": "0.5" an automatic cover is worked out in the page at every size, and a cover that is set wins', (t) => {
+  const dir = project(t, { defaults: '0.5' });
   for (const size of ['shorts', 'tiktok', 'reels', 'vertical', 'youtube', '16:9', 'square', '1:1', 'linkedin', 'instagram', '4:5', '9:16', '1080x1920']) {
     const p = loadProject(dir, { size });
     const tl = buildTimeline(p, {});
-    assert.equal(coverSpec(p.config), 'auto', size);
+    assert.equal(coverSpec(p.config, tl), 'auto', size);
     assert.deepEqual(planExtras(p, tl).coverTime, { auto: true, T: null, label: 'auto' }, size);
+  }
+  // Without the line, "auto" is the end of the first scene, or 1.0 s into it in a tall app format.
+  const before = project(t);
+  for (const [size, at] of [['youtube', 'end'], ['tiktok', '1.0'], ['shorts', '1.0'], ['9:16', 'end'], ['square', 'end']]) {
+    const p = loadProject(before, { size });
+    assert.equal(coverSpec(p.config, buildTimeline(p, {})), `intro@${at}`, size);
   }
   // A cover at the top or in a block wins over "auto".
   const set = project(t, { cover: 'outro@0.5', sizes: { reels: { cover: 'intro@2' } } });

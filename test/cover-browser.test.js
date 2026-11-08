@@ -1,6 +1,7 @@
-// "cover": "auto" takes the fullest frame of the first three seconds of the
-// first scene, and check gives a hint when the cover shows only text on an
-// empty background. Real pages, with timelines made by hand.
+// With "defaults": "0.5", "cover": "auto" takes the fullest frame of the first
+// scene, a frame with a picture first, and check gives a hint when the cover
+// shows only text on an empty background. Without the line, "auto" is the end of
+// the first scene as before. Real pages, with timelines made by hand.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -9,7 +10,7 @@ import path from 'node:path';
 import { findChrome } from '../src/browser.js';
 import { loadProject } from '../src/project.js';
 import { withEngine } from '../src/pipeline.js';
-import { check } from '../src/qa.js';
+import { check, resolveTimes } from '../src/qa.js';
 import { tinyProject, runCli } from './helpers/tiny-project.js';
 
 let chrome;
@@ -37,40 +38,74 @@ function project(t, settings, scenes, durs = {}) {
 const inPage = ({ project: p, timeline }, fn) => withEngine(p, timeline, { scale: 0.5 }, fn);
 
 // A title on the first frame, a picture that has arrived at 1.6 s, a card at
-// 2.6 s, and a note too late for the cover.
+// 2.6 s, and a note at 3.5 s.
 const HOOK = `s.title('How DNS works', { y: 200, at: 0, enter: 'none' });
     s.icon('globe', { x: 600, y: 600, size: 200, at: 1, enter: 'pop', dur: 0.6 });
     s.box('Resolver', { x: 1300, y: 600, at: 2, enter: 'pop', dur: 0.6 });
     s.note('about 20 ms', { y: 900, at: 3.5 });`;
+const NEW = { defaults: '0.5' };
+const moment = (p) => inPage(p, (page) => page.evaluate(() => window.explainroo.coverMoment()));
+// The cover's moment, and how many elements it and the frame before it show.
+const counted = (p) => inPage(p, (page) => page.evaluate(() => {
+  const T = window.explainroo.coverMoment();
+  return { T, at: window.explainroo.framed(0, T).count, before: window.explainroo.framed(0, T - 1 / 30).count };
+}));
+const near = (value, expected) => assert.ok(Math.abs(value - expected) < 1.01 / 30, `${value} is not ${expected}`);
 
-test('"cover": "auto" takes the earliest frame of the first 3 seconds with the most elements fully on screen', { skip }, async (t) => {
-  const moments = await inPage(project(t, {}, { hook: HOOK, next: `s.title('Next', { at: 0 });` }), (page) => page.evaluate(() => window.explainroo.coverMoment()));
-  // The card has fully arrived at 2.6 s, give or take a frame.
-  assert.ok(Math.abs(moments - 2.6) < 1.01 / 30, moments);
-  // A first scene shorter than 3 seconds is looked at up to its end.
-  const short = await inPage(project(t, {}, { hook: HOOK, next: `s.title('Next', { at: 0 });` }, { hook: 2.3 }), (page) => page.evaluate(() => window.explainroo.coverMoment()));
-  assert.ok(Math.abs(short - 1.6) < 1.01 / 30, short);
+test('with "defaults": "0.5", "cover": "auto" takes the earliest of the fullest frames of the whole first scene, a frame with a picture first', { skip }, async (t) => {
+  // The note arrives after the first 3 seconds, and the cover is the first frame that shows it fully.
+  const full = await counted(project(t, NEW, { hook: HOOK, next: `s.title('Next', { at: 0 });` }));
+  assert.ok(full.T > 3.5 && full.T < 4.5, JSON.stringify(full));
+  assert.ok(full.at > full.before, JSON.stringify(full));
+  // A short first scene is looked at to its end.
+  near(await moment(project(t, NEW, { hook: HOOK, next: `s.title('Next', { at: 0 });` }, { hook: 2.3 })), 1.6);
   // A title alone, there from the start, gives the first frame.
-  const nothing = await inPage(project(t, {}, { hook: `s.title('Here', { at: 0, enter: 'none' });` }), (page) => page.evaluate(() => window.explainroo.coverMoment()));
-  assert.equal(nothing, 0);
+  assert.equal(await moment(project(t, NEW, { hook: `s.title('Here', { at: 0, enter: 'none' });` })), 0);
+  // An arrow that points at a picture before it has arrived: the frame with the picture wins.
+  const pointing = project(t, NEW, { hook: `s.title('Heat leaves', { y: 160, at: 0, enter: 'none' });
+    s.note('the kitchen', { x: 400, y: 400, at: 0, enter: 'none' });
+    s.note('outside', { x: 1500, y: 400, at: 0, enter: 'none' });
+    s.arrow([700, 600], [1300, 600], { at: 0, enter: 'none', label: 'heat' });
+    s.icon('house', { x: 1500, y: 650, size: 220, at: 4, enter: 'pop', dur: 0.5 });` });
+  near(await moment(pointing), 4.5);
+  // Only the elements whose entrance has finished count.
+  const fading = project(t, NEW, { hook: `s.icon('sun', { x: 600, y: 540, size: 200, at: 0, enter: 'none' });
+    s.icon('cloud', { x: 1300, y: 540, size: 200, at: 1, enter: 'fade', dur: 3 });` });
+  near(await moment(fading), 4);
+});
+
+test('without "defaults", "cover": "auto" is the end of the first scene, and 1.0 second into it for Shorts, TikTok and Reels, as before', async (t) => {
+  const { coverTime } = await import('../src/render.js');
+  const { project: p, timeline } = project(t, {}, { hook: HOOK, next: `s.title('Next', { at: 0 });` });
+  const wide = coverTime(p.config, timeline);
+  assert.deepEqual([wide.auto, wide.label], [true, 'hook@end']);
+  assert.equal(wide.T, resolveTimes(timeline, ['hook@end'])[0].T);
+  const tall = project(t, { size: 'tiktok' }, { hook: HOOK, next: `s.title('Next', { at: 0 });` });
+  assert.deepEqual([coverTime(tall.project.config, tall.timeline).label, coverTime(tall.project.config, tall.timeline).T], ['hook@1.0', 1]);
+  const fresh = project(t, NEW, { hook: HOOK });
+  assert.deepEqual(coverTime(fresh.project.config, fresh.timeline), { auto: true, T: null, label: 'auto' });
 });
 
 test('check gives a hint when the cover shows only text on an empty background, and suggests a frame with a picture', { skip }, async (t) => {
-  const hints = (p, T) => inPage(p, (page) => page.evaluate((at) => window.explainroo.coverIssue(at), T));
-  const textOnly = project(t, {}, { hook: `s.short.backdrop({ color: '#1b2440' });
+  const hints = (p, T, auto) => inPage(p, (page) => page.evaluate(([at, a]) => window.explainroo.coverIssue(at, a), [T, auto]));
+  const bread = `s.short.backdrop({ color: '#1b2440' });
     s.short.hook('Your bread is *stale* again?');
-    s.icon('wheat', { y: 700, size: 260, color: 'yellow', at: 3.5, enter: 'pop', dur: 0.5 });` });
-  assert.deepEqual(await hints(textOnly, null), { level: 'hint', scene: 'hook', t: 0, message: '"cover": "auto" picks hook@0.0, which shows only text on an empty background; set "cover": "hook@4.0" for a frame with a picture, or show a picture sooner' });
-  assert.deepEqual(await hints(textOnly, 0.5), { level: 'hint', scene: 'hook', t: 0.5, message: 'the cover at hook@0.5, which shows only text on an empty background; set "cover": "hook@4.0" for a frame with a picture, or show a picture sooner' });
-  assert.equal(await hints(textOnly, 4.5), null);
-  assert.equal(await hints(project(t, {}, { hook: HOOK }), null), null);
-  // Only text in the whole scene: no frame to suggest.
-  const words = project(t, {}, { hook: `s.title('Only words', { at: 0 });` });
-  assert.match((await hints(words, null)).message, /only text on an empty background; show a picture with the text, or set "cover" to a moment that has one$/);
+    s.icon('wheat', { y: 700, size: 260, color: 'yellow', at: 3.5, enter: 'pop', dur: 0.5 });`;
+  const textOnly = project(t, {}, { hook: bread });
+  assert.deepEqual(await hints(textOnly, 0.5, false), { level: 'hint', scene: 'hook', t: 0.5, message: 'the cover at hook@0.5, which shows only text on an empty background; set "cover": "hook@4.0" for a frame with a picture, or show a picture sooner' });
+  // The cover "auto" picked without the line, at a set time.
+  assert.deepEqual(await hints(textOnly, 1, true), { level: 'hint', scene: 'hook', t: 1, message: '"cover": "auto" picks hook@1.0, which shows only text on an empty background; set "cover": "hook@4.0" for a frame with a picture, or show a picture sooner' });
+  assert.equal(await hints(textOnly, 4.5, false), null);
+  // With the line, "auto" finds the picture by itself, so there is no hint.
+  assert.equal(await hints(project(t, NEW, { hook: bread }), null, true), null);
+  assert.equal(await hints(project(t, NEW, { hook: HOOK }), null, true), null);
+  // Only text in the whole first scene: the hint says no frame has a picture.
+  const words = project(t, NEW, { hook: `s.title('Only words', { at: 0 });` });
+  assert.match((await hints(words, null, true)).message, /^"cover": "auto" picks hook@\d\.\d, the fullest frame of the first scene, and no frame of that scene shows a picture; show a shape, an icon or an image with the text there, or set "cover" to a moment of another scene that has one$/);
 });
 
 test('render writes the automatic cover at that frame, without captions, and check runs the hint', { skip, timeout: 240000 }, async (t) => {
-  const dir = tinyProject(t, { size: '640x360', captions: true }, { narrated: false });
+  const dir = tinyProject(t, { size: '640x360', captions: true, defaults: '0.5' }, { narrated: false });
   fs.writeFileSync(path.join(dir, 'scenes.js'), `export default { intro(s) {
     s.bg('#ffffff');
     s.title('Tiny', { y: 90, size: 40, at: 0, enter: 'none' });

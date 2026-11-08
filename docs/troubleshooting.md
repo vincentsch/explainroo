@@ -39,7 +39,8 @@
 - A mark around an icon that has a label. The `id` of an icon covers the icon
   without its label, so `s.annotate('id', { type: 'circle' })` can run through
   the label. Mark a box that holds both, like `s.annotate({ x, y, w, h })`.
-  Arrows leave and reach a labelled icon outside its label.
+  With `"defaults": "0.5"`, arrows leave and reach a labelled icon outside
+  its label.
 - Shapes that partly cover each other, like two cards that grow into each
   other after you make their text bigger. Move them apart. A badge meant to sit
   on a card's corner takes `overlap: true`.

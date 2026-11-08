@@ -54,10 +54,13 @@ elements draw themselves in, frame one is empty. Give the title
 frame in the app.
 
 `render` writes its own cover, `video.cover.jpg`, from the `cover` setting.
-With `"auto"`, every size takes the frame in the first 3 seconds of the first
-scene with the most elements fully on screen, the earliest of those. A cover
-you set yourself, like `"hook@2.5"`, always wins. `check` gives a hint when the
-cover shows only text on an empty background. The cover leaves out the
+With `"auto"` and `"defaults": "0.5"`, every size takes the frame of the first
+scene with the most elements fully arrived, where a frame with a shape, icon,
+image or clip comes first, and the earliest of those. A project without
+`"defaults"` takes the end of the first scene, or 1.0 second into it on
+Shorts, TikTok and Reels. A cover you set yourself, like `"hook@2.5"`, always
+wins. `check` gives a hint when the cover shows only text on an empty
+background. The cover leaves out the
 captions, also when the video has them. A new `cover` needs no new render:
 `package` keeps the finished video and writes only the new cover image.
 

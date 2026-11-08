@@ -84,8 +84,8 @@ test('check warns about shapes that partly overlap, and not about touching, nest
   assert.deepEqual(messages(issues, 'app', 'overlap'), ['the card at 550,450 and the card at 1150,500 partly overlap, by 50px; move them apart, or give one of them overlap: true if that is meant']);
 });
 
-test('check warns about the line of an arrow or a mark that crosses text, and arrows leave an icon outside its label', { skip }, async (t) => {
-  const p = project(t, { theme: 'paper' }, {
+test('check warns about the line of an arrow or a mark that crosses text, and with "defaults": "0.5" arrows leave an icon outside its label', { skip }, async (t) => {
+  const p = project(t, { theme: 'paper', defaults: '0.5' }, {
     // The circle around an icon runs through the icon's label.
     circled: `s.icon('user-round', { id: 'body', x: 1360, y: 430, size: 200, label: 'Your body', labelSize: 48, at: 0 });
     s.annotate('body', { type: 'circle', color: 'muted', at: 0.5 });`,
@@ -130,6 +130,11 @@ test('check warns about the line of an arrow or a mark that crosses text, and ar
   assert.equal(more.icon.h, 140);
   assert.equal(more.arrow.from.x, 960);
   assert.ok(Math.abs(more.arrow.from.y - (300 + 70 + 44 * 1.5 + 14)) < 1, JSON.stringify(more.arrow));
+  // Without the line the arrow starts at the icon's edge, as before, and runs through its label.
+  const before = project(t, { theme: 'paper' }, { icon: `s.icon('syringe', { id: 'shot', x: 960, y: 300, size: 140, label: 'Vaccine', labelSize: 44, at: 0 });
+    s.box('Virus piece', { id: 'piece', x: 960, y: 800, at: 0 });
+    s.arrow('shot', 'piece', { at: 0.5 });` });
+  assert.deepEqual(messages(await check(before), 'icon', 'crosses'), ['the arrow from "shot" to "piece" crosses the text "Vaccine"; move the text, or let the arrow start or end somewhere else']);
 });
 
 test('check gives a hint when a scene shows only its background for more than 1.5 seconds at the start', { skip }, async (t) => {
@@ -144,8 +149,11 @@ test('check gives a hint when a scene shows only its background for more than 1.
   ]);
 });
 
-test('check measures text and starred words against their sticker or box, and stickers pick a readable highlight', { skip }, async (t) => {
-  const { issues, more } = await check(project(t, {}, {
+test('check measures text and starred words against their sticker or box, and with "defaults": "0.5" stickers pick a readable highlight', { skip }, async (t) => {
+  // Without the line the keyword stays red on any sticker, as before, and check says so.
+  const before = await check(project(t, {}, { green: `s.short.sticker('Cannot make you *sick*', { color: 'green', at: 0 });` }));
+  assert.match(messages(before, 'green', 'low contrast')[0], /^"sick" has low contrast against its background \(1\.1:1\); use keyColor: /);
+  const { issues, more } = await check(project(t, { defaults: '0.5' }, {
     green: `s.short.sticker('Cannot make you *sick*', { color: 'green', at: 0 });`,
     red: `s.short.sticker('Cannot make you *sick*', { color: 'green', keyColor: '#c8102e', y: 300, at: 0 });`,
     box: `s.box('Saves *time*', { x: 960, y: 540, fill: '#1f2937', textColor: '#ffffff', mark: '#3b4252', at: 0 });`,
@@ -167,7 +175,7 @@ test('check measures text and starred words against their sticker or box, and st
   assert.equal(more.white, '#c8102e');
 });
 
-test('check judges text at the size the camera shows it, and arrow labels are body size', { skip }, async (t) => {
+test('check judges text at the size the camera shows it, and with "defaults": "0.5" arrow labels are body size', { skip }, async (t) => {
   const scenes = {
     // Small text alone: the camera moves close, so it is shown big enough.
     alone: `s.text('fine print', { size: 18, at: 0 });`,
@@ -182,8 +190,11 @@ test('check judges text at the size the camera shows it, and arrow labels are bo
   const still = await check(project(t, { camera: 'still' }, scenes, { dur: 4 }));
   assert.deepEqual(messages(still, 'alone', 'hard to read'), ['"fine print" is 18px, hard to read (use at least 24px)']);
   // At 48 pixels the label stays above 16 pixels in an 854 pixel player.
-  const { more: size } = await check(project(t, {}, { label: scenes.label }), (page) => page.evaluate(() => window.explainroo.check(0.5, 854)));
+  const { more: size } = await check(project(t, { defaults: '0.5' }, { label: scenes.label }), (page) => page.evaluate(() => window.explainroo.check(0.5, 854)));
   assert.deepEqual(size, []);
+  // Without the line it is 34 pixels, as before.
+  const { more: old } = await check(project(t, {}, { label: scenes.label }), (page) => page.evaluate(() => window.explainroo.check(0.5, 854)));
+  assert.deepEqual(old.map((i) => i.message.split(';')[0]), ['"water vapor" is 15.1px at a 854px player width']);
 });
 
 test('check warns about text and shapes a held shot cuts at the edge, not about those fully out of it or cut during a move', { skip }, async (t) => {
@@ -200,4 +211,20 @@ test('check warns about text and shapes a held shot cuts at the edge, not about 
   assert.ok(cut.length >= 1 && cut.every((i) => i.scene === 'slides'), JSON.stringify(issues));
   assert.match(cut[0].message, /^the camera cuts off (the box )?"Sliding card" at the edge of the frame while it holds still; keep this scene still with s\.camera\(\[\]\), or point the camera with s\.focus$/);
   assert.ok(more.slides, 'the camera films the scene');
+});
+
+test('with "defaults": "0.5", gap leaves that many pixels free at a point end, as at an element; without it a point end stays where it was', { skip }, async (t) => {
+  const ends = async (settings) => (await check(project(t, settings, { gap: `s.arrow([300, 540], [900, 540], { gap: 40, at: 0 });` }), (page) => page.evaluate(async () => {
+    const { Engine, fetchState } = await import('/engine/runtime.js');
+    const state = await fetchState();
+    let arrows = null;
+    const engine = new Engine({ canvas: document.createElement('canvas'), state, scenes: { gap(s) {
+      arrows = [s.arrow([300, 540], [900, 540], { gap: 40, at: 0 }), s.arrow([300, 700], [900, 700], { at: 0 }), s.arrow([300, 800], [320, 800], { gap: 40, at: 0 })];
+    } }, icons: {}, images: new Map() });
+    engine.drawScene(engine.ctx, 0, 1);
+    return arrows.map((a) => [a.from.x, a.to.x]);
+  }))).more;
+  // 40 pixels at each point end; no gap at a point without one; an arrow too short for its gaps keeps its ends.
+  assert.deepEqual(await ends({ defaults: '0.5' }), [[340, 860], [300, 900], [300, 320]]);
+  assert.deepEqual(await ends({}), [[300, 900], [300, 900], [300, 320]]);
 });

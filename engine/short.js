@@ -9,7 +9,7 @@
 // block. A scene that wants a move sets s.camera with punch() or drift().
 
 import { fontStack } from './themes.js';
-import { contrast, cssColor, opaque, suggestColor } from './util.js';
+import { contrast, cssColor, opaque, suggestColor, newDefaults } from './util.js';
 
 const INK = '#0b0b10';
 const KEY = '#ffd43b';
@@ -528,7 +528,8 @@ export class Short {
     const life = this.life(at, o.out, 0.38);
     if (!life) return geom(x, y, w, h);
     const bg = o.color ?? KEY;
-    const keyColor = o.keyColor ?? stickerKey(bg);
+    // With "defaults": "0.5", the keyword red is made to read on the sticker's color.
+    const keyColor = o.keyColor ?? (newDefaults(this.s.engine.config) ? stickerKey(bg) : KEY_RED);
     this.s.ui.over(() => this.popIn(life, x, y, () => {
       this.roundRect(x - w / 2, y - h / 2, w, h, size * 0.22, bg, { shadow: { color: 'rgba(0,0,0,0.35)', blur: 16, y: 8 }, stroke: o.border, strokeW: 5 });
       if (!this.hidden) this.s._logShape('sticker', { x, y, w, h }, this.s._unsettled === 0, o, words.map((wd) => wd.text).join(' '));

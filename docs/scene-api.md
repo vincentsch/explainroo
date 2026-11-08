@@ -200,10 +200,17 @@ Options: `bend` (about -1 to 1), `head` (`end`, `start`, `both`, `none`),
 `label`, `labelSize` (48, the size of body text), `labelColor`, `labelFont`
 (the handwritten font by default; `'body'` suits `clean`), `labelOffset`,
 `labelSide`, `gap`, `dashed`, `width`, `headSize`. `s.connect` does the same.
+`gap` is the space in pixels between each end of the arrow and what it points
+at: from the edge of an element (14 by default), and from a point, where it
+is 0 unless you set it. So `gap: 20` between two points leaves 20 pixels free
+at both ends.
 
 A label sits above a straight arrow, left of a vertical one and on the outer
 side of a curve, `labelOffset` away from the arrow's middle: 44 for a label of
-48 pixels, and 34 for one of 34.
+48 pixels, and 34 for one of 34. These are the defaults of `"defaults":
+"0.5"`, which `init` writes into `video.json`. A project without it keeps its
+old look: labels of 34 pixels, arrows that start at an icon's edge, and no
+`gap` at a point end. `explainroo docs settings` lists what the line changes.
 `labelSide: 'left'`, `'right'`, `'above'` or `'below'` puts it on that side
 instead. The third arrow above is vertical, and its label goes to the right,
 for example because the left side is near the edge or full. `check` treats

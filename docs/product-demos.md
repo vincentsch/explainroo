@@ -96,9 +96,10 @@ Set up the brand in `video.json`. Use the `clean` look.
   drawn right on it.
 - With captions on, `accent` also colors the word being spoken. A look file
   that sets `caption` colors decides instead. When the accent is hard to read
-  on the caption background (a contrast below 3:1), the captions keep its hue
-  and make it lighter on a dark background, or darker on a light one, until
-  it reads at 4.5:1. `check` names that color in a hint. Bold captions keep
+  on the caption background (a contrast below 3:1), with `"defaults": "0.5"`
+  the captions keep its hue and make it lighter on a dark background, or
+  darker on a light one, until it reads at 4.5:1. Without it they use the
+  look's highlight. `check` names the color in a hint. Bold captions keep
   their own colors.
 - `font` is the app's font. Inter is built in. Other fonts go in
   `assets/fonts/` and in `fonts`, with one entry per weight. The files can be

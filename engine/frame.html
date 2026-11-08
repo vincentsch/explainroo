@@ -126,8 +126,12 @@ window.explainrooReady = (async () => {
     coverMoment() {
       return engine.coverMoment();
     },
-    coverIssue(T) {
-      return engine.coverIssue(T);
+    // What a moment of a scene shows, as the cover counts it.
+    framed(index, t) {
+      return engine.framed(index, t);
+    },
+    coverIssue(T, auto) {
+      return engine.coverIssue(T, auto);
     },
     // After check: the files its scenes play with s.sound that can't be read.
     soundFileIssues() {

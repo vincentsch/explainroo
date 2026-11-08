@@ -87,8 +87,15 @@ test('a look file with caption colors wins over brand.accent', { skip, timeout: 
   assert.ok(brand.orange.band > 150, `the brand's orange: ${JSON.stringify(brand)}`);
 });
 
-test('a dark accent keeps its hue, made lighter until it reads, and check names that color in a hint', { skip, timeout: 240000 }, async (t) => {
-  const dir = bakery(t, { brand: { accent: '#1e3a8a' } });
+test('with "defaults": "0.5" a dark accent keeps its hue, made lighter until it reads, and check names that color in a hint', { skip, timeout: 240000 }, async (t) => {
+  // Without the line, the captions keep the look's highlight, as before.
+  const before = bakery(t, { brand: { accent: '#1e3a8a' } });
+  const old = await colorsIn(before);
+  assert.ok(old.look.band > 150, `the look's highlight: ${JSON.stringify(old)}`);
+  assert.equal(old.tinted.band, 0);
+  const said = await cli(['check', before, '--json']);
+  assert.deepEqual(JSON.parse(said.stdout).issues.filter((i) => i.message.includes('brand.accent')).map((i) => i.message), ["brand.accent #1e3a8a is hard to read on the caption background (1.0:1, below 3:1), so captions keep the look's highlight #7aa2ff"]);
+  const dir = bakery(t, { brand: { accent: '#1e3a8a' }, defaults: '0.5' });
   const counts = await colorsIn(dir);
   assert.ok(counts.tinted.band > 150, `the lighter blue: ${JSON.stringify(counts)}`);
   assert.equal(counts.look.band, 0, 'not the look\'s highlight');

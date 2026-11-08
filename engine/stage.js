@@ -2,7 +2,7 @@
 // draws the whole frame from scratch as a function of the scene time `s.t`.
 // Elements take `at` (when they appear) and optional `out` (when they leave);
 // the theme decides how they enter, and entering elements add sound effects.
-import { clamp, lerp, ease, easeFn, rand01, noise1, hashStr, mulberry32, suggest, normWord, withAlpha, contrast, mixColor, opaque } from './util.js';
+import { clamp, lerp, ease, easeFn, rand01, noise1, hashStr, mulberry32, suggest, normWord, withAlpha, contrast, mixColor, opaque, newDefaults } from './util.js';
 import { colorOf, tintOf, fontString } from './themes.js';
 import { scalePath, quadD, polyD, pathLength, pointAt, parsePath, absolutize, samplePath } from './pathdata.js';
 import { layoutText, lineStartX } from './text.js';
@@ -10,8 +10,11 @@ import { clipFrame, clipURL, soundURL, FIT_SPEEDS } from './clips.js';
 import { highlightLine, codeTokens, matchTokens, resolveCodeSteps, codeMorphState } from './code.js';
 import { ring, bounds, along, rayThrough } from './geometry.js';
 
-// The size of body text, which s.text and arrow labels use unless told otherwise.
+// The size of body text, which s.text uses unless told otherwise, and arrow
+// labels with "defaults": "0.5".
 export const TEXT_SIZE = 48;
+// The size of an arrow's label, and its distance from the arrow, without it.
+const OLD_LABEL_SIZE = 34;
 const DEFAULT_DUR = { draw: 0.9, write: 0.8, pop: 0.6, rise: 0.75, fade: 0.6, zoom: 0.75, drop: 0.75, grow: 1.0, none: 0.001, 'slide-left': 0.75, 'slide-right': 0.75, 'slide-up': 0.75, 'slide-down': 0.75 };
 const ENTERS = ['draw', 'write', 'type', 'words', 'sync', 'pop', 'rise', 'fade', 'zoom', 'drop', 'grow', 'none', 'slide-left', 'slide-right', 'slide-up', 'slide-down'];
 const EXITS = ['fade', 'pop', 'rise', 'drop', 'slide-left', 'slide-right', 'none'];
@@ -1150,13 +1153,24 @@ export class Stage {
     const A = this._point(from);
     const B = this._point(to);
     const gap = o.gap ?? 14;
+    // With "defaults": "0.5", gap leaves room at a point end too, and an icon's
+    // label belongs to the icon, so the arrow leaves and arrives outside it.
+    const fresh = newDefaults(this.engine.config);
     let a = typeof from === 'string' ? this._edge(A, B, gap) : A;
     let b = typeof to === 'string' ? this._edge(B, A, gap) : B;
     if (typeof from === 'string' && typeof to !== 'string') Object.assign(a, this._edge(A, b, gap));
-    // An icon's label belongs to the icon here, so the arrow leaves and
-    // arrives outside it.
-    if (typeof from === 'string') a = this._pastLabel(from, a, A, B, gap);
-    if (typeof to === 'string') b = this._pastLabel(to, b, B, A, gap);
+    if (fresh && o.gap !== undefined) {
+      // gap pixels from a point, toward the other end.
+      const off = (p, q) => {
+        const len = Math.hypot(q.x - p.x, q.y - p.y);
+        return len > o.gap * 2 ? { x: p.x + ((q.x - p.x) / len) * o.gap, y: p.y + ((q.y - p.y) / len) * o.gap } : p;
+      };
+      const [pa, pb] = [a, b];
+      if (typeof from !== 'string') a = off(pa, pb);
+      if (typeof to !== 'string') b = off(pb, pa);
+    }
+    if (fresh && typeof from === 'string') a = this._pastLabel(from, a, A, B, gap);
+    if (fresh && typeof to === 'string') b = this._pastLabel(to, b, B, A, gap);
     const bend = o.bend ?? 0;
     const dx = b.x - a.x;
     const dy = b.y - a.y;
@@ -1283,9 +1297,12 @@ export class Stage {
         ny = -ny;
       }
     }
-    const size = o.labelSize ?? TEXT_SIZE;
-    // 34 for a 34 pixel label, as before body size was the default, and 44 for 48.
-    const off = o.labelOffset ?? Math.round(size * 0.7 + 10);
+    // With "defaults": "0.5" a label is body size and sits further out as it
+    // grows: 34 pixels out for a 34 pixel label, and 44 for 48. Before, it was
+    // 34 pixels and 34 pixels out.
+    const fresh = newDefaults(this.engine.config);
+    const size = o.labelSize ?? (fresh ? TEXT_SIZE : OLD_LABEL_SIZE);
+    const off = o.labelOffset ?? (fresh ? Math.round(size * 0.7 + 10) : OLD_LABEL_SIZE);
     const font = fontString(this.theme, o.labelFont ?? 'hand', size);
     this.ctx.save();
     this.ctx.font = font;
@@ -1541,8 +1558,8 @@ export class Stage {
         default: return [];
       }
     };
-    if (this.engine.layoutLog && type !== 'highlight') {
-      // The camera keeps a mark with what it marks.
+    if (this.engine.layoutLog && type !== 'highlight' && newDefaults(this.engine.config)) {
+      // The camera keeps a mark with what it marks, with "defaults": "0.5".
       const r = bounds(line());
       if (Number.isFinite(r.x0)) this._attach('annotate', this.time(o.at ?? 0), o.out === undefined ? Infinity : this.time(o.out), this._designBox(b.x + (r.x0 + r.x1) / 2, b.y + (r.y0 + r.y1) / 2, r.x1 - r.x0, r.y1 - r.y0), { ends: [typeof target === 'string' ? target : null], around: this._designBox(b.x, b.y, b.w, b.h) });
     }

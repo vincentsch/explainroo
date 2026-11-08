@@ -6,7 +6,7 @@ import { getTheme, makeBackground, fontString, colorOf } from './themes.js';
 import { Pen } from './pen.js';
 import { drawTransition } from './transitions.js';
 import { buildPhrases, drawCaptions, buildChunks, drawBoldCaptions, captionHighlight } from './captions.js';
-import { AUDIO_FILE, clamp, hashStr, mulberry32, suggest, suggestColor, contrast, opaque, withAlpha, parseColor, mixColor, rgba, cssColor } from './util.js';
+import { AUDIO_FILE, clamp, hashStr, mulberry32, suggest, suggestColor, contrast, opaque, withAlpha, parseColor, mixColor, rgba, cssColor, newDefaults } from './util.js';
 import { overlapDepth, holds, crosses } from './geometry.js';
 import { layoutAreas } from './layout.js';
 import { loadClips, soundURL, ClipFrames, FREEZE_SECONDS, FIT_SPEEDS } from './clips.js';
@@ -428,7 +428,7 @@ export class Engine {
       const linked = prev && layouts[i - 1] && sc.transition !== 'none' && continues(layouts[i - 1], layouts[i], frameRect(cameraAt(prev, prev.dur), view, frame));
       const voiceEnd = sc.voice ? sc.lead + sc.voice.dur : null;
       const still = linked ? Math.min(this.timeline.transitionSeconds, sc.dur * 0.5) : 0;
-      const plan = planCamera(layouts[i], { dur: sc.dur, view, frame, pace: this.timeline.pace || 1, voiceEnd, from: linked ? cameraAt(prev, prev.dur) : null, still, usable });
+      const plan = planCamera(layouts[i], { dur: sc.dur, view, frame, pace: this.timeline.pace || 1, voiceEnd, from: linked ? cameraAt(prev, prev.dur) : null, still, usable, attach: newDefaults(this.config) });
       if (!plan) return;
       this.cameraPlans.set(i, plan);
       if (linked) this.continued.add(i);
@@ -602,36 +602,46 @@ export class Engine {
     }
     const inside = (b) => b.x0 >= -1 && b.y0 >= -1 && b.x1 <= this.W + 1 && b.y1 <= this.H + 1;
     const words = texts.filter((x) => !x.problem && x.settled && x.alpha > 0.95 && inside(x)).length;
-    const pictures = log.shapes.filter((s) => s.settled && s.alpha > 0.95 && inside(s.box)).length
-      + log.strokes.filter((s) => s.settled && s.alpha > 0.95).length
-      + log.lives.filter((l) => l.settled && ['line', 'chart', 'custom'].includes(l.kind)).length
+    // A picture is a shape, icon, image, clip, chart or drawing. Lines and
+    // arrows count as elements, but no picture. A clip or image that fills the
+    // frame counts too, also while the camera crops it.
+    const pictures = log.shapes.filter((s) => s.settled && s.alpha > 0.95 && (inside(s.box) || fillsFrame(s.box, this.W, this.H))).length
+      + log.lives.filter((l) => l.settled && ['chart', 'custom'].includes(l.kind)).length
       + (log.ink ? 1 : 0);
-    return { count: words + pictures, onlyText: words > 0 && pictures === 0 };
+    const lines = log.strokes.filter((s) => s.settled && s.alpha > 0.95).length
+      + log.lives.filter((l) => l.settled && l.kind === 'line').length;
+    return { count: words + pictures + lines, picture: pictures > 0, onlyText: words > 0 && pictures + lines === 0 };
   }
 
-  // The moment "cover": "auto" takes: within the first 3 seconds of the first
-  // scene, the frame with the most elements fully on screen, the earliest one
-  // of those. Seconds into the video.
+  // The moment "cover": "auto" takes with "defaults": "0.5": the frame of the
+  // first scene with the most elements fully on screen, entrances finished,
+  // where a frame with a picture comes before any frame without one, and the
+  // earliest of those. Seconds into the video.
   coverMoment() {
     const sc = this.timeline.scenes[0];
-    const last = Math.max(0, Math.floor((Math.min(COVER_SECONDS, sc.dur) - 1e-6) * this.fps));
-    let best = { T: sc.start, count: -1 };
-    for (let f = 0; f <= last; f++) {
-      const { count } = this.framed(sc.index, f / this.fps);
-      if (count > best.count) best = { T: sc.start + f / this.fps, count };
+    const last = Math.max(0, Math.floor((sc.dur - 1e-6) * this.fps));
+    // Every frame, or evenly spread frames of a long scene.
+    const step = Math.max(1, Math.ceil((last + 1) / COVER_FRAMES));
+    let best = null;
+    for (let f = 0; f <= last; f += step) {
+      const seen = this.framed(sc.index, f / this.fps);
+      if (!best || (seen.picture && !best.picture) || (seen.picture === best.picture && seen.count > best.count)) best = { T: sc.start + f / this.fps, ...seen };
     }
     return best.T;
   }
 
-  // A hint when the cover shows only text on an empty background. `T` is the
-  // cover's time, or null for "cover": "auto".
-  coverIssue(T = null) {
-    const auto = T === null;
-    const at = auto ? this.coverMoment() : T;
+  // A hint when the cover shows only text on an empty background, or when the
+  // frame "auto" picked has no picture, which means no frame of the first scene
+  // has one. `T` is the cover's time, or null for the time the page works out,
+  // and `auto` says that "cover": "auto" chose it.
+  coverIssue(T = null, auto = T === null) {
+    const at = T === null ? this.coverMoment() : T;
     const i = this.sceneAt(at);
     const sc = this.timeline.scenes[i];
-    if (!this.framed(i, at - sc.start).onlyText) return null;
+    const seen = this.framed(i, at - sc.start);
+    if (T === null ? seen.picture || !seen.count : !seen.onlyText) return null;
     const label = `${sc.id}@${(at - sc.start).toFixed(1)}`;
+    if (T === null) return { level: 'hint', scene: sc.id, t: Math.round((at - sc.start) * 100) / 100, message: `"cover": "auto" picks ${label}, the fullest frame of the first scene, and no frame of that scene shows a picture; show a shape, an icon or an image with the text there, or set "cover" to a moment of another scene that has one` };
     // The first moment of that scene that shows the most, with a picture.
     let better = null;
     for (let t = 0; t < sc.dur - 0.05; t += 0.25) {
@@ -819,7 +829,8 @@ export class Engine {
           if (held && filmed.draw.shapes.length === laid.draw.shapes.length) {
             laid.draw.shapes.forEach((sh, i) => {
               const shot = filmed.draw.shapes[i];
-              if (sh.alpha > 0.95 && sh.settled && !lookedInto(sh.box) && inFrame(sh.box) && onScreen(shot.box) && !inFrame(shot.box)) once(`cut:${sc.id}:${shapeKey(sh)}`, () => add('warn', sc.id, t, `the camera cuts off ${shapeName(sh)} at the edge of the frame while it holds still; keep this scene still with s.camera([]), or point the camera with s.focus`));
+              // A clip or image that fills the frame is cut by any close-up, on purpose.
+              if (sh.alpha > 0.95 && sh.settled && !lookedInto(sh.box) && !fillsFrame(sh.box, W, H) && inFrame(sh.box) && onScreen(shot.box) && !inFrame(shot.box)) once(`cut:${sc.id}:${shapeKey(sh)}`, () => add('warn', sc.id, t, `the camera cuts off ${shapeName(sh)} at the edge of the frame while it holds still; keep this scene still with s.camera([]), or point the camera with s.focus`));
             });
           }
         }
@@ -886,13 +897,18 @@ export class Engine {
   }
 }
 
+// Whether a box covers the whole frame, like a clip with full: true.
+function fillsFrame(b, W, H) {
+  return b.x0 <= 1 && b.y0 <= 1 && b.x1 >= W - 1 && b.y1 >= H - 1;
+}
+
 // The canvas calls that put something on it.
 const INK_CALLS = new Set(['fill', 'stroke', 'fillRect', 'strokeRect', 'fillText', 'strokeText', 'drawImage']);
 
 // A scene may show only its background this long at the start, in seconds.
 const EMPTY_START = 1.5;
-// "cover": "auto" looks this far into the first scene, in seconds.
-const COVER_SECONDS = 3;
+// "cover": "auto" looks at this many frames of the first scene at most.
+const COVER_FRAMES = 600;
 
 // What check collects while it draws one moment of a scene: the shapes and
 // lines drawn, in design pixels, and how many elements are on screen.

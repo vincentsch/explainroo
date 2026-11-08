@@ -204,7 +204,9 @@ function differs(a, b, frame) {
 // is nothing to film.
 // `from`: where the camera is when the scene starts, for a scene that
 // continues the one before it.
-export function planCamera(elements, { dur, view, frame, pace = 1, voiceEnd = null, from = null, still = 0, usable = null }) {
+// `attach`: a shot that moves to an element takes in the arrows and marks that
+// belong to it. Off, the camera plans as it did before "defaults": "0.5".
+export function planCamera(elements, { dur, view, frame, pace = 1, voiceEnd = null, from = null, still = 0, usable = null, attach = true }) {
   usable ??= { x0: 0, y0: 0, x1: frame.W, y1: frame.H };
   const area = frame.W * frame.H;
   const timed = (e) => ({ ...e, at: Math.max(0, e.at), out: e.out ?? Infinity });
@@ -258,6 +260,7 @@ export function planCamera(elements, { dur, view, frame, pace = 1, voiceEnd = nu
   // too, so an arrow never comes in from outside a close-up of what it
   // points at.
   const attached = (list, t0, t1) => {
+    if (!attach) return [];
     const ids = new Set(list.map((e) => e.id).filter((id) => id !== undefined && id !== null));
     const boxes = solid(list).map((e) => e.box);
     const at = (p, b, pad) => Math.abs(p[0] - b.x) <= b.w / 2 + pad && Math.abs(p[1] - b.y) <= b.h / 2 + pad;

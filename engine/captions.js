@@ -1,7 +1,7 @@
 // Burned-in captions built from the narration's word timings. The current
 // phrase is shown; words light up as they are spoken.
 import { fontString, fontStack, LANGUAGE_FONTS } from './themes.js';
-import { clamp, ease, contrast, opaque, suggestColor } from './util.js';
+import { clamp, ease, contrast, opaque, suggestColor, newDefaults } from './util.js';
 import { BOLD_CAPTION_SIZE } from './layout.js';
 
 // Some words belong to the word before them, so a phrase or line should not
@@ -26,10 +26,10 @@ export function clingsToPrevious(language) {
 
 // The color of the spoken word in normal captions. brand.accent from video.json
 // takes the place of the look's highlight, unless a look file sets caption
-// colors. An accent that is hard to read on the caption background keeps its
-// hue, made lighter on a dark background or darker on a light one until it
-// reaches 4.5:1, and `note` says which color that is. Bold captions keep
-// their palette.
+// colors. With "defaults": "0.5", an accent that is hard to read on the caption
+// background keeps its hue, made lighter on a dark background or darker on a
+// light one until it reaches 4.5:1, and `note` says which color that is.
+// Without it, the look's highlight stays. Bold captions keep their palette.
 export function captionHighlight(config, theme) {
   const accent = config.brand?.accent;
   if (!accent || !config.captions || config.captions === 'bold') return {};
@@ -37,6 +37,8 @@ export function captionHighlight(config, theme) {
   const bg = opaque(theme.caption.bg, theme.bg);
   const ratio = contrast(accent, bg);
   if (ratio >= 3) return { color: accent };
+  // Before "defaults": "0.5", such captions kept the look's highlight.
+  if (!newDefaults(config)) return { note: `brand.accent ${accent} is hard to read on the caption background (${(Math.floor(ratio * 10) / 10).toFixed(1)}:1, below 3:1), so captions keep the look's highlight ${theme.caption.active}` };
   const tinted = suggestColor(accent, bg, 0);
   const color = tinted?.color ?? theme.caption.active;
   const how = contrast(color, '#ffffff') < contrast(accent, '#ffffff') ? 'lighter' : 'darker';

@@ -118,3 +118,24 @@ test("speed: 'fit' makes a clip end with its scene, from half speed to twice the
     assert.ok(bad.some((i) => i.level === 'error' && i.message === "clip speed must be from 0.25 to 4, or 'fit'"), JSON.stringify(bad));
   });
 });
+
+// A clip that fills the frame is a picture, also while the camera crops it, and a
+// close-up cuts it on purpose. The bees on the comb behind a title, as a scene of
+// a real project had them.
+test('a full clip counts as a picture for the cover, no camera cut is reported for it, and the camera never moves to it', { skip: !chrome }, async (t) => {
+  const p = await project(t, { defaults: '0.5', camera: 'auto' }, {
+    hook: "s.clip('assets/two.mp4', { full: true, at: 0, loop: true }); s.title('How bees make honey', { y: s.safe.top + s.safe.h * 0.3, size: 60, at: 0.6 }); s.note('every drop', { x: 600, y: 800, size: 30, at: 1.6 });",
+  });
+  const tl = timeline(p, { hook: 4 });
+  await withEngine(p, tl, { scale: 0.25 }, async (page) => {
+    const { issues, framed, cameras, moment } = await page.evaluate(() => ({ issues: window.explainroo.check(0.25), cameras: window.explainroo.cameras(), moment: window.explainroo.coverMoment(), framed: window.explainroo.framed(0, 2.5) }));
+    assert.equal(framed.picture, true);
+    assert.equal(framed.onlyText, false);
+    assert.deepEqual(issues.filter((i) => /cuts off/.test(i.message)), [], JSON.stringify(issues));
+    assert.equal(await page.evaluate((T) => window.explainroo.coverIssue(null, true), null), null);
+    assert.ok(moment >= 0);
+    // Whatever the camera does, no shot is about the clip alone: it is a background.
+    for (const shot of Object.values(cameras).flatMap((c) => [c.start, ...c.moves.map((m) => m.to)])) assert.ok(shot.z >= 1);
+    assert.ok(!Object.values(cameras).some((c) => (c.elements ?? []).some((e) => e.kind === 'image' && e.box.w >= 1900)), JSON.stringify(cameras));
+  });
+});
