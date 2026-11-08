@@ -767,6 +767,47 @@ test('a clip job whose cost is not known yet counts for the budget at its estima
   assert.equal(fake.count('openrouter', CLIP_POST), 1);
 });
 
+// Agents often run commands side by side. Two purchases that start together both read
+// the record before either has a job, so the check of the budget and the claim of
+// the job happen under one lock per project.
+test('two clip purchases at the same time stay within the budget, and a purchase that waits too long for the other stops before spending', async (t) => {
+  const { dir, start, cli, fake } = await setup(t);
+  const posts = () => fake.count('openrouter', CLIP_POST);
+  // Both get past the first look at the budget before either can claim its job.
+  fake.plan('openrouter', CLIP_MODELS_LIST, { hold: true }, { hold: true });
+  const both = [start(clip(dir, STREET, '--budget', '0.30')), start(clip(dir, HARBOR, '--budget', '0.30'))];
+  await fake.until('openrouter', CLIP_MODELS_LIST, 2);
+  fake.release();
+  const results = await Promise.all(both.map((b) => b.result));
+  const bought = results.filter((r) => r.code === 0);
+  const refused = results.filter((r) => r.code !== 0);
+  assert.equal(bought.length, 1, results.map((r) => r.text).join('\n'));
+  assert.equal(refused.length, 1);
+  assert.match(refused[0].stderr, /^error: this clip costs about \$0\.18, and \$0\.12 is left of the clip budget of \$0\.30 from --budget\. Nothing was spent\./m);
+  assert.equal(posts(), 1);
+  assert.equal(jobs(dir).length, 1);
+  assert.deepEqual(fs.readdirSync(path.join(dir, 'history/locks')), [], 'the lock is gone once the purchase went out');
+
+  // A lock held by a process that still runs makes the next purchase wait, then stop.
+  const lock = path.join(dir, 'history/locks/clip-purchase.lock');
+  const rain = ['clip', dir, 'Rain on a window at night, close up', '--seconds', '4', '--budget', '1'];
+  fs.writeFileSync(lock, String(process.pid));
+  const waited = await cli(rain, { EXPLAINROO_CLIP_LOCK_MS: '300' });
+  assert.equal(waited.code, 1);
+  assert.match(waited.stderr, /^error: another clip purchase is running in this project, and this one waited 0\.3 seconds for it to finish its check of the budget\. Nothing was spent\. Run the same command again once that one has gone out\.$/m);
+  assert.equal(posts(), 1);
+  assert.equal(fs.readFileSync(lock, 'utf8'), String(process.pid), 'another process\'s lock stays');
+
+  // A lock whose process is gone counts as free.
+  const gone = spawn(process.execPath, ['-e', '']);
+  await new Promise((resolve) => gone.on('close', resolve));
+  fs.writeFileSync(lock, String(gone.pid));
+  const freed = await cli(rain);
+  assert.equal(freed.code, 0, freed.text);
+  assert.equal(posts(), 2);
+  assert.equal(fs.existsSync(lock), false);
+});
+
 // The budget changes no frame, so it stays out of the settings the render uses.
 test('clipBudget stays out of the resolved settings and the render identity', async (t) => {
   const { dir } = await setup(t);

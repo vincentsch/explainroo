@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { ProjectError, ServiceError } from './errors.js';
-import { createJob, decide, ensureIgnored, findJob, historyDir, jobKey, listAttempts, listJobs, placeOutput, projectWord, saveOutputFile, selfCommand, shortId, stopSentence, updateJob } from './history.js';
+import { createJob, decide, ensureIgnored, findJob, historyDir, jobKey, listAttempts, listJobs, placeOutput, projectWord, saveOutputFile, selfCommand, shortId, stopSentence, updateJob, withProjectLock } from './history.js';
 import { checkClipRequest, clipOptions, clipPrice } from './clip-price.js';
 import { probe } from './ffmpeg.js';
 import { clipOptionsText, localDay, serviceUrl, usd } from './services.js';
@@ -23,6 +23,8 @@ export const DEFAULT_RESOLUTION = '720p';
 // suggest reading the status about every 30 seconds. Tests set these shorter.
 const waitMs = () => Number(process.env.EXPLAINROO_CLIP_WAIT_MS) || 10 * 60 * 1000;
 const pollMs = () => Number(process.env.EXPLAINROO_CLIP_POLL_MS) || 30 * 1000;
+// How long a purchase waits for another one in the same project to claim its job.
+const lockWaitMs = () => Number(process.env.EXPLAINROO_CLIP_LOCK_MS) || 30 * 1000;
 const DOWNLOAD_TRIES = 3;
 // A partial download older than this was left by a run that died.
 const STALE_DOWNLOAD_MS = 60 * 60 * 1000;
@@ -379,21 +381,29 @@ async function buy(project, request, { fresh = false, maxCost, budget = null, dr
   // budget and no --max-cost, the cap is what is left of the budget.
   if (maxCost === undefined && !budget) throw new ProjectError('this costs money, so it needs --max-cost, or a budget for all clips with --budget or "clipBudget" in video.json. Ask the user how much they want to spend. --dry-run shows the price and spends nothing.');
   checkBudget(budget, maxCost);
-  const cap = maxCost ?? budget.budget_left_usd;
   const { model, price } = await quote(request);
-  if (price.usd > cap) {
-    if (maxCost === undefined) throw new ProjectError(`this clip costs about ${usd(price.usd)}, and ${usd(cap)} is left of ${budgetName(budget)}. Nothing was spent. Ask the user whether to raise the budget, or make the clip shorter or smaller.`);
-    throw new ProjectError(`this clip costs about ${usd(price.usd)}, which is above the cap of ${usd(maxCost)}. Nothing was spent. Ask the user whether to raise --max-cost, or make it shorter or smaller.`);
-  }
   openrouter.key(dir);
   serviceUrl(openrouter);
-  let job;
-  try {
-    job = createJob(dir, key, { kind: 'clip', provider: openrouter.id, attempt: decision.attempt, estimated_usd: price.usd, max_cost_usd: cap, ...(budget ? { budget_usd: budget.budget_usd } : {}), rate: { name: price.rate_name, usd_per_second: price.usd_per_second }, request });
-  } catch (e) {
-    if (e.code !== 'EEXIST') throw e;
-    throw stopped(listAttempts(dir, key).find((a) => a.attempt === decision.attempt), 'unknown');
-  }
+  // Another purchase in this project may run at the same moment. Under the lock the
+  // budget is read again and the job is claimed in one step, so the next purchase
+  // sees this one's estimate.
+  const seconds = Math.round(lockWaitMs() / 100) / 10;
+  const busy = () => new ProjectError(`another clip purchase is running in this project, and this one waited ${seconds} seconds for it to finish its check of the budget. Nothing was spent. Run the same command again once that one has gone out.`);
+  let job = await withProjectLock(dir, 'clip-purchase', () => {
+    const now = budget ? budgetState(project, budget.budget_usd, budget.budget_from) : null;
+    checkBudget(now, maxCost);
+    const cap = maxCost ?? now.budget_left_usd;
+    if (price.usd > cap) {
+      if (maxCost === undefined) throw new ProjectError(`this clip costs about ${usd(price.usd)}, and ${usd(cap)} is left of ${budgetName(now)}. Nothing was spent. Ask the user whether to raise the budget, or make the clip shorter or smaller.`);
+      throw new ProjectError(`this clip costs about ${usd(price.usd)}, which is above the cap of ${usd(maxCost)}. Nothing was spent. Ask the user whether to raise --max-cost, or make it shorter or smaller.`);
+    }
+    try {
+      return createJob(dir, key, { kind: 'clip', provider: openrouter.id, attempt: decision.attempt, estimated_usd: price.usd, max_cost_usd: cap, ...(now ? { budget_usd: now.budget_usd } : {}), rate: { name: price.rate_name, usd_per_second: price.usd_per_second }, request });
+    } catch (e) {
+      if (e.code !== 'EEXIST') throw e;
+      throw stopped(listAttempts(dir, key).find((a) => a.attempt === decision.attempt), 'unknown');
+    }
+  }, { waitMs: lockWaitMs(), busy });
   const body = {
     model: request.model,
     prompt: request.prompt,
