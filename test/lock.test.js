@@ -222,7 +222,8 @@ test('two runs that renew a login while an old lock is left behind send one rene
   t.after(() => { process.env.EXPLAINROO_CONFIG = before; });
   const file = path.join(temp(t), '.env');
   fs.writeFileSync(file, `TEST_REFRESH=first\nTEST_ACCESS=old\nTEST_EXPIRES=${new Date(Date.now() - 1000).toISOString()}\n`);
-  const lock = path.join(config, 'locks', crypto.createHash('sha256').update(path.resolve(file)).digest('hex').slice(0, 16));
+  const { fileKey } = await import('../src/lock.js');
+  const lock = path.join(config, 'locks', crypto.createHash('sha256').update(fileKey(file)).digest('hex').slice(0, 16));
   fs.mkdirSync(lock, { recursive: true });
   const gone = spawnSync(process.execPath, ['-e', '']).pid;
   fs.writeFileSync(path.join(lock, `held-by-${gone}-0123456789abcdef`), `${gone}\n`);
@@ -238,4 +239,64 @@ test('two runs that renew a login while an old lock is left behind send one rene
   assert.deepEqual(sent, ['first']);
   assert.match(fs.readFileSync(file, 'utf8'), /^TEST_REFRESH=second$/m);
   assert.deepEqual(fs.readdirSync(path.join(config, 'locks')), []);
+});
+
+// Two ways to write the path of one file must lead to one lock: through a link, and
+// on Windows and macOS, whose disks usually don't tell letter case apart, in
+// another case.
+test('the lock of a file goes by its real path: a link to it or to its folder leads to the same one, and on Windows and macOS so does another letter case', async (t) => {
+  const { fileKey } = await import('../src/lock.js');
+  const real = fs.realpathSync(temp(t));
+  fs.mkdirSync(path.join(real, 'project'));
+  fs.writeFileSync(path.join(real, 'project/.env'), 'A=1\n');
+  const folderLink = path.join(real, 'link-to-project');
+  fs.symlinkSync(path.join(real, 'project'), folderLink, 'dir');
+  const fileLink = path.join(real, 'link.env');
+  fs.symlinkSync(path.join(real, 'project/.env'), fileLink);
+  const key = fileKey(path.join(real, 'project/.env'));
+  assert.equal(key, path.join(real, 'project/.env'));
+  for (const alias of [path.join(folderLink, '.env'), fileLink, path.join(real, 'project/../project/./.env')]) assert.equal(fileKey(alias), key, alias);
+  // A file that isn't there yet goes by the real path of its folder.
+  assert.equal(fileKey(path.join(folderLink, 'assets/new.png')), path.join(real, 'project/assets/new.png'));
+  // A step that replaces whatever is at a place locks that place, not where a link there points.
+  assert.equal(fileKey(fileLink, { follow: false }), fileLink);
+  assert.equal(fileKey(path.join(folderLink, '.env'), { follow: false }), key);
+  // Letter case counts only where the disk usually tells it apart.
+  const upper = path.join(real, 'project/Assets/Hero.PNG');
+  const lower = path.join(real, 'project/assets/hero.png');
+  for (const platform of ['win32', 'darwin']) assert.equal(fileKey(upper, { platform }), fileKey(lower, { platform }), platform);
+  assert.notEqual(fileKey(upper, { platform: 'linux' }), fileKey(lower, { platform: 'linux' }));
+  // macOS also takes an é written as one letter or as e with an accent for the same name.
+  assert.equal(fileKey(path.join(real, 'caf\u00e9.png'), { platform: 'darwin' }), fileKey(path.join(real, 'cafe\u0301.png'), { platform: 'darwin' }));
+});
+
+// A link to the .env file used to get a lock of its own, so two runs renewed the
+// same login at once and Buffer ended it.
+test('runs that renew one login through links to its .env file send one renewal', async (t) => {
+  const { rotatingAccessToken } = await import('../src/oauth.js');
+  const config = temp(t);
+  const before = process.env.EXPLAINROO_CONFIG;
+  process.env.EXPLAINROO_CONFIG = config;
+  t.after(() => { process.env.EXPLAINROO_CONFIG = before; });
+  const real = temp(t);
+  const file = path.join(real, '.env');
+  fs.writeFileSync(file, `TEST_REFRESH=first\nTEST_ACCESS=old\nTEST_EXPIRES=${new Date(Date.now() - 1000).toISOString()}\n`);
+  const folderLink = path.join(temp(t), 'project');
+  fs.symlinkSync(real, folderLink, 'dir');
+  const fileLink = path.join(temp(t), '.env');
+  fs.symlinkSync(file, fileLink);
+  const sent = [];
+  const refresh = async (token) => {
+    sent.push(token);
+    await sleep(200);
+    return { ok: true, json: { access_token: `new-${sent.length}`, refresh_token: `second-${sent.length}`, expires_in: 3600 } };
+  };
+  const names = { refresh: 'TEST_REFRESH', access: 'TEST_ACCESS', expires: 'TEST_EXPIRES' };
+  const renew = (at) => rotatingAccessToken({ source: { file: at }, names, refresh, name: 'Test', command: 'explainroo connect test' });
+  assert.deepEqual(await Promise.all([file, path.join(folderLink, '.env'), fileLink].map(renew)), ['new-1', 'new-1', 'new-1']);
+  assert.deepEqual(sent, ['first']);
+  assert.match(fs.readFileSync(file, 'utf8'), /^TEST_REFRESH=second-1$/m);
+  assert.equal(fs.lstatSync(fileLink).isSymbolicLink(), true, 'the link stays a link');
+  assert.deepEqual(fs.readdirSync(path.join(config, 'locks')), []);
+  assert.deepEqual(fs.readdirSync(path.join(config, 'renewals')), []);
 });

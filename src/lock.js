@@ -132,6 +132,40 @@ export function secondsWords(ms) {
   return `${seconds} second${seconds === 1 ? '' : 's'}`;
 }
 
+// The same name for every way to write the path of one file: links are followed,
+// and on Windows and macOS, whose disks usually don't tell letter case apart, case
+// doesn't count either. A file that doesn't exist yet gets the real path of the
+// nearest folder above it that does. With `follow: false` a link at the end keeps
+// its own name, for a step that replaces whatever is at that place in its folder.
+export function fileKey(file, { follow = true, platform = process.platform } = {}) {
+  const full = path.resolve(file);
+  let at = follow ? full : path.dirname(full);
+  const rest = follow || at === full ? [] : [path.basename(full)];
+  for (;;) {
+    let real = null;
+    for (const resolve of [fs.realpathSync.native, fs.realpathSync]) {
+      try {
+        real = resolve(at);
+        break;
+      } catch {}
+    }
+    if (real !== null) {
+      at = path.join(real, ...rest);
+      break;
+    }
+    const up = path.dirname(at);
+    if (up === at) {
+      at = path.join(at, ...rest);
+      break;
+    }
+    rest.unshift(path.basename(at));
+    at = up;
+  }
+  // Two names that the disk may take for the same file share a lock. Two that it
+  // keeps apart and share one anyway only wait for each other.
+  return platform === 'win32' || platform === 'darwin' ? at.normalize('NFC').toUpperCase().toLowerCase() : at;
+}
+
 function ignore(fn, codes) {
   try {
     fn();

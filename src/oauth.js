@@ -16,7 +16,7 @@ import path from 'node:path';
 import { readEnvFile, saveKeys } from './env.js';
 import { ProjectError, rememberSecret } from './errors.js';
 import { configRoot } from './models.js';
-import { secondsWords, withLock } from './lock.js';
+import { fileKey, secondsWords, withLock } from './lock.js';
 
 // Retry-After holds seconds or a date.
 function waitWords(value) {
@@ -146,9 +146,10 @@ export function expiresAt(json, now = Date.now()) {
   return new Date(now + (Number.isFinite(seconds) && seconds > 0 ? seconds : 3600) * 1000).toISOString();
 }
 
-// One short name per .env file, for its lock and its renewal mark.
+// One short name per .env file, for its lock and its renewal mark. It comes from
+// the real path, so a link to the file or another letter case shares them.
 function fileId(file) {
-  return crypto.createHash('sha256').update(path.resolve(file)).digest('hex').slice(0, 16);
+  return crypto.createHash('sha256').update(fileKey(file)).digest('hex').slice(0, 16);
 }
 
 function lockFile(file) {

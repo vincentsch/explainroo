@@ -19,7 +19,7 @@ import { ProjectError, hideSecrets } from './errors.js';
 import { findService, localTime } from './services.js';
 import { LANGUAGES } from './models.js';
 import { isSize } from './project.js';
-import { secondsWords, withLock, withLockSync } from './lock.js';
+import { fileKey, secondsWords, withLock, withLockSync } from './lock.js';
 
 const BIN = fileURLToPath(new URL('../bin/explainroo.js', import.meta.url));
 const JOB_FILE = /^([0-9a-f]+)(?:\.(\d+))?\.json$/;
@@ -308,9 +308,10 @@ function placeBusy(words) {
 }
 
 // Puts a job's output under its public name. Whatever is there moves aside first,
-// and so do the other files in `others`.
+// and so do the other files in `others`. The lock goes by the real places of those
+// files, so two names that the disk takes for the same file share it.
 export function placeOutput(dir, { key, attempt }, others = []) {
-  return withNameLock(dir, others.join() || key, () => {
+  return withNameLock(dir, others.map((other) => fileKey(path.join(dir, other), { follow: false })).join('\n') || key, () => {
     const job = listAttempts(dir, key).find((a) => a.attempt === attempt);
     const source = goodOutput(dir, job);
     const { name } = job.output;
