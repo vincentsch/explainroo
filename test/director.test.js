@@ -314,3 +314,53 @@ test("an arrow's label does not count on its own when a scene continues the one 
   const one = [card(200), card(780), arrow(470)].map((e) => ({ ...e, at: -1 }));
   assert.ok(continues(two, one, { x0: 0, y0: 0, x1: 1920, y1: 1080 }));
 });
+
+// The learn scene of a video about vaccines, as the camera measured it: two
+// steps joined by an arrow, then "B cells" with an arrow from the second step
+// and a line of text under it.
+const learn = () => [
+  centered('shape', 600, 300, 368, 182, 0.93, Infinity, { id: 'find' }),
+  centered('shape', 1320, 300, 436, 182, 2.39, Infinity, { id: 'show' }),
+  centered('arrow', 943, 300, 290, 0, 2.39, Infinity, { serial: 1, ends: ['find', 'show'], tips: [[798, 300], [1088, 300]] }),
+  centered('shape', 600, 680, 228, 102, 4.34, Infinity, { id: 'b' }),
+  centered('arrow', 922, 510, 398, 210, 4.34, Infinity, { serial: 2, ends: ['show', 'b'], tips: [[1121, 405], [723, 615]] }),
+  centered('text', 600, 791, 299, 43, 5.52),
+];
+
+test('a close-up takes in whole the arrows to what it shows, or the camera stays wide', () => {
+  const plan = planCamera(learn(), { dur: 13.2, view, frame, voiceEnd: 12 });
+  const arrow = learn()[4];
+  for (let t = 4.4; t < 13.1; t += 0.1) {
+    if (cameraMoving(plan, t)) continue;
+    const r = frameRect(cameraAt(plan, t), view, frame);
+    const b = { x0: arrow.box.x - arrow.box.w / 2, x1: arrow.box.x + arrow.box.w / 2, y0: arrow.box.y - arrow.box.h / 2, y1: arrow.box.y + arrow.box.h / 2 };
+    const partly = !(b.x0 >= r.x0 - 1 && b.x1 <= r.x1 + 1 && b.y0 >= r.y0 - 1 && b.y1 <= r.y1 + 1) && !(b.x1 <= r.x0 || b.x0 >= r.x1 || b.y1 <= r.y0 || b.y0 >= r.y1);
+    assert.ok(!partly, `t=${t.toFixed(1)}: the arrow to "B cells" runs out of the shot ${JSON.stringify(r)}`);
+  }
+  // Without the ids and ends it is a loose arrow, and the camera moves in on
+  // the text under "B cells" as before.
+  const loose = learn().map(({ id, ends, tips, ...e }) => e);
+  const before = planCamera(loose, { dur: 13.2, view, frame, voiceEnd: 12 });
+  assert.ok(before.moves.some((m) => m.to.z > 2), JSON.stringify(before.moves.map((m) => m.to)));
+});
+
+test('a close-up takes in the mark around what it shows', () => {
+  const card = centered('shape', 600, 500, 300, 160, 0.5, Infinity, { id: 'card' });
+  const far = centered('shape', 1500, 500, 300, 160, 0.5);
+  const text = centered('text', 600, 640, 260, 50, 3.2);
+  const mark = centered('annotate', 600, 500, 380, 230, 3.2, Infinity, { ends: ['card'], around: { x: 600, y: 500, w: 300, h: 160 } });
+  const plan = planCamera([card, far, text, mark], { dur: 12, view, frame, voiceEnd: 10 });
+  const push = plan.moves.find((m) => m.to.z > m.from.z * 1.2);
+  assert.ok(push, JSON.stringify(plan.moves));
+  assert.ok(whole(push.to, mark), `the mark is whole in the close-up: ${JSON.stringify(push.to)}`);
+  // A mark is never a subject of its own.
+  assert.equal(planCamera([mark], { dur: 5, view, frame }), null);
+});
+
+test('camera: false keeps the camera from moving to an element', () => {
+  const picture = [centered('text', 960, 160, 800, 100, 0.2), centered('shape', 300, 550, 300, 300, 0.2), centered('shape', 1620, 550, 300, 300, 0.2)];
+  const card = centered('shape', 960, 600, 300, 160, 3);
+  const pushes = (plan) => plan.moves.filter((m) => m.start > 2 && m.start < 4.5 && m.to.z > m.from.z * 1.2);
+  assert.equal(pushes(planCamera([...picture, card], { dur: 12, view, frame, voiceEnd: 11 })).length, 1);
+  assert.deepEqual(pushes(planCamera([...picture, { ...card, camera: false }], { dur: 12, view, frame, voiceEnd: 11 })), []);
+});

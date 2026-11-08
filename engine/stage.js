@@ -297,10 +297,14 @@ export class Stage {
       if (sc !== 1 || rad) box = { ...box, w: (Math.abs(box.w * Math.cos(rad)) + Math.abs(box.h * Math.sin(rad))) * sc, h: (Math.abs(box.w * Math.sin(rad)) + Math.abs(box.h * Math.cos(rad))) * sc };
       // _pendingExtra is already measured with the element's transform.
       if (this._pendingExtra) box = unionBox(box, this._pendingExtra);
-      this._attach(kind, at, out, box, this._pendingInfo);
+      // Its id tells the camera which arrows and marks belong to it, and
+      // camera: false keeps the camera from moving to it.
+      const info = { ...this._pendingInfo, ...(this._pendingId !== null && this._pendingId !== undefined ? { id: String(this._pendingId) } : {}), ...(o.camera === false ? { camera: false } : {}) };
+      this._attach(kind, at, out, box, info);
       this._pendingBox = null;
       this._pendingExtra = null;
       this._pendingInfo = null;
+      this._pendingId = null;
     }
     if (this._suppress > 0) return null;
     if (this.t < at) return null;
@@ -463,15 +467,18 @@ export class Stage {
     if (id !== undefined && id !== null) this._ids.set(String(id), box);
     // While the camera is planned, the next _life call gives this box its
     // timing.
-    if (this.engine.layoutLog) this._pendingBox = box;
+    if (this.engine.layoutLog) {
+      this._pendingBox = box;
+      this._pendingId = id;
+    }
     return box;
   }
 
   // Records an element's place and timing for the automatic camera. x, y is
   // the center in local coordinates.
-  _logLayout(kind, at, out, x, y, w, h) {
+  _logLayout(kind, at, out, x, y, w, h, extra = null) {
     if (!this.engine.layoutLog) return;
-    this._attach(kind, at, out, this._designBox(x, y, w, h));
+    this._attach(kind, at, out, this._designBox(x, y, w, h), extra);
   }
 
   // A box inside an element drawn at (ax, ay), in scene coordinates, with
@@ -1075,7 +1082,7 @@ export class Stage {
       const ys = pts.map((p) => p[1]);
       // A line thick enough to read as a bar is a shape the camera keeps whole.
       const thick = (o.width ?? th.stroke.width) >= 10;
-      this._logLayout(thick ? 'shape' : 'line', this.time(o.at ?? 0), o.out === undefined ? Infinity : this.time(o.out), (Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2, Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+      this._logLayout(thick ? 'shape' : 'line', this.time(o.at ?? 0), o.out === undefined ? Infinity : this.time(o.out), (Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2, Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), o.camera === false ? { camera: false } : null);
     }
     if (!life) return;
     this.ctx.save();
@@ -1099,7 +1106,7 @@ export class Stage {
         const xs = pts.map((q) => q[0] + (o.x ?? 0));
         const ys = pts.map((q) => q[1] + (o.y ?? 0));
         // A closed or filled path is a shape; an open one is a line.
-        this._logLayout(/z/i.test(d) || o.fill ? 'shape' : 'line', this.time(o.at ?? 0), o.out === undefined ? Infinity : this.time(o.out), (Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2, Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+        this._logLayout(/z/i.test(d) || o.fill ? 'shape' : 'line', this.time(o.at ?? 0), o.out === undefined ? Infinity : this.time(o.out), (Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2, Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), o.camera === false ? { camera: false } : null);
       }
     }
     if (!life) return;
@@ -1137,7 +1144,10 @@ export class Stage {
       const ys = [a.y, b.y, c.y];
       const at = this.time(o.at ?? 0);
       const out = o.out === undefined ? Infinity : this.time(o.out);
-      this._logLayout('arrow', at, out, (Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2, Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+      // What it points at, so a shot that moves to one of them takes the arrow in.
+      const ends = [typeof from === 'string' ? from : null, typeof to === 'string' ? to : null];
+      const tips = this._designPoints([[a.x, a.y], [b.x, b.y]]);
+      this._logLayout('arrow', at, out, (Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2, Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), { serial, ends, tips });
       // The line may run off the edge of a close-up, but its label is text,
       // so the camera keeps it whole. A label outside the frame is never
       // seen, so the camera leaves it alone.
@@ -1145,7 +1155,7 @@ export class Stage {
         const label = this._arrowLabel(o, d, a, b, bend);
         const box = this._textExtent([{ text: String(o.label), x: label.x, y: label.y, font: label.font }]);
         const seen = box.x + box.w / 2 > 0 && box.x - box.w / 2 < this.W && box.y + box.h / 2 > 0 && box.y - box.h / 2 < this.H;
-        if (seen) this._attach('label', at, out, box);
+        if (seen) this._attach('label', at, out, box, { serial });
       }
     }
     const result = { from: a, to: b, control: c };

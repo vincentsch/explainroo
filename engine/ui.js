@@ -269,7 +269,7 @@ export class UI {
     const a = this.at(o.at ?? 0);
     const dur = o.dur ?? 0.6;
     this._enter(a, dur, o.sfx);
-    s._logLayout('panel', a, o.out === undefined ? Infinity : this.at(o.out), x + w / 2, y + h / 2, w, h);
+    s._logLayout('panel', a, o.out === undefined ? Infinity : this.at(o.out), x + w / 2, y + h / 2, w, h, o.camera === false ? { camera: false } : null);
     if (s.t < a) return 0;
     const p = clamp((s.t - a) / (dur / s.pace));
     const q = o.out !== undefined ? this._p(o.out, o.outDur ?? 0.35, 'in') : 0;
@@ -530,7 +530,7 @@ export class UI {
     const total = widths.reduce((a, b) => a + b, 0) + space * (tokens.length - 1);
     let cx = o.align === 'left' ? x : o.align === 'right' ? x - total : x - total / 2;
     const a = this.at(o.at ?? 0);
-    s._logLayout('headline', a, o.out === undefined ? Infinity : this.at(o.out), cx + total / 2, y - size * 0.35, total, size * 1.1);
+    s._logLayout('headline', a, o.out === undefined ? Infinity : this.at(o.out), cx + total / 2, y - size * 0.35, total, size * 1.1, o.camera === false ? { camera: false } : null);
     const stagger = (o.stagger ?? 0.07) / s.pace;
     const dur = (o.dur ?? 0.7) / s.pace;
     this._enter(a, dur + stagger * tokens.length, o.sfx);
