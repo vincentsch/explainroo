@@ -96,7 +96,8 @@ steps(s) {
 `"captions": "auto"` follows the size too, so the 16:9 video has no captions
 and the tall one has them, unless `"captions"` says otherwise.
 [examples/merge-vs-rebase](https://github.com/vincentsch/explainroo/tree/main/examples/merge-vs-rebase)
-works in `9:16` and in `youtube`.
+works in `9:16` and in `youtube`. The examples also come with the package,
+and `explainroo doctor` prints their folder.
 
 For every size, run `check --size <size>` and look at
 `sheet --size <size>`. Fix cut-off text and overlaps. Then run

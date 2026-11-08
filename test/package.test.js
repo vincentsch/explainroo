@@ -44,12 +44,28 @@ test('the package holds what an installed copy needs', () => {
 
 test('the package holds nothing else, and no .env anywhere', () => {
   const files = JSON.parse(pack.stdout)[0].files.map((f) => f.path.split(path.sep).join('/'));
-  const allowed = new Set(['bin', 'src', 'engine', 'fonts', 'templates', 'skills', 'docs', 'AGENTS.md', 'CLAUDE.md', 'README.md', 'LICENSE', 'package.json']);
+  const allowed = new Set(['bin', 'src', 'engine', 'fonts', 'templates', 'skills', 'docs', 'examples', 'AGENTS.md', 'CLAUDE.md', 'README.md', 'LICENSE', 'package.json']);
   assert.deepEqual(files.filter((f) => !allowed.has(f.split('/')[0])), []);
   // Only pages directly under docs/. Pictures and other folders stay out.
   assert.deepEqual(files.filter((f) => f.startsWith('docs/') && !/^docs\/[^/]+\.md$/.test(f)), []);
-  assert.deepEqual(files.filter((f) => /^(docs\/media|examples|videos|test|scratchpad|\.scratch)(\/|$)/.test(f)), []);
+  assert.deepEqual(files.filter((f) => /^(docs\/media|videos|test|scratchpad|\.scratch)(\/|$)/.test(f)), []);
   assert.deepEqual(files.filter((f) => /(^|\/)\.env/.test(f)), []);
+});
+
+// The examples' sources come along, so an agent can read them without the
+// repository, and nothing that a render or a purchase makes.
+test('the package has the sources and assets of every example, and no build, out or history', () => {
+  const files = JSON.parse(pack.stdout)[0].files.map((f) => f.path.split(path.sep).join('/'));
+  const examples = fs.readdirSync(path.join(root, 'examples')).filter((name) => fs.existsSync(path.join(root, 'examples', name, 'video.json')));
+  assert.ok(examples.length >= 10);
+  for (const name of examples) {
+    for (const file of ['video.json', 'script.md', 'scenes.js']) assert.ok(files.includes(`examples/${name}/${file}`), `${name}/${file}`);
+  }
+  for (const file of ['examples/unspar-demo/assets/unspar-logo.svg', 'examples/leap-years-de/assets/narration.m4a', 'examples/callbacks-to-async-await/code-versions.js']) assert.ok(files.includes(file), file);
+  assert.deepEqual(files.filter((f) => /^examples\/[^/]+\/(build|out|history)\//.test(f)), []);
+  assert.deepEqual(files.filter((f) => f.startsWith('examples/') && !/^examples\/[^/]+\/(video\.json|script[^/]*\.md|strings[^/]*\.json|[^/]+\.js|README\.md|assets\/.+)$/.test(f)), []);
+  // Under 2 MB packed.
+  assert.ok(JSON.parse(pack.stdout)[0].size < 2 * 1024 * 1024, String(JSON.parse(pack.stdout)[0].size));
 });
 
 test('the description promises what a free local copy does', () => {

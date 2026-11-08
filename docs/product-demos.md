@@ -6,7 +6,8 @@ The table at the end lists what it draws. A mouse pointer clicks through the
 screens and types into the fields, and the camera zooms in on what the voice
 talks about.
 [examples/unspar-demo](https://github.com/vincentsch/explainroo/tree/main/examples/unspar-demo)
-is a complete one.
+is a complete one. The examples also come with the package, and
+`explainroo doctor` prints their folder.
 
 ## Capture the live site first
 

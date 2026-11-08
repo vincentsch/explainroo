@@ -16,7 +16,7 @@ import { checkLanguage, normalizeConfig, ProjectError } from './project.js';
 import { allOf, voiceProviders } from './services.js';
 import { ROOT } from './server.js';
 
-// The examples live in the repository, and the package leaves them out.
+// The examples come with the package. A copy without them can still read them here.
 const EXAMPLES_URL = 'https://github.com/vincentsch/explainroo/tree/main/examples';
 
 export const DEFAULT_SETUP = [{ language: 'en', voice: LANGUAGES.en }];
@@ -239,7 +239,7 @@ export async function doctor({ project = null, language = null, fetch = false, l
   // Where this copy of explainroo is, for reading its engine/ and docs/, and its examples.
   rows.push({ name: 'runs from', ok: true, info: true, detail: ROOT });
   const examples = path.join(ROOT, 'examples');
-  rows.push({ name: 'examples', ok: true, info: true, detail: fs.existsSync(examples) ? examples : `not in the installed package; they are at ${EXAMPLES_URL}` });
+  rows.push({ name: 'examples', ok: true, info: true, detail: fs.existsSync(examples) ? examples : `not in this copy; they are at ${EXAMPLES_URL}` });
 
   return {
     ok: rows.every((r) => r.ok || !r.fails),

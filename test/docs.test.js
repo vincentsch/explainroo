@@ -290,7 +290,7 @@ test('the publishing page covers each route, the logins, the pairs, privacy, the
   ]) assert.ok(post.includes(words), words);
 });
 
-test('the instructions link to examples on GitHub, because the package has none', () => {
+test('the instructions link to examples on GitHub, and say that the package has them where doctor says', () => {
   for (const file of ['AGENTS.md', ...topics.map((t) => `docs/${t}.md`)]) {
     const text = fs.readFileSync(path.join(root, file), 'utf8');
     const links = /\[[^\]]*\]\(https:\/\/github\.com\/vincentsch\/explainroo\/tree\/main\/examples[^)]*\)/g;
@@ -298,6 +298,7 @@ test('the instructions link to examples on GitHub, because the package has none'
   }
   const all = [start, ...topics.map(page)].join('\n');
   for (const example of ['examples)', 'examples/merge-vs-rebase)', 'examples/unspar-demo)']) assert.ok(all.includes(`https://github.com/vincentsch/explainroo/tree/main/${example}`), example);
+  for (const topic of ['sizes', 'product-demos', 'languages']) assert.ok(oneLine(page(topic)).includes('The examples also come with the package, and `explainroo doctor` prints their folder.'), topic);
 });
 
 // The anchor GitHub gives a heading.

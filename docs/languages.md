@@ -222,7 +222,8 @@ sie." stays two sentences. Where the rule gets it wrong, write `{3.|dritten}`
 or add a `[pause]`.
 
 [examples/leap-years-de](https://github.com/vincentsch/explainroo/tree/main/examples/leap-years-de)
-is a German video made from a recording.
+is a German video made from a recording. The examples also come with the
+package, and `explainroo doctor` prints their folder.
 
 For a German version of a video in another language, add `script.de.md` and
 give German its own voice under `"languages"`:

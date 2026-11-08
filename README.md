@@ -304,7 +304,8 @@ Then ask your agent for a video in any folder, for example "Make a 60 second
 video about how HTTPS keeps a password secret. Use explainroo: run
 npx --yes explainroo docs and follow what it prints." The agent saves the
 video in its project folder as `out/video.mp4`. The example videos are in
-[examples/](examples/), and the full documentation is on
+[examples/](examples/), and their sources come with the package too, in the
+folder that `explainroo doctor` prints. The full documentation is on
 [explainroo.com](https://www.explainroo.com/docs/).
 
 Your agent can also keep explainroo as a plugin or skill, so it knows the tool
