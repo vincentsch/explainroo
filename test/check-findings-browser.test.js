@@ -198,15 +198,26 @@ test('the hint about a word spoken twice names "word#1" and "word#2", and "word#
   assert.deepEqual(issues.filter((i) => i.level === 'error'), []);
 });
 
-test('a cue that is not in the narration is one error, without "nothing enters" or other findings for the rest of the scene', { skip }, async (t) => {
+test('a cue that is not in the narration is one error, and check goes on with the scene\'s other findings, with that cue at the scene start', { skip }, async (t) => {
   const issues = await check(project(t, { language: 'fr' }, {
-    arc: "s.text('Arc', { x: 960, y: 540, at: 'soleil' });",
+    arc: "s.text('Arc', { x: 960, y: 540, at: 'soleil' }); s.text('Loin', { x: 2100, y: 300, at: 'ombre' });",
+    // Measured at the scene start, the text at the missing cue overlaps the one that is there from 0.
+    early: "s.text('Lune', { x: 960, y: 540, at: 0 }); s.text('Lune', { x: 980, y: 545, at: 'soleil' }); s.text('Marque', { y: 800, at: '#absent' });",
     ombre: "s.text('Ombre', { x: 960, y: 540, at: 'ombre' });",
-  }, { words: { arc: ['Autour', "de", "l'ombre."], ombre: ['Autour', "de", "l'ombre."] } }));
+  }, { words: { arc: ['Autour', 'de', "l'ombre."], early: ['Autour', 'de', "l'ombre."], ombre: ['Autour', 'de', "l'ombre."] } }));
   const arc = issues.filter((i) => i.scene === 'arc');
-  assert.equal(arc.length, 1, JSON.stringify(issues));
-  assert.match(arc[0].message, /cue\("soleil"\) is not in the narration of scene "arc"/);
-  assert.equal(arc[0].level, 'error');
+  assert.deepEqual(arc.map((i) => i.level), ['error', 'error'], JSON.stringify(arc));
+  assert.match(arc.find((i) => i.message.startsWith('cue')).message, /^cue\("soleil"\) is not in the narration of scene "arc"/);
+  assert.match(arc.find((i) => !i.message.startsWith('cue')).message, /^"Loin" runs off the frame/);
+  assert.ok(!issues.some((i) => /nothing enters/.test(i.message)), JSON.stringify(issues));
+  const early = issues.filter((i) => i.scene === 'early');
+  assert.deepEqual(early.map((i) => `${i.level} ${i.message.split('.')[0]}`).sort(), [
+    'error "Lune" overlaps "Lune"',
+    'error cue("soleil") is not in the narration of scene "early"',
+    'error mark("absent") is not in scene "early"',
+  ]);
+  // Both are on screen as soon as they have risen in, so the second one is measured from 0.
+  assert.ok(early.find((i) => i.message.includes('overlaps')).t < 1);
   // "ombre" finds "l'ombre", so that scene has no error.
   assert.deepEqual(issues.filter((i) => i.scene === 'ombre' && i.level === 'error'), []);
 });

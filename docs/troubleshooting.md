@@ -95,6 +95,9 @@ It also finds:
 - a cover with only text on an empty background
 - text with a background but no words
 - a `lift` above 2 in `s.ui`
+- a cue or a `#marker` that isn't in the narration. That is an error, and
+  `check` goes on with the rest of the scene as if the cue were at the scene
+  start, so one run shows all of its findings
 
 It does not see drawings made with `s.draw` or straight on `s.ctx`. Look at
 the stills for those.

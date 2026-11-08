@@ -721,6 +721,9 @@ export class Engine {
     const onScreen = (b) => b.x1 > 0 && b.y1 > 0 && b.x0 < W && b.y0 < H;
     const inFrame = (b) => b.x0 >= -1 && b.y0 >= -1 && b.x1 <= W + 1 && b.y1 <= H + 1;
     this.cueNotes = [];
+    // A cue that isn't in the narration is an error, and the rest of its scene is
+    // measured with the cue at the scene start.
+    this.cueErrors = new Map();
     this.soundsPlayed = new Map();
     for (const sc of this.timeline.scenes) {
       const entrances = [];
@@ -873,6 +876,9 @@ export class Engine {
         }
       }
       this.drawLog = null;
+      for (const [message, where] of this.cueErrors) {
+        if (where.scene === sc.id) once(`err:${sc.id}:${message}`, () => add('error', sc.id, where.t, message));
+      }
       // Text is judged at the smallest size it is shown at: the size the
       // camera leaves it at when it shows the whole picture, or smaller where
       // the scene zooms out itself.
@@ -937,6 +943,7 @@ export class Engine {
       add('hint', c.scene, null, `cue "${c.word}" means the first of the ${c.count} times it is spoken in this scene; write "${c.word}#1" if you mean the first time, or "${c.word}#2" for a later one`);
     }
     this.cueNotes = null;
+    this.cueErrors = null;
     for (const { scene, t, tex } of this.lateMath.values()) add('error', scene, t, `math "${tex}" was not collected at the start; keep TeX strings fixed and always call s.math with at and out for timing`);
     return issues;
   }

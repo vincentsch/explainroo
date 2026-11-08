@@ -151,16 +151,16 @@ export class Stage {
     const hash = written.lastIndexOf('#');
     const counted = hash > 0 && /^\d+$/.test(written.slice(hash + 1)) && written.slice(0, hash).trim() ? Number(written.slice(hash + 1)) : null;
     const word = counted === null ? written : written.slice(0, hash);
-    if (counted === 0) throw new SceneError(`cue("${written}"): the number after # counts from 1, so "${word.trim()}#1" is the first time it is spoken`);
-    if (counted !== null && given !== undefined && given !== counted) throw new SceneError(`cue("${written}", ${given}) names two different times; write "${word.trim()}#${given}" or cue("${word.trim()}", ${given})`);
+    if (counted === 0) return this._noCue(`cue("${written}"): the number after # counts from 1, so "${word.trim()}#1" is the first time it is spoken`);
+    if (counted !== null && given !== undefined && given !== counted) return this._noCue(`cue("${written}", ${given}) names two different times; write "${word.trim()}#${given}" or cue("${word.trim()}", ${given})`);
     const n = counted ?? given ?? 1;
     // A number that is written, here or as an argument, means that time on purpose.
     const meant = counted !== null || given !== undefined;
     const cjk = ['ja', 'zh'].includes(this.engine.config.language);
     const want = (cjk ? [word] : word.split(/\s+/)).map(normWord).filter(Boolean);
-    if (!want.length) throw new SceneError(`cue("${written}") is empty`);
+    if (!want.length) return this._noCue(`cue("${written}") is empty`);
     const ws = this.words;
-    if (!ws.length) throw new SceneError(`cue("${written}"): scene "${this.id}" has no narration`);
+    if (!ws.length) return this._noCue(`cue("${written}"): scene "${this.id}" has no narration`);
     const norms = ws.map((w) => normWord(w.text));
     const search = (forms) => {
       let count = 0;
@@ -196,15 +196,24 @@ export class Stage {
     const hint = suggest(want[0], [...new Set(norms)], 6).join(', ');
     // Each language says other words, so a cue that works in one fails in another.
     const several = this.engine.state?.text?.languages ? ' Word cues differ between languages, so a scene that every language draws is safer with the same [#marker] in each script.' : '';
-    throw new SceneError(`cue("${written}"${counted === null && n > 1 ? `, ${n}` : ''}) is not in the narration of scene "${this.id}"${count}. Close words: ${hint}${several ? `.${several}` : ''}`);
+    return this._noCue(`cue("${written}"${counted === null && n > 1 ? `, ${n}` : ''}) is not in the narration of scene "${this.id}"${count}. Close words: ${hint}${several ? `.${several}` : ''}`);
   }
 
   mark(name) {
     if (!(name in this.marks)) {
       const names = Object.keys(this.marks);
-      throw new SceneError(`mark("${name}") is not in scene "${this.id}". ${names.length ? 'Marks: ' + names.join(', ') : `Add [#${name}] to the narration in ${this.engine.state?.text?.files?.script ?? 'script.md'}.`}`);
+      return this._noCue(`mark("${name}") is not in scene "${this.id}". ${names.length ? 'Marks: ' + names.join(', ') : `Add [#${name}] to the narration in ${this.engine.state?.text?.files?.script ?? 'script.md'}.`}`).start;
     }
     return this.marks[name];
+  }
+
+  // A cue or a marker that isn't there. check notes it as an error and measures
+  // the rest of the scene with the cue at the scene start. Anything else stops.
+  _noCue(message) {
+    const lost = this.engine.cueErrors;
+    if (!lost) throw new SceneError(message);
+    if (!lost.has(message)) lost.set(message, { scene: this.id, t: this.t });
+    return { start: 0, end: 0 };
   }
 
   // Accepts seconds, "#mark" or a spoken word/phrase.
