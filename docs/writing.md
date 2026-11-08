@@ -51,6 +51,26 @@ something to a friend at a table.
 - Lists read aloud ("A, B, C and D") only work when each item appears on
   screen.
 
+## Other languages
+
+The rules above count in every language, but the filler words they name are
+English. Leave out the same kind of word in the language of the video. The
+estimate counts about 13 letters a second for every language with an
+alphabet, so how many words fit in a minute depends on how long its words
+are. For ordinary narration at the default speed, that is about:
+
+| Language | Words a minute | Filler words to leave out |
+| --- | --- | --- |
+| English | 165 to 200 | just, simply, really, actually |
+| Spanish | 175 | realmente, simplemente, básicamente |
+| French | 160 | vraiment, simplement, juste |
+| Italian | 180 | davvero, semplicemente, praticamente |
+| Brazilian Portuguese | 185 | realmente, simplesmente, basicamente |
+| German | 135 | eigentlich, einfach, wirklich |
+
+For Hindi the estimate counts 150 words a minute, for Japanese 300 characters
+and for Chinese 230. `voice --estimate` gives the figure for your own script.
+
 ## Script syntax
 
 ```markdown

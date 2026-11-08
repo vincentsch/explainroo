@@ -29,7 +29,8 @@ A Kokoro voice must match the video's language. If a project already has
 
 Write the narration in that language as a person would say it. Do not
 translate English word for word. The writing rules in `explainroo docs writing`
-apply in spirit.
+apply too, and its part "Other languages" gives the filler words and the pace
+of each language.
 Cue words and `[#markers]` work the same. `at: 'qué'` matches "Qué". A cue
 also finds a word after an elided article or pronoun, so `at: 'ombre'` finds
 "l'ombre". This works after `l'`, `d'`, `j'`, `m'`, `n'`, `s'`, `t'`, `c'`
