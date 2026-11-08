@@ -74,10 +74,20 @@ const RANGE_BECAUSE = {
 
 // The day a time falls on in this computer's time zone. The time in the JSON is
 // in UTC, and its own date can be a day off from the user's.
-function localDay(iso) {
+export function localDay(iso) {
   const d = new Date(iso);
   const pad = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+// The time in this computer's time zone, with the zone, like "2026-11-08 00:30
+// GMT+1". A time that can't be read stays as it was written.
+export function localTime(iso) {
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return String(iso ?? '?');
+  const pad = (n) => String(n).padStart(2, '0');
+  const zone = new Intl.DateTimeFormat('en-US', { timeZoneName: 'short' }).formatToParts(d).find((p) => p.type === 'timeZoneName')?.value ?? 'local time';
+  return `${localDay(iso)} ${pad(d.getHours())}:${pad(d.getMinutes())} ${zone}`;
 }
 
 // Today's prices of an entry under one step, when they were read, or else its range

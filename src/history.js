@@ -15,7 +15,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { ProjectError, hideSecrets } from './errors.js';
-import { findService } from './services.js';
+import { findService, localTime } from './services.js';
 import { LANGUAGES } from './models.js';
 import { isSize } from './project.js';
 
@@ -186,8 +186,9 @@ export function unsettled(dir, key) {
   return !!newest && !goodOutput(dir, newest);
 }
 
+// In this computer's time zone, with the zone. The record and the JSON keep UTC.
 function when(iso) {
-  return `${oneLine(iso, 16).replace('T', ' ')} UTC`;
+  return oneLine(localTime(iso), 40);
 }
 
 // Text from a job file stays on one line, so it can't pose as another line of output.

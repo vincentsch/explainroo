@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import { createJob, decide, ensureIgnored, findJob, goodOutput, historyDir, historyReport, jobKey, listAttempts, listJobs, moveAside, placeOutput, readVersions, recordVersion, saveOutput, selfCommand, sha256File, shellWord, shortId, updateJob, writePrivate } from '../src/history.js';
 import { hideSecrets, rememberSecret } from '../src/errors.js';
@@ -355,4 +355,29 @@ test('a job is open only when someone would want to continue it', (t) => {
   fs.rmSync(historyDir(dir, 'jobs', 'bbbb2222.2.json'));
   assert.deepEqual(ids(), ['cccc3333']);
   assert.deepEqual(ids({ needed: (job) => job.key === 'bbbb2222' }), ['bbbb2222', 'cccc3333']);
+});
+
+// The text gives each time in the computer's own zone, with the zone, so a render
+// made late in the evening shows that evening. The record and the JSON keep UTC.
+test('history prints local times with their zone, and its JSON keeps UTC', (t) => {
+  const dir = temp(t);
+  fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ size: '320x180' }));
+  fs.writeFileSync(path.join(dir, 'script.md'), '# Times\n\n## intro {min=1}\n');
+  fs.writeFileSync(path.join(dir, 'scenes.js'), 'export default { intro() {} };\n');
+  const time = '2026-11-07T23:30:00.000Z';
+  recordVersion(dir, { time, file: 'out/video.mp4', format: 'mp4', draft: false, full: true, scale: 1, watermark: true, width: 320, height: 180, duration: 1, sha256: 'a'.repeat(64) });
+  const job = createJob(dir, 'abcd1234', { kind: 'clip', provider: 'openrouter', request: { name: 'waves', prompt: 'waves on rocks', model: 'm', seconds: 4 } });
+  fs.writeFileSync(historyDir(dir, 'jobs', 'abcd1234.json'), JSON.stringify({ ...updateJob(dir, job, { status: 'failed' }), created: time, updated: time }));
+  const bin = new URL('../bin/explainroo.js', import.meta.url).pathname;
+  const run = (zone, ...args) => spawnSync(process.execPath, [bin, 'history', dir, ...args], { encoding: 'utf8', env: { ...process.env, TZ: zone } });
+  const berlin = run('Europe/Berlin');
+  assert.equal(berlin.status, 0, berlin.stderr);
+  assert.match(berlin.stdout, /^ {2}2026-11-08 00:30 GMT\+1 out\/video\.mp4 /m);
+  assert.match(berlin.stdout, /It failed on 2026-11-08 00:30 GMT\+1, and that try may have cost money\./);
+  assert.doesNotMatch(berlin.stdout, /UTC/);
+  const utc = run('UTC');
+  assert.match(utc.stdout, /^ {2}2026-11-07 23:30 UTC out\/video\.mp4 /m);
+  const json = JSON.parse(run('Europe/Berlin', '--json').stdout);
+  assert.equal(json.versions[0].time, time);
+  assert.equal(json.open[0].created, time);
 });

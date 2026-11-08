@@ -10,7 +10,7 @@ import { ProjectError, ServiceError } from './errors.js';
 import { createJob, decide, ensureIgnored, findJob, historyDir, jobKey, listAttempts, listJobs, placeOutput, projectWord, saveOutputFile, selfCommand, shortId, stopSentence, updateJob } from './history.js';
 import { checkClipRequest, clipPrice } from './clip-price.js';
 import { probe } from './ffmpeg.js';
-import { serviceUrl, usd } from './services.js';
+import { localDay, serviceUrl, usd } from './services.js';
 import openrouter from './connectors/openrouter.js';
 
 export const CLIP_MODELS = {
@@ -373,7 +373,7 @@ export function formatClip(r) {
     return `Job ${r.job} for ${rel}: ${r.why} To get the clip, run the same command again, which buys nothing, or run: ${r.command}`;
   }
   const lines = r.reused
-    ? [`${rel}  already bought on ${r.time.slice(0, 10)} (job ${r.job}), so nothing was spent. To buy it again, add --new.`]
+    ? [`${rel}  already bought on ${localDay(r.time)} (job ${r.job}), so nothing was spent. To buy it again, add --new.`]
     : [`${rel}  ${r.model}  ${r.seconds}s ${r.aspect} ${r.resolution}${r.audio ? ' with sound' : ''}  ${r.cost_usd !== null ? usd(r.cost_usd) : `cost unknown, about ${usd(r.estimated_usd)}`}  (clips so far: ${usd(r.total_usd)})`];
   if (r.over_cap) lines.push(`It cost ${usd(r.cost_usd)}, which is above the cap of ${usd(r.max_cost_usd)}. The price before the job was an estimate.`);
   if (r.newer_attempt) lines.push(`A newer try, job ${r.newer_attempt}, has no good answer, so this is the earlier one.`);
