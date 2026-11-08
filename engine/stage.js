@@ -2372,6 +2372,14 @@ export class Stage {
     ctx.textBaseline = 'top';
     const left = -w / 2 + pad;
     const promptW = ctx.measureText((o.prompt ?? '$') + ' ').width;
+    // A command written with the prompt in front shows it twice.
+    const prompt = String(o.prompt ?? '$');
+    timed.forEach((it, i) => {
+      const cmd = it.cmd === undefined ? null : String(it.cmd);
+      if (cmd !== null && prompt && (cmd === prompt || cmd.startsWith(`${prompt} `))) {
+        this._warn(`the command "${cmd.slice(0, 40)}" of ${this._named('terminal', call, o.title, o.id)} starts with the prompt "${prompt}", which the terminal adds itself, so it shows "${prompt} ${cmd.slice(0, 40)}"; write it without the prompt, like { cmd: '${cmd.slice(prompt.length + 1).replace(/'/g, "\\'").slice(0, 40)}' }`, `prompt ${call} ${i}`);
+      }
+    });
     for (const it of timed) {
       for (const part of String(it.cmd ?? it.out ?? '').split('\n')) {
         const width = ctx.measureText(part).width + (it.cmd !== undefined ? promptW : 0);

@@ -101,7 +101,8 @@ It also finds:
 - a mark from `s.annotate` that stays on screen more than 0.3 seconds after
   the element it marks has left
 - a code window or a terminal that is on screen empty for more than a second
-  before its first line or step
+  before its first line or step, and a terminal command that starts with the
+  prompt, like `{ cmd: '$ npm test' }`, which shows `$ $ npm test`
 - an arrow whose line runs through a shape or icon that is not one of its
   ends, and an arrow line off the frame, near its edge, outside the app's
   safe area or in the caption band

@@ -254,6 +254,21 @@ test('check warns about a code window or terminal that is empty for more than a 
   assert.deepEqual(fresh.more, [0, 1]);
 });
 
+test('check warns about a command written with the prompt in front, which shows the prompt twice', { skip }, async (t) => {
+  const issues = await check(project(t, {}, {
+    object: "s.terminal([{ cmd: '$ npm test' }, { out: 'PASS' }], { x: 960, y: 540, at: 0 });",
+    string: "s.terminal(['$ $ npm test'], { x: 960, y: 540, at: 0 });",
+    variable: "s.terminal([{ cmd: '$HOME/bin/run' }, '$ echo $PATH'], { x: 960, y: 540, at: 0 });",
+    custom: "s.terminal([{ cmd: '> dir' }, { cmd: 'npm test' }], { x: 960, y: 540, prompt: '>', title: 'cmd', at: 0 });",
+  }));
+  const doubled = issues.filter((i) => /starts with the prompt/.test(i.message)).map((i) => [i.level, i.scene, i.message]);
+  assert.deepEqual(doubled, [
+    ['warn', 'object', 'the command "$ npm test" of the 1st s.terminal starts with the prompt "$", which the terminal adds itself, so it shows "$ $ npm test"; write it without the prompt, like { cmd: \'npm test\' }'],
+    ['warn', 'string', 'the command "$ npm test" of the 1st s.terminal starts with the prompt "$", which the terminal adds itself, so it shows "$ $ npm test"; write it without the prompt, like { cmd: \'npm test\' }'],
+    ['warn', 'custom', 'the command "> dir" of the terminal "cmd" starts with the prompt ">", which the terminal adds itself, so it shows "> > dir"; write it without the prompt, like { cmd: \'dir\' }'],
+  ]);
+});
+
 test('the hint about a word spoken twice names "word#1" and "word#2", and "word#1" silences it', { skip }, async (t) => {
   const tank = ['The', 'tank', 'fills', 'up.', 'It', 'fills', 'again.'];
   const issues = await check(project(t, {}, {
