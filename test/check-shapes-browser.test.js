@@ -257,6 +257,43 @@ test('check suggests a darker shade of the same color for orange text on paper, 
   assert.ok(Number(match[3]) >= 4.5);
 });
 
+test('s.draw with box is a shape for check: overlaps, text over its edge and the frame edge, and without box nothing changes', { skip }, async (t) => {
+  const moon = (box) => `s.draw({ id: 'moon', x: 600, y: 540, ${box}at: 0 }, (ctx) => { ctx.beginPath(); ctx.arc(0, 0, 150, 0, Math.PI * 2); ctx.fill(); });`;
+  const issues = await check(project(t, {}, {
+    boxed: `${moon("box: { x: 0, y: 0, w: 300, h: 300 }, ")} s.box('Earth', { x: 800, y: 540, w: 260, h: 160, at: 0 }); s.text('Luna nueva', { x: 600, y: 700, at: 0 });`,
+    plain: `${moon('')} s.box('Earth', { x: 800, y: 540, w: 260, h: 160, at: 0 }); s.text('Luna nueva', { x: 600, y: 700, at: 0 });`,
+    edge: `s.draw({ x: 1880, y: 540, box: { x: 0, y: 0, w: 200, h: 200 }, at: 0 }, (ctx) => ctx.fillRect(-100, -100, 200, 200));
+    s.draw({ x: 960, y: 40, box: { x: 0, y: 0, w: 100, h: 60, round: true }, at: 0 }, (ctx) => ctx.fillRect(-50, -30, 100, 60));`,
+    inside: `${moon("box: { x: 0, y: 0, w: 300, h: 300 }, ")} s.text('Moon', { x: 600, y: 540, at: 0 });`,
+  }));
+  // The box runs 80 pixels into the drawing, and so its own text, and a label crosses its lower edge.
+  assert.deepEqual(messages(issues, 'boxed', 'partly overlap').sort(), [
+    '"Earth" and the drawing "moon" partly overlap, by 6px; move them apart, or give one of them overlap: true if that is meant',
+    '"Luna nueva" and the drawing "moon" partly overlap, by 13px; move them apart, or give one of them overlap: true if that is meant',
+    'the drawing "moon" and the box "Earth" partly overlap, by 80px; move them apart, or give one of them overlap: true if that is meant',
+  ]);
+  assert.deepEqual(issues.filter((i) => i.scene === 'plain'), []);
+  assert.deepEqual(issues.filter((i) => i.scene === 'inside'), []);
+  assert.deepEqual(messages(issues, 'edge', 'drawing'), [
+    'the drawing at 1880,540 runs off the frame (1780,440 to 1980,640 in a 1920x1080 frame)',
+    'the drawing at 960,40 comes closer than 38px to the edge (910,10 to 1010,70)',
+  ]);
+  // A box that isn't one is an error that says what it takes.
+  const bad = await check(project(t, {}, { bad: `s.draw({ box: { w: 100 }, at: 0 }, () => {});` }));
+  assert.match(bad.find((i) => i.scene === 'bad').message, /^s\.draw box must be \{ x, y, w, h \}: the center and the size of what it draws/);
+});
+
+test('s.draw with box counts in the safe area of a platform size and in the caption band', { skip }, async (t) => {
+  const issues = await check(project(t, { size: 'tiktok' }, {
+    low: `s.draw({ x: 540, y: 1700, box: { x: 0, y: 0, w: 300, h: 200 }, at: 0 }, (ctx) => ctx.fillRect(-150, -100, 300, 200));`,
+  }));
+  assert.match(messages(issues, 'low', 'drawing')[0], /^the drawing at 540,1700 reaches outside the tiktok safe area \(/);
+  const band = await check(project(t, { captions: true }, {
+    low: `s.draw({ x: 960, y: 900, box: { x: 0, y: 0, w: 300, h: 160 }, at: 0 }, (ctx) => ctx.fillRect(-150, -80, 300, 160));`,
+  }));
+  assert.match(messages(band, 'low', 'drawing')[0], /^the drawing at 960,900 runs into the caption band \(y \d+ to \d+\), where captions can cover it; keep it above s\.safe\.bottom \(\d+\)$/);
+});
+
 test('an icon with a label returns the label\'s box and an outer box with both, and bottom stays the icon\'s own', { skip }, async (t) => {
   const { issues, more } = await check(project(t, {}, {
     icons: `globalThis.labelled = s.icon('lock', { x: 600, y: 400, size: 120, label: 'Encrypted', at: 0 });

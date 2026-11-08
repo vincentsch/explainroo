@@ -395,7 +395,10 @@ Run `explainroo docs short-video` before you use it.
     `out`. So a drawing that moves is measured where it ends up. Keep the
     scene still with `s.camera([])` when that matters.
   - `check` sees that something is drawn, for the empty start and the cover,
-    but not what. It can't find overlaps or cut text inside a drawing.
+    but not what. `box: { x, y, w, h }`, the center and size of what you
+    draw, around 0, 0 like the drawing, makes `check` treat it as a shape
+    for overlaps, text over its edge, the frame edge and the safe area.
+    `round: true` in it makes it an ellipse. Without `box` it sees no more.
 - `s.burst({ x, y, at, count, colors })` fires confetti.
 - `s.bg(color)` paints over the background.
 - `s.rand(i)`, `s.noise(x)` and `s.wiggle(amount, speed)` give random values

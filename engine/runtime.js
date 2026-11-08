@@ -835,6 +835,13 @@ export class Engine {
         for (const f of linesOverText(laid.draw.strokes, solid)) once(`line:${sc.id}:${f.key}`, () => add('warn', sc.id, t, f.message));
         for (const f of labelsIntoShapes(laid.draw.strokes, solid, laid.draw.shapes)) once(`label:${sc.id}:${f.key}`, () => add('warn', sc.id, t, f.message));
         for (const f of arrowsThroughShapes(laid.draw.strokes, laid.draw.shapes)) once(`through:${sc.id}:${f.key}`, () => add('warn', sc.id, t, f.message));
+        // The box of a drawing counts in the frame like text: off the frame,
+        // outside the app's safe area, close to the edge or in the caption band.
+        for (const sh of laid.draw.shapes) {
+          if (sh.kind !== 'drawing' || !sh.settled || sh.alpha <= 0.95) continue;
+          const message = edgeMessage(shapeName(sh), sh.box, { W, H, margin, app: this.appArea, band: this.captionBand, format: this.config.format, safe: this.safeArea });
+          if (message) once(`drawing-edge:${sc.id}:${shapeKey(sh)}`, () => add('warn', sc.id, t, message));
+        }
         // The line of an arrow counts in the frame like its label: off the frame,
         // outside the app's safe area, close to the edge or in the caption band.
         for (const line of laid.draw.strokes) {
@@ -1028,6 +1035,17 @@ function emptyStretches(filled, dur, step, shown) {
   return found;
 }
 
+// What check says about a box that runs off the frame, outside the app's safe
+// area, close to the edge or into the caption band, or null.
+function edgeMessage(name, b, { W, H, margin, app, band, format, safe }) {
+  const where = `${Math.round(b.x0)},${Math.round(b.y0)} to ${Math.round(b.x1)},${Math.round(b.y1)}`;
+  if (b.x0 < -1 || b.y0 < -1 || b.x1 > W + 1 || b.y1 > H + 1) return `${name} runs off the frame (${where} in a ${W}x${H} frame)`;
+  if (app && (b.x0 < app.left - 2 || b.y0 < app.top - 2 || b.x1 > app.right + 2 || b.y1 > app.bottom + 2)) return `${name} reaches outside the ${format} safe area (${app.left},${app.top} to ${app.right},${app.bottom}), where the app's buttons, name or caption can cover it`;
+  if (!app && (b.x0 < margin || b.y0 < margin || b.x1 > W - margin || b.y1 > H - margin)) return `${name} comes closer than ${margin}px to the edge (${where})`;
+  if (band && b.y1 > band.top + 2 && b.y0 < band.bottom - 2 && b.x1 > band.left && b.x0 < band.right) return `${name} runs into the caption band (y ${Math.round(band.top)} to ${Math.round(band.bottom)}), where captions can cover it; keep it above s.safe.bottom (${Math.round(safe.bottom)})`;
+  return null;
+}
+
 // The canvas calls that put something on it.
 const INK_CALLS = new Set(['fill', 'stroke', 'fillRect', 'strokeRect', 'fillText', 'strokeText', 'drawImage']);
 
@@ -1042,7 +1060,7 @@ function drawLog() {
   return { shapes: [], strokes: [], lives: [], shown: 0, order: 0 };
 }
 
-const SHAPE_NAMES = { box: 'box', icon: 'icon', image: 'image', code: 'code window', terminal: 'terminal', card: 'card', sticker: 'sticker' };
+const SHAPE_NAMES = { box: 'box', icon: 'icon', image: 'image', code: 'code window', terminal: 'terminal', card: 'card', sticker: 'sticker', drawing: 'drawing' };
 
 // "the box "Rivers bring salt in"", or "the card at 200,300" without a name.
 function shapeName(sh) {

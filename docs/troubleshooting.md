@@ -101,5 +101,7 @@ It also finds:
   `check` goes on with the rest of the scene as if the cue were at the scene
   start, so one run shows all of its findings
 
-It does not see drawings made with `s.draw` or straight on `s.ctx`. Look at
-the stills for those.
+It does not see what a drawing made with `s.draw` or straight on `s.ctx`
+holds. Give `s.draw` a `box`, and `check` treats that box as a shape: for
+overlaps, text over its edge, the frame edge and the safe area. Look at the
+stills for the rest.

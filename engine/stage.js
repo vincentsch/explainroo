@@ -838,11 +838,17 @@ export class Stage {
   // numbers do not depend on which other drawings are on screen.
   draw(o, fn) {
     if (typeof o === 'function') [o, fn] = [{}, o];
+    const box = o.box;
+    if (box !== undefined && !(box && ['x', 'y', 'w', 'h'].every((k) => Number.isFinite(box[k])) && box.w > 0 && box.h > 0)) {
+      throw new SceneError('s.draw box must be { x, y, w, h }: the center and the size of what it draws, around 0, 0 when the drawing has x and y');
+    }
     const life = this._life(o, 'custom', { enter: o.enter ?? 'none', sfx: o.sfx ?? null });
     const random = mulberry32(this._seed('random', o));
     if (this.engine.layoutLog) return this._measureDrawing(o, fn, life, random);
     if (!life) return;
     this._push(o.x ?? 0, o.y ?? 0, life, o);
+    // check takes the box as a shape, where the drawing is now.
+    if (box) this._logShape('drawing', { x: box.x, y: box.y, w: box.w, h: box.h, round: box.round === true }, this._settled(life), o, o.id ?? '');
     const saved = Math.random;
     Math.random = random;
     try { fn(this.ctx, life); } finally {
