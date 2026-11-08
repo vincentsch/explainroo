@@ -26,6 +26,7 @@ import { allOf, formatServices, findService, findStep, needsKey, SERVICES, STEPS
 import { clipPricesToday, showsClipPrices } from './price-list.js';
 import { narrationTime, speechKeys } from './voice.js';
 import { estimateLength, estimateLine, targetNotes } from './timeline.js';
+import { formatSet, setSetting } from './set.js';
 import { findEnv } from './env.js';
 import { formatPackage, packageOverrides, packageVideo } from './package.js';
 import { PLATFORMS } from './post.js';
@@ -44,6 +45,9 @@ Usage: explainroo <command> [project] [options]
 Make a video
   init <dir>            create a project (--theme, --size, --pace, --language en|es|fr|it|pt-br|hi|ja|zh, --voice, --title).
                         German works with a paid voice or a recording, see "explainroo docs languages"
+  set <project> <key> <value>  write one setting into video.json, after the same check every command
+                        runs. A dotted key like sizes.shorts.pace sets one size's setting, the value is
+                        JSON when it reads as JSON, and null takes the key out
   voice [project]       make the narration and word timings (--force makes every scene again,
                         --new buys again only the paid sentences with no good saved answer, --size makes
                         the narration of a size whose block in "sizes" sets its own pace). --estimate
@@ -190,6 +194,12 @@ export async function main(argv) {
   try {
     switch (cmd) {
       case 'init': return init(pos[0], flags, print);
+      case 'set': {
+        if (pos.length !== 3) throw new ProjectError('usage: explainroo set <project> <key> <value>, like: explainroo set videos/<name> targetSeconds 40. A dotted key like sizes.shorts.pace sets a setting of one size, and null takes a key out.');
+        const r = setSetting(pos[0], pos[1], pos[2]);
+        print(formatSet(r), r);
+        return 0;
+      }
       case 'capture': {
         if (pos.length < 1 || pos.length > 2) throw new ProjectError('usage: explainroo capture [project] <url> [--name <name>] [--mobile] [--json]');
         const r = await capture(pos.length === 2 ? pos[0] : undefined, pos.at(-1), { mobile: !!flags.mobile, name: textFlag(flags, 'name') });

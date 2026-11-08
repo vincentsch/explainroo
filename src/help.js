@@ -19,6 +19,12 @@ export const COMMAND_HELP = {
     options: [['--title "<title>"', 'the title of the video'], ['--theme <look>', 'paper, clean, chalk, blueprint, midnight or editorial'], ['--size <size>', 'like 16:9, tiktok or linkedin'], ['--pace <n>', 'speed of the whole video, 0.7 to 1.6'], ['--language <code>', 'en, es, fr, it, pt-br, hi, ja or zh'], ['--voice <id>', 'a Kokoro voice, see "explainroo voices"']],
     example: 'init videos/how-dns-works --theme chalk --title "How DNS works"',
   },
+  set: {
+    usage: 'set <project> <key> <value> [options]',
+    about: 'Writes one setting into video.json and keeps the rest of the file as it is. The value is JSON when it reads as JSON, like 40, false or {"pace": 1.2}, and text otherwise. null takes the key out. A dotted key like sizes.shorts.pace sets a setting of one size. The settings get the same check as every command first, so a mistake changes nothing.',
+    options: [JSON_OUT],
+    example: 'set videos/how-dns-works targetSeconds 40',
+  },
   voice: {
     usage: 'voice [project] [options]',
     about: 'Makes the narration and the word timings of every scene that changed, and checks what the speech model heard.',

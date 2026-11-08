@@ -157,6 +157,14 @@ const steps = [
     },
   },
   {
+    // One setting into video.json, checked first, with the rest of the file kept.
+    args: ['set', 'video', 'sizes.shorts.pace', '1.15', '--json'],
+    check: (r, { temp }) => {
+      const settings = JSON.parse(fs.readFileSync(path.join(temp, 'video/video.json'), 'utf8'));
+      expect(r.changed && settings.sizes.shorts.pace === 1.15 && settings.defaults === '0.5', `set says ${JSON.stringify(r)}`);
+    },
+  },
+  {
     // No key is saved yet, and a dry run needs none.
     args: ['clip', 'video', CLIP_PROMPT, '--seconds', '6', '--dry-run', '--json'],
     check: (r, { temp, fake }) => {

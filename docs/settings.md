@@ -17,7 +17,13 @@ videos/<name>/
                 "explainroo history" to see open jobs and how to continue them
 ```
 
-`video.json` settings, all optional:
+`video.json` settings, all optional. `explainroo set videos/<name> <key>
+<value>` writes one of them, like `explainroo set videos/<name> targetSeconds
+40`. A dotted key like `sizes.shorts.pace` sets a setting of one size. The
+value is JSON when it reads as JSON, like `40`, `false` or `{"pace": 1.2}`,
+and text otherwise, and `null` takes the key out. The settings get the same
+check as every command first, so a mistake changes nothing, and the rest of
+the file keeps its order.
 
 | Setting | Default | What it does |
 |---|---|---|

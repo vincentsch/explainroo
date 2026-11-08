@@ -627,16 +627,20 @@ export function sizeArg(project) {
 
 // `overrides` replace settings of video.json for one run, such as the size from
 // --size or the watermark from --no-watermark. The file itself stays as it is.
-// `lang` picks one language of a video in several languages.
-export function loadProject(arg, overrides = {}) {
+// `lang` picks one language of a video in several languages. `settings` takes
+// the place of what video.json holds, so a change can be checked before it is
+// written.
+export function loadProject(arg, overrides = {}, { settings: given } = {}) {
   const dir = findProjectDir(arg);
   const set = Object.fromEntries(Object.entries(overrides).filter(([, value]) => value !== undefined && value !== null));
   const { lang, ...settings } = set;
-  let raw;
-  try {
-    raw = JSON.parse(fs.readFileSync(path.join(dir, 'video.json'), 'utf8'));
-  } catch (e) {
-    fail(`video.json is not valid JSON: ${e.message}`);
+  let raw = given;
+  if (raw === undefined) {
+    try {
+      raw = JSON.parse(fs.readFileSync(path.join(dir, 'video.json'), 'utf8'));
+    } catch (e) {
+      fail(`video.json is not valid JSON: ${e.message}`);
+    }
   }
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) fail('video.json must be an object like { "title": "How DNS works" }');
   const main = raw.language ?? DEFAULTS.language;

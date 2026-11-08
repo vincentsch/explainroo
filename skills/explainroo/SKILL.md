@@ -151,6 +151,9 @@ there and publishes nothing.
    asks for a length, set it in `video.json`, like `"targetSeconds": 40`.
    After `voice`, a shorter video gets longer holds at the scene ends to
    reach it, and `voice` and `check` warn when the video is longer.
+   `explainroo set videos/<name> targetSeconds 40` writes one setting into
+   `video.json` after the same check every command runs, and a dotted key
+   like `sizes.shorts.pace` sets a setting of one size.
 4. **Make the voice** with `explainroo voice videos/<name>`. Fix a word the
    speech check did not confirm with `{shown|spoken}`, and run it again. When
    the word already has one, try another spoken spelling

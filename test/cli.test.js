@@ -289,3 +289,64 @@ test('voice --estimate prints the estimate with the target advice and makes noth
   assert.equal(fs.existsSync(path.join(dir, 'build')), false, 'no voice was made');
   assert.equal(r.err, '', 'no model was loaded');
 });
+
+test('set writes one setting into video.json, dotted keys reach into blocks, null takes a key out, and the rest of the file stays as it was', async (t) => {
+  const dir = tempDir();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(dir, 'script.md'), '# Test\n\n## a\nHello there.\n');
+  fs.writeFileSync(path.join(dir, 'scenes.js'), 'export default { a() {} };');
+  const file = path.join(dir, 'video.json');
+  fs.writeFileSync(file, '{\n  "title": "Bees",\n  "theme": "paper",\n  "music": true\n}\n');
+  const set = async (...args) => runAll(['set', dir, ...args]);
+  for (const [key, value, said] of [
+    ['targetSeconds', '40', 'set targetSeconds to 40 in video.json'],
+    ['cover', 'intro@2', 'set cover to "intro@2" in video.json'],
+    ['sizes.shorts.pace', '1.15', 'set sizes.shorts.pace to 1.15 in video.json'],
+    ['sizes.shorts.captions', 'bold', 'set sizes.shorts.captions to "bold" in video.json'],
+    ['music', 'false', 'set music to false in video.json'],
+    ['clipBudget', '0.40', 'set clipBudget to 0.4 in video.json'],
+    ['title', 'null', 'took title out of video.json'],
+  ]) {
+    const r = await set(key, value);
+    assert.equal(r.code, 0, r.err);
+    assert.equal(r.out, `${said}\n`);
+  }
+  // The keys keep their places, new ones come last, and so does the indentation.
+  assert.equal(fs.readFileSync(file, 'utf8'), '{\n  "theme": "paper",\n  "music": false,\n  "targetSeconds": 40,\n  "cover": "intro@2",\n  "sizes": {\n    "shorts": {\n      "pace": 1.15,\n      "captions": "bold"\n    }\n  },\n  "clipBudget": 0.4\n}\n');
+  // A whole block as JSON, and the JSON output.
+  const json = JSON.parse((await set('sizes.tiktok', '{"captions": "bold", "pace": 1.2}', '--json')).out);
+  assert.deepEqual([json.key, json.value, json.changed], ['sizes.tiktok', { captions: 'bold', pace: 1.2 }, true]);
+  // A file on one line, or indented with tabs, keeps that.
+  fs.writeFileSync(file, '{"theme":"paper"}');
+  await set('fps', '25');
+  assert.equal(fs.readFileSync(file, 'utf8'), '{"theme":"paper","fps":25}');
+  fs.writeFileSync(file, '{\n\t"theme": "paper"\n}\n');
+  await set('fps', '25');
+  assert.equal(fs.readFileSync(file, 'utf8'), '{\n\t"theme": "paper",\n\t"fps": 25\n}\n');
+});
+
+test('set refuses an unknown key or a bad value with the check every command runs, and writes nothing', async (t) => {
+  const dir = tempDir();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(dir, 'script.md'), '# Test\n\n## a\nHello there.\n');
+  fs.writeFileSync(path.join(dir, 'scenes.js'), 'export default { a() {} };');
+  const file = path.join(dir, 'video.json');
+  const text = '{\n  "title": "Bees",\n  "targetSeconds": 40\n}\n';
+  fs.writeFileSync(file, text);
+  for (const [args, said] of [
+    [['bogus', '1'], /^error: video\.json has unknown setting\(s\): bogus\. Known: title, /],
+    [['targetSeconds', 'forty'], /^error: targetSeconds must be the length you want in seconds/],
+    [['sizes.shorts.pace', '9'], /^error: sizes\.shorts: pace must be between 0\.7 and 1\.6/],
+    [['sizes.shorts.voice', 'am_adam'], /^error: sizes\.shorts has setting\(s\) that can't be set for one size: voice\./],
+    [['sizes.mystery.pace', '1.2'], /^error: sizes: "mystery" is not a size\./],
+    [['title.text', 'x'], /^error: title is "Bees", not a block of settings, so it has no text\. Set title as a whole instead\.\n$/],
+    [['__proto__.polluted', '1'], /^error: "__proto__\.polluted" is no setting\./],
+    [['targetSeconds'], /^error: usage: explainroo set <project> <key> <value>/],
+  ]) {
+    const r = await runAll(['set', dir, ...args]);
+    assert.equal(r.code, 1, args.join(' '));
+    assert.match(r.err, said, args.join(' '));
+  }
+  assert.equal(fs.readFileSync(file, 'utf8'), text, 'nothing was written');
+  assert.deepEqual(fs.readdirSync(dir).sort(), ['scenes.js', 'script.md', 'video.json']);
+});
