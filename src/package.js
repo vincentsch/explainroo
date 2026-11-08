@@ -117,7 +117,7 @@ export async function packageVideo(arg, { lang, platform, size, title, descripti
 
   // The check runs in the exact setup of the file, also when a render is reused.
   log(`checking the ${spec.name} package at ${setup}`);
-  const checked = await check(project, { log });
+  const checked = await check(project, { log, platform });
   const errors = checked.issues.filter((i) => i.level === 'error');
   const folder = packageDir(project, platform);
   if (errors.length) {

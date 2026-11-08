@@ -90,10 +90,17 @@ export function speechFindings(project, voices) {
   return { issues, speech };
 }
 
-export async function check(project, { log = () => {}, step = 0.25, viewWidth = null } = {}) {
+// The sizes that are made for YouTube's wide player, where chapters show.
+const YOUTUBE_SIZES = ['youtube', '16:9'];
+
+// `platform` is the platform of a package being made. Chapter hints are about
+// YouTube, so they show for a YouTube package, or without a package for a
+// YouTube size.
+export async function check(project, { log = () => {}, step = 0.25, viewWidth = null, platform = null } = {}) {
   if (viewWidth !== null && (!Number.isFinite(viewWidth) || viewWidth <= 0)) throw new Error("--view-width must be a positive number");
   const { voices, timeline } = await prepare(project, { log });
-  const issues = chapterHints(buildChapters(timeline, project.script.title || project.config.title));
+  const youtube = platform ? platform === 'youtube' : YOUTUBE_SIZES.includes(project.config.size);
+  const issues = youtube ? chapterHints(buildChapters(timeline, project.script.title || project.config.title)) : [];
   const { issues: spoken, speech } = speechFindings(project, voices);
   issues.push(...spoken);
   if (project.languages) issues.push(...languageIssues(project));
