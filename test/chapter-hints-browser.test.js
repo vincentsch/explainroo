@@ -1,5 +1,5 @@
 // check gives hints about YouTube's chapters only where they matter: for a
-// YouTube size, or for a package made for YouTube.
+// 16:9 landscape frame, or for a package made for YouTube.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { findChrome } from '../src/browser.js';
@@ -21,6 +21,11 @@ test('chapter hints show for a YouTube size or a YouTube package, and not for an
   const dir = tinyProject(t, {}, { narrated: false });
   assert.equal(await chapterHints(dir, 'youtube'), 2);
   assert.equal(await chapterHints(dir, '16:9'), 2);
+  // Any 16:9 landscape frame is a YouTube frame.
+  assert.equal(await chapterHints(dir, '1920x1080'), 2);
+  assert.equal(await chapterHints(dir, '1280x720'), 2);
+  assert.equal(await chapterHints(dir, '1080x1920'), 0);
+  assert.equal(await chapterHints(dir, '2560x1080'), 0);
   assert.equal(await chapterHints(dir, 'square'), 0);
   assert.equal(await chapterHints(dir, 'shorts'), 0);
   // A package decides by its platform.

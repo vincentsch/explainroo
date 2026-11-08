@@ -151,8 +151,9 @@ export function speechFindings(project, voices) {
   return { issues, speech };
 }
 
-// The sizes that are made for YouTube's wide player, where chapters show.
-const YOUTUBE_SIZES = ['youtube', '16:9'];
+// A frame for YouTube's wide player, where chapters show: any 16:9 landscape
+// frame, like "youtube", "16:9" or "1280x720".
+const youtubeFrame = ({ width, height }) => width > height && width * 9 === height * 16;
 
 // `platform` is the platform of a package being made. Chapter hints are about
 // YouTube, so they show for a YouTube package, or without a package for a
@@ -162,7 +163,7 @@ export async function check(project, { log = () => {}, step = 0.25, viewWidth = 
   // How long the video will be about, when check is the step that makes the narration.
   let estimate = null;
   const { voices, timeline } = await prepare(project, { log, onEstimate: (e) => { estimate = e; } });
-  const youtube = platform ? platform === 'youtube' : YOUTUBE_SIZES.includes(project.config.size);
+  const youtube = platform ? platform === 'youtube' : youtubeFrame(project.config);
   const issues = youtube ? chapterHints(buildChapters(timeline, project.script.title || project.config.title)) : [];
   const { issues: spoken, speech } = speechFindings(project, voices);
   issues.push(...spoken);
