@@ -588,6 +588,25 @@ export class Engine {
     return { cues: out, clips, sounds, errors };
   }
 
+  // Whether moment t of scene `index` shows anything besides the background, as
+  // check counts it, without the camera.
+  shownAt(index, t) {
+    const scratch = (this._framedCanvas ??= Object.assign(document.createElement('canvas'), { width: 16, height: 16 }));
+    const saved = { textLog: this.textLog, drawLog: this.drawLog, recorder: this.recorder, revealLog: this.revealLog };
+    this.textLog = [];
+    this.drawLog = drawLog();
+    this.recorder = null;
+    this.revealLog = null;
+    try {
+      this.drawScene(scratch.getContext('2d'), index, t);
+      return this.drawLog.shown > 0;
+    } catch {
+      return true;
+    } finally {
+      Object.assign(this, saved);
+    }
+  }
+
   // What a frame shows as the camera films it: how many elements are fully on
   // screen, and whether those are only text. `t` is seconds into scene `index`.
   framed(index, t) {
@@ -730,6 +749,8 @@ export class Engine {
     this.soundsPlayed = new Map();
     for (const sc of this.timeline.scenes) {
       const entrances = [];
+      // Which moments show something besides the background.
+      const filled = [];
       // The automatic camera of this scene. check looks at the layout as
       // written and, where the camera films the scene, at what it shows too.
       const plan = this.cameraPlans?.get(sc.index) ?? null;
@@ -757,6 +778,7 @@ export class Engine {
         const laid = { texts: this.textLog.filter((x) => !x.problem), draw: this.drawLog };
         for (const pr of this.textLog.filter((x) => x.problem)) once(`problem:${sc.id}:${pr.key ?? pr.problem}`, () => add(pr.level ?? 'error', sc.id, t, pr.problem));
         if (shownAt === null && laid.draw.shown > 0) shownAt = t;
+        filled.push({ t, shown: laid.draw.shown > 0 });
         const texts = laid.texts.filter((x) => x.alpha > 0.5);
         for (const tx of texts) {
           const label = short(tx.text);
@@ -924,6 +946,14 @@ export class Engine {
       this.revealLog = null;
       const emptyStart = !broke && bare !== null && bare > EMPTY_START;
       if (emptyStart) add('hint', sc.id, 0, `the scene shows only its background for the first ${bare.toFixed(1)}s; put something on screen sooner, for example give the first element an earlier at`);
+      // The same later in the scene, once everything has left and before the next
+      // element comes, or until the scene ends.
+      if (!broke) {
+        for (const gap of emptyStretches(filled, sc.dur, step, (t) => this.shownAt(sc.index, t))) {
+          const until = gap.to >= sc.dur - 0.01 ? 'until the scene ends' : `to ${gap.to.toFixed(1)}s`;
+          add('hint', sc.id, gap.from, `the scene shows only its background for ${(gap.to - gap.from).toFixed(1)}s, from ${gap.from.toFixed(1)}s ${until}; put something on screen in that stretch, or let what was there stay longer with a later out`);
+        }
+      }
       if (broke) {
         // its error says it all
       } else if (!times.length) {
@@ -966,6 +996,36 @@ function contrastAdvice(option, fg, bg, size, named) {
   const ink = named.ink && contrast(named.ink, bg) >= min ? `${option}: 'ink' (${contrast(named.ink, bg).toFixed(1)}:1)` : null;
   if (own && ink) return `${own}, or ${ink}`;
   return own ?? (ink ? `use ${ink}` : `use another ${option}`);
+}
+
+// Stretches after the start of a scene in which it shows only its background for
+// longer than EMPTY_START, from the moments check looked at. Each edge is found
+// more exactly with `shown(t)`.
+function emptyStretches(filled, dur, step, shown) {
+  const found = [];
+  const first = filled.findIndex((f) => f.shown);
+  if (first === -1) return found;
+  const edge = (a, b, emptyFirst) => {
+    for (let i = 0; i < 7; i++) {
+      const m = (a + b) / 2;
+      if (shown(m) === emptyFirst) b = m;
+      else a = m;
+    }
+    return (a + b) / 2;
+  };
+  for (let i = first + 1; i < filled.length; i++) {
+    if (filled[i].shown) continue;
+    let j = i;
+    while (j < filled.length && !filled[j].shown) j++;
+    // Too short to matter, even with the moments around it.
+    if ((j < filled.length ? filled[j].t : dur) - filled[i - 1].t > EMPTY_START) {
+      const from = edge(filled[i - 1].t, filled[i].t, false);
+      const to = j < filled.length ? edge(filled[j - 1].t, filled[j].t, true) : dur;
+      if (to - from > EMPTY_START) found.push({ from, to });
+    }
+    i = j;
+  }
+  return found;
 }
 
 // The canvas calls that put something on it.

@@ -92,7 +92,8 @@ It also finds:
   that counts or text that writes itself, when it isn't all there by the end
   of its scene or by its `out`. It says how much is missing and which option
   changes that
-- a scene that shows only its background for more than 1.5 seconds at the start
+- a scene that shows only its background for more than 1.5 seconds, at the
+  start or later, when everything has left and nothing new has come yet
 - a cover with only text on an empty background
 - text with a background but no words
 - a `lift` above 2 in `s.ui`

@@ -229,6 +229,26 @@ test('with "defaults": "0.5", gap leaves that many pixels free at a point end, a
   assert.deepEqual(await ends({}), [[300, 900], [300, 900], [300, 320]]);
 });
 
+test('check gives a hint when a scene shows only its background for more than 1.5 seconds later in the scene, also until it ends', { skip }, async (t) => {
+  const issues = await check(project(t, {}, {
+    // A leaves at 1.5 and has faded by about 1.95, and B comes at 3.6.
+    gap: `s.title('A', { at: 0, out: 1.5 }); s.title('B', { at: 3.6 });`,
+    // 1.25 seconds is short enough.
+    short: `s.title('A', { at: 0, out: 1.5 }); s.title('B', { at: 3.2 });`,
+    // Everything has gone by about 3.45, and the scene ends at 6.
+    tail: `s.title('A', { at: 0, out: 3 });`,
+    // Something stays the whole time, so there is no gap.
+    kept: `s.title('A', { at: 0, out: 1.5 }); s.text('stays', { y: 800, at: 0 }); s.title('B', { at: 4 });`,
+  }, { dur: 6 }));
+  const empty = issues.filter((i) => i.message.includes('only its background'));
+  assert.deepEqual(empty.map((i) => i.scene), ['gap', 'tail'], JSON.stringify(empty));
+  const [gap, tail] = empty;
+  assert.equal(gap.level, 'hint');
+  assert.match(gap.message, /^the scene shows only its background for 1\.[67]s, from (1\.9|2\.0)s to 3\.6s; put something on screen in that stretch, or let what was there stay longer with a later out$/);
+  assert.ok(Math.abs(gap.t - 1.93) < 0.1, String(gap.t));
+  assert.match(tail.message, /^the scene shows only its background for 2\.[56]s, from 3\.[45]s until the scene ends; /);
+});
+
 test('check suggests a darker shade of the same color for orange text on paper, and ink second', { skip }, async (t) => {
   const issues = await check(project(t, { theme: 'paper' }, { sun: `s.text('Sun time', { color: 'orange', size: 40, at: 0 });` }));
   const [warning] = messages(issues, 'sun', 'low contrast');
