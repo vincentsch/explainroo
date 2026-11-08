@@ -62,6 +62,10 @@ test('two neighbouring words heard as one count as nearly matched, both of them,
   assert.deepEqual(nearList(words('See costs by model.'), costs.words), [{ word: 'See', heard: 'Seacosts', joined: true }, { word: 'costs', heard: 'Seacosts', joined: true }]);
   // A word that was never heard is not hidden in a near match of two words.
   assert.deepEqual(state(alignWords(words('El navegador pregunta otra vez.'), said('El navegador pregunto vez.'), 2, 'es')), ['exact', 'exact', 'near:pregunto', 'no:', 'exact']);
+  // A word heard on its own doesn't confirm the word before it, and a word that
+  // takes in the one before it does.
+  assert.deepEqual(state(alignWords(words('ask for a video.'), said('ask for video.'), 1)), ['exact', 'exact', 'no:', 'exact']);
+  assert.deepEqual(state(alignWords(words('A merge adds'), said('Emerge adds'), 1)), ['joined:Emerge', 'joined:Emerge', 'exact']);
   // Two words heard as two words with the same split stay two words.
   assert.deepEqual(state(alignWords(words('red apple'), said('red apples'), 1)), ['exact', 'near:apples']);
 });

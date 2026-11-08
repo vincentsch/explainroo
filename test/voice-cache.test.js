@@ -129,6 +129,10 @@ test('an older scene gets the speech check of today from its transcript, without
   assert.ok(voices.intro.words.every((w) => w.matched));
   assert.deepEqual(voices.intro.nearly, [{ word: 'piece', heard: 'peace', alike: true }]);
   assert.equal(fs.readFileSync(files.json, 'utf8'), before);
+  // The list keeps the order of the script, with words confirmed then and now.
+  const merge = olderProject(t, '# Test\n\n## intro\nA merge adds one commit.\n', { transcript: 'Emerge adds one commit.', unmatched: ['A'], matchRate: 0.8 });
+  const reviewed = (await synthesize(loadProject(merge.dir), { transcribe: noSpeech })).intro;
+  assert.deepEqual(reviewed.nearly, [{ word: 'A', heard: 'Emerge', joined: true }, { word: 'merge', heard: 'Emerge', joined: true }]);
   // A scene checked with today's rules is taken as it is.
   const today = { ...JSON.parse(before), check: 2 };
   assert.equal((await reviewSpeech(today, 'en')).matchRate, 0.786);

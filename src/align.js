@@ -421,6 +421,8 @@ export function alignWords(words, heard, duration, language = 'en', { sounds = n
           // A near match of two joined words may differ by a letter or two, not by a
           // whole short word that was never heard. Over two heard words it must be exact.
           if (Math.abs(said.length - both.length) > (L === 1 ? 2 : 0)) continue;
+          // One of the two words heard on its own, like "video" for "a video", means the other wasn't heard.
+          if (L === 1 && (said === wordJoin[i] || said === wordJoin[groupEnd[i] + 1])) continue;
           const how = L === 1 ? compare(both, said) : both === said ? EXACT : 0;
           const fits = L === 1 ? how === EXACT || (how === NEAR && editDistance(both, said) <= Math.min(2, Math.floor(Math.max(both.length, said.length) / 4))) : how === EXACT && H[j].norm.length !== firstLength;
           if (fits && c + STEP < cost[e + 1][j + L]) {

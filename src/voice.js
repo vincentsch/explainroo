@@ -146,13 +146,13 @@ export async function reviewSpeech(info, language) {
     const at = newly[k] ? unmatched.indexOf(w.text) : -1;
     if (at !== -1) unmatched.splice(at, 1);
   });
-  const pick = (list) => list.filter((_, k) => newly[k]);
   return {
     ...base,
     words: info.words.map((w, k) => (newly[k] ? { ...w, matched: true } : w)),
     matchRate: Math.min(1, round((info.matchRate ?? 0) + gained / total)),
     unmatched,
-    nearly: [...base.nearly, ...nearList(pick(again.words), pick(now))],
+    // In the order of the script, from the words confirmed then and now.
+    nearly: nearList(again.words, now.map((a, k) => (info.words[k].matched || newly[k] ? a : { ...a, nearly: false }))),
   };
 }
 
