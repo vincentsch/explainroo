@@ -322,6 +322,13 @@ export class Stage {
     const base = o.dur ?? extra.dur ?? DEFAULT_DUR[enter] ?? 0.6;
     const dur = extra.real ? base : base / this.pace;
     this._record(kind, at, dur, o, extra);
+    // When the element just registered under its id comes and goes, for the marks
+    // that point at it.
+    if (this._lastId !== undefined && o.id !== undefined && o.id !== null && String(o.id) === this._lastId) {
+      const entry = this._ids.get(this._lastId);
+      if (entry) entry.life = { ...this._lifetime(at, out, o.exit ?? 'fade', o.outDur ?? 0.45), spec: o.out };
+    }
+    this._lastId = undefined;
     if (this.engine.layoutLog && this._pendingBox) {
       // The element's own scale and rotation, and parts drawn beside it
       // (an icon's label), count for the camera.
@@ -395,6 +402,21 @@ export class Stage {
   // kit parts that have too.
   _settled(life) {
     return Boolean(life) && (life.p >= 1 || life.enter === 'none') && life.q === 0 && this._unsettled === 0;
+  }
+
+  // When an element comes and has gone, in seconds of the scene, inside the groups
+  // it is drawn in: `out` is when it starts to leave, and `gone` when its exit
+  // has ended. Infinity for an element that stays.
+  _lifetime(at, out, exit, outDur) {
+    let gone = out === Infinity ? Infinity : out + (exit === 'none' ? 0 : outDur / this.pace);
+    for (const g of this._windows ?? []) {
+      at = Math.max(at, g.at);
+      if (g.gone < gone) {
+        gone = g.gone;
+        out = Math.min(out, g.out);
+      }
+    }
+    return { at, out, gone };
   }
 
   // Something other than the background is on screen.
@@ -536,6 +558,7 @@ export class Stage {
     const ys = pts.map((p) => p.y);
     const box = { x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2, w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys), shape };
     if (id !== undefined && id !== null) this._ids.set(String(id), box);
+    if (id !== undefined && id !== null) this._lastId = String(id);
     // While the camera is planned, the next _life call gives this box its
     // timing.
     if (this.engine.layoutLog) {
@@ -790,6 +813,8 @@ export class Stage {
     const life = this._life(o, 'group', { enter: o.enter ?? 'none', sfx: null, dur: o.dur });
     const planning = Boolean(this.engine.layoutLog);
     if (planning) (this._spans ??= []).push({ at: this.time(o.at ?? 0), out: o.out === undefined ? Infinity : this.time(o.out) });
+    // What the group holds comes and goes with it.
+    (this._windows ??= []).push(this._lifetime(this.time(o.at ?? 0), o.out === undefined ? Infinity : this.time(o.out), o.exit ?? 'fade', o.outDur ?? 0.45));
     try {
       if (!life || planning) {
         if (!life) this._suppress++;
@@ -818,6 +843,7 @@ export class Stage {
       }
     } finally {
       if (planning) this._spans.pop();
+      this._windows.pop();
     }
   }
 
@@ -1644,7 +1670,22 @@ export class Stage {
     const color = colorOf(th, o.color ?? 'accent');
     const w = b.w + pad * 2;
     const h = b.h + pad * 2;
+    const name = o.id !== undefined && o.id !== null ? `the ${type} "${o.id}"` : typeof target === 'string' ? `the ${type} around "${target}"` : `the ${call} (a ${type}) around ${Math.round(b.x)},${Math.round(b.y)}`;
+    // When the element it marks comes and goes. With "defaults": "0.5", a mark
+    // without an out of its own leaves with it, the same way.
+    const marked = typeof target === 'string' ? this._ids.get(target)?.life ?? null : null;
+    const given = o.out !== undefined;
+    if (marked && !given && marked.gone !== Infinity && newDefaults(this.engine.config)) {
+      const exit = marked.gone - marked.out;
+      o = { ...o, out: marked.out, ...(exit > 1e-6 ? { outDur: exit * this.pace } : { exit: 'none' }) };
+    }
     const life = this._life(o, 'annotate', { enter: 'draw', dur: o.dur ?? (type === 'circle' ? 0.8 : 0.6), label: type });
+    // For check: when the mark is on screen and when what it marks has gone.
+    const marks = this.engine.markLog;
+    if (marks && marked && !marks.has(`${this.id}|${call}`)) {
+      const own = this._lifetime(this.time(o.at ?? 0), o.out === undefined ? Infinity : this.time(o.out), o.exit ?? 'fade', o.outDur ?? 0.45);
+      marks.set(`${this.id}|${call}`, { name, target, at: own.at, gone: own.gone, targetOut: marked.out, targetGone: marked.gone, spec: marked.spec, given });
+    }
     // Where the mark's line runs, around the target's middle. A highlight is a
     // fill over its target, with no line.
     const line = () => {
@@ -1670,7 +1711,7 @@ export class Stage {
     ctx.translate(b.x, b.y);
     if (this.engine.drawLog && type !== 'highlight' && life.p >= 1) {
       const t = this._designBox(0, 0, b.w, b.h);
-      this._logStroke('annotate', line(), this._settled(life), { target: { x0: t.x - t.w / 2, y0: t.y - t.h / 2, x1: t.x + t.w / 2, y1: t.y + t.h / 2 }, name: o.id !== undefined && o.id !== null ? `the ${type} "${o.id}"` : typeof target === 'string' ? `the ${type} around "${target}"` : `the ${call} (a ${type}) around ${Math.round(b.x)},${Math.round(b.y)}` });
+      this._logStroke('annotate', line(), this._settled(life), { target: { x0: t.x - t.w / 2, y0: t.y - t.h / 2, x1: t.x + t.w / 2, y1: t.y + t.h / 2 }, name });
     }
     const prog = ease.inOut(life.p);
     const qa = life.q > 0 ? 1 - ease.in(life.q) : 1;

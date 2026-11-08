@@ -290,10 +290,15 @@ s.annotate({ x: 960, y: 700, w: 400, h: 90 }, { type: 'circle', color: 'red', at
 
 `s.annotate(target, options)` marks an element or a box. `type` is
 `underline`, `circle`, `box`, `highlight`, `strike`, `cross` or `bracket`.
-Options: `color`, `padding`, `width`, `dur`. An icon's `id` covers the icon
+Options: `color`, `padding`, `width`, `dur`, `out`. An icon's `id` covers the icon
 without its label, so a circle around it can run through the label. `check`
 warns about that. Mark a box that holds both instead, like
 `s.annotate({ x, y, w, h })`.
+
+A mark stays until its own `out`. With `"defaults": "0.5"` in `video.json`, a
+mark on an element's `id` that has no `out` of its own leaves with that
+element. Without the line, give it the element's `out`. `check` warns when a
+mark stays on screen more than 0.3 seconds after what it marks has left.
 
 ## Lists, numbers and charts
 

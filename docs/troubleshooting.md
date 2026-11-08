@@ -88,6 +88,8 @@ text. It finds text that is:
 It also finds:
 
 - shapes that partly overlap: boxes, cards, panels, images, icons and stickers
+- a mark from `s.annotate` that stays on screen more than 0.3 seconds after
+  the element it marks has left
 - an arrow whose line runs through a shape or icon that is not one of its
   ends, and an arrow line off the frame, near its edge, outside the app's
   safe area or in the caption band

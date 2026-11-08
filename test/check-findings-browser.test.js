@@ -187,6 +187,49 @@ test('check warns about a lift above 2 with the card, the value and the range, a
   ]);
 });
 
+// A cross on a bug that leaves at 1.0s, in three-second scenes.
+const MARKS = {
+  alone: "s.icon('bug', { id: 'bug', x: 960, y: 540, size: 200, at: 0, out: 1 }); s.annotate('bug', { type: 'cross', at: 0.3 });",
+  together: "s.icon('bug', { id: 'bug', x: 960, y: 540, size: 200, at: 0, out: 1 }); s.annotate('bug', { type: 'cross', at: 0.3, out: 1 });",
+  shortly: "s.icon('bug', { id: 'bug', x: 960, y: 540, size: 200, at: 0, out: 1 }); s.annotate('bug', { type: 'cross', at: 0.3, out: 1.2 });",
+  grouped: "s.group({ at: 0, out: 1 }, () => s.icon('bug', { id: 'bug', x: 960, y: 540, size: 200 })); s.annotate('bug', { type: 'circle', at: 0.3 });",
+  later: "s.icon('bug', { id: 'bug', x: 960, y: 540, size: 200, at: 0, out: '#gone' }); s.annotate('bug', { type: 'cross', at: 0.3, out: 2.5 });",
+};
+
+// How many marks the scene `index` draws at `t`, drawn on their own.
+const marksAt = (page, index, t) => page.evaluate(async ([index, t]) => {
+  const { Engine, fetchState } = await import('/engine/runtime.js');
+  const state = await fetchState();
+  const scenes = (await import(`/project/scenes.js?v=${state.version}`)).default;
+  const engine = new Engine({ canvas: document.createElement('canvas'), state, scenes, icons: await (await fetch('/engine/icons/lucide.json')).json().then((j) => j.icons), images: new Map() });
+  engine.textLog = [];
+  engine.drawLog = { shapes: [], strokes: [], lives: [], shown: 0, order: 0 };
+  engine.drawScene(engine.ctx, index, t);
+  return engine.drawLog.strokes.filter((s) => s.kind === 'annotate').length;
+}, [index, t]);
+
+test('check warns about a mark that stays more than 0.3 seconds after what it marks has left, and with "defaults": "0.5" a mark leaves with it', { skip }, async (t) => {
+  const marks = (issues) => issues.filter((i) => /stays on screen/.test(i.message)).map((i) => [i.scene, i.message]);
+  const old = project(t, {}, MARKS, { dur: 3 });
+  old.timeline.scenes[4].marks = { gone: 1 };
+  const { issues, more } = await check(old, (page) => marksAt(page, 0, 2));
+  assert.deepEqual(marks(issues), [
+    ['alone', 'the cross around "bug" stays on screen for 1.6s after "bug" leaves at 1.0s; give the mark the same out as "bug", out: 1. With "defaults": "0.5" in video.json, a mark without an out of its own leaves with what it marks'],
+    ['grouped', 'the circle around "bug" stays on screen for 1.6s after "bug" leaves at 1.0s; give the mark the same out as "bug". With "defaults": "0.5" in video.json, a mark without an out of its own leaves with what it marks'],
+    ['later', 'the cross around "bug" stays on screen for 1.5s after "bug" leaves at 1.0s; give the mark the same out as "bug", out: \'#gone\''],
+  ]);
+  assert.equal(issues.find((i) => i.scene === 'alone' && /stays on screen/.test(i.message)).t, 1.45);
+  // Without the line the frames stay as they were: the cross is still there at 2s.
+  assert.equal(more, 1);
+  const fresh = project(t, { defaults: '0.5' }, MARKS, { dur: 3 });
+  fresh.timeline.scenes[4].marks = { gone: 1 };
+  const now = await check(fresh, (page) => Promise.all([marksAt(page, 0, 1.2), marksAt(page, 0, 2), marksAt(page, 3, 2)]));
+  // A mark of its own out still gets the warning, without the note about the line.
+  assert.deepEqual(marks(now.issues), [['later', 'the cross around "bug" stays on screen for 1.5s after "bug" leaves at 1.0s; give the mark the same out as "bug", out: \'#gone\'']]);
+  // It fades with the bug, is gone at 2s, and leaves with a group too.
+  assert.deepEqual(now.more, [1, 0, 0]);
+});
+
 test('the hint about a word spoken twice names "word#1" and "word#2", and "word#1" silences it', { skip }, async (t) => {
   const tank = ['The', 'tank', 'fills', 'up.', 'It', 'fills', 'again.'];
   const issues = await check(project(t, {}, {

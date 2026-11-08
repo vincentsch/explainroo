@@ -592,11 +592,12 @@ export class Engine {
   // check counts it, without the camera.
   shownAt(index, t) {
     const scratch = (this._framedCanvas ??= Object.assign(document.createElement('canvas'), { width: 16, height: 16 }));
-    const saved = { textLog: this.textLog, drawLog: this.drawLog, recorder: this.recorder, revealLog: this.revealLog };
+    const saved = { textLog: this.textLog, drawLog: this.drawLog, recorder: this.recorder, revealLog: this.revealLog, markLog: this.markLog };
     this.textLog = [];
     this.drawLog = drawLog();
     this.recorder = null;
     this.revealLog = null;
+    this.markLog = null;
     try {
       this.drawScene(scratch.getContext('2d'), index, t);
       return this.drawLog.shown > 0;
@@ -762,6 +763,8 @@ export class Engine {
       let broke = false;
       // What shows itself bit by bit, like code that types itself.
       this.revealLog = new Map();
+      // Marks from s.annotate on an element with an id, and when that element goes.
+      this.markLog = new Map();
       const n = Math.ceil(sc.dur / step);
       for (let k = 0; k <= n; k++) {
         const t = Math.min(sc.dur - 0.001, k * step);
@@ -951,6 +954,19 @@ export class Engine {
         }
       }
       this.revealLog = null;
+      // A mark that stays on screen after what it marks has gone, alone or over
+      // what comes next.
+      if (!broke) {
+        for (const m of this.markLog.values()) {
+          const until = Math.min(m.gone, sc.dur);
+          const from = Math.max(m.targetGone, m.at);
+          if (m.targetGone >= sc.dur || !(until - from > MARK_SLACK)) continue;
+          const out = m.spec === undefined ? '' : `, out: ${typeof m.spec === 'string' ? `'${m.spec}'` : m.spec}`;
+          const fresh = m.given || newDefaults(this.config) ? '' : `. With "defaults": "0.5" in video.json, a mark without an out of its own leaves with what it marks`;
+          once(`mark:${sc.id}:${m.name}`, () => add('warn', sc.id, from, `${m.name} stays on screen for ${(until - from).toFixed(1)}s after "${m.target}" leaves at ${m.targetOut.toFixed(1)}s; give the mark the same out as "${m.target}"${out}${fresh}`));
+        }
+      }
+      this.markLog = null;
       const emptyStart = !broke && bare !== null && bare > EMPTY_START;
       if (emptyStart) add('hint', sc.id, 0, `the scene shows only its background for the first ${bare.toFixed(1)}s; put something on screen sooner, for example give the first element an earlier at`);
       // The same later in the scene, once everything has left and before the next
@@ -1051,6 +1067,8 @@ const INK_CALLS = new Set(['fill', 'stroke', 'fillRect', 'strokeRect', 'fillText
 
 // A scene may show only its background this long at the start, in seconds.
 const EMPTY_START = 1.5;
+// A mark may stay this long after what it marks has gone, in seconds.
+const MARK_SLACK = 0.3;
 // "cover": "auto" looks at this many frames of the first scene at most.
 const COVER_FRAMES = 600;
 

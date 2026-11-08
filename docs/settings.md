@@ -72,6 +72,9 @@ labels may move. The line changes these:
   at an element.
 - When the camera moves to an element, the shot also takes in the arrows and
   marks attached to it.
+- A mark from `s.annotate` on an element's `id` leaves with that element,
+  unless the mark has an `out` of its own. Before, it stayed until the end of
+  the scene.
 - The default highlight of a sticker's `*keywords*` picks a red that reads on
   that sticker's color.
 - A `brand.accent` that is hard to read on the caption background keeps its
