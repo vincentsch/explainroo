@@ -4,7 +4,7 @@ import path from 'node:path';
 import { loadProject, ProjectError, THEMES, MUSIC_STYLES, FORMATS, resolveSize, normalizeConfig, scriptName, checkLanguage, noKokoroVoice } from './project.js';
 import { layoutAreas } from '../engine/layout.js';
 import { ScriptError } from './script.js';
-import { prepare, makeState, VERSION } from './pipeline.js';
+import { prepare, makeState, outdatedLine, outdatedRenders, VERSION } from './pipeline.js';
 import { render } from './render.js';
 import { exportPlayer } from './export.js';
 import { check, formatVerify, stills, sheet, verify } from './qa.js';
@@ -206,10 +206,12 @@ export async function main(argv) {
         const { target } = timeline;
         const added = target?.added ? ` (targetSeconds ${target.seconds} added ${target.added.toFixed(1)} s to the hold of each scene)` : '';
         const notes = targetNotes(timeline, estimateLength(project)?.perMinute);
-        const after = notes.map((n) => `\n${n.level.toUpperCase().padEnd(5)} ${n.message}`).join('');
+        // A finished render of another size that says an older script.
+        const outdated = outdatedRenders(project);
+        const after = [...notes.map((n) => `${n.level.toUpperCase().padEnd(5)} ${n.message}`), ...outdated.map(outdatedLine)].map((line) => `\n${line}`).join('');
         print(rows.map((r) => `${r.scene.padEnd(18)} ${length(r)}  ${Math.round(r.confirmed * 100)}% confirmed${r.unconfirmed.length ? '  unconfirmed: ' + r.unconfirmed.slice(0, 6).join(', ') : ''}`).join('\n') + `\ntotal ${timeline.duration.toFixed(1)}s${added}` + mismatch + usage + speedNote + after, {
           scenes: rows, duration: timeline.duration, ...(paid ? { characters, speed, ...(speed !== wanted ? { requested_speed: wanted } : {}) } : {}),
-          ...(estimate ? { estimate } : {}), ...(target ? { target } : {}), ...(notes.length ? { notes } : {}),
+          ...(estimate ? { estimate } : {}), ...(target ? { target } : {}), ...(notes.length ? { notes } : {}), ...(outdated.length ? { outdated } : {}),
         });
         return 0;
       }
