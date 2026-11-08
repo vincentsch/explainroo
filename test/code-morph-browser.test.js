@@ -92,7 +92,8 @@ test('code morphs draw deterministic tokens, highlights, geometry and sounds in 
       assert.ok(sounds.slice(1).every((e) => e.gain === 0.2));
       assert.deepEqual(result.minimal, []);
       assert.deepEqual(result.silent, []);
-      for (const n of [1, 2, 3]) assert.ok(result.issues.some((i) => i.message.includes(`code step ${n} line`)));
+      // Each line that is too wide names its step and its code window.
+      for (const n of [1, 2, 3]) assert.ok(result.issues.some((i) => new RegExp(`^line \\d+ of step ${n} of the code "stats\\.js" \\(".+"\\) is wider than its window`).test(i.message)), JSON.stringify(result.issues));
       assert.ok(result.issues.some((i) => i.message.includes('20.00s but the scene ends')));
     });
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
