@@ -381,8 +381,11 @@ YouTube, with `connect buffer --callback-url '<the address>'` at the end. Here
 the browser goes to `https://localhost:8976/callback`.
 
 Buffer gives a new refresh token each time the login is renewed and ends the
-whole login when an old one comes back. `publish` saves each new one before it
-uses it, so don't put an older copy of the `.env` file back.
+whole login when an old one comes back. `publish` saves each new one the moment
+it arrives, so don't put an older copy of the `.env` file back. A run that is
+killed between Buffer's answer and that save leaves the old token in the file.
+The next run then says that the last renewal was cut off, and
+`explainroo connect buffer` signs in again.
 
 To sign in with a Buffer client of your own, put its client id in
 `BUFFER_CLIENT_ID`, in the settings `.env` or in the environment. Make it a

@@ -720,6 +720,77 @@ test('a run that hangs while it renews the Buffer login keeps the lock: the next
   assert.deepEqual(fs.readdirSync(path.join(s.settings, 'locks')), []);
 });
 
+// A new Buffer login in the .env file, as "connect buffer" leaves it.
+function signInAgain(s) {
+  const kept = fs.readFileSync(s.envFile, 'utf8').split('\n').filter((line) => line && !line.startsWith('BUFFER_'));
+  fs.writeFileSync(s.envFile, [...kept, ...Object.entries(s.fake.login('buffer')).map(([k, v]) => `${k}=${v}`), ''].join('\n'));
+}
+
+const renewals = (s) => (fs.existsSync(path.join(s.settings, 'renewals')) ? fs.readdirSync(path.join(s.settings, 'renewals')) : []);
+
+// Buffer replaces the refresh token as it answers. A run that stops after that
+// answer and before it saves the new token leaves the old one in the file, and
+// Buffer ends the login when that one comes back.
+test('a run that stops after Buffer renewed the login and before it saved the new token: the next run says the renewal was cut off and how to sign in again', async (t) => {
+  const s = await setup(t, { platforms: ['tiktok'], login: ['buffer'] });
+  const media = ['--media-url', 'https://media.example/v.mp4'];
+  const old = readEnvFile(s.envFile, 'BUFFER_REFRESH_TOKEN');
+  expireBufferLogin(s);
+  const nodeOptions = `${process.env.NODE_OPTIONS ?? ''} --import=${DIE_BEFORE}`.trim();
+  const died = await s.cli(['publish', s.dir, '--via', 'buffer', ...media, '--dry-run'], { extra: { NODE_OPTIONS: nodeOptions, EXPLAINROO_TEST_DIE_BEFORE: 'BUFFER_REFRESH_TOKEN=' } });
+  assert.equal(died.signal, 'SIGKILL', died.text);
+  assert.equal(s.fake.count('buffer-auth', 'POST /token'), 1);
+  assert.equal(readEnvFile(s.envFile, 'BUFFER_REFRESH_TOKEN'), old, 'the new token never reached the file');
+  assert.equal(renewals(s).length, 1, 'the renewal left its mark');
+  assert.ok(!fs.readFileSync(path.join(s.settings, 'renewals', renewals(s)[0]), 'utf8').includes(old), 'the mark holds no token');
+
+  for (let i = 0; i < 2; i++) {
+    const next = await s.publish('--via', 'buffer', ...media, '--yes');
+    assert.equal(next.code, 1, next.text);
+    assert.match(next.stderr, /^error: the last renewal of the Buffer login was cut off before the new token was saved, and now Buffer no longer accepts the old one\. Run "explainroo connect buffer" to sign in again\. Nothing was sent\.$/m);
+    assert.ok(!next.text.includes(old));
+  }
+  assert.deepEqual(s.changes(), NONE);
+  assert.deepEqual(jobs(s.dir), []);
+
+  // After a new sign-in, the mark of the old token means nothing. A login that
+  // Buffer ended for another reason gets the usual message.
+  signInAgain(s);
+  expireBufferLogin(s);
+  for (const grant of s.fake.publishing.grants.values()) grant.revoked = true;
+  const ended = await s.publish('--via', 'buffer', ...media, '--yes');
+  assert.equal(ended.code, 1);
+  assert.match(ended.stderr, /^error: Buffer no longer accepts the saved login \(Buffer answered with HTTP 400 \(invalid_grant: Token has been expired or revoked\.\)\)\. Run "explainroo connect buffer" again to sign in\. Nothing was sent\.$/m);
+  assert.deepEqual(renewals(s), [], 'a refusal gives no new token, so the mark goes');
+  signInAgain(s);
+  expireBufferLogin(s);
+  const posted = await s.json('--via', 'buffer', ...media, '--yes');
+  assert.equal(posted.code, 0, posted.text);
+  assert.deepEqual(renewals(s), []);
+  assert.deepEqual(fs.readdirSync(path.join(s.settings, 'locks')), []);
+});
+
+// A renewal whose answer never came may or may not have changed the token. When
+// Buffer still takes the old one, the next run renews as usual.
+test('a Buffer renewal with no answer keeps its mark, and the next run renews with the same token when Buffer still takes it', async (t) => {
+  const s = await setup(t, { platforms: ['tiktok'], login: ['buffer'] });
+  const media = ['--media-url', 'https://media.example/v.mp4'];
+  const old = readEnvFile(s.envFile, 'BUFFER_REFRESH_TOKEN');
+  expireBufferLogin(s);
+  s.fake.plan('buffer-auth', 'POST /token', { drop: true });
+  const lost = await s.publish('--via', 'buffer', ...media, '--yes');
+  assert.equal(lost.code, 1);
+  assert.match(lost.stderr, /^error: the Buffer login could not be renewed: Buffer did not answer\. Nothing was sent\. Run the same command again in a moment\.$/m);
+  assert.equal(renewals(s).length, 1);
+  const again = await s.json('--via', 'buffer', ...media, '--yes');
+  assert.equal(again.code, 0, again.text);
+  const sent = s.fake.requests('buffer-auth', 'POST /token').map((r) => new URLSearchParams(r.raw.toString()).get('refresh_token'));
+  assert.deepEqual(sent, [old, old]);
+  assert.notEqual(readEnvFile(s.envFile, 'BUFFER_REFRESH_TOKEN'), old);
+  assert.deepEqual(renewals(s), []);
+  assert.equal(s.fake.publishing.buffer.posts.size, 1);
+});
+
 test('an old Buffer refresh token that comes back ends the login, and the message says to sign in again', async (t) => {
   const s = await setup(t, { platforms: ['tiktok'], login: ['buffer'] });
   const media = ['--media-url', 'https://media.example/v.mp4'];

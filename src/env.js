@@ -32,7 +32,9 @@ export function saveKey(file, name, value) {
   saveKeys(file, { [name]: value });
 }
 
-// Writes several lines at once, so a run that dies leaves all of them or none.
+// Writes several lines at once, so a run that dies leaves all of them or none. The
+// new file is on the disk before it takes the old one's place, so a computer that
+// loses power right then keeps one of the two whole.
 export function saveKeys(file, values) {
   const target = fs.existsSync(file) ? fs.realpathSync(file) : file;
   const old = fs.existsSync(target) ? fs.readFileSync(target, 'utf8') : null;
@@ -51,7 +53,7 @@ export function saveKeys(file, values) {
   }
   fs.mkdirSync(path.dirname(target), { recursive: true });
   const temp = `${target}.${process.pid}.tmp`;
-  fs.writeFileSync(temp, lines.join('\n'), { mode });
+  fs.writeFileSync(temp, lines.join('\n'), { mode, flush: true });
   fs.chmodSync(temp, mode);
   fs.renameSync(temp, target);
 }

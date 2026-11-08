@@ -146,8 +146,29 @@ export function expiresAt(json, now = Date.now()) {
   return new Date(now + (Number.isFinite(seconds) && seconds > 0 ? seconds : 3600) * 1000).toISOString();
 }
 
+// One short name per .env file, for its lock and its renewal mark.
+function fileId(file) {
+  return crypto.createHash('sha256').update(path.resolve(file)).digest('hex').slice(0, 16);
+}
+
 function lockFile(file) {
-  return path.join(configRoot(), 'locks', crypto.createHash('sha256').update(path.resolve(file)).digest('hex').slice(0, 16));
+  return path.join(configRoot(), 'locks', fileId(file));
+}
+
+// A renewal that went out and whose answer is not saved yet leaves this mark. It
+// holds a hash of the refresh token that was sent, never the token itself.
+function renewalFile(file) {
+  return path.join(configRoot(), 'renewals', `${fileId(file)}.json`);
+}
+
+const tokenId = (token) => crypto.createHash('sha256').update(token).digest('hex').slice(0, 16);
+
+function renewalToken(marker) {
+  try {
+    return JSON.parse(fs.readFileSync(marker, 'utf8')).token ?? null;
+  } catch {
+    return null;
+  }
 }
 
 // One run at a time refreshes the tokens of one .env file. While the run that holds
@@ -166,9 +187,14 @@ async function withTokenLock(file, name, fn) {
 
 // A working access token from tokens saved in a .env file, for a service that
 // gives a new refresh token with each refresh and kills the old one. Reusing an
-// old one can end the whole login, so the new one is saved before anything uses
-// it, together with the access token and its expiry, under a lock. A run that
-// waited for the lock reads the file again and uses what the other run saved.
+// old one can end the whole login, so the new one is saved the moment it arrives,
+// together with the access token and its expiry, in one write, under a lock. A run
+// that waited for the lock reads the file again and uses what the other run saved.
+//
+// A run can still stop between the answer and the save. So before the request it
+// leaves a mark, and it takes the mark away once the new tokens are saved. When a
+// later run finds the mark for the token it has, and the service no longer takes
+// that token, the message says that the last renewal was cut off.
 //
 // `names` are the three lines in the .env file, and `refresh(token)` sends one
 // refresh and returns what tokenRequest returns.
@@ -181,14 +207,22 @@ export async function rotatingAccessToken({ source, names, refresh, name, comman
     if (access && good(readEnvFile(file, names.expires))) return rememberSecret(access);
     const old = rememberSecret(readEnvFile(file, names.refresh));
     if (!old) fail(`the ${name} login in ${file} has no refresh token. Run "${command}" again.`);
+    const marker = renewalFile(file);
+    // An earlier run sent this same token, and its answer was never saved.
+    const cutOff = renewalToken(marker) === tokenId(old);
+    writePrivateFile(marker, { renewing: name, token: tokenId(old), sent: new Date().toISOString() });
     const r = await refresh(old);
-    if (!r.ok) {
-      if (r.reason === 'invalid-grant') fail(`${name} no longer accepts the saved login (${r.message}). Run "${command}" again to sign in. Nothing was sent.`);
-      if (r.reason === 'busy') fail(`${name} has had too many requests and asks to wait${waitWords(r.retry_after)} before the next one. Nothing was sent, and nothing is sent again by itself.`);
-      fail(`the ${name} login could not be renewed: ${r.message}. Nothing was sent. Run the same command again in a moment.`);
+    if (r.ok) {
+      saveKeys(file, { [names.refresh]: rememberSecret(r.json.refresh_token) || old, [names.access]: r.json.access_token, [names.expires]: expiresAt(r.json) });
+      fs.rmSync(marker, { force: true });
+      return r.json.access_token;
     }
-    const next = rememberSecret(r.json.refresh_token) || old;
-    saveKeys(file, { [names.refresh]: next, [names.access]: r.json.access_token, [names.expires]: expiresAt(r.json) });
-    return r.json.access_token;
+    // A refusal means no new token was given for this request. Without an answer,
+    // or with one that was cut off, there may be one, so the mark stays.
+    if (!cutOff && r.status >= 400 && r.status < 500) fs.rmSync(marker, { force: true });
+    if (r.reason === 'invalid-grant' && cutOff) fail(`the last renewal of the ${name} login was cut off before the new token was saved, and now ${name} no longer accepts the old one. Run "${command}" to sign in again. Nothing was sent.`);
+    if (r.reason === 'invalid-grant') fail(`${name} no longer accepts the saved login (${r.message}). Run "${command}" again to sign in. Nothing was sent.`);
+    if (r.reason === 'busy') fail(`${name} has had too many requests and asks to wait${waitWords(r.retry_after)} before the next one. Nothing was sent, and nothing is sent again by itself.`);
+    fail(`the ${name} login could not be renewed: ${r.message}. Nothing was sent. Run the same command again in a moment.`);
   });
 }
