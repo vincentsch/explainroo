@@ -8,7 +8,7 @@ import { AUDIO_CODECS, finishMix, frameEncoder, ffmpeg } from './ffmpeg.js';
 import { subtitleCues, toSrt, toVtt } from './subtitles.js';
 import { buildChapters, toChaptersText, toChapterMetadata } from './chapters.js';
 import { resolveTimes } from './qa.js';
-import { outputPath, scriptName, TALL_FORMATS } from './project.js';
+import { outputPath, scriptName } from './project.js';
 import { recordVersion, relativeFile, sha256File } from './history.js';
 
 export function renderFormat({ format = 'mp4', out, transparent = false } = {}) {
@@ -204,13 +204,18 @@ export function versionLine(project, video) {
   };
 }
 
-// The moment of the cover, as a still spec. "auto" takes the end of the first
-// scene, when it is fully built. Shorts, TikTok and Reels open on a hook title,
-// which may leave before then, so a tall video takes 1.0 second into its first
-// scene, or the scene's last frame when it is shorter.
-export function coverSpec(config, timeline) {
-  if (config.cover !== 'auto') return config.cover;
-  return `${timeline.scenes[0].id}@${TALL_FORMATS.includes(config.format) ? '1.0' : 'end'}`;
+// The moment of the cover, as a still spec, or "auto". The page works out
+// "auto": the frame within the first 3 seconds of the first scene with the
+// most elements fully on screen, the earliest of those, at every size.
+export function coverSpec(config) {
+  return config.cover;
+}
+
+// The time of the cover as resolveTimes gives it, or { auto: true } for a time
+// the page works out.
+export function coverTime(config, timeline) {
+  const spec = coverSpec(config);
+  return spec === 'auto' ? { auto: true, T: null, label: 'auto' } : resolveTimes(timeline, [spec])[0];
 }
 
 // What goes next to a video: its caption cues, its chapters and the time of its
@@ -220,7 +225,7 @@ export function planExtras(project, timeline, { range = { from: 0, to: timeline.
   return {
     cues: subtitleCues(timeline, { ...range, script: scriptName(project) }),
     chapters: full && chapters ? buildChapters(timeline, project.script.title || project.config.title) : [],
-    coverTime: full ? resolveTimes(timeline, [coverSpec(project.config, timeline)])[0] : null,
+    coverTime: full ? coverTime(project.config, timeline) : null,
   };
 }
 
@@ -245,7 +250,7 @@ export async function writeExtras(project, timeline, base, { plan, log = () => {
   if (coverTime) {
     const temp = path.join(project.paths.build, 'cover.jpg');
     try {
-      await withEngine(project, timeline, { scale: 1, log }, (page) => page.evaluate(([T, file]) => window.explainroo.stills([{ T, path: file }], { type: 'image/jpeg', quality: 0.9, captions: false }), [coverTime.T, projectUrl(project, temp)]));
+      await withEngine(project, timeline, { scale: 1, log }, (page) => page.evaluate(([T, file]) => window.explainroo.stills([{ T: T ?? window.explainroo.coverMoment(), path: file }], { type: 'image/jpeg', quality: 0.9, captions: false }), [coverTime.T, projectUrl(project, temp)]));
       files.cover = `${base}.cover.jpg`;
       fs.copyFileSync(temp, files.cover);
     } finally { fs.rmSync(temp, { force: true }); }

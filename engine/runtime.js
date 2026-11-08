@@ -581,6 +581,68 @@ export class Engine {
     return { cues: out, clips, sounds, errors };
   }
 
+  // What a frame shows as the camera films it: how many elements are fully on
+  // screen, and whether those are only text. `t` is seconds into scene `index`.
+  framed(index, t) {
+    const scratch = (this._framedCanvas ??= Object.assign(document.createElement('canvas'), { width: 16, height: 16 }));
+    const saved = { textLog: this.textLog, drawLog: this.drawLog, recorder: this.recorder };
+    this.textLog = [];
+    this.drawLog = drawLog();
+    this.recorder = null;
+    let texts;
+    let log;
+    try {
+      this.drawScene(scratch.getContext('2d'), index, t);
+      texts = this.textLog;
+      log = this.drawLog;
+    } catch {
+      return { count: 0, onlyText: false };
+    } finally {
+      Object.assign(this, saved);
+    }
+    const inside = (b) => b.x0 >= -1 && b.y0 >= -1 && b.x1 <= this.W + 1 && b.y1 <= this.H + 1;
+    const words = texts.filter((x) => !x.problem && x.settled && x.alpha > 0.95 && inside(x)).length;
+    const pictures = log.shapes.filter((s) => s.settled && s.alpha > 0.95 && inside(s.box)).length
+      + log.strokes.filter((s) => s.settled && s.alpha > 0.95).length
+      + log.lives.filter((l) => l.settled && ['line', 'chart', 'custom'].includes(l.kind)).length
+      + (log.ink ? 1 : 0);
+    return { count: words + pictures, onlyText: words > 0 && pictures === 0 };
+  }
+
+  // The moment "cover": "auto" takes: within the first 3 seconds of the first
+  // scene, the frame with the most elements fully on screen, the earliest one
+  // of those. Seconds into the video.
+  coverMoment() {
+    const sc = this.timeline.scenes[0];
+    const last = Math.max(0, Math.floor((Math.min(COVER_SECONDS, sc.dur) - 1e-6) * this.fps));
+    let best = { T: sc.start, count: -1 };
+    for (let f = 0; f <= last; f++) {
+      const { count } = this.framed(sc.index, f / this.fps);
+      if (count > best.count) best = { T: sc.start + f / this.fps, count };
+    }
+    return best.T;
+  }
+
+  // A hint when the cover shows only text on an empty background. `T` is the
+  // cover's time, or null for "cover": "auto".
+  coverIssue(T = null) {
+    const auto = T === null;
+    const at = auto ? this.coverMoment() : T;
+    const i = this.sceneAt(at);
+    const sc = this.timeline.scenes[i];
+    if (!this.framed(i, at - sc.start).onlyText) return null;
+    const label = `${sc.id}@${(at - sc.start).toFixed(1)}`;
+    // The first moment of that scene that shows the most, with a picture.
+    let better = null;
+    for (let t = 0; t < sc.dur - 0.05; t += 0.25) {
+      const f = this.framed(i, t);
+      if (!f.onlyText && f.count > 0 && (!better || f.count > better.count)) better = { t, count: f.count };
+    }
+    const where = auto ? `"cover": "auto" picks ${label}` : `the cover at ${label}`;
+    const advice = better ? `set "cover": "${sc.id}@${better.t.toFixed(1)}" for a frame with a picture, or show a picture sooner` : 'show a picture with the text, or set "cover" to a moment that has one';
+    return { level: 'hint', scene: sc.id, t: Math.round((at - sc.start) * 100) / 100, message: `${where}, which shows only text on an empty background; ${advice}` };
+  }
+
   // Samples every scene and reports layout problems.
   check(step = 0.25, viewWidth = null) {
     // check looks at the layout as written, and then at what the automatic

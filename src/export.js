@@ -9,8 +9,7 @@ import { outputPath, scriptName } from './project.js';
 import { startServer, projectFile, ROOT } from './server.js';
 import { launch, openEngine } from './browser.js';
 import { AUDIO_CODECS, ffmpeg, finishMix } from './ffmpeg.js';
-import { resolveTimes } from './qa.js';
-import { coverSpec } from './render.js';
+import { coverTime } from './render.js';
 import { subtitleCues, toVtt } from './subtitles.js';
 import { projectUrl } from './timeline.js';
 import { BOLD_CAPTION_FAMILIES } from '../engine/captions.js';
@@ -126,7 +125,7 @@ export async function exportPlayer(project, { out, log = () => {} } = {}) {
     });
     // openEngine uses browser.newPage, so keep its requests in this context.
     const page = await openEngine(context, server.url);
-    const cover = resolveTimes(timeline, [coverSpec(project.config, timeline)])[0].T;
+    const cover = coverTime(project.config, timeline).T;
     const build = projectUrl(project, project.paths.build);
     const used = await page.evaluate(async ([cover, build]) => {
       const { boot } = await import('/engine/runtime.js');
@@ -164,8 +163,9 @@ export async function exportPlayer(project, { out, log = () => {} } = {}) {
         const collected = engine.collectEvents();
         if (collected.errors.length) throw new Error(collected.errors[0].message);
         for (const sc of engine.timeline.scenes) engine.renderFrame(sc.start + sc.dur - 1 / engine.fps);
-        await engine.prepareFrame(cover);
-        engine.renderFrame(cover, undefined, { captions: false });
+        const poster = cover ?? engine.coverMoment();
+        await engine.prepareFrame(poster);
+        engine.renderFrame(poster, undefined, { captions: false });
         await upload(`${build}/player-mix.wav`, audio.encodeWav(sound.buffer));
         await upload(`${build}/player-poster.jpg`, await new Promise(resolve => engine.canvas.toBlob(resolve, 'image/jpeg', 0.9)));
         if ([...engine.mathCache.values()].some(m => m?.error)) throw new Error('a formula could not be typeset. Run check and fix it before exporting.');

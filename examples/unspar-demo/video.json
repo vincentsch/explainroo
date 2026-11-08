@@ -5,6 +5,7 @@
   "voice": "af_heart",
   "music": true,
   "captions": "auto",
+  "cover": "hook@end",
   "brand": {
     "accent": "#245cff",
     "background": "#f8f6f1",

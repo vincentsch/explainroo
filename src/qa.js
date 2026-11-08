@@ -9,6 +9,7 @@ import { readWav } from './wav.js';
 import { alignWords, nearList, readAlike } from './align.js';
 import { heardInstead } from './voice.js';
 import { buildChapters, chapterHints } from './chapters.js';
+import { coverTime } from './render.js';
 import { languageIssues, outputPath, ProjectError, scriptName } from './project.js';
 import { recordVersion, relativeFile, sha256File } from './history.js';
 import { decodedSound } from './server.js';
@@ -104,9 +105,18 @@ export async function check(project, { log = () => {}, step = 0.25, viewWidth = 
       issues.push({ level: 'error', scene: null, t: null, message: `music: ${e.message}` });
     }
   }
+  // The cover's moment. One at a scene that isn't there is an error, which
+  // would stop render.
+  let cover = null;
+  try {
+    cover = coverTime(project.config, timeline);
+  } catch (e) {
+    issues.push({ level: 'error', scene: null, t: null, message: `cover: ${e.message}` });
+  }
   const pageIssues = await withEngine(project, timeline, { scale: 0.5, log }, async (page) => [
     ...(await page.evaluate(([s, w]) => window.explainroo.check(s, w), [step, viewWidth])),
     ...(await page.evaluate(() => window.explainroo.soundFileIssues())),
+    ...(cover ? [await page.evaluate((T) => window.explainroo.coverIssue(T), cover.T)].filter(Boolean) : []),
   ]);
   issues.push(...pageIssues);
   const order = { error: 0, warn: 1, hint: 2 };
