@@ -232,17 +232,17 @@ test('check warns when a reveal has not finished by the end of its scene or by i
   assert.match(reveals[4].message, /^"Writes itself slowly" has written \d+% of itself by its out at 1\.0s, and needs until 1\.7s; give it an earlier at, or a shorter dur$/);
 });
 
-// A note on the edge of a box, as a real project had it under "Your agent".
+// A note on the edge of a box, right under it.
 test('check warns about text that partly overlaps a shape, and not about a shape\'s own text, text inside a shape, a group or overlap: true', { skip }, async (t) => {
   const issues = await check(project(t, {}, {
-    edge: "s.box('Your agent', { id: 'agent', x: 960, y: 400, w: 500, h: 200, at: 0 }); s.note('Claude Code, Codex, ChatGPT, Claude', { x: 960, y: 505, size: 32, at: 0 });",
+    edge: "s.box('Your phone', { id: 'phone', x: 960, y: 400, w: 500, h: 200, at: 0 }); s.note('Mail, maps, music and photos', { x: 960, y: 505, size: 32, at: 0 });",
     inside: "s.box({ x: 960, y: 540, w: 900, h: 500, at: 0 }); s.text('Inside the box', { x: 960, y: 540, at: 0 }); s.box('Own text', { x: 400, y: 200, at: 0 }); s.icon('server', { x: 1500, y: 300, size: 120, label: 'Server', at: 0 });",
     allowed: "s.box('Card', { x: 960, y: 400, w: 500, h: 200, at: 0 }); s.note('meant to sit on the edge', { x: 960, y: 505, size: 32, at: 0, overlap: true });",
     grouped: "s.group({ x: 960, y: 540, at: 0 }, () => { s.box('Card', { x: 0, y: 0, w: 500, h: 200 }); s.note('a badge on its edge', { x: 0, y: 105, size: 32 }); });",
   }));
   const found = issues.filter((i) => /partly overlap/.test(i.message));
   assert.deepEqual(found.map((i) => [i.level, i.scene]), [['warn', 'edge']], JSON.stringify(issues));
-  assert.match(found[0].message, /^"Claude Code, Codex, ChatGPT, Claude" and the box "Your agent" partly overlap, by \d+px; move them apart, or give one of them overlap: true if that is meant$/);
+  assert.match(found[0].message, /^"Mail, maps, music and photos" and the box "Your phone" partly overlap, by \d+px; move them apart, or give one of them overlap: true if that is meant$/);
 });
 
 // A diagram whose arrows run between points, through a circle on their way, and

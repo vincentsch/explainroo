@@ -513,3 +513,12 @@ test('the scene-api topic says where s.draw puts 0, 0, how the camera measures a
   const api = oneLine(page('scene-api'));
   for (const words of ['`ctx` is already moved to `x`, `y`', 'Without `x` and `y`, 0, 0 is the top left corner of the frame', '`life.p` goes from 0 to 1 over `dur` seconds after `at`', 'At `out` it leaves with `exit`', 'The automatic camera measures a drawing once, as it looks at the end of the scene', 'a drawing that moves is measured where it ends up']) assert.ok(api.includes(words), words);
 });
+
+test('the README says a budget makes --max-cost optional, and the recipe for espeak-ng without root finds its library folder on any processor', () => {
+  const readme = oneLine(read('README.md'));
+  assert.ok(readme.includes('A paid run needs `--max-cost` or a budget'), 'the README names the budget');
+  const languages = page('languages');
+  assert.match(languages, /lib=\$\(dirname "\$\(find "\$HOME\/espeak\/usr\/lib" -name 'libespeak-ng\.so\*' \| head -n 1\)"\)/);
+  assert.ok(!/x86_64-linux-gnu\/espeak-ng-data`/.test(languages), 'no fixed x86_64 data path');
+  assert.ok(oneLine(languages).includes('put the line in the settings file, the same `.env` that holds keys'));
+});
