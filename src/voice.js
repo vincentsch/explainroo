@@ -15,6 +15,9 @@ import { recordingFiles, decodeRecording, saveRecording, recordingCuts } from '.
 import { scriptName } from './project.js';
 
 const PIPELINE = 7;
+// The rules of the speech check that a scene was checked with. A scene checked
+// with older rules is looked at again from its transcript, without new speech.
+const CHECK = 2;
 
 export function sceneHash(scene, chunks, config, recording = null) {
   return crypto
@@ -66,13 +69,67 @@ export function heardInstead(info, language) {
   return again ? Object.fromEntries(again.aligned.flatMap((a, k) => (a.heard && !info.words[k].matched ? [[k, a.heard]] : []))) : {};
 }
 
-// A scene's words aligned again with its saved transcript. Its times are made up
-// and never used.
+// The part of a scene's transcript where the words at `indexes` should have
+// been, with four whole words on each side and "…" where it is cut, like
+// "…a harmless peace of the virus…". Places that overlap are quoted once, and
+// several places are joined with "and". Null when the transcript can't say.
+export function heardQuote(info, language, indexes, around = 4) {
+  const again = realign(info, language);
+  if (!again || !indexes.length) return null;
+  const heard = info.transcript.split(/\s+/).filter(Boolean);
+  // Each word's time in the realigned scene counts heard words, so it is a place in the transcript.
+  const ranges = indexes.map((k) => {
+    const from = Math.floor(again.aligned[k].start + 1e-6);
+    const to = Math.max(from, Math.ceil(again.aligned[k].end - 1e-6));
+    return [Math.max(0, from - around), Math.min(heard.length, to + around)];
+  }).sort((a, b) => a[0] - b[0]);
+  const merged = [];
+  for (const r of ranges) {
+    const last = merged.at(-1);
+    if (last && r[0] <= last[1]) last[1] = Math.max(last[1], r[1]);
+    else merged.push([...r]);
+  }
+  return merged.map(([a, b]) => `"${a > 0 ? '…' : ''}${heard.slice(a, b).join(' ')}${b < heard.length ? '…' : ''}"`).join(' and ');
+}
+
+// A scene's words aligned again with its saved transcript. Its times count
+// heard words, so they say where in the transcript a word is, and are never
+// used as times.
 function realign(info, language) {
   if (['ja', 'zh'].includes(language) || !info.duration || !info.transcript || !Array.isArray(info.words)) return null;
   const words = info.words.map((w) => ({ spoken: w.spoken ?? w.text, display: w.text }));
   const heard = info.transcript.split(/\s+/).filter(Boolean).map((text, i) => ({ text, start: i, end: i + 1 }));
-  return { words, aligned: alignWords(words, heard, heard.length, language).words };
+  return { words, heard, aligned: alignWords(words, heard, heard.length, language).words };
+}
+
+// A scene from the cache, with its near matches, looked at again with today's
+// speech check when it was made with older rules and has words it couldn't
+// confirm. A word that the check confirms now counts as confirmed, with its old
+// time. Nothing is saved and no speech is made.
+export async function reviewSpeech(info, language) {
+  const base = { ...info, nearly: nearMatches(info, language) };
+  if (info.check === CHECK || !Array.isArray(info.words) || info.words.every((w) => w.matched)) return base;
+  const again = realign(info, language);
+  if (!again) return base;
+  const now = (await alignSpeech(again.words, again.heard, again.heard.length, language)).words;
+  const newly = info.words.map((w, k) => !w.matched && now[k].matched);
+  if (!newly.some(Boolean)) return base;
+  const tokens = (w) => String(w.spoken ?? w.text).split(/\s+/).length;
+  const total = info.words.reduce((n, w) => n + tokens(w), 0);
+  const gained = info.words.reduce((n, w, k) => n + (newly[k] ? tokens(w) : 0), 0);
+  const unmatched = [...(info.unmatched ?? [])];
+  info.words.forEach((w, k) => {
+    const at = newly[k] ? unmatched.indexOf(w.text) : -1;
+    if (at !== -1) unmatched.splice(at, 1);
+  });
+  const pick = (list) => list.filter((_, k) => newly[k]);
+  return {
+    ...base,
+    words: info.words.map((w, k) => (newly[k] ? { ...w, matched: true } : w)),
+    matchRate: Math.min(1, round((info.matchRate ?? 0) + gained / total)),
+    unmatched,
+    nearly: [...base.nearly, ...nearList(pick(again.words), pick(now))],
+  };
 }
 
 export function readVoice(project, id) {
@@ -210,9 +267,9 @@ export async function synthesize(project, { force = false, fresh = false, log = 
     const hasAudio = !chunks.length || fs.existsSync(voicePaths(project, scene.id).wav);
     if (speech && chunks.length) addFinishedScene(project, speech, scene, chunks, cached, hash, log, notice);
     if (!force && cached && cached.hash === hash && hasAudio && !speech?.needsNew(chunks)) {
-      result[scene.id] = { ...cached, nearly: nearMatches(cached, config.language) };
+      result[scene.id] = await reviewSpeech(cached, config.language);
     } else if (only && !only.includes(scene.id) && cached) {
-      result[scene.id] = { ...cached, nearly: nearMatches(cached, config.language) };
+      result[scene.id] = await reviewSpeech(cached, config.language);
     } else {
       todo.push({ scene, chunks, hash });
     }
@@ -252,7 +309,7 @@ async function synthesizeScene(project, scene, chunks, hash, tts, speech, log, t
   const { config } = project;
   const files = voicePaths(project, scene.id);
   if (!chunks.length) {
-    const info = { hash, id: scene.id, duration: 0, words: [], marks: resolveMarks(scene.units, []), chunks: [], transcript: '', matchRate: 1, unmatched: [], nearly: [] };
+    const info = { hash, check: CHECK, id: scene.id, duration: 0, words: [], marks: resolveMarks(scene.units, []), chunks: [], transcript: '', matchRate: 1, unmatched: [], nearly: [] };
     if (fs.existsSync(files.wav)) fs.rmSync(files.wav);
     fs.writeFileSync(files.json, JSON.stringify(info, null, 2));
     return info;
@@ -316,6 +373,7 @@ async function synthesizeScene(project, scene, chunks, hash, tts, speech, log, t
   });
   const info = {
     hash,
+    check: CHECK,
     id: scene.id,
     duration: round(cursor / sr),
     words,
@@ -363,7 +421,7 @@ async function recordingScene(project, scene, hash, source, take, cut, heardTake
   const files = voicePaths(project, scene.id);
   await saveRecording(files.wav, samples, sr);
   const info = {
-    hash, id: scene.id, duration: round(duration),
+    hash, check: CHECK, id: scene.id, duration: round(duration),
     words: units.map((u, i) => ({ text: u.display, spoken: u.spoken, start: round(times[i].start), end: round(times[i].end), matched: aligned.words[i].matched })),
     marks: Object.fromEntries(Object.entries(resolveMarks(scene.units, wordTimes)).map(([k, v]) => [k, round(v)])),
     chunks: [{ start: 0, end: round(duration), text: scene.spoken }],

@@ -7,23 +7,46 @@ import { dbtp, probe, loudness, ffmpeg, PEAK_CEILING } from './ffmpeg.js';
 import { transcribeWords } from './models.js';
 import { readWav } from './wav.js';
 import { alignWords, nearList, readAlike } from './align.js';
-import { heardInstead } from './voice.js';
+import { heardInstead, heardQuote } from './voice.js';
 import { buildChapters, chapterHints } from './chapters.js';
 import { languageIssues, outputPath, ProjectError, scriptName } from './project.js';
 import { recordVersion, relativeFile, sha256File } from './history.js';
 import { decodedSound } from './server.js';
 
-// "2 words only nearly matched: Soundroo (heard "Soundru"), Codex (heard "codecs")".
-// The same word heard the same way counts once, with how often.
+// "2 words only nearly matched: Soundroo (heard "Soundru"), Codex (heard "codecs")",
+// and "1 word sounded the same: piece (heard "peace")" for words heard as
+// another word with the same sound. Two words heard as one show together, like
+// See costs (heard "Seacosts"). The same word heard the same way counts once,
+// with how often.
 export function nearlyText(nearly) {
-  const seen = new Map();
-  for (const { word, heard } of nearly) {
-    const text = heard ? `${word} (heard "${heard}")` : word;
-    seen.set(text, (seen.get(text) ?? 0) + 1);
+  const groups = { near: { seen: new Map(), words: 0 }, alike: { seen: new Map(), words: 0 } };
+  for (let i = 0; i < nearly.length; i++) {
+    const n = nearly[i];
+    const next = nearly[i + 1];
+    const pair = n.joined && next?.joined && next.heard === n.heard && next.scene === n.scene;
+    const word = pair ? `${n.word} ${next.word}` : n.word;
+    const text = n.heard ? `${word} (heard "${n.heard}")` : word;
+    const group = groups[n.alike ? 'alike' : 'near'];
+    group.seen.set(text, (group.seen.get(text) ?? 0) + 1);
+    group.words += pair ? 2 : 1;
+    if (pair) i++;
   }
-  const list = [...seen].slice(0, 8).map(([text, n]) => (n > 1 ? `${text} ${n} times` : text));
-  const more = seen.size > 8 ? `, and ${seen.size - 8} more` : '';
-  return `${nearly.length} word${nearly.length === 1 ? '' : 's'} only nearly matched: ${list.join(', ')}${more}`;
+  const list = ({ seen }) => {
+    const shown = [...seen].slice(0, 8).map(([text, n]) => (n > 1 ? `${text} ${n} times` : text));
+    return `${shown.join(', ')}${seen.size > 8 ? `, and ${seen.size - 8} more` : ''}`;
+  };
+  const count = (n) => `${n} word${n === 1 ? '' : 's'}`;
+  return [
+    ...(groups.near.words ? [`${count(groups.near.words)} only nearly matched: ${list(groups.near)}`] : []),
+    ...(groups.alike.words ? [`${count(groups.alike.words)} sounded the same: ${list(groups.alike)}`] : []),
+  ].join('; ');
+}
+
+// A transcript cut at a whole word, for a scene whose words have no place in it.
+function cutTranscript(text, length = 200) {
+  if (text.length <= length) return `"${text}"`;
+  const cut = text.slice(0, length + 1).replace(/\s+\S*$/, '');
+  return `"${cut || text.slice(0, length)}…"`;
 }
 
 // The shown and spoken text of an override without the punctuation after it,
@@ -65,7 +88,8 @@ export function speechFindings(project, voices) {
     const suspicious = v ? v.unmatched.filter((w) => w.replace(/[^\p{L}\p{M}\p{N}]/gu, '').length > 3) : [];
     // A word that already has {shown|spoken} counts at any length, like {SQL|sequel},
     // because its override didn't help.
-    const missed = !recording && Array.isArray(v?.words) ? v.words.map((word, k) => ({ word, k })).filter(({ word }) => !word.matched) : [];
+    const unconfirmed = Array.isArray(v?.words) ? v.words.map((word, k) => ({ word, k })).filter(({ word }) => !word.matched) : [];
+    const missed = recording ? [] : unconfirmed;
     const overridden = missed.filter(({ word }) => hasOverride(word));
     if (v && v.duration && (v.matchRate < 0.9 || suspicious.length || overridden.length)) {
       // In the order of the script, the long words and every word with an override.
@@ -74,10 +98,13 @@ export function speechFindings(project, voices) {
       // What was heard in place of each listed override.
       const instead = shown.length ? heardInstead(v, project.config.language) : {};
       const names = listed ? listed.map(({ word }) => word.text) : suspicious.slice(0, 8);
+      // The transcript where the named words should be, four words on each side.
+      const named = listed ?? unconfirmed.filter(({ word }) => suspicious.includes(word.text)).slice(0, 8);
+      const quote = heardQuote(v, project.config.language, (named.length ? named : unconfirmed.slice(0, 3)).map(({ k }) => k)) ?? cutTranscript(v.transcript);
       const advice = recording
         ? `The recording does not match ${script} here. Make ${script} say what was actually said.`
         : unconfirmedAdvice(shown.map(({ word, k }) => ({ word, heard: instead[k] })), missed.some(({ word }) => !hasOverride(word)), script);
-      issues.push({ level: 'warn', scene: sc.id, t: null, message: `the voice check could not confirm ${names.length ? names.map((w) => `"${w}"`).join(', ') : `${Math.round((1 - v.matchRate) * 100)}% of the words`}. It heard: "${v.transcript.slice(0, 200)}". ${advice}` });
+      issues.push({ level: 'warn', scene: sc.id, t: null, message: `the voice check could not confirm ${names.length ? names.map((w) => `"${w}"`).join(', ') : `${Math.round((1 - v.matchRate) * 100)}% of the words`}. It heard: ${quote}. ${advice}` });
     }
     if (v && v.duration > 40) issues.push({ level: 'hint', scene: sc.id, t: null, message: `the narration runs ${v.duration.toFixed(0)}s; long scenes are easier to follow when split` });
     if (v && v.duration) {

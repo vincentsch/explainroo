@@ -41,9 +41,10 @@ user. Read it first.
    the word already has `{shown|spoken}`, `check` says so and quotes what was
    heard. Then try another spoken spelling, or reword the sentence. For a
    recording, make script.md say what was actually said. `check` also lists
-   the words that only nearly matched, like "Soundroo" heard as "Soundru".
-   They count as understood, and names the speech model doesn't know often
-   end up there.
+   the words that only nearly matched, like "Soundroo" heard as "Soundru". It
+   lists words that sounded the same, like "peace" for "piece", and two words
+   heard as one. They count as understood, and names the speech model doesn't
+   know often end up there.
    Only the scenes you changed are made again. `check`, `still`, `sheet`,
    `render` and `preview` also make missing narration, so start them after
    `voice` has finished, not at the same time.

@@ -174,3 +174,9 @@ test('numbers count by value, with thousands written the way each language write
   // And a number that was not heard leaves both unconfirmed.
   assert.deepEqual(state(alignWords(words('unos 300 000 años'), said('unos 200.000 años'), 1, 'es')).map((s) => s.split(':')[0]), ['exact', 'no', 'no', 'exact']);
 });
+
+test('the list of near matches shows sound-alike words and two words heard as one', () => {
+  assert.equal(nearlyText([{ word: 'piece', heard: 'peace', alike: true }]), '1 word sounded the same: piece (heard "peace")');
+  assert.equal(nearlyText([{ word: 'See', heard: 'Seacosts', joined: true }, { word: 'costs', heard: 'Seacosts', joined: true }, { word: 'Soundroo', heard: 'Soundru' }, { word: 'piece', heard: 'peace', alike: true }]),
+    '3 words only nearly matched: See costs (heard "Seacosts"), Soundroo (heard "Soundru"); 1 word sounded the same: piece (heard "peace")');
+});
