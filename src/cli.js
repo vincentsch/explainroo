@@ -705,6 +705,7 @@ function icons(words, print) {
   const { aliases = {} } = JSON.parse(fs.readFileSync(path.join(ROOT, 'engine', 'icons', 'lucide.json'), 'utf8'));
   for (const [alias, target] of Object.entries(aliases)) all[target] = [...(all[target] || []), alias.replace(/-/g, ' ')];
   const q = words.map((w) => w.toLowerCase());
+  const wanted = q.join('-');
   if (!q.length) {
     print(`${Object.keys(all).length} icons. Search with: explainroo icons <word…>`, { count: Object.keys(all).length });
     return 0;
@@ -722,7 +723,8 @@ function icons(words, print) {
       return { name, score, tags };
     })
     .filter((x) => x.score > 0)
-    .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
+    // An icon whose name is exactly the words comes first.
+    .sort((a, b) => (b.name === wanted) - (a.name === wanted) || b.score - a.score || a.name.localeCompare(b.name));
   const total = scored.length;
   scored.splice(40);
   const asked = words.join(' ');
@@ -738,9 +740,13 @@ function icons(words, print) {
   }
   // One icon per line, and the words it is also found by after it, so the tags
   // don't read as more icons.
-  const lines = scored.map((x) => `  ${x.name}${x.tags.length ? `  (also found by: ${x.tags.slice(0, 6).join(', ')})` : ''}`);
+  const lines = scored.map((x) => {
+    const notes = [...(x.name === wanted ? ['exact name'] : []), ...(x.tags.length ? [`also found by: ${x.tags.slice(0, 6).join(', ')}`] : [])];
+    return `  ${x.name}${notes.length ? `  (${notes.join('; ')})` : ''}`;
+  });
   const head = total === 1 ? `1 icon matches "${asked}":` : total > scored.length ? `${total} icons match "${asked}". These are the ${scored.length} best:` : `${total} icons match "${asked}", best first:`;
-  print([head, ...lines].join('\n'), { icons: scored.map((x) => x.name) });
+  const exact = scored[0]?.name === wanted ? wanted : null;
+  print([head, ...lines].join('\n'), { icons: scored.map((x) => x.name), exact });
   return 0;
 }
 
