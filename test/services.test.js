@@ -71,7 +71,8 @@ test('the hosted link is coming and says what leaves the computer, and package i
   assert.equal(link.step, 'sharing');
   assert.equal(link.status, 'coming');
   assert.equal(link.free, true);
-  assert.match(link.data_leaves, /^The video file and its title go to explainroo\.com, and only when you run "explainroo share"\.$/);
+  assert.match(link.data_leaves, /^Nothing yet, because the service is coming\. Once it runs, the video file and its title go to explainroo\.com, and only when you run "explainroo share"\.$/);
+  assert.match(link.about, /Until it runs, the command sends nothing and says so\.$/);
   assert.match(link.cost, /without an account expires/);
   assert.match(link.setup.steps.join(' '), /EXPLAINROO_CLOUD_KEY/);
   assert.equal(findConnector('cloud').baseUrl, 'https://www.explainroo.com');

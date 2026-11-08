@@ -345,6 +345,13 @@ const steps = [
     },
   },
   {
+    // Without a server set on purpose, share sends nothing while the hosted service is coming.
+    args: ['share', 'tiny', '--platform', 'tiktok', '--json'],
+    env: () => ({ EXPLAINROO_CLOUD_URL: '' }),
+    status: 1,
+    check: (r, { fake }) => expect(/is coming, and it doesn't take videos yet\. Nothing was sent/.test(r.error) && fake.count('cloud', 'POST /api/v1/shares') === 0, `share without a server says ${r.error}`),
+  },
+  {
     args: ['share', 'tiny', '--platform', 'tiktok', '--json'],
     check: async (r, { fake }) => {
       expect(!r.reused && r.url && r.media_url && r.expires_at && r.claim_url && r.file === 'out/package/tiktok/video.mp4', `share says ${JSON.stringify(r)}`);

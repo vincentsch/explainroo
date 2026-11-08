@@ -57,8 +57,9 @@ the user's own account, and only when you run a command that uses them.
 the sign-in to that service. When a post uses a link to the video, `publish`
 and its dry run also ask that link for the size of its file. `clip --dry-run`
 reads OpenRouter's public price list, without the prompt or a key. `services`
-reads the same list when it lists clips, at most once a day. `share` uploads
-the video and its title to explainroo.com, where the hosted service is coming.
+reads the same list when it lists clips, at most once a day. `share` will
+upload the video and its title to explainroo.com, and sends nothing until that
+service runs.
 `capture` loads the page you name. The models and fonts download the first
 time, and nothing of the user's goes along. Nothing else leaves the computer,
 and everything else is free.

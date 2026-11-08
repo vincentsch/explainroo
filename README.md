@@ -108,7 +108,7 @@ agent run them:
 | `image` or `clip` | The prompt and any reference images | OpenRouter and the model's provider |
 | `clip --dry-run` | A request for the list of video models and their prices, without your prompt or a key | OpenRouter |
 | `services`, when it lists clips | The same request as `clip --dry-run`, at most once a day. It asks for the list of video models and their prices, without your prompt or a key | OpenRouter |
-| `share` | The video file and its title | explainroo.com, where the hosted service is coming |
+| `share` | Nothing in this version, because the hosted service is coming. Once it runs, the video file and its title | explainroo.com |
 | `publish` | The video or a link to it, its title and its text. With a link, first a request for the size of the file there | YouTube, Buffer or Blotato, and whatever they send it to. The size request goes to the host of the link |
 | `publish --dry-run` | Your login, to read your channels or accounts, and the same size request | YouTube, Buffer or Blotato, and the host of the link |
 | `capture` | Requests for the page you name and the files it loads | That site and the servers it loads from |
@@ -123,7 +123,8 @@ goes along with these downloads. explainroo has no telemetry, so it sends
 nothing about how you use it.
 
 Nothing uploads to the hosted service without the explicit `explainroo share`
-command.
+command. In this version `share` sends nothing at all, because the service
+doesn't run yet.
 
 ## Looks
 
@@ -258,8 +259,8 @@ at the right size, it holds the words for the post. It also says whether to mark
 the post as made with AI, and why. You can upload the folder yourself.
 
 `explainroo share` uploads a finished video to explainroo.com and gives back a
-page link. That hosted service is coming. Until it runs, `share` says so and
-makes no link.
+page link. That hosted service is coming. Until it runs, `share` sends nothing,
+says so and makes no link.
 
 `explainroo publish` posts a package through YouTube, Buffer or Blotato, with
 your own account. `--dry-run` shows the exact post first, and a real run posts

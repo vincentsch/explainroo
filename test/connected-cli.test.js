@@ -1745,6 +1745,24 @@ function closedPort() {
   });
 }
 
+// The hosted service doesn't run yet, so share sends nothing and says so. The test
+// guard reports any connection to explainroo.com, and the fake counts every
+// request that reaches it.
+test('share without EXPLAINROO_CLOUD_URL opens no connection, says the service is coming and that nothing was sent', async (t) => {
+  const { dir, cli, fake } = await sharing(t);
+  const before = fake.total();
+  for (const args of [['share', dir], ['share', dir, '--json'], ['share', dir, '--platform', 'tiktok']]) {
+    const r = await cli(args, { EXPLAINROO_CLOUD_URL: '', EXPLAINROO_CLOUD_KEY: GOOD_KEY });
+    assert.equal(r.code, 1, r.text);
+    const said = args.includes('--json') ? JSON.parse(r.stdout).error : r.stderr.replace(/^error: /, '').trim();
+    assert.match(said, /^the hosted service on explainroo\.com is coming, and it doesn't take videos yet\. Nothing was sent, and no link was made\. You can still put the video online yourself: ".+ export .+" writes a web player for your own site, and ".+ package .+ --platform <name>" makes a folder to upload by hand\.$/);
+    assert.doesNotMatch(r.stderr, /test guard: blocked/);
+  }
+  assert.equal(fake.total(), before);
+  assert.deepEqual(jobs(dir).filter((j) => j.kind === 'share'), [], 'nothing is in the record');
+  assert.equal(fs.existsSync(path.join(dir, 'history/private')), false);
+});
+
 test('share sends the video and its title as the exact multipart form, and an expiring link keeps its claim link private', async (t) => {
   const { dir, cli, fake, uploads } = await sharing(t);
   const r = await cli(['share', dir, '--json']);

@@ -81,7 +81,7 @@ export const COMMAND_HELP = {
   },
   share: {
     usage: 'share [project] [options]',
-    about: 'Uploads a finished video to explainroo.com and prints a page link, once that service runs.',
+    about: 'Uploads a finished video to explainroo.com and prints a page link, once that service runs. Until then it sends nothing and says so.',
     options: [['--platform <name>', 'share the package of that platform'], ['--file <file>', 'another video file'], ['--title "<title>"', 'the title of the page'], ['--new', 'upload again'], LANG, JSON_OUT],
     example: 'share videos/how-dns-works --platform youtube',
   },

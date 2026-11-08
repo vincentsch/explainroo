@@ -19,7 +19,7 @@ an example.
 | `verify [project]` | checks the finished MP4, WebM or MOV: loudness, true peak, black frames, silence, clear voice (`--file` picks another file) |
 | `export [project]` | writes a web player folder (`--out dir`, `--size`, `--no-watermark`, `--json`), by default `out/player/`, or `out/player-tiktok/` with `--size tiktok` |
 | `package [project]` | a folder to post on one platform (`--platform`, `--title`, `--description`, `--hashtags`, `--size` for x, `--workers`) |
-| `share [project]` | uploads a video to explainroo.com for a page link, once that service runs (`--platform`, `--file`, `--title`, `--new`) |
+| `share [project]` | uploads a video to explainroo.com for a page link, once that service runs. Until then it sends nothing and says so (`--platform`, `--file`, `--title`, `--new`) |
 | `publish [project]` | posts a package after a typed yes or `--yes` (`--via`, `--platform`, `--privacy`, `--media-url`, `--media-url-unchecked`, `--channel`, `--account`, `--draft` for Buffer, `--dry-run`, `--new`) |
 | `capture [project] <url>` | saves screenshots, wording, colors, the font files the page loaded and logos from a live site, with the page's text and a list of its images in `capture.json` (`--mobile`, `--json`). `--name pricing` saves to `assets/capture/<site>/pricing/`, so several pages of one site stay side by side |
 | `image [project] <name> "<prompt>"` | makes an illustration with OpenRouter (`--new` buys it again, `--resume <id>` runs a job from `history` again) |

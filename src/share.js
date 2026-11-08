@@ -1,5 +1,6 @@
 // explainroo share: uploads a finished video to the hosted service, only when
-// asked, and gives back a page link. The record keeps each upload, so the same file
+// asked, and gives back a page link. Until that service runs, it sends nothing
+// unless EXPLAINROO_CLOUD_URL names a server. The record keeps each upload, so the same file
 // is not sent twice by accident, and an upload that lost its answer is never sent
 // again by itself, because the server may have the video.
 import crypto from 'node:crypto';
@@ -141,11 +142,16 @@ function retryWords(value) {
   return value && !Number.isNaN(Date.parse(value)) ? `after ${when(new Date(value).toISOString())}` : 'later';
 }
 
+// The ways to put a video online without the hosted service.
+function byHand(project) {
+  const where = `${projectWord(project.dir)}${langArg(project)}`;
+  return `You can still put the video online yourself: "${selfCommand()} export ${where}" writes a web player for your own site, and "${selfCommand()} package ${where} --platform <name>" makes a folder to upload by hand.`;
+}
+
 // What the user is told depends on what really happened, and it never claims more.
 function failure(e, project) {
   const d = e.details;
-  const where = `${projectWord(project.dir)}${langArg(project)}`;
-  const others = `You can still put the video online yourself: "${selfCommand()} export ${where}" writes a web player for your own site, and "${selfCommand()} package ${where} --platform <name>" makes a folder to upload by hand.`;
+  const others = byHand(project);
   const heard = d.said ? `: ${d.said}` : '';
   switch (d.reason) {
     case 'unreachable': return `the hosted service doesn't answer at ${d.service} yet. The video was not sent. ${others}`;
@@ -188,6 +194,10 @@ function result(dir, job, { reused, newer = null, asked = job.request }) {
 
 export async function share(project, { platform, file, title, fresh = false, log = () => {} } = {}) {
   const { dir } = project;
+  // The hosted service doesn't run yet, so share sends nothing at all, not even to
+  // ask. Only a server set on purpose in EXPLAINROO_CLOUD_URL, like a test server,
+  // gets the video.
+  if (!process.env.EXPLAINROO_CLOUD_URL) fail(`the hosted service on explainroo.com is coming, and it doesn't take videos yet. Nothing was sent, and no link was made. ${byHand(project)}`);
   if (platform !== undefined && file !== undefined) fail('share takes --platform or --file, not both.');
   if (title !== undefined && !title.trim()) fail('--title needs words');
   const target = shareTarget(project, { platform, file });

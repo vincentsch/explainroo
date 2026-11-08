@@ -1,5 +1,6 @@
 // The hosted service at explainroo.com, which gives a finished video a page link.
-// Only "explainroo share" sends anything to it.
+// Only "explainroo share" sends anything to it, and until the service runs, only
+// when EXPLAINROO_CLOUD_URL names a server on purpose.
 //
 //   POST {EXPLAINROO_CLOUD_URL}/api/v1/shares
 //   multipart form: video (the file), title

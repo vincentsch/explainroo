@@ -445,7 +445,9 @@ only when you run this command. The service takes MP4 and WebM files. A draft is
 never picked by itself, because it is half the size. `--file` can still send
 one. `--title` replaces the title.
 
-The hosted service is coming. Until it runs, `share` says so and makes no link.
+The hosted service is coming. Until it runs, `share` sends nothing at all, not
+even a request to ask. It says that the service is coming and that nothing was
+sent, and it makes no link. What follows is how it works once the service runs.
 
 A link shared without an account expires, and `share` prints when. It also
 prints a claim link. Open it to add the video to an account, and then the link
@@ -470,8 +472,9 @@ again.
 | Too many uploads | When to try again | Yes, later |
 | The server could not check the file in time | Nothing was published | Yes, later |
 
-`EXPLAINROO_CLOUD_URL` replaces the address, for example for a test server. It
-is read from the environment only, and never from a `.env` file.
+`EXPLAINROO_CLOUD_URL` replaces the address, for example for a test server.
+Only with it set does `share` send the video in this version, and then to that
+address. It is read from the environment only, and never from a `.env` file.
 
 ## Test servers
 
