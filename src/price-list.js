@@ -6,7 +6,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { CLIP_MODELS, DEFAULT_RESOLUTION } from './ai-clips.js';
-import { clipOptions, clipPrice, KNOWN_OPTIONS } from './clip-price.js';
+import { clipOptions, clipPrice, KNOWN_OPTIONS, resolvedModel } from './clip-price.js';
 import { cacheRoot } from './models.js';
 import openrouter from './connectors/openrouter.js';
 
@@ -55,7 +55,7 @@ function pricesFrom(kept) {
     settings: SETTINGS,
     models: Object.entries(CLIP_MODELS).map(([name, id]) => {
       const model = kept.data.find((m) => m?.id === id);
-      const price = model ? clipPrice(model, { seconds: 1, ...SETTINGS }) : null;
+      const price = model ? clipPrice(resolvedModel(model), { seconds: 1, ...SETTINGS }) : null;
       return { name, id, usd_per_second: price?.usd_per_second ?? null, rate_name: price?.rate_name ?? null, takes: clipOptions(model ?? { id }) };
     }),
   };

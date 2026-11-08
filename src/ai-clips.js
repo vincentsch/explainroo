@@ -8,7 +8,7 @@ import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { ProjectError, ServiceError } from './errors.js';
 import { createJob, decide, ensureIgnored, findJob, historyDir, jobKey, listAttempts, listJobs, placeOutput, projectWord, saveOutputFile, selfCommand, shortId, stopSentence, updateJob, withProjectLock } from './history.js';
-import { checkClipRequest, clipOptions, clipPrice } from './clip-price.js';
+import { checkClipRequest, clipOptions, clipPrice, resolvedModel } from './clip-price.js';
 import { probe } from './ffmpeg.js';
 import { clipOptionsText, localDay, serviceUrl, usd } from './services.js';
 import openrouter from './connectors/openrouter.js';
@@ -154,18 +154,22 @@ function stopped(job, reason) {
   return new ProjectError(parts.join(' '));
 }
 
-// The model's entry and the price, from the public list. This needs no key.
+// The model's entry and the price, from the public list. This needs no key. The
+// entry comes back with what the table filled in, and `takes` says where each
+// setting came from.
 async function quote(request) {
   const models = await openrouter.videoModels();
-  const model = models.find((m) => m.id === request.model);
-  if (!model) throw new ProjectError(`${request.model} is not in OpenRouter's list of video models. Nothing was spent. The list has: ${models.map((m) => m.id).join(', ')}.`);
-  checkClipRequest(model, request);
+  const listed = models.find((m) => m.id === request.model);
+  if (!listed) throw new ProjectError(`${request.model} is not in OpenRouter's list of video models. Nothing was spent. The list has: ${models.map((m) => m.id).join(', ')}.`);
+  checkClipRequest(listed, request);
+  const model = resolvedModel(listed);
+  const takes = clipOptions(listed);
   const price = clipPrice(model, request);
   if (!price) {
     const others = Object.values(CLIP_MODELS).filter((id) => id !== request.model);
     throw new ProjectError(`the price of ${request.model} at these settings can't be worked out from OpenRouter's list, so nothing was spent. Try another model, such as ${others.join(' or ')}.`);
   }
-  return { model, price };
+  return { model, takes, price };
 }
 
 function result(project, job, fields) {
@@ -296,14 +300,14 @@ async function followJob(project, job, { log, wait = waitMs() }) {
 
 // The settings and the price of a dry run, which a project and its record add to.
 // `takes` is what the model takes, so a later run can pick another length or size.
-function priced(request, { model, price }, maxCost) {
+function priced(request, { model, takes, price }, maxCost) {
   return {
     model: model.id,
     seconds: request.seconds,
     aspect: request.aspect,
     resolution: request.resolution,
     audio: request.audio,
-    takes: clipOptions(model),
+    takes,
     billed_audio: price.billed_audio,
     price_usd: price.usd,
     usd_per_second: price.usd_per_second,

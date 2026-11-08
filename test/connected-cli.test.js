@@ -823,6 +823,26 @@ test('clipBudget stays out of the resolved settings and the render identity', as
   assert.equal(identity(), before);
 });
 
+// When OpenRouter's entry leaves out what a default model takes, the table fills it,
+// and then the price, the record and the request all use what was checked.
+test('a default model whose entry has no lengths or resolutions is priced and sent with the ones the table gave', async (t) => {
+  const { dir, cli, fake } = await setup(t);
+  const list = JSON.parse(fs.readFileSync(new URL('./fixtures/openrouter-video-models.json', import.meta.url), 'utf8'));
+  const bare = { ...list, data: list.data.map((m) => (m.id === 'google/veo-3.1-lite' ? { ...m, supported_resolutions: null, supported_durations: [], supported_aspect_ratios: null } : m)) };
+  const answer = { status: 200, body: bare };
+  fake.plan('openrouter', CLIP_MODELS_LIST, answer, answer, answer);
+
+  const dry = JSON.parse((await cli([...clip(dir, STREET, '--dry-run'), '--json'], noKey(t))).stdout);
+  assert.equal(dry.takes.from, 'table');
+  assert.deepEqual([dry.resolution, dry.price_usd, dry.rate_name], ['720p', 0.18, 'duration_seconds_without_audio_720p'], 'the 720p rate, as with a full entry');
+  const r = await cli([...clip(dir, STREET, '--resolution', '1080p', '--max-cost', '1'), '--json']);
+  assert.equal(r.code, 0, r.text);
+  const [sent] = fake.requests('openrouter', CLIP_POST).map((q) => q.body);
+  assert.deepEqual([sent.duration, sent.resolution, sent.aspect_ratio], [6, '1080p', '16:9'], 'the request carries what was checked');
+  const [job] = jobs(dir);
+  assert.deepEqual([job.request.resolution, job.request.seconds, job.rate.name, job.estimated_usd], ['1080p', 6, 'duration_seconds_without_audio', 0.3]);
+});
+
 test('a dry run says when the cap is too low, and when the real run would buy nothing', async (t) => {
   const { dir, cli } = await setup(t);
   const low = await cli(clip(dir, STREET, '--dry-run', '--max-cost', '0.10'));

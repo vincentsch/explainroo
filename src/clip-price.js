@@ -81,6 +81,19 @@ export function clipOptions(model) {
   return { seconds, aspects, resolutions, from: all || !known ? 'openrouter' : 'table' };
 }
 
+// The model's entry with what the table filled in, so the price, the record and the
+// request all use the settings that were checked. A request to a model with
+// resolutions sends one, whether the list or the table had them.
+export function resolvedModel(model) {
+  const { seconds, aspects, resolutions } = clipOptions(model);
+  return {
+    ...model,
+    supported_durations: seconds ?? model.supported_durations,
+    supported_aspect_ratios: aspects ?? model.supported_aspect_ratios,
+    supported_resolutions: resolutions ?? model.supported_resolutions,
+  };
+}
+
 // The settings are checked against the model's own list, before anything is spent.
 export function checkClipRequest(model, { seconds, aspect, resolution, audio }) {
   const { id } = model;
