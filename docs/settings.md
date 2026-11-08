@@ -33,16 +33,17 @@ videos/<name>/
 | `pace` | 1 | speed of the whole video (voice, pauses, animations), 0.7 to 1.6; see `explainroo docs sizes` |
 | `music` | `true` | `true` (the look's style), `warm`, `upbeat`, `calm`, `tech`, `playful`, `{ "style", "volume" }`, `false`, or your own file as `{ "src", "volume", "credit", "loop" }`, see `explainroo docs music` |
 | `sfx` | `true` | sound effects: `true`, `"minimal"` or `false` |
-| `captions` | `"auto"` | text of the narration at the bottom; auto turns it on for vertical and square videos; `"bold"` shows 2 to 4 big words at a time, with numbers, money and `*starred*` words in color |
+| `captions` | `"auto"` | text of the narration at the bottom; `"auto"` turns it on for vertical, 4:5 and square videos, and leaves it off for 16:9; `"bold"` shows 2 to 4 big words at a time, with numbers, money and `*starred*` words in color |
 | `cover` | `"auto"` | full-size JPEG, without captions. `"auto"` takes the end of the first scene, and 1.0 second into it for `shorts`, `tiktok`, `reels` and `vertical`. Or a still spec: `12.5`, `"intro"`, `"intro@2.4"`, `"intro@end"` |
 | `transition` | `"auto"` | the look's default, or `fade`, `slide`, `wipe`, `zoom`, `brush`, `cut` |
 | `camera` | `"auto"` | `"auto"` films each scene with a camera that follows the narration; `"still"` keeps every frame as written |
 | `motionBlur` | `true` | motion blur on moving frames in the final render; `render --quality fast` leaves it out for one run |
 | `lead`, `hold`, `end` | 0.35, 0.7, 1.4 | seconds before the voice, after it, and extra at the very end |
+| `targetSeconds` | none | the length the video should have, like `40`, also in a block under `"sizes"`. After `voice`, a shorter video gets the missing time spread over the scene holds, and `voice` and `check` warn when it is longer |
 | `sentenceGap`, `paragraphGap` | 0.3, 0.55 | pauses in generated narration; recordings keep their own pauses |
 | `loudness` | -14 | target loudness in LUFS |
 | `boil` | 0 | redraws per second of hand-drawn lines; 0 keeps them still |
-| `watermark` | `"explainroo.com"` | small text in a corner, or `false` |
+| `watermark` | `"explainroo.com"` | small text in a corner, on by default, or `false` to turn it off. A TikTok package always leaves it out |
 | `images` | none | `{ "model": "best" or "cheap", "style": "..." }` |
 | `clipBudget` | none | the most all AI clips of the project may cost together, in US dollars, like `0.40`. `clip` stops before a clip that would go over it; see `explainroo docs clips` |
 | `brand` | none | colors, fonts and logo for `s.ui`; its `accent` also colors the spoken word in captions; see `explainroo docs product-demos` |

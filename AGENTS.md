@@ -112,7 +112,8 @@ never call a partner the best. The steps are `voice`, `timing`, `images`,
 `clips`, `music`, `sharing` and `posting`. `publish` and `share` work as
 names for the last two.
 
-When the user gives a budget for AI clips, put it in `video.json` as
+When the user has already picked a service or given a budget, use it and
+don't ask again. A budget for AI clips goes in `video.json` as
 `"clipBudget": 0.40`. `clip` then stops before a clip that would go over it,
 and it says how much is left.
 
@@ -131,8 +132,15 @@ there and publishes nothing.
 2. **Create the project** with
    `explainroo init videos/<name> --theme paper --title "..."`. Pick the look
    for the audience, and the size for the platform (`explainroo docs sizes`).
+   The video has a small "explainroo.com" watermark in a corner by default,
+   and `"watermark": false` in `video.json` turns it off. With
+   `"captions": "auto"`, vertical, 4:5 and square videos get captions, and a
+   16:9 video gets none.
 3. **Write `script.md`.** The narration comes first, because it sets the
-   timing for everything else (`explainroo docs writing`).
+   timing for everything else (`explainroo docs writing`). When the user
+   asks for a length, set it in `video.json`, like `"targetSeconds": 40`.
+   After `voice`, a shorter video gets longer holds at the scene ends to
+   reach it, and `voice` and `check` warn when the video is longer.
 4. **Make the voice** with `explainroo voice videos/<name>`. Fix a word the
    speech check did not confirm with `{shown|spoken}`, and run it again. When
    the word already has one, try another spoken spelling
@@ -148,8 +156,9 @@ there and publishes nothing.
 9. **Look at the frames** with `explainroo still videos/<name>` and
    `explainroo sheet videos/<name>`. Open the images and judge them like a
    viewer would.
-10. **Make the video** with `explainroo render videos/<name> --draft`, then
-    `explainroo render videos/<name>`. Check the file with
+10. **Make the video** with `explainroo render videos/<name>`. Make a draft
+    with `--draft` only when you will watch it, because `still` and `sheet`
+    are the cheap way to see frames. Check the file with
     `explainroo verify videos/<name>`. It fails when the sound clips above
     0 dBTP, and it warns when the loudness is off, frames are black or the
     voice is hard to understand over the music.

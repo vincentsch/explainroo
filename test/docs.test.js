@@ -490,3 +490,20 @@ test('the start page says to print only the section of a topic that you need', (
   const topicsPart = oneLine(part('Topics'));
   for (const words of ['`npx --yes explainroo docs <topic> --sections`', '`npx --yes explainroo docs <topic> <section>`', 'Print only the section you need']) assert.ok(topicsPart.includes(words), words);
 });
+
+// What agents had to find out by themselves, on the start page where they read it.
+test('the start page has the watermark, captions on 16:9, a choice already made, drafts, the target length and the clip budget', () => {
+  const ask = oneLine(part('When to ask the user'));
+  assert.ok(ask.includes('When the user has already picked a service or given a budget, use it and don\'t ask again.'));
+  assert.ok(ask.includes('A budget for AI clips goes in `video.json` as `"clipBudget": 0.40`. `clip` then stops before a clip that would go over it, and it says how much is left.'));
+  const steps = oneLine(part('From a brief to a finished video'));
+  for (const words of [
+    'The video has a small "explainroo.com" watermark in a corner by default, and `"watermark": false` in `video.json` turns it off.',
+    'With `"captions": "auto"`, vertical, 4:5 and square videos get captions, and a 16:9 video gets none.',
+    'When the user asks for a length, set it in `video.json`, like `"targetSeconds": 40`.',
+    'Make a draft with `--draft` only when you will watch it, because `still` and `sheet` are the cheap way to see frames.',
+  ]) assert.ok(steps.includes(words), words);
+  assert.doesNotMatch(steps, /render videos\/<name> --draft`, then/);
+  assert.match(page('settings'), /^\| `clipBudget` \| none \|/m);
+  assert.match(page('settings'), /^\| `targetSeconds` \| none \|/m);
+});

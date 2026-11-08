@@ -100,10 +100,13 @@ user. Read it first.
 10. **Make the video and check the file.**
 
     ```bash
-    explainroo render videos/<name> --draft   # quick half-size version
     explainroo render videos/<name>           # final video
     explainroo verify videos/<name>
     ```
+
+    `render --draft` makes a quick half-size version. Make one only when you
+    will watch it, because `still` and `sheet` are the cheap way to see
+    frames.
 
     `render` also writes subtitle files (`.srt` and `.vtt`) and a cover
     image (`.cover.jpg`) next to the video. When scenes name chapters, it
