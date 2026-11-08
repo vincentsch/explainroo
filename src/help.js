@@ -1,6 +1,10 @@
 // The help of each command, for "explainroo <command> --help" and
 // "explainroo help <command>": its usage, what it does, its options and one
 // example. The general help in cli.js lists every command on one or two lines.
+import { CONNECTORS } from './connectors/index.js';
+
+// The paid voices that can list what a key may use, from their connectors.
+const VOICE_LISTS = CONNECTORS.filter((c) => c.voices).map((c) => c.id);
 
 const SIZE = ['--size <size>', 'another size than the one in video.json, like tiktok, 9:16 or 1080x1350'];
 const PLATFORM = ['--platform <name>', 'the size, its block in "sizes" and the watermark rule that "package --platform <name>" uses'];
@@ -132,7 +136,7 @@ export const COMMAND_HELP = {
   voices: {
     usage: 'voices [project] [options]',
     about: 'Lists the Kokoro voices, or the voices your key may use at a paid service.',
-    options: [['--language <code>', 'the voices of one language'], ['--provider <name>', 'elevenlabs or cartesia'], JSON_OUT],
+    options: [['--language <code>', 'the voices of one language'], ['--provider <name>', VOICE_LISTS.join(' or ')], JSON_OUT],
     example: 'voices --language es',
   },
   say: {
