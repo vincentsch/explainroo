@@ -86,8 +86,8 @@ watermark off for one run and adds `-no-watermark` the same way.
 ## Settings for one size
 
 `"sizes"` in `video.json` gives one size settings of its own. A block can set
-`captions`, `cover`, `pace` and `watermark`, with the same values as at the top
-of the file. Here TikTok gets bold captions, a quicker pace and a cover on the
+`captions`, `cover`, `pace`, `watermark` and `targetSeconds`, with the same
+values as at the top of the file. Here TikTok gets bold captions, a quicker pace and a cover on the
 hook title, and the 16:9 version stays as it is:
 
 ```json

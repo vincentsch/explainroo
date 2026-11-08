@@ -1,6 +1,6 @@
 // What voice keeps and what it makes again: a moved marker keeps the narration,
 // an older scene gets today's speech check from its transcript, and a long scene
-// says which step it is on.
+// says which step it is on. Before it makes speech, voice estimates the length.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -179,4 +179,43 @@ test('a long scene says the step it is on, one line per step, and in a terminal 
   lines.length = 0;
   await synthesize(loadProject(dir), { transcribe: echo(['One sentence here.', 'Two sentences there.']), log: (line) => lines.push(line) });
   assert.ok(!lines.some((line) => /making speech|timing words|checking speech/.test(line)), lines.join('\n'));
+});
+
+test('before it makes speech, voice says how long the video will be about, and it says nothing when the narration is there', async (t) => {
+  const { dir } = await paidProject(t, '# Test\n\n## intro\nOne sentence here. Two sentences there.\n\n## outro {min=4}\n');
+  const lines = [];
+  const seen = [];
+  await synthesize(loadProject(dir), { transcribe: echo([]), log: (line) => lines.push(line), onEstimate: (e) => seen.push(e) });
+  assert.match(lines[0], /^voice: about \d+ s: 6 words of speech at about \d+ a minute, plus about \d+\.\d s per scene for leads, holds and pauses$/);
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].words, 6);
+  lines.length = 0;
+  await synthesize(loadProject(dir), { transcribe: noSpeech, log: (line) => lines.push(line), onEstimate: (e) => seen.push(e) });
+  assert.deepEqual(lines, []);
+  assert.equal(seen.length, 1);
+  // The voice command gives the estimate in its JSON.
+  fs.rmSync(path.join(dir, 'build'), { recursive: true });
+  let output = '';
+  t.mock.method(process.stdout, 'write', (s) => { output += s; return true; });
+  assert.equal(await main(['voice', dir, '--json']), 0);
+  assert.equal(JSON.parse(output).estimate.words, 6);
+});
+
+test('voice says what targetSeconds did, and how far over a longer video runs', async (t) => {
+  const { tinyProject } = await import('./helpers/tiny-project.js');
+  let output = '';
+  t.mock.method(process.stdout, 'write', (s) => { output += s; return true; });
+  t.mock.method(process.stderr, 'write', () => true);
+  const short = tinyProject(t, { targetSeconds: 3 });
+  assert.equal(await main(['voice', short]), 0);
+  assert.match(output, /^total 3\.0s \(targetSeconds 3 added 2\.0 s to the hold of each scene\)$/m);
+  output = '';
+  assert.equal(await main(['voice', short, '--json']), 0);
+  assert.deepEqual(JSON.parse(output).target, { seconds: 3, natural: 1, added: 2 });
+  // A tiny video can't be shorter than its scene, so a target of 1 second over a 2 second scene is over.
+  const long = tinyProject(t, { targetSeconds: 1 });
+  fs.writeFileSync(path.join(long, 'script.md'), '# Tiny video\n\n## intro {min=2 chapter="Intro"}\n');
+  output = '';
+  assert.equal(await main(['voice', long]), 0);
+  assert.match(output, /^WARN  the video runs 2\.0 s, 1\.0 s over targetSeconds 1\. The longest scene is intro \(2\.0 s\)\.$/m);
 });

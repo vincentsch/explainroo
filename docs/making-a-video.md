@@ -45,6 +45,8 @@ user. Read it first.
    lists words that sounded the same, like "peace" for "piece", and two words
    heard as one. They count as understood, and names the speech model doesn't
    know often end up there.
+   Before it makes the narration, `voice` prints how long the video will be
+   about.
    Only the scenes you changed are made again. `check`, `still`, `sheet`,
    `render` and `preview` also make missing narration, so start them after
    `voice` has finished, not at the same time.

@@ -68,8 +68,8 @@ test('a block follows its exact size name, so youtube and 16:9 are two names wit
   assert.equal(at('instagram').captions, true);
 });
 
-test('a block takes captions, cover, pace and watermark with the checks of the top level, and its name must be a size', () => {
-  const four = /A size can set captions, cover, pace and watermark\./;
+test('a block takes captions, cover, pace, watermark and targetSeconds with the checks of the top level, and its name must be a size', () => {
+  const four = /A size can set captions, cover, pace, watermark and targetSeconds\./;
   for (const [settings, message] of [
     [{ sizes: [] }, /^sizes must be an object like \{ "tiktok": \{ "captions": "bold", "pace": 1\.2 \} \}$/],
     [{ sizes: 'tiktok' }, /^sizes must be an object/],

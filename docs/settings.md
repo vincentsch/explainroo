@@ -28,7 +28,7 @@ videos/<name>/
 | `language` | `en` | narration language: `en`, `es`, `fr`, `it`, `pt-br`, `hi`, `ja` or `zh`, and `de` with a paid voice or a recording; see `explainroo docs languages` |
 | `voice` | the language's voice | a Kokoro id or a provider object for Kokoro, ElevenLabs, Cartesia or a recording; English uses `af_heart`; see `explainroo docs voices` |
 | `languages` | none | settings for one language, like `{ "es": { "voice": "ef_dora" } }`; see `explainroo docs languages` |
-| `sizes` | none | `captions`, `cover`, `pace` and `watermark` for one size, like `{ "tiktok": { "captions": "bold", "pace": 1.2 } }`; see `explainroo docs sizes` |
+| `sizes` | none | `captions`, `cover`, `pace`, `watermark` and `targetSeconds` for one size, like `{ "tiktok": { "captions": "bold", "pace": 1.2 } }`; see `explainroo docs sizes` |
 | `speed` | 0.9 for Kokoro, 1 otherwise | voice speed only, 0.6 to 1.6; paid voices limit speed times pace, see `explainroo docs voices` |
 | `pace` | 1 | speed of the whole video (voice, pauses, animations), 0.7 to 1.6; see `explainroo docs sizes` |
 | `music` | `true` | `true` (the look's style), `warm`, `upbeat`, `calm`, `tech`, `playful`, `{ "style", "volume" }`, `false`, or your own file as `{ "src", "volume", "credit", "loop" }`, see `explainroo docs music` |
@@ -39,6 +39,7 @@ videos/<name>/
 | `camera` | `"auto"` | `"auto"` films each scene with a camera that follows the narration; `"still"` keeps every frame as written |
 | `motionBlur` | `true` | motion blur on moving frames in the final render; `render --quality fast` leaves it out for one run |
 | `lead`, `hold`, `end` | 0.35, 0.7, 1.4 | seconds before the voice, after it, and extra at the very end |
+| `targetSeconds` | none | the length of the video in seconds, like 40. A shorter video gets the missing time in the holds of its scenes; see `explainroo docs writing` |
 | `sentenceGap`, `paragraphGap` | 0.3, 0.55 | pauses in generated narration; recordings keep their own pauses |
 | `loudness` | -14 | target loudness in LUFS |
 | `boil` | 0 | redraws per second of hand-drawn lines; 0 keeps them still |

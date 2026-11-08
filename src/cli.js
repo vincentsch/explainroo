@@ -24,6 +24,7 @@ import { boughtCharacters, speechConnector } from './paid-speech.js';
 import { formatServices, findService, needsKey, SERVICES, STEPS, stepServices } from './services.js';
 import { clipPricesToday, showsClipPrices } from './price-list.js';
 import { narrationTime, speechKeys } from './voice.js';
+import { estimateLength, targetNotes } from './timeline.js';
 import { findEnv } from './env.js';
 import { formatPackage, packageVideo } from './package.js';
 import { formatShare, share } from './share.js';
@@ -184,7 +185,8 @@ export async function main(argv) {
         const project = loadProject(pos[0], { size: textFlag(flags, 'size'), ...langOverride(flags) });
         const paid = speechConnector(project.config);
         const before = paid ? boughtCharacters(project.dir) : 0;
-        const { voices, timeline } = await prepare(project, { log, notice, force: !!flags.force, fresh: !!flags.new });
+        let estimate = null;
+        const { voices, timeline } = await prepare(project, { log, notice, force: !!flags.force, fresh: !!flags.new, onEstimate: (e) => { estimate = e; } });
         const characters = paid ? boughtCharacters(project.dir) - before : 0;
         const recorded = project.config.voice.provider === 'recording';
         const rows = project.script.scenes.map((s) => {
@@ -200,7 +202,15 @@ export async function main(argv) {
         const speed = paid ? paid.speed(wanted) : wanted;
         const speedNote = paid && speed !== wanted ? `\n${paid.name} speed ${wanted.toFixed(2)} is outside ${paid.speedRange.join(' to ')}; using ${speed}.` : '';
         const usage = paid ? `\n${paid.name}: ${characters} characters used` : '';
-        print(rows.map((r) => `${r.scene.padEnd(18)} ${length(r)}  ${Math.round(r.confirmed * 100)}% confirmed${r.unconfirmed.length ? '  unconfirmed: ' + r.unconfirmed.slice(0, 6).join(', ') : ''}`).join('\n') + `\ntotal ${timeline.duration.toFixed(1)}s` + mismatch + usage + speedNote, { scenes: rows, duration: timeline.duration, ...(paid ? { characters, speed, ...(speed !== wanted ? { requested_speed: wanted } : {}) } : {}) });
+        // "targetSeconds" lengthens the holds, or says how far over the video runs.
+        const { target } = timeline;
+        const added = target?.added ? ` (targetSeconds ${target.seconds} added ${target.added.toFixed(1)} s to the hold of each scene)` : '';
+        const notes = targetNotes(timeline, estimateLength(project)?.perMinute);
+        const after = notes.map((n) => `\n${n.level.toUpperCase().padEnd(5)} ${n.message}`).join('');
+        print(rows.map((r) => `${r.scene.padEnd(18)} ${length(r)}  ${Math.round(r.confirmed * 100)}% confirmed${r.unconfirmed.length ? '  unconfirmed: ' + r.unconfirmed.slice(0, 6).join(', ') : ''}`).join('\n') + `\ntotal ${timeline.duration.toFixed(1)}s${added}` + mismatch + usage + speedNote + after, {
+          scenes: rows, duration: timeline.duration, ...(paid ? { characters, speed, ...(speed !== wanted ? { requested_speed: wanted } : {}) } : {}),
+          ...(estimate ? { estimate } : {}), ...(target ? { target } : {}), ...(notes.length ? { notes } : {}),
+        });
         return 0;
       }
       case 'preview': return await preview(pos[0], flags, log);

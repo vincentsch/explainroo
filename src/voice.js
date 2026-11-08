@@ -14,6 +14,7 @@ import { writeWav, readWav, resample, trimSilence } from './wav.js';
 import { openSpeech, speechConnector, speechKey } from './paid-speech.js';
 import { recordingFiles, decodeRecording, saveRecording, recordingCuts } from './recordings.js';
 import { scriptName } from './project.js';
+import { estimateLength, estimateLine } from './timeline.js';
 
 const PIPELINE = 7;
 // The rules of the speech check that a scene was checked with. A scene checked
@@ -365,8 +366,9 @@ export function voiceLine(id, info, seconds, recorded = false) {
 
 // Returns { [sceneId]: voiceInfo } and generates whatever is missing or stale.
 // `fresh` buys again only the paid requests that have no good answer. `transcribe`
-// replaces Whisper in tests.
-export async function synthesize(project, { force = false, fresh = false, log = () => {}, notice = log, only = null, transcribe = transcribeWords } = {}) {
+// replaces Whisper in tests. Before it makes speech, it logs how long the video
+// will be about, and gives that estimate to `onEstimate`.
+export async function synthesize(project, { force = false, fresh = false, log = () => {}, notice = log, only = null, transcribe = transcribeWords, onEstimate = () => {} } = {}) {
   fs.mkdirSync(project.paths.voice, { recursive: true });
   const { config } = project;
   const provider = config.voice.provider || 'kokoro';
@@ -399,6 +401,13 @@ export async function synthesize(project, { force = false, fresh = false, log = 
     }
   }
   if (!todo.length) return result;
+  if (!recordings && todo.some((t) => t.chunks.length)) {
+    const estimate = estimateLength(project);
+    if (estimate) {
+      log(`voice: ${estimateLine(estimate)}`);
+      onEstimate(estimate);
+    }
+  }
   speech?.check(todo);
 
   const needsSpeech = todo.some((t) => t.chunks.length);

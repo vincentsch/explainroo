@@ -8,6 +8,7 @@ import { transcribeWords } from './models.js';
 import { readWav } from './wav.js';
 import { alignWords, nearList, readAlike } from './align.js';
 import { heardInstead, heardQuote } from './voice.js';
+import { estimateLength, targetNotes } from './timeline.js';
 import { buildChapters, chapterHints } from './chapters.js';
 import { languageIssues, outputPath, ProjectError, scriptName } from './project.js';
 import { recordVersion, relativeFile, sha256File } from './history.js';
@@ -118,10 +119,13 @@ export function speechFindings(project, voices) {
 
 export async function check(project, { log = () => {}, step = 0.25, viewWidth = null } = {}) {
   if (viewWidth !== null && (!Number.isFinite(viewWidth) || viewWidth <= 0)) throw new Error("--view-width must be a positive number");
-  const { voices, timeline } = await prepare(project, { log });
+  // How long the video will be about, when check is the step that makes the narration.
+  let estimate = null;
+  const { voices, timeline } = await prepare(project, { log, onEstimate: (e) => { estimate = e; } });
   const issues = chapterHints(buildChapters(timeline, project.script.title || project.config.title));
   const { issues: spoken, speech } = speechFindings(project, voices);
   issues.push(...spoken);
+  issues.push(...targetNotes(timeline, estimateLength(project)?.perMinute).map((n) => ({ ...n, scene: null, t: null })));
   if (project.languages) issues.push(...languageIssues(project));
   if (project.config.music?.src) {
     try {
@@ -138,7 +142,7 @@ export async function check(project, { log = () => {}, step = 0.25, viewWidth = 
   issues.push(...pageIssues);
   const order = { error: 0, warn: 1, hint: 2 };
   issues.sort((a, b) => order[a.level] - order[b.level]);
-  return { issues, duration: timeline.duration, scenes: timeline.scenes.length, speech };
+  return { issues, duration: timeline.duration, scenes: timeline.scenes.length, speech, ...(estimate ? { estimate } : {}) };
 }
 
 // Specs: "12.5" (seconds into the video), "scene" (end of the scene, when it

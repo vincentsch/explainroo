@@ -359,7 +359,7 @@ test('the README marks the hosted link and partners as coming, and labels a part
 test('the sizes, settings, short-video and publishing topics explain settings per size, the tall cover and reuse, and the help lists the flags', () => {
   const sizes = oneLine(page('sizes'));
   for (const words of ['"sizes": { "tiktok": { "captions": "bold", "pace": 1.2, "cover": "hook@0.5" } }', 'the 16:9 version stays as it is', 'A block follows its exact size name.', 'A package looks for the block of its platform\'s size first', '`build/pace-<pace>/`', 'A paid voice buys the narration at that pace once', 'explainroo voice videos/<name> --size tiktok', 'take it 1.0 second into the first scene', 'plain `9:16` included, takes the end of the first scene', 'with the watermark and without it']) assert.ok(sizes.includes(words), words);
-  assert.match(page('settings'), /^\| `sizes` \| none \| `captions`, `cover`, `pace` and `watermark` for one size/m);
+  assert.match(page('settings'), /^\| `sizes` \| none \| `captions`, `cover`, `pace`, `watermark` and `targetSeconds` for one size/m);
   assert.match(page('settings'), /^\| `cover` \| `"auto"` \| .*1\.0 second into it for `shorts`, `tiktok`, `reels` and `vertical`/m);
   assert.match(page('settings'), /^\| `motionBlur` \| .*`render --quality fast` leaves it out for one run/m);
   const short = oneLine(page('short-video'));
