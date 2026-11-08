@@ -112,7 +112,8 @@ Reference
   doctor [project]      check ffmpeg, Chrome, espeak-ng, misaki and models: each is ready, not needed or missing.
                         With a project, for its languages and voices. Before there is a project, --language es
                         checks what that language needs (--fetch downloads the English models)
-  docs [topic]          print the start page for coding agents, or one topic (--list shows the topics)
+  docs [topic] [section]  print the start page for coding agents, one topic, or one section of a topic by its
+                        heading (--list shows the topics, --sections the sections of a topic with their size)
   version               print the version (--version works too)
 
 Options: --size <size> and --no-watermark override video.json for preview, still, sheet, check, render and export.
@@ -138,7 +139,7 @@ function parseArgs(argv) {
   }
   return { pos, flags };
 }
-const BOOL = new Set(['json', 'draft', 'transparent', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'mobile', 'list', 'new', 'key-stdin', 'audio', 'dry-run', 'no-wait', 'no-watermark', 'yes', 'media-url-unchecked', ...LISTS_VOICES.map((c) => c.id)]);
+const BOOL = new Set(['json', 'draft', 'transparent', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'mobile', 'list', 'sections', 'new', 'key-stdin', 'audio', 'dry-run', 'no-wait', 'no-watermark', 'yes', 'media-url-unchecked', ...LISTS_VOICES.map((c) => c.id)]);
 
 // publish refuses any other flag. A flag it ignored could change what a person
 // thinks is posted, like a time for a post, when it goes out right away.
@@ -387,7 +388,7 @@ export async function main(argv) {
         print(formatDoctor(r), r);
         return r.ok ? 0 : 1;
       }
-      case 'docs': return docs(pos[0], flags, print);
+      case 'docs': return docs(pos[0], pos.slice(1), flags, print);
       case 'services': return await services(pos[0], flags, print);
       case 'connect': return await connect(pos, flags, { print, log, notice });
       case 'history': {
@@ -635,8 +636,9 @@ function icons(words, print) {
 }
 
 // The instructions ship with the package, so an agent that runs the tool
-// through npx, with no folder to open, can read them here.
-function docs(topic, flags, print) {
+// through npx, with no folder to open, can read them here. `words` after the
+// topic name one section of it.
+function docs(topic, words, flags, print) {
   const dir = path.join(ROOT, 'docs');
   const topics = fs.readdirSync(dir).filter((f) => f.endsWith('.md')).map((f) => f.slice(0, -3)).sort();
   if (flags.list) {
@@ -646,8 +648,73 @@ function docs(topic, flags, print) {
   if (topic !== undefined && !topics.includes(topic)) throw new ProjectError(`there is no docs topic "${topic}". The topics are: ${topics.join(', ')}`);
   const file = topic === undefined ? path.join(ROOT, 'AGENTS.md') : path.join(dir, `${topic}.md`);
   const text = fs.readFileSync(file, 'utf8');
+  if ((flags.sections || words.length) && topic === undefined) throw new ProjectError('the start page has no sections to print one by one. Name a topic, like "explainroo docs publishing --sections".');
+  if (flags.sections) {
+    const sections = docSections(text).map(({ heading, slug, bytes, parts }) => ({ heading, slug, bytes, subsections: parts.map((p) => p.heading) }));
+    if (!sections.length) {
+      print(`${topic} has no sections. It is ${(Buffer.byteLength(text) / 1000).toFixed(1)} KB, so print it whole with "explainroo docs ${topic}".`, { topic, file, sections });
+      return 0;
+    }
+    const width = Math.max(...sections.map((x) => x.slug.length));
+    const lines = [`The sections of ${topic}. Print one with "explainroo docs ${topic} <section>", or with a word of its heading that no other section has:`];
+    for (const x of sections) lines.push(`  ${x.slug.padEnd(width)}  ${(x.bytes / 1000).toFixed(1).padStart(4)} KB  ${x.heading}`);
+    print(lines.join('\n'), { topic, file, sections });
+    return 0;
+  }
+  if (words.length) {
+    const section = findSection(topic, text, words.join(' '));
+    print(section.text.trimEnd(), { topic, section: section.heading, slug: section.slug, file, text: section.text });
+    return 0;
+  }
   print(text.trimEnd(), { topic: topic ?? null, file, text });
   return 0;
+}
+
+// The anchor GitHub gives a heading, which is also what names a section here.
+const headingSlug = (heading) => heading.trim().toLowerCase().replace(/[^\p{L}\p{N}\s_-]/gu, '').replace(/\s+/g, '-');
+
+// The "## " sections of a page, each with its "### " parts, outside fenced code.
+// The text before the first one is the page's own opening, and no section.
+export function docSections(text) {
+  const sections = [];
+  let fenced = false;
+  for (const line of text.replace(/\r\n/g, '\n').split('\n')) {
+    if (/^\s*```/.test(line)) fenced = !fenced;
+    const level = fenced ? 0 : /^(##|###) /.exec(line)?.[1].length ?? 0;
+    if (level === 2) sections.push({ heading: line.slice(3).trim(), lines: [line], parts: [] });
+    else if (sections.length) {
+      const current = sections.at(-1);
+      if (level === 3) current.parts.push({ heading: line.slice(4).trim(), lines: [] });
+      current.lines.push(line);
+      current.parts.at(-1)?.lines.push(line);
+    }
+  }
+  return sections.map((x) => {
+    const body = `${x.lines.join('\n').trimEnd()}\n`;
+    return { heading: x.heading, slug: headingSlug(x.heading), text: body, bytes: Buffer.byteLength(body), parts: x.parts.map((p) => ({ heading: p.heading, slug: headingSlug(p.heading), text: `${p.lines.join('\n').trimEnd()}\n` })) };
+  });
+}
+
+// A section by its heading, written in any case, or by words of the heading that
+// only one section has. A "### " part of a section counts when no section does.
+function findSection(topic, text, asked) {
+  const sections = docSections(text);
+  const wanted = headingSlug(asked);
+  const words = wanted.split('-').filter(Boolean);
+  const pick = (list) => {
+    const exact = list.filter((x) => x.slug === wanted);
+    if (exact.length) return exact;
+    const found = list.filter((x) => words.length && words.every((w) => x.slug.split('-').includes(w)));
+    // "package" means the section whose heading starts with it.
+    const first = found.filter((x) => x.slug === wanted || x.slug.startsWith(`${wanted}-`));
+    return first.length === 1 ? first : found;
+  };
+  for (const list of [sections, sections.flatMap((x) => x.parts)]) {
+    const found = pick(list);
+    if (found.length === 1) return found[0];
+    if (found.length > 1) throw new ProjectError(`more than one section of ${topic} has "${asked}": ${found.map((x) => x.slug).join(', ')}. Use more words of the heading.`);
+  }
+  throw new ProjectError(`${topic} has no section "${asked}". Its sections are: ${sections.map((x) => x.slug).join(', ')}. "explainroo docs ${topic} --sections" lists them with their size.`);
 }
 
 // Each entry is listed under every step it serves, with that step's words. The

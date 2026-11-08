@@ -403,3 +403,90 @@ test('the docs say that verify takes no --size, that German is a language, and t
   const formats = run('formats').stdout;
   assert.match(formats, /--size on init, preview, still, sheet, check, render or export\./);
 });
+
+// An agent's tool can cut off a long page, so each part that a command prints
+// stays short: every "## " section of a topic, and the opening before the first.
+const SECTION_CEILING = 12000;
+const sectionsOf = (text) => {
+  const out = [{ heading: null, lines: [] }];
+  let fenced = false;
+  for (const line of text.split('\n')) {
+    if (/^\s*```/.test(line)) fenced = !fenced;
+    if (!fenced && line.startsWith('## ')) out.push({ heading: line.slice(3).trim(), lines: [line] });
+    else out.at(-1).lines.push(line);
+  }
+  return out.map((s) => ({ heading: s.heading, text: `${s.lines.join('\n').trimEnd()}\n` }));
+};
+
+test('every section of every topic stays under 12,000 bytes', () => {
+  for (const topic of topics) {
+    for (const { heading, text } of sectionsOf(page(topic))) {
+      const bytes = Buffer.byteLength(text);
+      assert.ok(bytes < SECTION_CEILING, `docs/${topic}.md, ${heading ? `section "${heading}"` : 'the part before the first section'}, is ${bytes} bytes. Keep it under ${SECTION_CEILING}, or split it with a "## " heading.`);
+    }
+  }
+});
+
+test('docs <topic> --sections lists the sections with their size, and docs <topic> <section> prints one', () => {
+  for (const topic of topics) {
+    const sections = sectionsOf(page(topic)).filter((s) => s.heading);
+    const listed = JSON.parse(run('docs', topic, '--sections', '--json').stdout);
+    assert.deepEqual(listed.sections.map((s) => s.heading), sections.map((s) => s.heading), topic);
+    const text = run('docs', topic, '--sections').stdout;
+    if (!sections.length) {
+      assert.match(text, new RegExp(`^${topic} has no sections\\. It is [\\d.]+ KB, so print it whole with "explainroo docs ${topic}"\\.\\n$`));
+      continue;
+    }
+    assert.equal(text.trimEnd().split('\n').length, sections.length + 1, topic);
+    for (const [i, s] of listed.sections.entries()) {
+      assert.equal(s.slug, slug(s.heading));
+      assert.equal(s.bytes, Buffer.byteLength(sections[i].text));
+      assert.match(text, new RegExp(`^ {2}${s.slug.replace(/[.]/g, '\\.')} +[\\d.]+ KB {2}`, 'm'));
+      // Each one prints by its name, exactly as it is in the page.
+      const one = run('docs', topic, s.slug);
+      assert.equal(one.status, 0, `${topic} ${s.slug}: ${one.stderr}`);
+      assert.equal(one.stdout, sections[i].text, `${topic} ${s.slug}`);
+    }
+  }
+  const json = JSON.parse(run('docs', 'publishing', 'buffer', '--json').stdout);
+  assert.deepEqual([json.topic, json.section, json.slug], ['publishing', 'Buffer', 'buffer']);
+  assert.ok(json.text.startsWith('## Buffer\n'));
+});
+
+test('a section is found by its heading in any case, by a word only it has, or by a word its heading starts with', () => {
+  const docs = (...args) => run('docs', 'publishing', ...args);
+  const first = (r) => r.stdout.split('\n')[0];
+  assert.equal(first(docs('Post a package')), '## Post a package');
+  assert.equal(first(docs('post', 'a', 'PACKAGE')), '## Post a package');
+  assert.equal(first(docs('buffer')), '## Buffer');
+  assert.equal(first(docs('tiktok')), '## Why the TikTok file has no watermark');
+  // Three headings have "package". One of them starts with it.
+  assert.equal(first(docs('package')), '## Package a video for a platform');
+  assert.equal(first(docs('what', 'package')), '## What package checks');
+  // A "### " part, when no section has the words.
+  assert.equal(first(docs('privacy')), '### Privacy');
+  assert.equal(first(docs('draft')), '### Save a draft in Buffer');
+  const many = docs('the');
+  assert.equal(many.status, 1);
+  assert.match(many.stderr, /^error: more than one section of publishing has "the": why-the-tiktok-file-has-no-watermark, the-words-postjson, the-ai-label-and-the-credits\. Use more words of the heading\./);
+  const none = docs('nope');
+  assert.equal(none.status, 1);
+  assert.match(none.stderr, /^error: publishing has no section "nope"\. Its sections are: package-a-video-for-a-platform, .*share-a-link, test-servers\. "explainroo docs publishing --sections" lists them with their size\./);
+  assert.match(run('docs', '--sections').stderr, /the start page has no sections to print one by one/);
+});
+
+test('publishing starts with the package and the common part of posting, and each route has a section of its own', () => {
+  const headings = sectionsOf(page('publishing')).filter((s) => s.heading).map((s) => s.heading);
+  assert.deepEqual(headings, ['Package a video for a platform', 'Why the TikTok file has no watermark', 'The words: post.json', 'The AI label and the credits', 'What package checks', 'Post a package', 'YouTube', 'Buffer', 'Blotato', 'Share a link', 'Test servers']);
+  const section = (heading) => oneLine(sectionsOf(page('publishing')).find((s) => s.heading === heading).text);
+  for (const words of ['Desktop app', '`http://127.0.0.1:8976/callback`', 'connect youtube --callback-url', 'YouTube Studio', 'an upload that can go on after a break']) assert.ok(section('YouTube').includes(words), words);
+  for (const words of ['public https link to this exact file', 'BUFFER_CLIENT_ID', '`https://localhost:8976/callback`', '### Save a draft in Buffer', '--draft --dry-run']) assert.ok(section('Buffer').includes(words), words);
+  for (const words of ["Creating one ends Blotato's free trial", 'end in `=`', 'its own storage']) assert.ok(section('Blotato').includes(words), words);
+  for (const words of ['Nothing goes out without a yes', 'Which package goes where', '`Link size`', '| `sending` |']) assert.ok(section('Post a package').includes(words), words);
+  assert.ok(oneLine(page('publishing')).includes('Print only the part you need. `explainroo docs publishing --sections` lists them'));
+});
+
+test('the start page says to print only the section of a topic that you need', () => {
+  const topicsPart = oneLine(part('Topics'));
+  for (const words of ['`npx --yes explainroo docs <topic> --sections`', '`npx --yes explainroo docs <topic> <section>`', 'Print only the section you need']) assert.ok(topicsPart.includes(words), words);
+});

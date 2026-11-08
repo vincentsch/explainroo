@@ -160,7 +160,10 @@ there and publishes nothing.
 ## Topics
 
 `npx --yes explainroo docs <topic>` prints one of these. Read the topic of the
-step you are on.
+step you are on. A long topic has sections:
+`npx --yes explainroo docs <topic> --sections` lists them with their size, and
+`npx --yes explainroo docs <topic> <section>` prints one, like
+`npx --yes explainroo docs publishing buffer`. Print only the section you need.
 
 | Topic | Read it when |
 | --- | --- |

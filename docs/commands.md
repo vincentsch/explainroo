@@ -29,7 +29,7 @@ take the project folder first, and every command accepts `--json`.
 | `voices [project] --provider <id>` | lists the names, ids and labels available to the key of `elevenlabs` or `cartesia` (`--language`, `--json`) |
 | `themes`, `formats`, `icons <word>` | lists the looks, lists the sizes with each one's content area with and without the watermark, searches the 1,854 icons |
 | `doctor [project]` | checks Node, ffmpeg, Chrome, the models, and espeak-ng and Python with misaki for other languages, for one project when given. Before there is a project, `--language es` checks one language, and `--language es,fr` several (`--fetch` downloads only English models) |
-| `docs [topic]` | prints the start page, or one topic (`--list` lists the topics) |
+| `docs [topic] [section]` | prints the start page, one topic, or one section of a topic, named by its heading or by a word only its heading has (`--list` lists the topics, `--sections` lists the sections of a topic with their size) |
 | `version` | prints the version (`--version` also works) |
 
 The extra files share the video's name, also with `--out`: `video.srt`,

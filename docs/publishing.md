@@ -7,6 +7,11 @@ uploads a finished video to explainroo.com and gives back a page link.
 `share` and `publish` are the only commands that upload a video, and they run
 only when you ask for them.
 
+The parts about the package and about posting in general come first. Then each
+route has a part of its own: YouTube, Buffer, Blotato and share. Print only the
+part you need. `explainroo docs publishing --sections` lists them, and
+`explainroo docs publishing buffer` prints the one about Buffer.
+
 ## Package a video for a platform
 
 ```bash
@@ -189,50 +194,10 @@ The other platforms keep the watermark that `video.json` sets, so leave out
 `--size`, like a `16:9` project for YouTube. When `package` renders anyway, the
 command it names is the one to run next time.
 
-## Share a link
-
-```bash
-explainroo share videos/<name>                    # out/video.mp4
-explainroo share videos/<name> --platform tiktok  # the TikTok package
-explainroo share videos/<name> --file out/video.webm
-```
-
-`share` uploads one video to explainroo.com and prints a page link that anyone
-with the link can watch. It also prints a link to the file itself, which posting
-tools such as Buffer need. The video file and its title leave your computer, and
-only when you run this command. The service takes MP4 and WebM files. A draft is
-never picked by itself, because it is half the size. `--file` can still send
-one. `--title` replaces the title.
-
-The hosted service is coming. Until it runs, `share` says so and makes no link.
-
-A link shared without an account expires, and `share` prints when. It also
-prints a claim link. Open it to add the video to an account, and then the link
-does not expire. Anyone with the claim link can take the video, so keep it to
-yourself. explainroo keeps it in `history/private/`, which git leaves out. With a
-key from an account in `EXPLAINROO_CLOUD_KEY`, the link belongs to that account
-and does not expire.
-
-Sharing the same file again from this project folder prints the link it already
-has and uploads nothing. `--new` uploads it again. A copy of the project made
-with git has no `history/private/`, so its first `share` uploads the video
-again.
-
-| What happens | What `share` says | Run it again |
-| --- | --- | --- |
-| Nothing answers at the address | The video was not sent | Yes |
-| The connection fails its security check | The video was not sent | Yes, once the address or the network is fixed |
-| The address has no service yet, like a 404 or a web page | No share link was made | Yes |
-| The connection drops during the upload, it takes too long, or the server fails | The server may have received the video | Only with `--new` |
-| The key is wrong, or the server wants one | No share link was made, and it never uploads without the key | Yes, after you fix the key |
-| The server refuses the file | The server's reason | Yes, after you change the file |
-| Too many uploads | When to try again | Yes, later |
-| The server could not check the file in time | Nothing was published | Yes, later |
-
-`EXPLAINROO_CLOUD_URL` replaces the address, for example for a test server. It
-is read from the environment only, and never from a `.env` file.
-
 ## Post a package
+
+This part holds what all three routes share. The parts on YouTube, Buffer and
+Blotato that follow have the sign-in and what is different on each.
 
 ```bash
 explainroo publish videos/<name> --via youtube --dry-run                    # the youtube package
@@ -309,19 +274,9 @@ YouTube don't notify your subscribers.
 
 ### Where the video comes from
 
-- **YouTube** gets the file from your computer, as an upload that can go on
-  after a break.
-- **Buffer** has no upload, so it needs a public https link to this exact
-  file. Pass your own with `--media-url`. Once the hosted service runs,
-  `explainroo share <project> --platform tiktok` can make one, and `publish`
-  takes the link from it. A link to `out/video.mp4` doesn't count for a TikTok
-  package, because the package has its own file. Buffer fetches the video from
-  the link when it posts it, so the link has to stay up until then. The plan
-  warns when the link expires within a day.
-- **Blotato** gets the file uploaded to its own storage first, unless you pass
-  `--media-url`. Blotato's reference says such links must be on its own
-  domain, and another page says any public link works. Without `--media-url` it
-  works either way.
+YouTube gets the file from your computer. Buffer needs a public https link to
+the file, and Blotato takes the file or a link. The part of each route says
+more.
 
 Before a post that uses a link, `publish` asks the link for the size of its
 file. It sends a HEAD request, and asks for the first byte when the host
@@ -330,25 +285,46 @@ it, `publish` stops and sends nothing, because the service would post whatever
 the link leads to. The plan shows what it found as `Link size`. If you are sure
 that the link is right, `--media-url-unchecked` posts it without this check.
 
-### Save a draft in Buffer
-
-```bash
-explainroo publish videos/<name> --via buffer --platform tiktok --draft --dry-run
-```
-
-`--draft` saves the post as a draft in your Buffer, and nothing is published.
-When you want it to go out, open Buffer and schedule it there. `publish` reads
-the draft back and prints its status, which is `draft`. Only `--via buffer`
-takes `--draft`, and the other routes refuse it.
-
-A draft counts as the post of this file to that channel. A second `publish` of
-the same package sends nothing, with or without `--draft`. `--new --draft`
-saves another draft, and `--new` alone posts the file.
-
-The link to the video has to work until Buffer posts the draft, after you
-schedule it.
-
 ### Signing in
+
+Each route signs in with `explainroo connect` and the name of the service. The
+part of each route has the steps.
+
+The link from `connect` is never opened for you. The address you paste back
+holds a code that works once, and only with what `connect` saved on this
+computer, so it is safe on a command line, unlike a key.
+
+### When something goes wrong
+
+Each post has a job in `history/` with a stage, so `publish` knows what went
+out. Running the same command again reads the stage:
+
+| Stage | What happened | Running it again |
+| --- | --- | --- |
+| `planned` | You approved it, and the post never went out | goes on after a yes, with the request you approved |
+| `media_uploaded` | Blotato has the file, and the post never went out | goes on after a yes, without uploading again |
+| `sending` | The post went out, and no answer was saved | stops, because the post may exist. Look at the channel, then `--new` posts again |
+| `accepted` | The service took the post | reads the status and posts nothing |
+| `finished` | The post is there | prints the status and the link, and posts nothing |
+| `failed` | The service says the post failed | stops. `--new` posts again |
+
+A request that makes a post is never sent again by itself, because nobody can
+tell whether the first one worked. Reading a status may try again. Uploading
+the file to Blotato again is safe, because that makes no post. When a service
+says it has had too many requests, `publish` stops and says when to try again.
+
+The same file can't go to the same channel twice by accident. Two channels are
+two places, so the same file can go to each of them once. `--new` posts the
+same file to the same place again on purpose.
+
+### After the post
+
+`publish` reads the status back and prints it with the link.
+
+## YouTube
+
+**YouTube** gets the file from your computer, as an upload that can go on
+after a break.
 
 **YouTube** uses a Google client that you make in your own Google Cloud project:
 
@@ -374,6 +350,28 @@ Google project is in testing status, Google ends the login after 7 days. Then
 run `connect youtube` again to sign in. On 2026-11-07 a Google project could upload
 100 videos a day through the API.
 
+When a YouTube upload breaks off, `publish` asks YouTube how much arrived and
+goes on from there, in the same run or the next one. Asking does not start a
+second upload. The upload address is kept in `history/private/`, which git leaves out.
+When YouTube no longer knows the upload, `publish` stops, and `--new` starts a
+new one.
+
+After the post, `publish` reads the status back and prints it with the link.
+On YouTube that is the upload status, the privacy and the processing. YouTube
+gets no cover and no
+captions from `publish`. They are in the package folder, as `video.cover.jpg`
+and `video.srt`, for you to add in YouTube Studio.
+
+## Buffer
+
+**Buffer** has no upload, so it needs a public https link to this exact
+file. Pass your own with `--media-url`. Once the hosted service runs,
+`explainroo share <project> --platform tiktok` can make one, and `publish`
+takes the link from it. A link to `out/video.mp4` doesn't count for a TikTok
+package, because the package has its own file. Buffer fetches the video from
+the link when it posts it, so the link has to stay up until then. The plan
+warns when the link expires within a day.
+
 **Buffer** signs in with a public client that comes with explainroo, so you
 don't make one yourself. A public client has no secret. Run
 `explainroo connect buffer`. It prints a link and works the same way as
@@ -396,49 +394,79 @@ allow these permissions:
 The login then saves the client id next to its tokens, because only that client
 can renew it.
 
+### Save a draft in Buffer
+
+```bash
+explainroo publish videos/<name> --via buffer --platform tiktok --draft --dry-run
+```
+
+`--draft` saves the post as a draft in your Buffer, and nothing is published.
+When you want it to go out, open Buffer and schedule it there. `publish` reads
+the draft back and prints its status, which is `draft`. Only `--via buffer`
+takes `--draft`, and the other routes refuse it.
+
+A draft counts as the post of this file to that channel. A second `publish` of
+the same package sends nothing, with or without `--draft`. `--new --draft`
+saves another draft, and `--new` alone posts the file.
+
+The link to the video has to work until Buffer posts the draft, after you
+schedule it.
+
+## Blotato
+
+**Blotato** gets the file uploaded to its own storage first, unless you pass
+`--media-url`. Blotato's reference says such links must be on its own
+domain, and another page says any public link works. Without `--media-url` it
+works either way.
+
 **Blotato** uses an API key. Creating one ends Blotato's free trial and starts
 its paid Starter plan, so decide that first. Then run
 `explainroo connect blotato`. Some keys end in `=`, and that is part of the key.
 
-The link from `connect` is never opened for you. The address you paste back
-holds a code that works once, and only with what `connect` saved on this
-computer, so it is safe on a command line, unlike a key.
+## Share a link
 
-### When something goes wrong
+```bash
+explainroo share videos/<name>                    # out/video.mp4
+explainroo share videos/<name> --platform tiktok  # the TikTok package
+explainroo share videos/<name> --file out/video.webm
+```
 
-Each post has a job in `history/` with a stage, so `publish` knows what went
-out. Running the same command again reads the stage:
+`share` uploads one video to explainroo.com and prints a page link that anyone
+with the link can watch. It also prints a link to the file itself, which posting
+tools such as Buffer need. The video file and its title leave your computer, and
+only when you run this command. The service takes MP4 and WebM files. A draft is
+never picked by itself, because it is half the size. `--file` can still send
+one. `--title` replaces the title.
 
-| Stage | What happened | Running it again |
+The hosted service is coming. Until it runs, `share` says so and makes no link.
+
+A link shared without an account expires, and `share` prints when. It also
+prints a claim link. Open it to add the video to an account, and then the link
+does not expire. Anyone with the claim link can take the video, so keep it to
+yourself. explainroo keeps it in `history/private/`, which git leaves out. With a
+key from an account in `EXPLAINROO_CLOUD_KEY`, the link belongs to that account
+and does not expire.
+
+Sharing the same file again from this project folder prints the link it already
+has and uploads nothing. `--new` uploads it again. A copy of the project made
+with git has no `history/private/`, so its first `share` uploads the video
+again.
+
+| What happens | What `share` says | Run it again |
 | --- | --- | --- |
-| `planned` | You approved it, and the post never went out | goes on after a yes, with the request you approved |
-| `media_uploaded` | Blotato has the file, and the post never went out | goes on after a yes, without uploading again |
-| `sending` | The post went out, and no answer was saved | stops, because the post may exist. Look at the channel, then `--new` posts again |
-| `accepted` | The service took the post | reads the status and posts nothing |
-| `finished` | The post is there | prints the status and the link, and posts nothing |
-| `failed` | The service says the post failed | stops. `--new` posts again |
+| Nothing answers at the address | The video was not sent | Yes |
+| The connection fails its security check | The video was not sent | Yes, once the address or the network is fixed |
+| The address has no service yet, like a 404 or a web page | No share link was made | Yes |
+| The connection drops during the upload, it takes too long, or the server fails | The server may have received the video | Only with `--new` |
+| The key is wrong, or the server wants one | No share link was made, and it never uploads without the key | Yes, after you fix the key |
+| The server refuses the file | The server's reason | Yes, after you change the file |
+| Too many uploads | When to try again | Yes, later |
+| The server could not check the file in time | Nothing was published | Yes, later |
 
-When a YouTube upload breaks off, `publish` asks YouTube how much arrived and
-goes on from there, in the same run or the next one. Asking does not start a
-second upload. The upload address is kept in `history/private/`, which git leaves out.
-When YouTube no longer knows the upload, `publish` stops, and `--new` starts a
-new one.
+`EXPLAINROO_CLOUD_URL` replaces the address, for example for a test server. It
+is read from the environment only, and never from a `.env` file.
 
-A request that makes a post is never sent again by itself, because nobody can
-tell whether the first one worked. Reading a status may try again. Uploading
-the file to Blotato again is safe, because that makes no post. When a service
-says it has had too many requests, `publish` stops and says when to try again.
-
-The same file can't go to the same channel twice by accident. Two channels are
-two places, so the same file can go to each of them once. `--new` posts the
-same file to the same place again on purpose.
-
-### After the post
-
-`publish` reads the status back and prints it with the link. On YouTube that is
-the upload status, the privacy and the processing. YouTube gets no cover and no
-captions from `publish`. They are in the package folder, as `video.cover.jpg`
-and `video.srt`, for you to add in YouTube Studio.
+## Test servers
 
 For a test server, these replace the addresses. They are read from the
 environment only, and never from a `.env` file.
