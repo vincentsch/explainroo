@@ -196,8 +196,9 @@ const MARKS = {
   later: "s.icon('bug', { id: 'bug', x: 960, y: 540, size: 200, at: 0, out: '#gone' }); s.annotate('bug', { type: 'cross', at: 0.3, out: 2.5 });",
 };
 
-// How many marks the scene `index` draws at `t`, drawn on their own.
-const marksAt = (page, index, t) => page.evaluate(async ([index, t]) => {
+// How many marks the scene `index` draws at `t`, or with `kind` how many shapes
+// of that kind, drawn on their own.
+const marksAt = (page, index, t, kind = null) => page.evaluate(async ([index, t, kind]) => {
   const { Engine, fetchState } = await import('/engine/runtime.js');
   const state = await fetchState();
   const scenes = (await import(`/project/scenes.js?v=${state.version}`)).default;
@@ -205,8 +206,8 @@ const marksAt = (page, index, t) => page.evaluate(async ([index, t]) => {
   engine.textLog = [];
   engine.drawLog = { shapes: [], strokes: [], lives: [], shown: 0, order: 0 };
   engine.drawScene(engine.ctx, index, t);
-  return engine.drawLog.strokes.filter((s) => s.kind === 'annotate').length;
-}, [index, t]);
+  return kind ? engine.drawLog.shapes.filter((s) => s.kind === kind).length : engine.drawLog.strokes.filter((s) => s.kind === 'annotate').length;
+}, [index, t, kind]);
 
 test('check warns about a mark that stays more than 0.3 seconds after what it marks has left, and with "defaults": "0.5" a mark leaves with it', { skip }, async (t) => {
   const marks = (issues) => issues.filter((i) => /stays on screen/.test(i.message)).map((i) => [i.scene, i.message]);
@@ -228,6 +229,29 @@ test('check warns about a mark that stays more than 0.3 seconds after what it ma
   assert.deepEqual(marks(now.issues), [['later', 'the cross around "bug" stays on screen for 1.5s after "bug" leaves at 1.0s; give the mark the same out as "bug", out: \'#gone\'']]);
   // It fades with the bug, is gone at 2s, and leaves with a group too.
   assert.deepEqual(now.more, [1, 0, 0]);
+});
+
+// Terminals whose first line comes at 1.5s, in three-second scenes, and code.
+const WINDOWS = {
+  bare: "s.terminal([{ cmd: 'npm test', at: 1.5 }, { out: 'PASS' }], { x: 960, y: 540 });",
+  given: "s.terminal([{ cmd: 'npm test', at: 1.5 }, { out: 'PASS' }], { x: 960, y: 540, title: 'shell', at: 0 });",
+  soon: "s.terminal([{ cmd: 'npm test', at: 0.8 }], { x: 960, y: 540 });",
+  plain: "s.terminal(['$ npm test', 'PASS'], { x: 960, y: 540 });",
+  code: "s.code([{ code: 'let a = 1;' }, { code: 'let a = 2;', at: 2 }], { x: 960, y: 540, at: 0.2 }); s.code('let b = 1;', { x: 960, y: 800, reveal: 'lines', at: 0.5 });",
+};
+
+test('check warns about a code window or terminal that is empty for more than a second, and with "defaults": "0.5" a terminal without an at comes in with its first line', { skip }, async (t) => {
+  const empty = (issues) => issues.filter((i) => /on screen empty/.test(i.message)).map((i) => [i.scene, i.t, i.message]);
+  const { issues, more } = await check(project(t, {}, WINDOWS, { dur: 3 }), (page) => marksAt(page, 0, 1, 'terminal'));
+  assert.deepEqual(empty(issues), [
+    ['bare', 0, 'the 1st s.terminal is on screen empty for 1.5s, from 0.0s until its first line at 1.5s; give it the at of its first line, like at: 1.5, or add "defaults": "0.5" to video.json, where a terminal without an at of its own comes in with its first line'],
+    ['given', 0, 'the terminal "shell" is on screen empty for 1.5s, from 0.0s until its first line at 1.5s; give it the at of its first line, like at: 1.5'],
+  ]);
+  // Without the line the frames stay as they were: the empty window is there at 1s.
+  assert.equal(more, 1);
+  const fresh = await check(project(t, { defaults: '0.5' }, WINDOWS, { dur: 3 }), (page) => Promise.all([marksAt(page, 0, 1, 'terminal'), marksAt(page, 0, 1.6, 'terminal')]));
+  assert.deepEqual(empty(fresh.issues).map(([scene]) => scene), ['given']);
+  assert.deepEqual(fresh.more, [0, 1]);
 });
 
 test('the hint about a word spoken twice names "word#1" and "word#2", and "word#1" silences it', { skip }, async (t) => {

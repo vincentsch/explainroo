@@ -461,6 +461,15 @@ export class Stage {
     log.set(`${this.id}|${key}`, info);
   }
 
+  // For check: a code window or a terminal that comes in at `at` and shows its
+  // first line at `first`, inside its groups. Each one is noted once.
+  _window(name, at, o, first, advice) {
+    const log = this.engine.windowLog;
+    if (!log || log.has(`${this.id}|${name}`)) return;
+    const life = this._lifetime(at, o.out === undefined ? Infinity : this.time(o.out), o.exit ?? 'fade', o.outDur ?? 0.45);
+    log.set(`${this.id}|${name}`, { name, at: life.at, out: life.out, first: Math.max(first, life.at), advice });
+  }
+
   // The drawn line of an arrow or an annotation for check, as points in the
   // current transform.
   _logStroke(kind, points, settled, extra = {}) {
@@ -2118,6 +2127,8 @@ export class Stage {
         advice: reveal === 'lines' ? `give it an earlier at, or a smaller lineDelay than ${o.lineDelay ?? 0.3}` : `give it an earlier at, or a higher cps than ${o.cps ?? 40}`,
       });
     }
+    // The first line or step shows when its typing or its first line begins.
+    this._window(this._named('code', call, o.title, o.id), at, o, reveal === 'type' || reveal === 'lines' ? startText : at, 'give it a later at');
     if (steps) steps.slice(1).forEach((step, i) => this._record('code', step.at, (o.morphDur ?? 0.8) / this.pace,
       { sfx: o.sfx === false || o.sfx === null ? false : undefined, sfxGain: 0.2 }, { sfx: 'whoosh', label: `morph${i + 2}` }));
     const life = this._life({ ...o, sfx: null }, 'code', { dur: 0.5 });
@@ -2275,6 +2286,10 @@ export class Stage {
     const pad = size * 0.9;
     const barH = size * 1.5;
     const items = lines.map((l) => (typeof l === 'string' ? (l.startsWith('$ ') ? { cmd: l.slice(2) } : { out: l }) : l));
+    // With "defaults": "0.5", a terminal without an at of its own comes in with its
+    // first line, as code with steps does.
+    const own = o.at !== undefined;
+    if (!own && items[0]?.at !== undefined && newDefaults(this.engine.config)) o = { ...o, at: items[0].at };
     const w = o.w ?? this._w(0.62);
     const rows = items.reduce((n, it) => n + String(it.cmd ?? it.out ?? '').split('\n').length, 0);
     const h = o.h ?? Math.max(rows, o.rows ?? 0) * lh + barH + pad * 1.6;
@@ -2304,6 +2319,13 @@ export class Stage {
       missing: (t) => `shows ${timed.filter((r) => r.end <= t + 1e-6).length} of its ${timed.length} lines`,
       advice: `give it an earlier at, or a higher cps than ${o.cps ?? 22}`,
     });
+    if (timed.length) {
+      const first = items[0].at;
+      const like = first === undefined ? '' : `, like at: ${typeof first === 'string' ? `'${first}'` : first}`;
+      this._window(this._named('terminal', call, o.title, o.id), at, o, timed[0].start, own
+        ? `give it the at of its first line${like}`
+        : `give it the at of its first line${like}, or add "defaults": "0.5" to video.json, where a terminal without an at of its own comes in with its first line`);
+    }
     const life = this._life({ ...o, sfx: null }, 'terminal', { dur: 0.5, enter: o.enter ?? (th.enter.code === 'rise' ? 'rise' : 'fade') });
     if (this.engine.layoutLog) {
       // Each command with its output is a focus point while it is the

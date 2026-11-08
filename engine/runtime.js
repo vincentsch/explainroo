@@ -592,12 +592,13 @@ export class Engine {
   // check counts it, without the camera.
   shownAt(index, t) {
     const scratch = (this._framedCanvas ??= Object.assign(document.createElement('canvas'), { width: 16, height: 16 }));
-    const saved = { textLog: this.textLog, drawLog: this.drawLog, recorder: this.recorder, revealLog: this.revealLog, markLog: this.markLog };
+    const saved = { textLog: this.textLog, drawLog: this.drawLog, recorder: this.recorder, revealLog: this.revealLog, markLog: this.markLog, windowLog: this.windowLog };
     this.textLog = [];
     this.drawLog = drawLog();
     this.recorder = null;
     this.revealLog = null;
     this.markLog = null;
+    this.windowLog = null;
     try {
       this.drawScene(scratch.getContext('2d'), index, t);
       return this.drawLog.shown > 0;
@@ -765,6 +766,8 @@ export class Engine {
       this.revealLog = new Map();
       // Marks from s.annotate on an element with an id, and when that element goes.
       this.markLog = new Map();
+      // Code windows and terminals, and when their first line shows.
+      this.windowLog = new Map();
       const n = Math.ceil(sc.dur / step);
       for (let k = 0; k <= n; k++) {
         const t = Math.min(sc.dur - 0.001, k * step);
@@ -967,6 +970,17 @@ export class Engine {
         }
       }
       this.markLog = null;
+      // A code window or a terminal that is on screen empty for a while before its
+      // first line or step.
+      if (!broke) {
+        for (const w of this.windowLog.values()) {
+          const until = Math.min(w.first, w.out, sc.dur);
+          if (w.at >= sc.dur || !(until - w.at > EMPTY_WINDOW)) continue;
+          const to = until === w.first ? `until its first line at ${w.first.toFixed(1)}s` : until === sc.dur ? 'until the scene ends' : `until it leaves at ${w.out.toFixed(1)}s`;
+          once(`window:${sc.id}:${w.name}`, () => add('warn', sc.id, w.at, `${w.name} is on screen empty for ${(until - w.at).toFixed(1)}s, from ${w.at.toFixed(1)}s ${to}; ${w.advice}`));
+        }
+      }
+      this.windowLog = null;
       const emptyStart = !broke && bare !== null && bare > EMPTY_START;
       if (emptyStart) add('hint', sc.id, 0, `the scene shows only its background for the first ${bare.toFixed(1)}s; put something on screen sooner, for example give the first element an earlier at`);
       // The same later in the scene, once everything has left and before the next
@@ -1069,6 +1083,8 @@ const INK_CALLS = new Set(['fill', 'stroke', 'fillRect', 'strokeRect', 'fillText
 const EMPTY_START = 1.5;
 // A mark may stay this long after what it marks has gone, in seconds.
 const MARK_SLACK = 0.3;
+// A code window or a terminal may be empty this long before its first line.
+const EMPTY_WINDOW = 1;
 // "cover": "auto" looks at this many frames of the first scene at most.
 const COVER_FRAMES = 600;
 

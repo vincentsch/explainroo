@@ -361,8 +361,11 @@ line count. `check` checks the lines of every step.
 
 `s.terminal(lines, options)` shows a terminal. Lines that start with `$ ` are
 typed as commands. Other lines are output. A line can also be `{ cmd, at }`
-or `{ out, at, color }`. Options: `w`, `size`, `rows`, `title`, `prompt`,
-`cps` (22), `outputDelay`, `lineGap`.
+or `{ out, at, color }`. Options: `w`, `size`, `rows`,
+`title`, `prompt`, `cps` (22), `outputDelay`, `lineGap`. With `"defaults":
+"0.5"`, a terminal without an `at` of its own comes in with its first line,
+like code with steps. `check` warns about a window that is empty for more
+than a second.
 
 ## Short videos
 

@@ -75,6 +75,8 @@ labels may move. The line changes these:
 - A mark from `s.annotate` on an element's `id` leaves with that element,
   unless the mark has an `out` of its own. Before, it stayed until the end of
   the scene.
+- A terminal without an `at` of its own comes in with its first line. Before,
+  it came in at the start of the scene and stayed empty until that line.
 - The default highlight of a sticker's `*keywords*` picks a red that reads on
   that sticker's color.
 - A `brand.accent` that is hard to read on the caption background keeps its
