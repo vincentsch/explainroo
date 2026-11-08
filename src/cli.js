@@ -214,9 +214,12 @@ export async function main(argv) {
         const speed = paid ? paid.speed(wanted) : wanted;
         const speedNote = paid && speed !== wanted ? `\n${paid.name} speed ${wanted.toFixed(2)} is outside ${paid.speedRange.join(' to ')}; using ${speed}.` : '';
         const usage = paid ? `\n${paid.name}: ${characters} characters used` : '';
-        // "targetSeconds" lengthens the holds, or says how far over the video runs.
+        // The target this size used and where it came from. It lengthens the
+        // holds, or a note says how far over the video runs.
         const { target } = timeline;
-        const added = target?.added ? ` (targetSeconds ${target.seconds} added ${target.added.toFixed(1)} s to the hold of each scene)` : '';
+        const from = { top: 'from video.json', block: `from the ${project.config.size} block in "sizes"` }[project.targetFrom];
+        const added = target ? ` (targetSeconds ${target.seconds} ${from}${target.added ? `, which added ${target.added.toFixed(1)} s to the hold of each scene` : ''})`
+          : project.targetFrom === 'off' ? ` (no targetSeconds: the ${project.config.size} block in "sizes" turns it off)` : '';
         const notes = targetNotes(timeline, estimateLength(project)?.perMinute);
         // A finished render of another size that says an older script.
         const outdated = outdatedRenders(project);
@@ -225,7 +228,7 @@ export async function main(argv) {
         const heardLines = (r) => r.heard.slice(0, 6).map((u) => `\n${unconfirmedLine(u)}`).join('');
         print(rows.map((r) => `${r.scene.padEnd(18)} ${length(r)}  ${Math.round(r.confirmed * 100)}% confirmed${r.unconfirmed.length ? '  unconfirmed: ' + r.unconfirmed.slice(0, 6).join(', ') : ''}${heardLines(r)}`).join('\n') + `\ntotal ${timeline.duration.toFixed(1)}s${added}` + mismatch + usage + speedNote + after, {
           scenes: rows, duration: timeline.duration, ...(paid ? { characters, speed, ...(speed !== wanted ? { requested_speed: wanted } : {}) } : {}),
-          ...(estimate ? { estimate } : {}), ...(target ? { target } : {}), ...(notes.length ? { notes } : {}), ...(outdated.length ? { outdated } : {}),
+          ...(estimate ? { estimate } : {}), ...(target ? { target: { ...target, from: project.targetFrom } } : {}), ...(notes.length ? { notes } : {}), ...(outdated.length ? { outdated } : {}),
         });
         return 0;
       }

@@ -686,6 +686,9 @@ export function loadProject(arg, overrides = {}) {
     sizeOverride: settings.size,
     // The names of the sizes with a block in "sizes", for package and history.
     sizeBlocks: raw.sizes ? Object.keys(raw.sizes) : [],
+    // Where the length the video should have comes from: the block of its size in
+    // "sizes", or the top of video.json, or a block that turns it off with null.
+    targetFrom: raw.sizes?.[config.size] && Object.hasOwn(raw.sizes[config.size], 'targetSeconds') ? (config.targetSeconds === undefined ? 'off' : 'block') : config.targetSeconds === undefined ? null : 'top',
     clipBudget: raw.clipBudget ?? null,
     ownPace,
     paths: { build, out, voice: path.join(build, 'voice'), scenes: scenesPath, script: files.script, strings: files.strings, post: files.post, look: config.look ? path.resolve(dir, config.theme) : null },

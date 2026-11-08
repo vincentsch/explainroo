@@ -126,7 +126,14 @@ and a cover of its own, and the 16:9 version stays as it is:
 ```
 
 `explainroo render videos/<name> --size tiktok` and a TikTok package use the
-block, and `explainroo render videos/<name>` doesn't. A block counts wherever
+block, and `explainroo render videos/<name>` doesn't.
+
+`"targetSeconds"` at the top of `video.json` counts for every size, also one
+whose block sets a quicker `pace`. So with `"targetSeconds": 45` and a TikTok
+block with `"pace": 1.15`, the TikTok version gets longer holds until it runs
+45 seconds too. To give a size a length of its own, set `"targetSeconds": 40`
+in its block, or `null` there for no target at all. `voice` prints the target
+it used for the size, and where it came from. A block counts wherever
 its size is used: as `size` in `video.json`, with `--size`, and in `package`.
 A package looks for the block of its platform's size first, like `linkedin` for
 LinkedIn, see `explainroo docs publishing`. A block adds nothing to file names.

@@ -218,10 +218,19 @@ test('voice says what targetSeconds did, and how far over a longer video runs', 
   t.mock.method(process.stderr, 'write', () => true);
   const short = tinyProject(t, { targetSeconds: 3 });
   assert.equal(await main(['voice', short]), 0);
-  assert.match(output, /^total 3\.0s \(targetSeconds 3 added 2\.0 s to the hold of each scene\)$/m);
+  assert.match(output, /total 3\.0s \(targetSeconds 3 from video\.json, which added 2\.0 s to the hold of each scene\)$/m);
   output = '';
   assert.equal(await main(['voice', short, '--json']), 0);
-  assert.deepEqual(JSON.parse(output).target, { seconds: 3, natural: 1, added: 2 });
+  assert.deepEqual(JSON.parse(output).target, { seconds: 3, natural: 1, added: 2, from: 'top' });
+  // A size takes the target at the top unless its block sets its own, or null.
+  fs.writeFileSync(path.join(short, 'video.json'), JSON.stringify({ ...JSON.parse(fs.readFileSync(path.join(short, 'video.json'), 'utf8')), sizes: { tiktok: { targetSeconds: 4 }, reels: { targetSeconds: null } } }));
+  const { seedNarration } = await import('./helpers/tiny-project.js');
+  for (const [size, line] of [['shorts', /total 3\.0s \(targetSeconds 3 from video\.json, which added 2\.0 s/], ['tiktok', /total 4\.0s \(targetSeconds 4 from the tiktok block in "sizes", which added 3\.0 s/], ['reels', /total 1\.0s \(no targetSeconds: the reels block in "sizes" turns it off\)$/m]]) {
+    seedNarration(loadProject(short, { size }));
+    output = '';
+    assert.equal(await main(['voice', short, '--size', size]), 0, size);
+    assert.match(output, line, size);
+  }
   // A tiny video can't be shorter than its scene, so a target of 1 second over a 2 second scene is over.
   const long = tinyProject(t, { targetSeconds: 1 });
   fs.writeFileSync(path.join(long, 'script.md'), '# Tiny video\n\n## intro {min=2 chapter="Intro"}\n');

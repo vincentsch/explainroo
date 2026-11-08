@@ -29,12 +29,13 @@ something to a friend at a table.
   "about 45 s: 105 words of speech at about 180 a minute, plus about 1.5 s per
   scene for leads, holds and pauses". When it is too long, cut words before
   you make the voice.
-- For an exact length, set `"targetSeconds": 40` in `video.json`, or in the
-  block of one size under `"sizes"`. When the video comes out shorter, the
-  missing time goes evenly into the holds of its scenes, so it ends at 40
-  seconds. When that adds more than 3 seconds to each scene, or when the video
-  runs longer, `voice` and `check` say so and name the longest scenes. Without
-  `targetSeconds`, a video is as long as its narration.
+- For an exact length, set `"targetSeconds": 40` in `video.json`. It counts
+  for every size, also a quicker one, unless the block of a size under
+  `"sizes"` sets its own, or `null` for none. When the video comes out
+  shorter, the missing time goes evenly into the holds of its scenes, so it
+  ends at 40 seconds. When that adds more than 3 seconds to each scene, or
+  when the video runs longer, `voice` and `check` say so and name the longest
+  scenes. Without `targetSeconds`, a video is as long as its narration.
 - Start with the question or problem. Explain it in small steps. Give one
   concrete example, then sum up.
 - One idea per scene, usually 1 to 3 sentences (4 to 15 seconds).
