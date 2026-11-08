@@ -42,6 +42,9 @@ explainroo clip videos/<name> "A busy street at dusk in the rain" --seconds 6 --
 
 This prints the model, the length, the size and the price, and spends nothing. It
 needs no key and no cap, because OpenRouter's list of models and prices is public.
+Its `Takes:` line lists the lengths, aspects and resolutions the model takes, and
+`explainroo services clips` lists them for the cheap and the quality model. On
+2026-11-08 both took 4, 6 or 8 seconds.
 
 The dry run also works without a project. Run it without the project folder,
 somewhere that has no `video.json`:
@@ -79,7 +82,7 @@ anything inside a clip.
 
 | Option | What it does |
 | --- | --- |
-| `--seconds` | The length, which the model must list. Required. |
+| `--seconds` | The length, one that the model takes. Required. |
 | `--max-cost` | The most it may cost, in US dollars. Required when it buys. |
 | `--dry-run` | Shows the price and spends nothing. It works without a project too. |
 | `--aspect` | `16:9` by default for a wide project and without a project, and `9:16` for any other project. `fit: 'cover'` crops either one to a square or 4:5 frame. |
@@ -92,8 +95,10 @@ anything inside a clip.
 | `--resume <id>` | Continues a job with the short id that `explainroo history` prints. |
 
 The length, the aspect and the resolution are checked against the model's own list
-before anything is spent, and the error says what is allowed. A model with no price
-per second can't be used, and the error suggests another one.
+before anything is spent, and the error says what is allowed. The dry run's JSON has
+them in `takes`. When OpenRouter's list leaves one of them out for the cheap or the
+quality model, explainroo's own table fills it in, and `takes.from` says `table`. A
+model with no price per second can't be used, and the error suggests another one.
 
 ## How the price is worked out
 
@@ -113,7 +118,8 @@ several rates, and four steps pick one. A later step never undoes an earlier one
    if that is larger.
 
 `services clips` works out the price per second of the cheap and the quality model
-from the same list in the same way, at 720p without sound. It keeps the list it read
+from the same list in the same way, at 720p without sound. Under each model it says
+what the model takes. It keeps the list it read
 for a day in `~/.cache/explainroo/prices/`, or in `prices/` under `EXPLAINROO_CACHE`.
 So its prices can be a day old, and it shows the date it read them. It shows the
 range from 2026-11-07 instead in two cases, and it says which one:
@@ -121,8 +127,9 @@ range from 2026-11-07 instead in two cases, and it says which one:
 - `EXPLAINROO_OFFLINE=1` is set. Then it asks for nothing.
 - The list could not be read within a few seconds.
 
-A model the list has no price for gets the range too. A dry run always gives the
-quote for the exact clip.
+A model the list has no price for gets the range too. With the range, what each
+model takes comes from explainroo's own table. A dry run always gives the quote for
+the exact clip.
 
 ## If something goes wrong
 

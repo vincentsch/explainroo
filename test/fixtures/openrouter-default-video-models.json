@@ -1,0 +1,69 @@
+{
+  "read": "2026-11-08",
+  "url": "https://openrouter.ai/api/v1/videos/models",
+  "data": [
+    {
+      "id": "google/veo-3.1-lite",
+      "name": "Google: Veo 3.1 Lite",
+      "supported_resolutions": [
+        "720p",
+        "1080p"
+      ],
+      "supported_aspect_ratios": [
+        "16:9",
+        "9:16"
+      ],
+      "supported_sizes": [
+        "1280x720",
+        "720x1280",
+        "1920x1080",
+        "1080x1920"
+      ],
+      "supported_durations": [
+        8,
+        4,
+        6
+      ],
+      "generate_audio": true,
+      "pricing_skus": {
+        "duration_seconds_with_audio": "0.08",
+        "duration_seconds_without_audio": "0.05",
+        "duration_seconds_with_audio_720p": "0.05",
+        "duration_seconds_without_audio_720p": "0.03"
+      }
+    },
+    {
+      "id": "google/veo-3.1",
+      "name": "Google: Veo 3.1",
+      "supported_resolutions": [
+        "720p",
+        "1080p",
+        "4K"
+      ],
+      "supported_aspect_ratios": [
+        "16:9",
+        "9:16"
+      ],
+      "supported_sizes": [
+        "1280x720",
+        "1080x1920",
+        "1920x1080",
+        "720x1280",
+        "3840x2160",
+        "2160x3840"
+      ],
+      "supported_durations": [
+        4,
+        6,
+        8
+      ],
+      "generate_audio": true,
+      "pricing_skus": {
+        "duration_seconds_with_audio": "0.40",
+        "duration_seconds_with_audio_4k": "0.60",
+        "duration_seconds_without_audio": "0.20",
+        "duration_seconds_without_audio_4k": "0.40"
+      }
+    }
+  ]
+}

@@ -221,7 +221,7 @@ test('services --json gives the same data plus whether a key is there, and never
       assert.deepEqual(rest, forStep(findService(s.id), s.step));
       assert.equal(typeof connected, needsKey(s) ? 'boolean' : 'undefined', s.id);
       // Only the clips step of OpenRouter has prices, and offline they are the range.
-      assert.deepEqual(prices, s.id === 'openrouter' && s.step === 'clips' ? { shown: 'range', because: 'offline' } : undefined, `${s.step} ${s.id}`);
+      assert.deepEqual(prices && { shown: prices.shown, because: prices.because, takes: prices.models.map((m) => m.takes.from) }, s.id === 'openrouter' && s.step === 'clips' ? { shown: 'range', because: 'offline', takes: ['table', 'table'] } : undefined, `${s.step} ${s.id}`);
     }
     assert.deepEqual(data.services.filter((s) => s.id === 'openrouter').map((s) => [s.step, s.connected]), [['images', false], ['clips', false]]);
     for (const step of ['images', 'clips']) {

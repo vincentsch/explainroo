@@ -6,7 +6,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { CLIP_MODELS, DEFAULT_RESOLUTION } from './ai-clips.js';
-import { clipPrice } from './clip-price.js';
+import { clipOptions, clipPrice, KNOWN_OPTIONS } from './clip-price.js';
 import { cacheRoot } from './models.js';
 import openrouter from './connectors/openrouter.js';
 
@@ -45,7 +45,8 @@ function keep(file, kept) {
 }
 
 // The price per second of each default model in one answer of the list, worked
-// out the way a dry run works out its price.
+// out the way a dry run works out its price, and the lengths, aspects and
+// resolutions it takes.
 function pricesFrom(kept) {
   return {
     shown: 'prices',
@@ -55,16 +56,22 @@ function pricesFrom(kept) {
     models: Object.entries(CLIP_MODELS).map(([name, id]) => {
       const model = kept.data.find((m) => m?.id === id);
       const price = model ? clipPrice(model, { seconds: 1, ...SETTINGS }) : null;
-      return { name, id, usd_per_second: price?.usd_per_second ?? null, rate_name: price?.rate_name ?? null };
+      return { name, id, usd_per_second: price?.usd_per_second ?? null, rate_name: price?.rate_name ?? null, takes: clipOptions(model ?? { id }) };
     }),
   };
+}
+
+// The range has no list behind it, so what each default model takes comes from
+// explainroo's own table.
+function range(because) {
+  return { shown: 'range', because, models: Object.entries(CLIP_MODELS).map(([name, id]) => ({ name, id, takes: { ...KNOWN_OPTIONS[id], from: 'table' } })) };
 }
 
 // Offline mode shows the range at once. Otherwise an answer younger than a day is
 // used without a request, and an older one is read again and kept. When the list
 // can't be read, it is the range, so an answer older than a day never shows.
 export async function clipPricesToday() {
-  if (process.env.EXPLAINROO_OFFLINE === '1') return { shown: 'range', because: 'offline' };
+  if (process.env.EXPLAINROO_OFFLINE === '1') return range('offline');
   try {
     const url = openrouter.videoModelsUrl();
     const file = keptPriceList(url);
@@ -78,7 +85,7 @@ export async function clipPricesToday() {
     }
     return pricesFrom(kept);
   } catch {
-    return { shown: 'range', because: 'unreadable' };
+    return range('unreadable');
   }
 }
 

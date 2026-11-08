@@ -8,9 +8,9 @@ import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { ProjectError, ServiceError } from './errors.js';
 import { createJob, decide, ensureIgnored, findJob, historyDir, jobKey, listAttempts, listJobs, placeOutput, projectWord, saveOutputFile, selfCommand, shortId, stopSentence, updateJob } from './history.js';
-import { checkClipRequest, clipPrice } from './clip-price.js';
+import { checkClipRequest, clipOptions, clipPrice } from './clip-price.js';
 import { probe } from './ffmpeg.js';
-import { localDay, serviceUrl, usd } from './services.js';
+import { clipOptionsText, localDay, serviceUrl, usd } from './services.js';
 import openrouter from './connectors/openrouter.js';
 
 export const CLIP_MODELS = {
@@ -56,7 +56,7 @@ function clipModelId(name) {
 export function clipRequest(project, { prompt, seconds, aspect, model, resolution, audio = false, name }) {
   const text = String(prompt ?? '').trim();
   if (text.length < 8) throw new ProjectError('describe the clip in a sentence or two');
-  if (seconds === undefined) throw new ProjectError('clip needs --seconds, because the length sets the price. --dry-run shows the price and spends nothing.');
+  if (seconds === undefined) throw new ProjectError('clip needs --seconds, because the length sets the price. "explainroo services clips" lists the lengths each model takes, and --dry-run shows the price and spends nothing.');
   const frame = project?.config;
   const [, number, unit] = /^(\d+)([pk])$/i.exec(resolution ?? DEFAULT_RESOLUTION) ?? [];
   return {
@@ -244,6 +244,7 @@ async function followJob(project, job, { log, wait = waitMs() }) {
 }
 
 // The settings and the price of a dry run, which a project and its record add to.
+// `takes` is what the model takes, so a later run can pick another length or size.
 function priced(request, { model, price }, maxCost) {
   return {
     model: model.id,
@@ -251,6 +252,7 @@ function priced(request, { model, price }, maxCost) {
     aspect: request.aspect,
     resolution: request.resolution,
     audio: request.audio,
+    takes: clipOptions(model),
     billed_audio: price.billed_audio,
     price_usd: price.usd,
     usd_per_second: price.usd_per_second,
@@ -352,6 +354,7 @@ export function formatClip(r) {
       `Model:  ${r.model}`,
       `Length: ${r.seconds} seconds`,
       `Size:   ${r.aspect}, ${r.resolution}`,
+      `Takes:  ${clipOptionsText(r.takes)}${r.takes.from === 'table' ? ", from explainroo's own table, because OpenRouter's list doesn't say" : ''}`,
       `Sound:  ${r.audio ? 'on' : r.billed_audio ? 'on, because this model always makes sound, and the price counts it' : 'off'}`,
       `Price:  about ${usd(r.price_usd)} (${usd(r.usd_per_second)} a second, from "${r.rate_name}"${r.minimum_usd ? `, with a minimum charge of ${usd(r.minimum_usd)}` : ''})`,
       'That is an estimate. The real cost goes in the record after the job, and a failed try may cost money too.',

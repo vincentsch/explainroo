@@ -15,6 +15,16 @@ const LIST = 'GET /api/v1/videos/models';
 const HOUR = 60 * 60 * 1000;
 const day = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const today = () => day(new Date());
+// What the default models take: from the list, and from explainroo's own table when
+// the range shows instead.
+const TAKES = {
+  cheap: { seconds: [4, 6, 8], aspects: ['16:9', '9:16'], resolutions: ['720p', '1080p'] },
+  quality: { seconds: [4, 6, 8], aspects: ['16:9', '9:16'], resolutions: ['720p', '1080p', '4K'] },
+};
+const range = (because) => ({ shown: 'range', because, models: [
+  { name: 'cheap', id: 'google/veo-3.1-lite', takes: { ...TAKES.cheap, from: 'table' } },
+  { name: 'quality', id: 'google/veo-3.1', takes: { ...TAKES.quality, from: 'table' } },
+] });
 
 function temp(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-prices-'));
@@ -59,7 +69,7 @@ test('services clips shows the price per second of the cheap and the quality mod
   const { fake, cli, prices, requests, empty } = await setup(t);
   const r = await cli(['services', 'clips']);
   assert.equal(r.code, 0, r.stderr);
-  assert.match(r.stdout, new RegExp(`Prices at 720p without sound, from OpenRouter's list read on ${today()}:\\n {6}cheap {4}google/veo-3\\.1-lite {2}\\$0\\.03 a second\\n {6}quality  google/veo-3\\.1 {7}\\$0\\.20 a second\\n`));
+  assert.match(r.stdout, new RegExp(`Prices at 720p without sound, from OpenRouter's list read on ${today()}:\\n {6}cheap {4}google/veo-3\\.1-lite {2}\\$0\\.03 a second\\n {15}takes 4, 6 or 8 seconds, 16:9 or 9:16, at 720p or 1080p\\n {6}quality  google/veo-3\\.1 {7}\\$0\\.20 a second\\n {15}takes 4, 6 or 8 seconds, 16:9 or 9:16, at 720p, 1080p or 4K\\n`));
   assert.doesNotMatch(r.stdout, /half a cent|Offline mode|could not be read/);
   assert.equal(requests(), 1);
 
@@ -70,8 +80,8 @@ test('services clips shows the price per second of the cheap and the quality mod
   assert.ok(Date.now() - Date.parse(json.read) < HOUR);
   assert.deepEqual(json.settings, { resolution: '720p', audio: false });
   assert.deepEqual(json.models, [
-    { name: 'cheap', id: 'google/veo-3.1-lite', usd_per_second: 0.03, rate_name: 'duration_seconds_without_audio_720p' },
-    { name: 'quality', id: 'google/veo-3.1', usd_per_second: 0.2, rate_name: 'duration_seconds_without_audio' },
+    { name: 'cheap', id: 'google/veo-3.1-lite', usd_per_second: 0.03, rate_name: 'duration_seconds_without_audio_720p', takes: { ...TAKES.cheap, from: 'openrouter' } },
+    { name: 'quality', id: 'google/veo-3.1', usd_per_second: 0.2, rate_name: 'duration_seconds_without_audio', takes: { ...TAKES.quality, from: 'openrouter' } },
   ]);
   // Plain services lists the clips step, so it shows them too, from the same kept answer.
   assert.match((await cli(['services'])).stdout, /quality {2}google\/veo-3\.1 {7}\$0\.20 a second/);
@@ -80,7 +90,7 @@ test('services clips shows the price per second of the cheap and the quality mod
   // The dry run works the price out the same way, from a fresh list of its own.
   for (const [i, model] of ['cheap', 'quality'].entries()) {
     const dry = JSON.parse((await cli(['clip', 'A busy street at dusk in the rain', '--seconds', '6', '--dry-run', '--model', model, '--json'])).stdout);
-    assert.deepEqual([dry.model, dry.usd_per_second, dry.rate_name], [json.models[i].id, json.models[i].usd_per_second, json.models[i].rate_name]);
+    assert.deepEqual([dry.model, dry.usd_per_second, dry.rate_name, dry.takes], [json.models[i].id, json.models[i].usd_per_second, json.models[i].rate_name, json.models[i].takes]);
   }
   assert.equal(requests(), 3);
   assert.deepEqual(fs.readdirSync(empty), []);
@@ -132,7 +142,7 @@ test('services clips gives the date the list was read in the time zone of the co
 test('offline mode shows the range at once, without a request, also when a fresh answer is kept', async (t) => {
   const { cli, prices, requests, keptFiles } = await setup(t);
   const offline = { EXPLAINROO_OFFLINE: '1' };
-  assert.deepEqual(await prices(offline), { shown: 'range', because: 'offline' });
+  assert.deepEqual(await prices(offline), range('offline'));
   assert.equal(requests(), 0);
   assert.deepEqual(keptFiles(), []);
   await prices();
@@ -141,7 +151,8 @@ test('offline mode shows the range at once, without a request, also when a fresh
   assert.equal(r.code, 0);
   assert.match(r.stdout, /Prices: Offline mode is on \(EXPLAINROO_OFFLINE=1\), so here is the range instead of today's prices\. On 2026-11-07 the video models explainroo can price cost from about half a cent to 60 cents a second\./);
   assert.doesNotMatch(r.stdout, /a second\n {6}cheap|list read on/);
-  assert.deepEqual(await prices(offline), { shown: 'range', because: 'offline' });
+  assert.match(r.stdout, /\n {4}The models:\n {6}cheap {4}google\/veo-3\.1-lite\n {15}takes 4, 6 or 8 seconds, 16:9 or 9:16, at 720p or 1080p, from explainroo's own table\n/);
+  assert.deepEqual(await prices(offline), range('offline'));
   assert.equal(requests(), 1);
 });
 
@@ -152,7 +163,7 @@ test('when the list cannot be read, it shows the range and says why, and never a
   const old = kept();
   for (const step of [{ status: 503 }, { drop: true }, { status: 200, body: { error: 'no list' } }]) {
     fake.plan('openrouter', LIST, step);
-    assert.deepEqual(await prices(), { shown: 'range', because: 'unreadable' }, JSON.stringify(step));
+    assert.deepEqual(await prices(), range('unreadable'), JSON.stringify(step));
   }
   fake.plan('openrouter', LIST, { status: 503 });
   const r = await cli(['services', 'clips']);
@@ -163,7 +174,7 @@ test('when the list cannot be read, it shows the range and says why, and never a
   assert.deepEqual(kept(), old);
   // With the fake gone, it is the same.
   await fake.close();
-  assert.deepEqual(await prices(), { shown: 'range', because: 'unreadable' });
+  assert.deepEqual(await prices(), range('unreadable'));
 });
 
 test('a list that does not answer holds services up for a few seconds at most', async (t) => {
@@ -171,7 +182,7 @@ test('a list that does not answer holds services up for a few seconds at most', 
   fake.plan('openrouter', LIST, { hang: true });
   const r = await cli(['services', 'clips', '--json']);
   assert.equal(r.code, 0, r.stderr);
-  assert.deepEqual(JSON.parse(r.stdout).services.find((s) => s.id === 'openrouter').prices, { shown: 'range', because: 'unreadable' });
+  assert.deepEqual(JSON.parse(r.stdout).services.find((s) => s.id === 'openrouter').prices, range('unreadable'));
   assert.equal(requests(), 1);
   // A dry run waits up to 30 seconds for the same list. services gives up after 4.
   assert.ok(r.ms < 15000, `services took ${r.ms} ms`);
@@ -186,7 +197,8 @@ test('a default model that is not in the list gets the range, and the other one 
   assert.equal(json.shown, 'prices');
   assert.deepEqual(json.models.map((m) => [m.id, m.usd_per_second]), [['google/veo-3.1-lite', 0.03], ['google/veo-3.1', null]]);
   const r = await cli(['services', 'clips']);
-  assert.match(r.stdout, /cheap {4}google\/veo-3\.1-lite {2}\$0\.03 a second\n {6}quality  google\/veo-3\.1 {7}no price in that list\n {4}A model with no price in that list has the range\. On 2026-11-07 the video models/);
+  assert.match(r.stdout, /cheap {4}google\/veo-3\.1-lite {2}\$0\.03 a second\n.*\n {6}quality  google\/veo-3\.1 {7}no price in that list\n {15}takes 4, 6 or 8 seconds, 16:9 or 9:16, at 720p, 1080p or 4K, from explainroo's own table\n {4}A model with no price in that list has the range\. On 2026-11-07 the video models/);
+  assert.deepEqual(json.models[1].takes, { ...TAKES.quality, from: 'table' });
 });
 
 test('each address keeps its own answer in the cache folder, so prices from a fake never mix with real ones', async (t) => {

@@ -103,17 +103,35 @@ export function localTime(iso) {
 }
 
 // Today's prices of an entry under one step, when they were read, or else its range
-// and why. A model the list has no price for gets the range too.
+// and why. A model the list has no price for gets the range too. Under each model
+// is what it takes, so the lengths need no guessing.
 function priceLines(service, prices) {
   if (!service.price_range) return [];
-  if (prices?.shown !== 'prices') return [`    Prices: ${prices?.because ? `${RANGE_BECAUSE[prices.because]} ` : ''}${service.price_range}`];
+  const models = prices?.models ?? [];
+  const nameWidth = Math.max(0, ...models.map((m) => m.name.length));
+  const idWidth = Math.max(0, ...models.map((m) => m.id.length));
+  const takes = (m) => (m.takes ? [`      ${''.padEnd(nameWidth)}  takes ${clipOptionsText(m.takes)}${m.takes.from === 'table' ? ", from explainroo's own table" : ''}`] : []);
+  if (prices?.shown !== 'prices') {
+    const lines = [`    Prices: ${prices?.because ? `${RANGE_BECAUSE[prices.because]} ` : ''}${service.price_range}`];
+    if (models.length) lines.push('    The models:');
+    for (const m of models) lines.push(`      ${m.name.padEnd(nameWidth)}  ${m.id}`, ...takes(m));
+    return lines;
+  }
   const { resolution, audio } = prices.settings;
-  const nameWidth = Math.max(...prices.models.map((m) => m.name.length));
-  const idWidth = Math.max(...prices.models.map((m) => m.id.length));
   const lines = [`    Prices at ${resolution} ${audio ? 'with' : 'without'} sound, from ${service.name}'s list read on ${localDay(prices.read)}:`];
-  for (const m of prices.models) lines.push(`      ${m.name.padEnd(nameWidth)}  ${m.id.padEnd(idWidth)}  ${m.usd_per_second === null ? 'no price in that list' : `${usd(m.usd_per_second)} a second`}`);
-  if (prices.models.some((m) => m.usd_per_second === null)) lines.push(`    A model with no price in that list has the range. ${service.price_range}`);
+  for (const m of models) lines.push(`      ${m.name.padEnd(nameWidth)}  ${m.id.padEnd(idWidth)}  ${m.usd_per_second === null ? 'no price in that list' : `${usd(m.usd_per_second)} a second`}`, ...takes(m));
+  if (models.some((m) => m.usd_per_second === null)) lines.push(`    A model with no price in that list has the range. ${service.price_range}`);
   return lines;
+}
+
+// What a clip model takes, for a line of output: "4, 6 or 8 seconds, 16:9 or
+// 9:16, at 720p or 1080p".
+export function clipOptionsText({ seconds, aspects, resolutions }) {
+  return [
+    seconds ? `${oneOf(seconds.map(String))} seconds` : null,
+    aspects ? oneOf(aspects) : null,
+    resolutions ? `at ${oneOf(resolutions)}` : null,
+  ].filter(Boolean).join(', ');
 }
 
 // The list in plain words. `command` is how to run this tool, `connected` says for

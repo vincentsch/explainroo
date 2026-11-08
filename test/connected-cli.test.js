@@ -602,6 +602,8 @@ test('a dry run shows the real model, length, size and price, with no key and no
   assert.match(r.stdout, /google\/veo-3\.1-lite/);
   assert.match(r.stdout, /6 seconds/);
   assert.match(r.stdout, /16:9, 720p/);
+  // What the model takes, so no length has to be found by trying.
+  assert.match(r.stdout, /^Takes: {2}4, 6 or 8 seconds, 16:9 or 9:16, at 720p or 1080p$/m);
   assert.match(r.stdout, /about \$0\.18 /);
   assert.match(r.stdout, /estimate/);
   assert.match(r.stdout, /failed try may cost money/);
@@ -641,7 +643,7 @@ test('outside a project a dry run prices 16:9 at 720p without sound, with no key
   assert.doesNotMatch(r.stdout, /assets\/clips|already bought|\(job /);
 
   const json = JSON.parse((await outside('--json')).stdout);
-  assert.deepEqual(json, { dry_run: true, project: null, model: 'google/veo-3.1-lite', seconds: 6, aspect: '16:9', resolution: '720p', audio: false, billed_audio: false, price_usd: 0.18, usd_per_second: 0.03, rate_name: 'duration_seconds_without_audio_720p', minimum_usd: null, max_cost_usd: null, within_cap: null });
+  assert.deepEqual(json, { dry_run: true, project: null, model: 'google/veo-3.1-lite', seconds: 6, aspect: '16:9', resolution: '720p', audio: false, takes: { seconds: [4, 6, 8], aspects: ['16:9', '9:16'], resolutions: ['720p', '1080p'], from: 'openrouter' }, billed_audio: false, price_usd: 0.18, usd_per_second: 0.03, rate_name: 'duration_seconds_without_audio_720p', minimum_usd: null, max_cost_usd: null, within_cap: null });
   // A wide project gets the same number for the same settings.
   const inside = JSON.parse((await cli([...clip(dir, STREET, '--dry-run'), '--json'], noKey(t))).stdout);
   assert.deepEqual([inside.project, inside.aspect, inside.price_usd, inside.usd_per_second, inside.rate_name], [dir, '16:9', json.price_usd, json.usd_per_second, json.rate_name]);
@@ -767,6 +769,8 @@ test('a model that left the list, and settings the model does not take, are erro
   };
   await fails(clip(dir, STREET, '--model', 'example/gone', '--max-cost', '2'), /example\/gone is not in OpenRouter's list.*google\/veo-3\.1-lite.*kwaivgi\/kling-v3\.0-pro/);
   await fails(['clip', dir, STREET, '--seconds', '5', '--max-cost', '2'], /takes 4, 6 or 8 seconds, not 5/);
+  await fails(['clip', dir, STREET, '--seconds', '5', '--dry-run'], /takes 4, 6 or 8 seconds, not 5\. Nothing was spent\./);
+  await fails(['clip', dir, STREET, '--max-cost', '2'], /clip needs --seconds.*"explainroo services clips" lists the lengths each model takes/);
   await fails(clip(dir, STREET, '--aspect', '1:1', '--max-cost', '2'), /takes --aspect 16:9 or 9:16, not 1:1/);
   await fails(clip(dir, STREET, '--resolution', '4K', '--max-cost', '2'), /takes --resolution 720p or 1080p, not 4K/);
   await fails(clip(dir, STREET, '--model', 'runway/aleph-2', '--max-cost', '2'), /lists no lengths/);

@@ -60,12 +60,34 @@ export function clipPrice(model, { seconds, audio, resolution }) {
   return { usd: Math.round(usd * 10000) / 10000, usd_per_second: rate.usd_per_second, rate_name: rate.name, minimum_usd: minimum || null, billed_audio: billedAudio };
 }
 
+// What the default models take, as OpenRouter listed them on 2026-11-08. Only
+// what the list leaves out comes from here. test/fixtures has that answer.
+export const KNOWN_OPTIONS = {
+  'google/veo-3.1-lite': { seconds: [4, 6, 8], aspects: ['16:9', '9:16'], resolutions: ['720p', '1080p'] },
+  'google/veo-3.1': { seconds: [4, 6, 8], aspects: ['16:9', '9:16'], resolutions: ['720p', '1080p', '4K'] },
+};
+
+// The lengths, aspects and resolutions a model takes. They come from its entry in
+// OpenRouter's list, and for a default model the table fills what the entry leaves
+// out. `from` says "openrouter" when the entry had them all. A list that is null
+// means the model has no such setting, or nobody knows what it takes.
+export function clipOptions(model) {
+  const known = KNOWN_OPTIONS[model.id];
+  const listed = (value) => (Array.isArray(value) && value.length ? value : null);
+  const seconds = listed(model.supported_durations)?.toSorted((a, b) => a - b) ?? known?.seconds ?? null;
+  const aspects = listed(model.supported_aspect_ratios) ?? known?.aspects ?? null;
+  const resolutions = listed(model.supported_resolutions) ?? known?.resolutions ?? null;
+  const all = [model.supported_durations, model.supported_aspect_ratios, model.supported_resolutions].every(listed);
+  return { seconds, aspects, resolutions, from: all || !known ? 'openrouter' : 'table' };
+}
+
 // The settings are checked against the model's own list, before anything is spent.
 export function checkClipRequest(model, { seconds, aspect, resolution, audio }) {
-  const { id, supported_durations: durations, supported_aspect_ratios: aspects, supported_resolutions: sizes } = model;
-  if (!durations?.length) throw new ProjectError(`${id} lists no lengths, so it is not a text-to-video model this command can price. Nothing was spent. Try another model with --model.`);
-  if (!durations.includes(seconds)) throw new ProjectError(`${id} takes ${oneOf(durations.toSorted((a, b) => a - b).map(String))} seconds, not ${seconds}. Nothing was spent.`);
-  if (aspects?.length && !aspects.includes(aspect)) throw new ProjectError(`${id} takes --aspect ${oneOf(aspects)}, not ${aspect}. Nothing was spent.`);
-  if (sizes?.length && !sizes.includes(resolution)) throw new ProjectError(`${id} takes --resolution ${oneOf(sizes)}, not ${resolution}. Nothing was spent.`);
+  const { id } = model;
+  const { seconds: durations, aspects, resolutions: sizes } = clipOptions(model);
+  if (!durations) throw new ProjectError(`${id} lists no lengths, so it is not a text-to-video model this command can price. Nothing was spent. Try another model with --model.`);
+  if (!durations.includes(seconds)) throw new ProjectError(`${id} takes ${oneOf(durations.map(String))} seconds, not ${seconds}. Nothing was spent.`);
+  if (aspects && !aspects.includes(aspect)) throw new ProjectError(`${id} takes --aspect ${oneOf(aspects)}, not ${aspect}. Nothing was spent.`);
+  if (sizes && !sizes.includes(resolution)) throw new ProjectError(`${id} takes --resolution ${oneOf(sizes)}, not ${resolution}. Nothing was spent.`);
   if (audio && model.generate_audio === false) throw new ProjectError(`${id} makes no sound, so --audio can't be used with it. Nothing was spent.`);
 }

@@ -2,7 +2,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { checkClipRequest, clipPrice, clipRate } from '../src/clip-price.js';
+import { checkClipRequest, clipOptions, clipPrice, clipRate, KNOWN_OPTIONS } from '../src/clip-price.js';
+import { CLIP_MODELS } from '../src/ai-clips.js';
+import { clipOptionsText } from '../src/services.js';
 import { ProjectError } from '../src/errors.js';
 
 const list = JSON.parse(fs.readFileSync(new URL('./fixtures/openrouter-video-models.json', import.meta.url), 'utf8')).data;
@@ -130,4 +132,31 @@ test('the settings are checked against the model\'s own list, and the error says
   fails('runway/aleph-2', {}, /lists no lengths, so it is not a text-to-video model/);
   fails('runway/gen-4.5', { audio: true }, /makes no sound, so --audio can't be used/);
   assert.doesNotThrow(() => checkClipRequest(model('x-ai/grok-imagine-video'), { ...request, audio: true }));
+});
+
+// The lengths, aspects and resolutions come from the model's entry. The table fills
+// only what a default model's entry leaves out, so an agent never has to try lengths.
+test('what a model takes comes from the list, and for a default model from the table when the list leaves it out', () => {
+  assert.deepEqual(clipOptions(model('google/veo-3.1-lite')), { seconds: [4, 6, 8], aspects: ['16:9', '9:16'], resolutions: ['720p', '1080p'], from: 'openrouter' });
+  assert.deepEqual(clipOptions(model('kwaivgi/kling-v3.0-pro')).seconds, [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+  assert.equal(clipOptionsText(clipOptions(model('google/veo-3.1'))), '4, 6 or 8 seconds, 16:9 or 9:16, at 720p, 1080p or 4K');
+  // A default model whose entry lost its lengths still has them, and the check still works.
+  const bare = { ...model('google/veo-3.1-lite'), supported_durations: null, supported_aspect_ratios: [] };
+  assert.deepEqual(clipOptions(bare), { seconds: [4, 6, 8], aspects: ['16:9', '9:16'], resolutions: ['720p', '1080p'], from: 'table' });
+  assert.throws(() => checkClipRequest(bare, { seconds: 5, aspect: '16:9', resolution: '720p', audio: false }), /google\/veo-3\.1-lite takes 4, 6 or 8 seconds, not 5\. Nothing was spent\./);
+  assert.deepEqual(clipOptions({ id: 'google/veo-3.1' }), { ...KNOWN_OPTIONS['google/veo-3.1'], from: 'table' });
+  // Any other model without lengths can't be priced, as before.
+  assert.deepEqual(clipOptions(model('runway/aleph-2')), { seconds: null, aspects: ['16:9', '4:3', '3:2', '1:1', '2:3', '3:4', '9:16', '21:9'], resolutions: null, from: 'openrouter' });
+  assert.equal(clipOptionsText(clipOptions(model('runway/aleph-2'))), '16:9, 4:3, 3:2, 1:1, 2:3, 3:4, 9:16 or 21:9');
+});
+
+// The table says what OpenRouter listed for the default models, read on 2026-11-08.
+test('the table of the default models matches what OpenRouter listed for them', () => {
+  const read = JSON.parse(fs.readFileSync(new URL('./fixtures/openrouter-default-video-models.json', import.meta.url), 'utf8'));
+  assert.deepEqual(Object.keys(KNOWN_OPTIONS).toSorted(), Object.values(CLIP_MODELS).toSorted());
+  for (const entry of read.data) {
+    const { from, ...listed } = clipOptions(entry);
+    assert.equal(from, 'openrouter');
+    assert.deepEqual(listed, KNOWN_OPTIONS[entry.id], entry.id);
+  }
 });
