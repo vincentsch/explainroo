@@ -358,11 +358,9 @@ second upload. The upload address is kept in `history/private/`, which git leave
 When YouTube no longer knows the upload, `publish` stops, and `--new` starts a
 new one.
 
-After the post, `publish` reads the status back and prints it with the link.
-On YouTube that is the upload status, the privacy and the processing. YouTube
-gets no cover and no
-captions from `publish`. They are in the package folder, as `video.cover.jpg`
-and `video.srt`, for you to add in YouTube Studio.
+On YouTube, the status after the post is the upload status, the privacy and
+the processing. `publish` sends no cover and no captions. They are in the
+package folder, as `video.cover.jpg` and `video.srt`, for YouTube Studio.
 
 ## Buffer
 
@@ -372,10 +370,8 @@ like your own site or server, and pass the link with `--media-url`. Putting
 the file there makes the video public. Buffer fetches the video from the link
 when it posts it, so the link has to work until the post goes out. The plan
 warns when the link expires within a day. A link to `out/video.mp4` doesn't
-count for a TikTok package, because the package has its own file. In this
-version `share` makes no link, because its hosted service is coming. Once it
-runs, `explainroo share <project> --platform tiktok` makes one, and `publish`
-takes the link from it.
+count for a TikTok package, because the package has its own file. `share`
+makes no link in this version, see "Share a link" below.
 
 **Buffer** signs in with a public client that comes with explainroo, so you
 don't make one yourself. A public client has no secret. Run
@@ -422,8 +418,7 @@ After a post that was to go out right away stopped, a run with `--draft`
 stops before it sends anything, and after a draft stopped, a run without
 `--draft` does the same. `--new` starts a fresh one.
 
-The link to the video has to work until Buffer posts the draft, after you
-schedule it.
+For a draft, the link has to work until you schedule it and Buffer posts it.
 
 ## Blotato
 

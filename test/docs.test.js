@@ -284,7 +284,7 @@ test('the publishing page covers each route, the logins, the pairs, privacy, the
     '| YouTube on all three routes | `private` |', '`unlisted` is refused', 'public right away', 'never ignored',
     'Desktop app', '`http://127.0.0.1:8976/callback`', '`https://localhost:8976/callback`', 'shows an error page', 'That is expected', "--callback-url '<the address>'",
     'public client', 'BUFFER_CLIENT_ID', 'new refresh token', "Creating one ends Blotato's free trial", 'end in `=`',
-    'explainroo share <project> --platform tiktok', '--media-url', '`--channel <id>`', '`--account <id>`', 'locked or disconnected',
+    'explainroo share videos/<name> --platform tiktok', '--media-url', '`--channel <id>`', '`--account <id>`', 'locked or disconnected',
     '| `planned` |', '| `media_uploaded` |', '| `sending` |', '| `accepted` |', '| `finished` |', '| `failed` |',
     'never sent again by itself', 'history/private/', 'YouTube Studio', '`video.cover.jpg`', '`video.srt`', 'never adds the credits',
   ]) assert.ok(post.includes(words), words);
