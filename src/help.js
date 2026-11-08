@@ -111,8 +111,8 @@ export const COMMAND_HELP = {
   },
   clip: {
     usage: 'clip [project] "<what it shows>" --seconds <n> [options]',
-    about: 'Buys a short AI video clip through OpenRouter as assets/clips/<name>.mp4. This costs money, so it needs --max-cost or a budget. --dry-run shows the price and spends nothing.',
-    options: [['--seconds <n>', 'the length, one the model takes'], ['--max-cost <usd>', 'the most this clip may cost'], ['--budget <usd>', 'the most all clips of the project may cost together'], ['--dry-run', 'show the price and spend nothing'], ['--aspect <ratio>', '16:9 or 9:16'], ['--model cheap|quality', 'or an OpenRouter model id'], ['--resolution <r>', 'like 720p'], ['--audio', 'with sound'], ['--name <name>', 'the file name'], ['--no-wait', 'return right after the request'], ['--new', 'buy it again'], ['--resume <id>', 'continue a job'], JSON_OUT],
+    about: 'Buys a short AI video clip through OpenRouter as assets/clips/<name>.mp4. This costs money, so it needs --max-cost or a budget. It checks the price against that cap before it buys. The final cost is known only after the job, and it can come out a little higher. --dry-run shows the price and spends nothing.',
+    options: [['--seconds <n>', 'the length, one the model takes'], ['--max-cost <usd>', 'the cap for this clip, checked against the price before it buys'], ['--budget <usd>', 'the most all clips of the project may cost together'], ['--dry-run', 'show the price and spend nothing'], ['--aspect <ratio>', '16:9 or 9:16'], ['--model cheap|quality', 'or an OpenRouter model id'], ['--resolution <r>', 'like 720p'], ['--audio', 'with sound'], ['--name <name>', 'the file name'], ['--no-wait', 'return right after the request'], ['--new', 'buy it again'], ['--resume <id>', 'continue a job'], JSON_OUT],
     example: 'clip videos/bees "Bees on a honeycomb, close up" --seconds 4 --dry-run',
   },
   services: {

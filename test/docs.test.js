@@ -517,6 +517,14 @@ test('the scene-api topic says where s.draw puts 0, 0, how the camera measures a
 test('the README says a budget makes --max-cost optional, and the recipe for espeak-ng without root finds its library folder on any processor', () => {
   const readme = oneLine(read('README.md'));
   assert.ok(readme.includes('A paid run needs `--max-cost` or a budget'), 'the README names the budget');
+  // The cap is checked against the price before buying, and the final cost can come out higher.
+  const start = oneLine(read('AGENTS.md'));
+  const help = oneLine(spawnSync(process.execPath, [path.join(root, 'bin/explainroo.js'), 'clip', '--help'], { encoding: 'utf8' }).stdout);
+  for (const [name, text] of [['README.md', readme], ['AGENTS.md', start], ['clip --help', help]]) {
+    assert.match(text, /checks the price against (that|the) cap/, name);
+    assert.match(text, /before it buys/i, name);
+    assert.match(text, /The final cost is known only after the job, and it can come out a little higher/, name);
+  }
   const languages = page('languages');
   assert.match(languages, /lib=\$\(dirname "\$\(find "\$HOME\/espeak\/usr\/lib" -name 'libespeak-ng\.so\*' \| head -n 1\)"\)/);
   assert.ok(!/x86_64-linux-gnu\/espeak-ng-data`/.test(languages), 'no fixed x86_64 data path');

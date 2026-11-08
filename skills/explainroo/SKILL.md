@@ -121,7 +121,9 @@ names for the last two.
 When the user has already picked a service or given a budget, use it and
 don't ask again. A budget for AI clips goes in `video.json` as
 `"clipBudget": 0.40`. `clip` then stops before a clip that would go over it,
-and it says how much is left.
+and it says how much is left. `clip` checks the price against the cap from
+`--max-cost` or the budget before it buys. The final cost is known only after
+the job, and it can come out a little higher.
 
 `share` and `publish` are the only commands that upload a video, so run them
 only when the user asks. Run `publish` with `--dry-run` first and show the
