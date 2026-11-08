@@ -79,8 +79,9 @@ Narration for this scene. [#marker] A marker names a moment you can animate on.
   sound, like "peace" for "piece", and two words heard as one, like
   "Seacosts" for "See costs". A word with hyphens counts when its parts are
   heard as separate words, like "well known" for "well-known". `check` lists
-  them with the words that only nearly matched. `{shown|spoken}` can't change
-  how they are heard, and they need no fix.
+  them with the words that only nearly matched, each with its time in the
+  video. `{shown|spoken}` can't change how they are heard, and they need no
+  fix unless one sounds wrong when you listen at that time.
 - Punctuation that stands on its own, like the space before "?" in French, is
   not a word. It stays in the captions next to its word, and the speech check
   and the cues never wait for it.

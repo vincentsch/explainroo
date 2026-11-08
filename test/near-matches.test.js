@@ -10,7 +10,7 @@ import { alignWords, nearList } from '../src/align.js';
 import { loadProject } from '../src/project.js';
 import { speechChunks } from '../src/script.js';
 import { nearMatches, sceneHash, synthesize, voiceLine, voicePaths } from '../src/voice.js';
-import { formatVerify, nearlyText, speechFindings, verify } from '../src/qa.js';
+import { formatVerify, nearlyAdvice, nearlyText, speechFindings, verify } from '../src/qa.js';
 import { ffmpeg } from '../src/ffmpeg.js';
 import { writeWav } from '../src/wav.js';
 import { main } from '../src/cli.js';
@@ -197,14 +197,15 @@ test('verify lists near matches next to the rate, by scene, and without scenes f
   };
   const r = await verify(project, { transcribe: says(scenes) });
   assert.equal(r.speech.matchRate, 1);
-  assert.deepEqual(r.speech.nearly, [{ scene: 'intro', word: 'Soundroo', heard: 'Soundru' }, { scene: 'outro', word: 'Codex', heard: 'codecs' }]);
-  assert.deepEqual(r.speech.scenes, [{ id: 'intro', matchRate: 1, nearly: [{ word: 'Soundroo', heard: 'Soundru' }] }, { id: 'outro', matchRate: 1, nearly: [{ word: 'Codex', heard: 'codecs' }] }]);
-  assert.match(formatVerify(r), /^narration understood: 100%, 2 words only nearly matched: Soundroo \(heard "Soundru"\), Codex \(heard "codecs"\)$/m);
+  // Each with its time in the video: the scene's start and where it was heard in the scene.
+  assert.deepEqual(r.speech.nearly, [{ scene: 'intro', word: 'Soundroo', heard: 'Soundru', time: 0.2 }, { scene: 'outro', word: 'Codex', heard: 'codecs', time: 1.2 }]);
+  assert.deepEqual(r.speech.scenes, [{ id: 'intro', matchRate: 1, nearly: [{ word: 'Soundroo', heard: 'Soundru', time: 0.2 }] }, { id: 'outro', matchRate: 1, nearly: [{ word: 'Codex', heard: 'codecs', time: 1.2 }] }]);
+  assert.match(formatVerify(r), /^narration understood: 100%, 2 words only nearly matched: Soundroo at 0\.2 s \(heard "Soundru"\), Codex at 1\.2 s \(heard "codecs"\)\. No fix is needed unless one of them sounds wrong when you listen at those times\.$/m);
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(project.paths.out, 'report.json'), 'utf8')).speech.nearly, r.speech.nearly);
   // Without a timeline that fits the file, verify listens to the whole file.
   fs.rmSync(path.join(project.paths.build, 'timeline.json'));
   const whole = await verify(project, { transcribe: says([scenes.join(' ')]) });
-  assert.deepEqual(whole.speech.nearly, [{ word: 'Soundroo', heard: 'Soundru' }, { word: 'Codex', heard: 'codecs' }]);
+  assert.deepEqual(whole.speech.nearly, [{ word: 'Soundroo', heard: 'Soundru', time: 0.2 }, { word: 'Codex', heard: 'codecs', time: 0.6 }]);
   assert.equal(whole.speech.scenes, undefined);
   const clean = await verify(project, { transcribe: says(['Try Soundroo. Ask Codex today.']) });
   assert.deepEqual(clean.speech.nearly, []);
@@ -229,6 +230,35 @@ test('an override of any length that did not help is told so, and other words ke
   // A short override that didn't help is reported also when the rest of the scene was heard.
   assert.match(warning('long'), /^the voice check could not confirm "SQL"\. .*\{SQL\|sequel\} was heard as "xylophone", so the override didn't help\./);
   assert.deepEqual(speech.map((s) => s.scene), ['short', 'mixed', 'plain', 'long']);
+});
+
+test('near matches with their times give each time, and say no fix is needed unless one sounds wrong at that time', () => {
+  assert.equal(nearlyText([{ word: 'Tides', heard: 'Tide', time: 11.4 }, { word: 'slow', heard: 'slowed', time: 11.6 }]), '2 words only nearly matched: Tides at 11.4 s (heard "Tide"), slow at 11.6 s (heard "slowed")');
+  assert.equal(nearlyText([1.5, 9, 20.25, 31, 40].map((time) => ({ word: 'main', heard: 'Maine', time }))), '5 words only nearly matched: main at 1.5 s, 9.0 s and 20.3 s and 2 more times (heard "Maine")');
+  assert.equal(nearlyText([{ word: 'See', heard: 'Seacosts', joined: true, time: 3 }, { word: 'costs', heard: 'Seacosts', joined: true, time: 3.2 }]), '2 words only nearly matched: See costs at 3.0 s (heard "Seacosts")');
+  assert.equal(nearlyAdvice([{ word: 'Tides', heard: 'Tide', time: 11.4 }]), 'No fix is needed unless it sounds wrong when you listen at that time.');
+  assert.equal(nearlyAdvice([{ word: 'See', joined: true, time: 3 }, { word: 'costs', joined: true, time: 3.2 }]), 'No fix is needed unless it sounds wrong when you listen at that time.');
+  assert.equal(nearlyAdvice([{ word: 'a', time: 1 }, { word: 'b', time: 2 }]), 'No fix is needed unless one of them sounds wrong when you listen at those times.');
+  assert.equal(nearlyAdvice([{ word: 'a' }]), 'No fix is needed unless it sounds wrong when you listen.');
+});
+
+test('check gives each near match of a scene its time in the video, as a hint', async (t) => {
+  const dir = cachedProject(t, '# Demo\n\n## intro\nTry Soundroo.\n\n## outro\nAsk Codex today, and Codex again.\n', { intro: { transcript: 'Try Soundroo.' }, outro: { transcript: 'Ask Codex today, and Codex again.' } });
+  const project = loadProject(dir);
+  const voices = await synthesize(project, { transcribe: () => { throw new Error('no voice should be made'); } });
+  voices.intro = { ...voices.intro, nearly: [{ word: 'Soundroo', heard: 'Soundru' }] };
+  voices.outro = { ...voices.outro, nearly: [{ word: 'Codex', heard: 'codecs' }, { word: 'Codex', heard: 'codecs' }] };
+  const timeline = { scenes: [
+    { id: 'intro', start: 0, words: voices.intro.words.map((w) => ({ text: w.text, start: 0.35 + w.start })) },
+    { id: 'outro', start: 5, words: voices.outro.words.map((w) => ({ text: w.text, start: 0.35 + w.start })) },
+  ] };
+  const { issues, speech } = speechFindings(project, voices, timeline);
+  const at = (scene, k) => { const sc = timeline.scenes.find((s) => s.id === scene); return Math.round((sc.start + sc.words[k].start) * 10) / 10; };
+  assert.deepEqual(issues.filter((i) => i.level === 'hint').map((i) => [i.scene, i.message]), [
+    ['intro', `understood 100%, 1 word only nearly matched: Soundroo at ${at('intro', 1).toFixed(1)} s (heard "Soundru"). No fix is needed unless it sounds wrong when you listen at that time.`],
+    ['outro', `understood 100%, 2 words only nearly matched: Codex at ${at('outro', 1).toFixed(1)} s and ${at('outro', 4).toFixed(1)} s (heard "codecs"). No fix is needed unless one of them sounds wrong when you listen at those times.`],
+  ]);
+  assert.deepEqual(speech.find((s) => s.scene === 'outro').nearly.map((n) => n.time), [at('outro', 1), at('outro', 4)]);
 });
 
 test('the list of near matches counts a word heard the same way once, with how often', () => {

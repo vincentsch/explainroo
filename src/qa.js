@@ -21,7 +21,8 @@ import { decodedSound } from './server.js';
 // and "1 word sounded the same: piece (heard "peace")" for words heard as
 // another word with the same sound. Two words heard as one show together, like
 // See costs (heard "Seacosts"). The same word heard the same way counts once,
-// with how often.
+// with how often, or with its times in the video when the entries have them,
+// like Tides at 12.4 s (heard "Tide").
 export function nearlyText(nearly) {
   const groups = { near: { seen: new Map(), words: 0 }, alike: { seen: new Map(), words: 0 } };
   for (let i = 0; i < nearly.length; i++) {
@@ -29,14 +30,26 @@ export function nearlyText(nearly) {
     const next = nearly[i + 1];
     const pair = n.joined && next?.joined && next.heard === n.heard && next.scene === n.scene;
     const word = pair ? `${n.word} ${next.word}` : n.word;
-    const text = n.heard ? `${word} (heard "${n.heard}")` : word;
     const group = groups[n.alike ? 'alike' : 'near'];
-    group.seen.set(text, (group.seen.get(text) ?? 0) + 1);
+    const key = `${word}\u0000${n.heard ?? ''}`;
+    const entry = group.seen.get(key) ?? { word, heard: n.heard, count: 0, times: [] };
+    entry.count++;
+    if (typeof n.time === 'number') entry.times.push(n.time);
+    group.seen.set(key, entry);
     group.words += pair ? 2 : 1;
     if (pair) i++;
   }
+  const at = (times) => {
+    const shown = times.slice(0, 3).map((t) => `${t.toFixed(1)} s`);
+    const list = shown.length > 1 ? `${shown.slice(0, -1).join(', ')} and ${shown.at(-1)}` : shown[0];
+    return ` at ${list}${times.length > 3 ? ` and ${times.length - 3} more times` : ''}`;
+  };
   const list = ({ seen }) => {
-    const shown = [...seen].slice(0, 8).map(([text, n]) => (n > 1 ? `${text} ${n} times` : text));
+    const shown = [...seen.values()].slice(0, 8).map((e) => {
+      const heard = e.heard ? ` (heard "${e.heard}")` : '';
+      if (e.times.length === e.count) return `${e.word}${at(e.times)}${heard}`;
+      return `${e.word}${heard}${e.count > 1 ? ` ${e.count} times` : ''}`;
+    });
     return `${shown.join(', ')}${seen.size > 8 ? `, and ${seen.size - 8} more` : ''}`;
   };
   const count = (n) => `${n} word${n === 1 ? '' : 's'}`;
@@ -44,6 +57,33 @@ export function nearlyText(nearly) {
     ...(groups.near.words ? [`${count(groups.near.words)} only nearly matched: ${list(groups.near)}`] : []),
     ...(groups.alike.words ? [`${count(groups.alike.words)} sounded the same: ${list(groups.alike)}`] : []),
   ].join('; ');
+}
+
+// What to do about words that only nearly matched or sounded the same: nothing,
+// unless they sound wrong at the times the list gives.
+export function nearlyAdvice(nearly) {
+  const one = nearly.length === 1 || (nearly.length === 2 && nearly[0].joined && nearly[1].joined);
+  const timed = nearly.some((n) => typeof n.time === 'number');
+  return `No fix is needed unless ${one ? 'it sounds' : 'one of them sounds'} wrong when you listen${timed ? ` at ${one ? 'that time' : 'those times'}` : ''}.`;
+}
+
+// The time in the video of each near match of a scene, from the scene's words in
+// the timeline, in the order of the script.
+function nearTimes(nearly, sc) {
+  let from = 0;
+  return nearly.map((n) => {
+    const k = sc ? sc.words.findIndex((w, i) => i >= from && bareWord(w.text) === n.word) : -1;
+    if (k === -1) return n;
+    from = k + 1;
+    return { ...n, time: Math.round((sc.start + sc.words[k].start) * 10) / 10 };
+  });
+}
+
+// The near matches of a transcribed piece of the video, with their times in it.
+// `offset` is where the piece starts.
+function timedNear(words, aligned, offset) {
+  const times = aligned.words.filter((a) => a.nearly).map((a) => Math.round((offset + a.start) * 10) / 10);
+  return nearList(words, aligned.words).map((n, i) => ({ ...n, time: times[i] }));
 }
 
 // A transcript cut at a whole word, for a scene whose words have no place in it.
@@ -126,8 +166,9 @@ export function unconfirmedLine(u) {
 // What check says about the speech check of each scene, from the narration that
 // voice made: the words it couldn't confirm and what to do about them, and the
 // words that only nearly matched. `speech` has one entry per narrated scene.
-export function speechFindings(project, voices) {
+export function speechFindings(project, voices, timeline = null) {
   const issues = [];
+  const placed = new Map((timeline?.scenes ?? []).map((sc) => [sc.id, sc]));
   const speech = [];
   const script = scriptName(project);
   const recording = project.config.voice.provider === 'recording';
@@ -156,9 +197,9 @@ export function speechFindings(project, voices) {
     }
     if (v && v.duration > 40) issues.push({ level: 'hint', scene: sc.id, t: null, message: `the narration runs ${v.duration.toFixed(0)}s; long scenes are easier to follow when split` });
     if (v && v.duration) {
-      const nearly = v.nearly ?? [];
+      const nearly = nearTimes(v.nearly ?? [], placed.get(sc.id));
       speech.push({ scene: sc.id, matchRate: v.matchRate, nearly });
-      if (nearly.length) issues.push({ level: 'hint', scene: sc.id, t: null, message: `understood ${Math.round(v.matchRate * 100)}%, ${nearlyText(nearly)}` });
+      if (nearly.length) issues.push({ level: 'hint', scene: sc.id, t: null, message: `understood ${Math.round(v.matchRate * 100)}%, ${nearlyText(nearly)}. ${nearlyAdvice(nearly)}` });
     }
   }
   return { issues, speech };
@@ -178,7 +219,7 @@ export async function check(project, { log = () => {}, step = 0.25, viewWidth = 
   const { voices, timeline } = await prepare(project, { log, onEstimate: (e) => { estimate = e; } });
   const youtube = platform ? platform === 'youtube' : youtubeFrame(project.config);
   const issues = youtube ? chapterHints(buildChapters(timeline, project.script.title || project.config.title)) : [];
-  const { issues: spoken, speech } = speechFindings(project, voices);
+  const { issues: spoken, speech } = speechFindings(project, voices, timeline);
   issues.push(...spoken);
   issues.push(...targetNotes(timeline, estimateLength(project)?.perMinute).map((n) => ({ ...n, scene: null, t: null })));
   if (project.languages) issues.push(...languageIssues(project));
@@ -353,7 +394,7 @@ export async function verify(project, { file = null, report: reportFile = null, 
         texts.push(heard.text);
         const aligned = await alignSpeech(words, heard.words, t.dur, project.config.language);
         const rate = aligned.matchRate;
-        const near = nearList(words, aligned.words);
+        const near = timedNear(words, aligned, from / 16000);
         scenes.push({ id: t.id, matchRate: Math.round(rate * 1000) / 1000, nearly: near });
         nearly.push(...near.map((n) => ({ scene: t.id, ...n })));
         unconfirmed.push(...missedWords(words, aligned, from / 16000, t.id));
@@ -368,7 +409,7 @@ export async function verify(project, { file = null, report: reportFile = null, 
       const heard = await transcribe(samples, { log, language: project.config.language });
       const script = project.script.scenes.flatMap(spokenWords);
       const aligned = await alignSpeech(script, heard.words, duration, project.config.language);
-      speech = { matchRate: Math.round(aligned.matchRate * 1000) / 1000, transcript: heard.text, nearly: nearList(script, aligned.words), unconfirmed: missedWords(script, aligned, 0, null) };
+      speech = { matchRate: Math.round(aligned.matchRate * 1000) / 1000, transcript: heard.text, nearly: timedNear(script, aligned, 0), unconfirmed: missedWords(script, aligned, 0, null) };
     }
     if (speech.unconfirmed.length) issues.push({ level: 'warn', message: unconfirmedText(speech.unconfirmed) });
     if (speech.matchRate < 0.85) issues.push({ level: 'warn', message: `only ${Math.round(speech.matchRate * 100)}% of the script was understood in the final mix; lower music.volume or check pronunciation` });
@@ -415,7 +456,7 @@ export function unconfirmedText(list) {
 // What verify prints: the file, the narration understood with the words that
 // only nearly matched, and each finding.
 export function formatVerify(r) {
-  const nearly = r.speech?.nearly?.length ? `, ${nearlyText(r.speech.nearly)}` : '';
+  const nearly = r.speech?.nearly?.length ? `, ${nearlyText(r.speech.nearly)}. ${nearlyAdvice(r.speech.nearly)}` : '';
   return [
     `${r.file}: ${r.duration}s, ${r.video ? `${r.video.width}x${r.video.height}` : 'no video'}, loudness ${r.loudness?.integrated ?? '?'} LUFS, true peak ${dbtp(r.loudness?.truePeak)}`,
     r.speech ? `narration understood: ${Math.round(r.speech.matchRate * 100)}%${nearly}` : '',
