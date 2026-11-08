@@ -65,14 +65,17 @@ test('check lists near matches with the rate, and says when an override did not 
   const json = await runCli(['check', dir, '--json']);
   assert.equal(json.code, 0, json.text);
   const r = JSON.parse(json.stdout);
-  assert.deepEqual(r.speech, [
+  // Each near match has its time in the video.
+  assert.ok(r.speech[0].nearly.every((n) => typeof n.time === 'number'), JSON.stringify(r.speech[0]));
+  assert.deepEqual(r.speech.map((s) => ({ ...s, nearly: s.nearly.map(({ time, ...n }) => n) })), [
     { scene: 'intro', matchRate: 1, nearly: [{ word: 'Soundroo', heard: 'Soundru' }, { word: 'Codex', heard: 'codecs' }] },
     { scene: 'site', matchRate: 0.8, nearly: [] },
     { scene: 'both', matchRate: 0.67, nearly: [] },
     { scene: 'plain', matchRate: 0.5, nearly: [] },
   ]);
   const finding = (scene, level) => r.issues.find((i) => i.scene === scene && i.level === level)?.message;
-  assert.equal(finding('intro', 'hint'), 'understood 100%, 2 words only nearly matched: Soundroo (heard "Soundru"), Codex (heard "codecs")');
+  const [soundroo, codex] = r.speech[0].nearly.map((n) => n.time.toFixed(1));
+  assert.equal(finding('intro', 'hint'), `understood 100%, 2 words only nearly matched: Soundroo at ${soundroo} s (heard "Soundru"), Codex at ${codex} s (heard "codecs"). No fix is needed unless one of them sounds wrong when you listen at those times.`);
   // An override heard as something else: the hint says that it didn't help.
   const site = finding('site', 'warn');
   assert.match(site, /\{soundroo\.com\|sound roo dot com\} was heard as "soundray\.com", so the override didn't help\. Try a different spoken spelling, like \{soundroo\.com\|another spelling\}, or reword the sentence\.$/);
@@ -81,7 +84,7 @@ test('check lists near matches with the rate, and says when an override did not 
   assert.match(finding('plain', 'warn'), /could not confirm "Gravitation"\. It heard: "The station pulls\."\. If the voice says a word wrong, write it as \{shown\|spoken\} in script\.md\. If it is said right and only heard wrong, reword the sentence\.$/);
   assert.match(finding('both', 'warn'), /the override didn't help\. .* If the voice says another word wrong, write it as \{shown\|spoken\} in script\.md\.$/);
   const text = await runCli(['check', dir]);
-  assert.match(text.stdout, /^HINT +intro: understood 100%, 2 words only nearly matched: Soundroo \(heard "Soundru"\), Codex \(heard "codecs"\)$/m);
+  assert.match(text.stdout, /^HINT +intro: understood 100%, 2 words only nearly matched: Soundroo at \d+\.\d s \(heard "Soundru"\), Codex at \d+\.\d s \(heard "codecs"\)\. No fix is needed unless one of them sounds wrong when you listen at those times\.$/m);
   // No voice was made, and the saved narration is as it was.
   for (const [f, bytes] of Object.entries(before)) assert.deepEqual(fs.readFileSync(path.join(voice, f)), bytes, f);
 });

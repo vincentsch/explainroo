@@ -159,8 +159,8 @@ test('a new voice build saves the near matches of each scene, and the voice line
   // The sentence gap and the [pause] are in "with pauses" and not in "of narration".
   const spoken = info.chunks.reduce((sum, c) => sum + c.end - c.start, 0);
   assert.ok(Math.abs(info.duration - spoken - 1.3) < 0.01, `${info.duration} and ${spoken}`);
-  const line = lines.find((l) => l.startsWith('voice intro:'));
-  assert.match(line, new RegExp(`^voice intro: ${spoken.toFixed(1)} s of narration \\(${info.duration.toFixed(1)} s with pauses\\), made in \\d+\\.\\d s$`));
+  const line = lines.find((l) => l.startsWith('voice scene 1/1 intro:'));
+  assert.match(line, new RegExp(`^voice scene 1/1 intro: ${spoken.toFixed(1)} s of narration \\(${info.duration.toFixed(1)} s with pauses\\), made in \\d+\\.\\d s$`));
   assert.equal(voiceLine('intro', { duration: 13.04, chunks: [{ start: 0, end: 4.1 }, { start: 4.6, end: 8 }, { start: 9.2, end: 11.9 }] }, 13.1), 'intro: 10.2 s of narration (13.0 s with pauses), made in 13.1 s');
   assert.equal(voiceLine('intro', { duration: 12.4, chunks: [{ start: 0, end: 12.4 }] }, 0.4, true), 'intro: a 12.4 s cut of the recording, pauses included, made in 0.4 s');
 });

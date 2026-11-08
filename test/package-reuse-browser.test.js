@@ -131,7 +131,8 @@ test('a package that fails check says which size failed and writes nothing, and 
   assert.equal(stale.code, 1);
   assert.match(stale.stdout, /The youtube package from before is out of date, so its post\.json is removed until a package works again\./);
   assert.equal(fs.existsSync(path.join(folder, 'post.json')), false);
-  assert.match((await cli(['share', dir, '--platform', 'youtube'])).stderr, /there is no youtube package to share yet/);
+  // A server set on purpose gets past the service that is coming, to the missing package. Nothing is sent to it.
+  assert.match((await cli(['share', dir, '--platform', 'youtube'], { EXPLAINROO_CLOUD_URL: 'http://127.0.0.1:9' })).stderr, /there is no youtube package to share yet/);
 
   for (const [flags, message] of [
     [[], /package needs --platform youtube, shorts, tiktok, reels, linkedin or x/],
