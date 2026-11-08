@@ -130,10 +130,13 @@ export class Short {
   }
 
   // Tells check and the soundtrack that something enters at `at`. A sound the
-  // scene did not ask for stays out with "sfx": "minimal".
-  enter(at, dur, sfx, { label, pitch, chosen = false } = {}) {
-    const quiet = this.s.engine.sfxMode === 'minimal' && !chosen;
-    this.s._record('short', this.at(at ?? 0), dur, { sfx: quiet ? null : sfx ?? null }, { label, pitch });
+  // scene did not ask for stays out with "sfx": "minimal" and after s.quiet().
+  // `usual` is the part's own sound, which sfx: true asks for. An interrupt is
+  // no entrance, so s.quiet() leaves its sound alone.
+  enter(at, dur, sfx, { label, pitch, chosen = false, usual = null, entrance = true } = {}) {
+    const quiet = (this.s.engine.sfxMode === 'minimal' || (this.s._quiet && entrance)) && !chosen;
+    const sound = sfx === true ? usual : sfx;
+    this.s._record('short', this.at(at ?? 0), dur, { sfx: quiet ? null : sound ?? null }, { label, pitch });
   }
 
   // Inter, then the fonts explainroo brings for Hindi, Japanese and Chinese.
@@ -421,7 +424,7 @@ export class Short {
     const top = y - blockH / 2;
     const a = this.at(o.at ?? 0);
     const first = a <= 0;
-    if (!first) this.enter(a, 0.4, o.sfx === undefined ? 'whoosh' : o.sfx, { label: 'hook', chosen: o.sfx !== undefined });
+    if (!first) this.enter(a, 0.4, o.sfx === undefined ? 'whoosh' : o.sfx, { label: 'hook', chosen: o.sfx !== undefined, usual: 'whoosh' });
     const life = this.life(first ? -1 : a, o.out, 0.45, 0.3);
     const maxLineW = Math.max(...lines.map((l) => l.w)) + pad * 2;
     this.reg(o.id, x - maxLineW / 2, top, maxLineW, blockH);
@@ -521,7 +524,7 @@ export class Short {
     const y = o.y ?? s.cy;
     this.reg(o.id, x - w / 2, y - h / 2, w, h);
     const at = o.at ?? 0;
-    if (this.at(at) >= 0) this.enter(at, 0.35, o.sfx === undefined ? 'pop' : o.sfx, { label: words.map((wd) => wd.text).join(' ').slice(0, 20), chosen: o.sfx !== undefined });
+    if (this.at(at) >= 0) this.enter(at, 0.35, o.sfx === undefined ? 'pop' : o.sfx, { label: words.map((wd) => wd.text).join(' ').slice(0, 20), chosen: o.sfx !== undefined, usual: 'pop' });
     const life = this.life(at, o.out, 0.38);
     if (!life) return geom(x, y, w, h);
     const bg = o.color ?? KEY;
@@ -604,7 +607,7 @@ export class Short {
   // o: flash (a color, or false), zoom, shake, sfx ('whoosh').
   interrupt(at, o = {}) {
     const a = this.at(at);
-    this.enter(a, 0.3, o.sfx === undefined ? 'whoosh' : o.sfx, { label: 'interrupt', chosen: o.sfx !== undefined });
+    this.enter(a, 0.3, o.sfx === undefined ? 'whoosh' : o.sfx, { label: 'interrupt', chosen: o.sfx !== undefined, usual: 'whoosh', entrance: false });
     this.jolt(a, o);
     if (o.flash !== false) this.flash(a, { color: typeof o.flash === 'string' ? o.flash : '#ffffff', alpha: o.flashAlpha, dur: o.flashDur });
   }
@@ -623,7 +626,7 @@ export class Short {
     const label = `${String(o.word ?? 'STEP').toUpperCase()} ${n}/${total}`;
     const at = o.at ?? -1;
     const a = this.at(at);
-    if (a >= 0) this.enter(a, 0.3, o.sfx === undefined ? 'blip' : o.sfx, { label, pitch: n, chosen: o.sfx !== undefined });
+    if (a >= 0) this.enter(a, 0.3, o.sfx === undefined ? 'blip' : o.sfx, { label, pitch: n, chosen: o.sfx !== undefined, usual: 'blip' });
     const life = this.life(at, o.out, 0.3);
     if (!life) return;
     const tw = this.measure(label, size, 900, 1.5);
@@ -690,11 +693,11 @@ export class Short {
     this.reg(o.id, x - w / 2, top, w, h);
     const at = o.at ?? 0;
     const a = this.at(at);
-    if (a >= 0) this.enter(at, 0.5, o.sfx === undefined ? 'chime' : o.sfx, { label: 'payoff', chosen: o.sfx !== undefined });
+    if (a >= 0) this.enter(at, 0.5, o.sfx === undefined ? 'chime' : o.sfx, { label: 'payoff', chosen: o.sfx !== undefined, usual: 'chime' });
     // Each line has its own entrance, on its own cue or one after the other.
     const lineAt = items.map((it, i) => (it.at !== undefined ? this.at(it.at) : a + (0.4 + i * 0.35) / s.pace));
     lineAt.forEach((t, i) => {
-      if (t >= 0) this.enter(t, 0.3, o.itemSfx ?? 'blip', { label: `payoff${i}`, pitch: i + 2, chosen: o.itemSfx !== undefined });
+      if (t >= 0) this.enter(t, 0.3, o.itemSfx ?? 'blip', { label: `payoff${i}`, pitch: i + 2, chosen: o.itemSfx !== undefined, usual: 'blip' });
     });
     const life = this.life(at, o.out, 0.55);
     if (!life) return geom(x, y, w, h);

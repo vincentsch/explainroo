@@ -324,8 +324,10 @@ export class Stage {
     const rec = this.engine.recorder;
     // Negative times mean "already on screen when the scene starts": no sound.
     if (!rec || at < 0) return;
-    let sfx = o.sfx === undefined ? (extra.sfx === undefined ? this.theme.sfx[kind] : extra.sfx) : o.sfx;
-    if (this.engine.sfxMode === 'minimal' && o.sfx === undefined) sfx = null;
+    // sfx: true asks for the element's usual sound, also where it would be off.
+    const usual = extra.sfx === undefined ? this.theme.sfx[kind] : extra.sfx;
+    let sfx = o.sfx === undefined || o.sfx === true ? usual : o.sfx;
+    if ((this.engine.sfxMode === 'minimal' || this._quiet) && o.sfx === undefined) sfx = null;
     rec.push({ kind, at, dur, sfx: sfx || null, gain: o.sfxGain ?? extra.gain ?? 1, pitch: extra.pitch, sustain: extra.sustain, key: `${kind}|${Math.round(at * 1000)}|${o.id ?? extra.label ?? ''}|${extra.pitch ?? ''}` });
   }
 
@@ -638,6 +640,13 @@ export class Stage {
     ctx.fillRect(0, 0, this.W, this.H);
     ctx.restore();
     this._page = { top: fill, bottom: fill };
+  }
+
+  // Turns off the entrance sounds of everything drawn after it in this scene,
+  // so call it at the top. An element with sfx: true or a sound name of its
+  // own still plays, and so do s.sfx and s.sound.
+  quiet() {
+    this._quiet = true;
   }
 
   sfx(name, at, o = {}) {
