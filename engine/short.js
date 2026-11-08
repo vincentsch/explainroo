@@ -9,6 +9,7 @@
 // block. A scene that wants a move sets s.camera with punch() or drift().
 
 import { fontStack } from './themes.js';
+import { contrast, cssColor, opaque, suggestColor } from './util.js';
 
 const INK = '#0b0b10';
 const KEY = '#ffd43b';
@@ -50,6 +51,15 @@ function backdropColors(o) {
 function alpha(c, a) {
   const [r, g, b] = rgb(c);
   return `rgba(${r}, ${g}, ${b}, ${a})`;
+}
+
+// The color of *keywords* on a sticker: red, made darker or lighter where the
+// sticker's own color needs that to reach 4.5:1.
+const KEY_RED = '#c8102e';
+export function stickerKey(color) {
+  const bg = cssColor(color);
+  if (!bg || contrast(KEY_RED, bg) >= 4.5) return KEY_RED;
+  return suggestColor(KEY_RED, opaque(bg, '#ffffff'), 0)?.color ?? KEY_RED;
 }
 
 function geom(x, y, w, h) {
@@ -120,10 +130,13 @@ export class Short {
   }
 
   // Tells check and the soundtrack that something enters at `at`. A sound the
-  // scene did not ask for stays out with "sfx": "minimal".
-  enter(at, dur, sfx, { label, pitch, chosen = false } = {}) {
-    const quiet = this.s.engine.sfxMode === 'minimal' && !chosen;
-    this.s._record('short', this.at(at ?? 0), dur, { sfx: quiet ? null : sfx ?? null }, { label, pitch });
+  // scene did not ask for stays out with "sfx": "minimal" and after s.quiet().
+  // `usual` is the part's own sound, which sfx: true asks for. An interrupt is
+  // no entrance, so s.quiet() leaves its sound alone.
+  enter(at, dur, sfx, { label, pitch, chosen = false, usual = null, entrance = true } = {}) {
+    const quiet = (this.s.engine.sfxMode === 'minimal' || (this.s._quiet && entrance)) && !chosen;
+    const sound = sfx === true ? usual : sfx;
+    this.s._record('short', this.at(at ?? 0), dur, { sfx: quiet ? null : sound ?? null }, { label, pitch });
   }
 
   // Inter, then the fonts explainroo brings for Hindi, Japanese and Chinese.
@@ -170,7 +183,7 @@ export class Short {
     c.fillStyle = color;
     c.fillText(t, x, y);
     const w = c.measureText(t).width;
-    this.log(t, x, y, w, size, c.textAlign, { fg: color, bg: o.bg ?? null });
+    this.log(t, x, y, w, size, c.textAlign, { fg: color, bg: o.bg ?? null, option: o.option });
     c.restore();
     return w;
   }
@@ -178,11 +191,11 @@ export class Short {
   // Tells check where text was drawn, in local units. Each layer of the UI kit is
   // checked for overlaps on its own, and text on the base layer gets the size
   // rule of slides.
-  log(str, x, y, w, size, align, { fg = null, bg = null } = {}) {
+  log(str, x, y, w, size, align, { fg = null, bg = null, option = null } = {}) {
     if (!String(str).trim() || this.hidden) return;
     const x0 = align === 'center' ? x - w / 2 : align === 'right' ? x - w : x;
     const layer = this.s.ui._layer + 1;
-    this.s._logText({ text: String(str), x0, y0: y - 0.58 * size, x1: x0 + w, y1: y + 0.58 * size, size, fg: /^#/.test(fg) ? fg : null, bg, ui: layer === 1 ? 0 : layer, zoomed: this.s._camMoved });
+    this.s._logText({ text: String(str), x0, y0: y - 0.58 * size, x1: x0 + w, y1: y + 0.58 * size, size, fg: /^#/.test(fg) ? fg : null, bg, ui: layer === 1 ? 0 : layer, zoomed: this.s._camMoved, option });
   }
 
   // Wraps text into lines no wider than maxW.
@@ -203,6 +216,7 @@ export class Short {
   }
 
   roundRect(x, y, w, h, r, fill, o = {}) {
+    if (!this.hidden) this.s._seen(null);
     const c = this.c;
     c.save();
     if (o.shadow) {
@@ -224,6 +238,7 @@ export class Short {
   }
 
   circle(x, y, r, fill) {
+    if (!this.hidden) this.s._seen(null);
     const c = this.c;
     c.beginPath();
     c.arc(x, y, Math.max(0, r), 0, Math.PI * 2);
@@ -232,7 +247,9 @@ export class Short {
   }
 
   icon(name, x, y, size, color, weight = 2) {
-    if (!this.hidden) this.s._iconAt(name, x, y, size, color, 1, 1, weight);
+    if (this.hidden) return;
+    this.s._seen(null);
+    this.s._iconAt(name, x, y, size, color, 1, 1, weight);
   }
 
   // Registers a box (top-left x, y) under `id`, for s.get and arrows.
@@ -264,9 +281,13 @@ export class Short {
     if (o.rotate) c.rotate((o.rotate * Math.PI) / 180);
     c.scale(sc, sc);
     c.translate(-cx, -cy);
+    // check compares shapes only once they have arrived.
+    const moving = life.p < 1 || life.q > 0;
+    if (moving) this.s._unsettled++;
     try {
       fn();
     } finally {
+      if (moving) this.s._unsettled--;
       c.restore();
     }
   }
@@ -403,7 +424,7 @@ export class Short {
     const top = y - blockH / 2;
     const a = this.at(o.at ?? 0);
     const first = a <= 0;
-    if (!first) this.enter(a, 0.4, o.sfx === undefined ? 'whoosh' : o.sfx, { label: 'hook', chosen: o.sfx !== undefined });
+    if (!first) this.enter(a, 0.4, o.sfx === undefined ? 'whoosh' : o.sfx, { label: 'hook', chosen: o.sfx !== undefined, usual: 'whoosh' });
     const life = this.life(first ? -1 : a, o.out, 0.45, 0.3);
     const maxLineW = Math.max(...lines.map((l) => l.w)) + pad * 2;
     this.reg(o.id, x - maxLineW / 2, top, maxLineW, blockH);
@@ -417,6 +438,8 @@ export class Short {
       const lp = first ? 1 : clamp((s.t - a - (li * 0.08) / s.pace) / (0.32 / s.pace));
       if (lp <= 0) return;
       const sc = first ? 1 : lerp(1.35, 1, outQuart(lp));
+      const moving = lp < 1 || life.q > 0;
+      if (moving) s._unsettled++;
       c.save();
       c.globalAlpha *= clamp(lp * 2) * (1 - life.q);
       c.translate(x, ly - life.q * 30);
@@ -435,6 +458,7 @@ export class Short {
         wx += ww + line.space;
       }
       c.restore();
+      if (moving) s._unsettled--;
     })));
     return geom(x, y, maxLineW, blockH);
   }
@@ -500,16 +524,18 @@ export class Short {
     const y = o.y ?? s.cy;
     this.reg(o.id, x - w / 2, y - h / 2, w, h);
     const at = o.at ?? 0;
-    if (this.at(at) >= 0) this.enter(at, 0.35, o.sfx === undefined ? 'pop' : o.sfx, { label: words.map((wd) => wd.text).join(' ').slice(0, 20), chosen: o.sfx !== undefined });
+    if (this.at(at) >= 0) this.enter(at, 0.35, o.sfx === undefined ? 'pop' : o.sfx, { label: words.map((wd) => wd.text).join(' ').slice(0, 20), chosen: o.sfx !== undefined, usual: 'pop' });
     const life = this.life(at, o.out, 0.38);
     if (!life) return geom(x, y, w, h);
     const bg = o.color ?? KEY;
+    const keyColor = o.keyColor ?? stickerKey(bg);
     this.s.ui.over(() => this.popIn(life, x, y, () => {
       this.roundRect(x - w / 2, y - h / 2, w, h, size * 0.22, bg, { shadow: { color: 'rgba(0,0,0,0.35)', blur: 16, y: 8 }, stroke: o.border, strokeW: 5 });
+      if (!this.hidden) this.s._logShape('sticker', { x, y, w, h }, this.s._unsettled === 0, o, words.map((wd) => wd.text).join(' '));
       let wx = x - tw / 2;
       const space = this.measure(' ', size, 900);
       for (const wd of words) {
-        this.text(wd.text, wx, y + size * 0.04, { size, weight: 900, color: wd.key ? o.keyColor ?? '#c8102e' : o.textColor ?? INK, bg });
+        this.text(wd.text, wx, y + size * 0.04, { size, weight: 900, color: wd.key ? keyColor : o.textColor ?? INK, bg, option: wd.key ? 'keyColor' : 'textColor' });
         wx += this.measure(wd.text, size, 900) + space;
       }
     }, { rotate: o.rotate ?? -4, from: 0.4 }));
@@ -581,7 +607,7 @@ export class Short {
   // o: flash (a color, or false), zoom, shake, sfx ('whoosh').
   interrupt(at, o = {}) {
     const a = this.at(at);
-    this.enter(a, 0.3, o.sfx === undefined ? 'whoosh' : o.sfx, { label: 'interrupt', chosen: o.sfx !== undefined });
+    this.enter(a, 0.3, o.sfx === undefined ? 'whoosh' : o.sfx, { label: 'interrupt', chosen: o.sfx !== undefined, usual: 'whoosh', entrance: false });
     this.jolt(a, o);
     if (o.flash !== false) this.flash(a, { color: typeof o.flash === 'string' ? o.flash : '#ffffff', alpha: o.flashAlpha, dur: o.flashDur });
   }
@@ -600,7 +626,7 @@ export class Short {
     const label = `${String(o.word ?? 'STEP').toUpperCase()} ${n}/${total}`;
     const at = o.at ?? -1;
     const a = this.at(at);
-    if (a >= 0) this.enter(a, 0.3, o.sfx === undefined ? 'blip' : o.sfx, { label, pitch: n, chosen: o.sfx !== undefined });
+    if (a >= 0) this.enter(a, 0.3, o.sfx === undefined ? 'blip' : o.sfx, { label, pitch: n, chosen: o.sfx !== undefined, usual: 'blip' });
     const life = this.life(at, o.out, 0.3);
     if (!life) return;
     const tw = this.measure(label, size, 900, 1.5);
@@ -667,16 +693,17 @@ export class Short {
     this.reg(o.id, x - w / 2, top, w, h);
     const at = o.at ?? 0;
     const a = this.at(at);
-    if (a >= 0) this.enter(at, 0.5, o.sfx === undefined ? 'chime' : o.sfx, { label: 'payoff', chosen: o.sfx !== undefined });
+    if (a >= 0) this.enter(at, 0.5, o.sfx === undefined ? 'chime' : o.sfx, { label: 'payoff', chosen: o.sfx !== undefined, usual: 'chime' });
     // Each line has its own entrance, on its own cue or one after the other.
     const lineAt = items.map((it, i) => (it.at !== undefined ? this.at(it.at) : a + (0.4 + i * 0.35) / s.pace));
     lineAt.forEach((t, i) => {
-      if (t >= 0) this.enter(t, 0.3, o.itemSfx ?? 'blip', { label: `payoff${i}`, pitch: i + 2, chosen: o.itemSfx !== undefined });
+      if (t >= 0) this.enter(t, 0.3, o.itemSfx ?? 'blip', { label: `payoff${i}`, pitch: i + 2, chosen: o.itemSfx !== undefined, usual: 'blip' });
     });
     const life = this.life(at, o.out, 0.55);
     if (!life) return geom(x, y, w, h);
     this.s.ui.over(() => this.popIn(life, x, y, () => {
       this.roundRect(x - w / 2, top, w, h, 40, card, { shadow: { color: 'rgba(0,0,0,0.35)', blur: 40, y: 18 } });
+      if (!this.hidden) this.s._logShape('card', { x, y: top + h / 2, w, h }, this.s._unsettled === 0, o, o.title ?? '');
       const icy = top + pad + iconR;
       // The icon breathes a little.
       const pulse = 1 + 0.04 * Math.sin(s.t * 3.2);
@@ -693,6 +720,7 @@ export class Short {
         const ip = clamp((s.t - lineAt[i]) / (0.35 / s.pace));
         if (ip > 0) {
           const c = this.c;
+          if (ip < 1) s._unsettled++;
           c.save();
           c.globalAlpha *= ip;
           c.translate((1 - outCubic(ip)) * 30, 0);
@@ -701,6 +729,7 @@ export class Short {
           this.icon('check', lx + lineSize * 0.42, ty + lineSize * 0.62, lineSize * 0.55, '#ffffff', 3.4);
           itemLines[i].forEach((ln, k) => this.text(ln, lx + lineSize * 1.3, ty + lineSize * 0.62 + k * lineSize * 1.25, { size: lineSize, weight: 700, color: '#1f2937', bg: card }));
           c.restore();
+          if (ip < 1) s._unsettled--;
         }
         ty += itemLines[i].length * lineSize * 1.25 + 22;
       });

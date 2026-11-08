@@ -255,6 +255,8 @@ export class UI {
       c.stroke();
     }
     c.restore();
+    // check compares cards with other shapes once they have arrived.
+    if (!this.hidden) this.s._logShape('card', { x: x + w / 2, y: y + h / 2, w, h }, this.s._unsettled === 0, o, o.name ?? '');
   }
 
   // A card that pops up at `at`, then fn(x, y, w, h) draws inside it.
@@ -262,10 +264,12 @@ export class UI {
   panel(x, y, w, h, o = {}, fn) {
     if (typeof o === 'function') [o, fn] = [{}, o];
     const s = this.s;
+    // What a panel holds counts as inside it for check, like a group.
+    const serial = ++s._groupCalls;
     const a = this.at(o.at ?? 0);
     const dur = o.dur ?? 0.6;
     this._enter(a, dur, o.sfx);
-    s._logLayout('panel', a, o.out === undefined ? Infinity : this.at(o.out), x + w / 2, y + h / 2, w, h);
+    s._logLayout('panel', a, o.out === undefined ? Infinity : this.at(o.out), x + w / 2, y + h / 2, w, h, o.camera === false ? { camera: false } : null);
     if (s.t < a) return 0;
     const p = clamp((s.t - a) / (dur / s.pace));
     const q = o.out !== undefined ? this._p(o.out, o.outDur ?? 0.35, 'in') : 0;
@@ -281,10 +285,16 @@ export class UI {
     c.translate(x + w / 2, y + h / 2 + (1 - outCubic(p)) * (o.rise ?? 30));
     c.scale(sc, sc);
     c.translate(-(x + w / 2), -(y + h / 2));
+    const moving = p < 1 || q > 0;
+    if (moving) s._unsettled++;
+    s._groups.push(serial);
+    s._seen('panel');
     try {
       this.card(x, y, w, h, o);
       if (fn) fn(x, y, w, h);
     } finally {
+      s._groups.pop();
+      if (moving) s._unsettled--;
       c.restore();
       pause?.(false);
     }
@@ -336,7 +346,7 @@ export class UI {
       c.fillRect(0, 0, s.W, s.H);
       c.restore();
     }
-    return this.over(() => this.panel(x, y, w, h, { r: 20, lift: 1.4, ...o, at: a, dur: 0.45 }, fn));
+    return this.covering(() => this.panel(x, y, w, h, { r: 20, lift: 1.4, ...o, at: a, dur: 0.45 }, fn));
   }
 
   // A short message card that slides up, like "Saved" or "Sent".
@@ -350,7 +360,7 @@ export class UI {
     const x = (o.x ?? s.W / 2) - w / 2;
     const y = o.y ?? s.H - 150;
     const tone = TONES[o.tone ?? 'green'] || TONES.green;
-    this.over(() => {
+    this.covering(() => {
       this.panel(x, y, w, 72, { at: a, out: o.out, r: 16, lift: 0.9, rise: 40, from: 0.9, sfx: o.sfx === undefined ? 'chime' : o.sfx }, () => {
         let tx = x + 32;
         if (o.icon !== false) {
@@ -369,6 +379,7 @@ export class UI {
     if (s.t < a) return 0;
     if (o.sfx !== null) s.sfx(o.sfx ?? 'swipe', a);
     const p = this._p(a, o.dur ?? 0.7, 'inOut');
+    if (p > 0) s._seen(null);
     const x = o.x ?? s.W / 2;
     const y = o.y ?? s.H / 2;
     const c = this.c;
@@ -398,6 +409,17 @@ export class UI {
     fn(p);
     c.restore();
     return p;
+  }
+
+  // A layer that sits over what is under it on purpose, like a dialog, an open
+  // menu or a toast, so check doesn't count its shapes as overlapping.
+  covering(fn) {
+    this.s._cover++;
+    try {
+      return this.over(fn);
+    } finally {
+      this.s._cover--;
+    }
   }
 
   // Draws fn as a layer on top of what is already there (menus, dialogs).
@@ -508,7 +530,7 @@ export class UI {
     const total = widths.reduce((a, b) => a + b, 0) + space * (tokens.length - 1);
     let cx = o.align === 'left' ? x : o.align === 'right' ? x - total : x - total / 2;
     const a = this.at(o.at ?? 0);
-    s._logLayout('headline', a, o.out === undefined ? Infinity : this.at(o.out), cx + total / 2, y - size * 0.35, total, size * 1.1);
+    s._logLayout('headline', a, o.out === undefined ? Infinity : this.at(o.out), cx + total / 2, y - size * 0.35, total, size * 1.1, o.camera === false ? { camera: false } : null);
     const stagger = (o.stagger ?? 0.07) / s.pace;
     const dur = (o.dur ?? 0.7) / s.pace;
     this._enter(a, dur + stagger * tokens.length, o.sfx);
@@ -519,6 +541,8 @@ export class UI {
       const alpha = e * (1 - q);
       if (alpha > 0.002) {
         const blur = (1 - e) * 14 + q * 10;
+        const moving = e < 1 || q > 0;
+        if (moving) s._unsettled++;
         c.save();
         if (blur > 0.3) c.filter = `blur(${(blur * k).toFixed(2)}px)`;
         this.text(t.w, cx, y + (1 - e) * 22 - q * 14, {
@@ -532,6 +556,7 @@ export class UI {
           base: 'alphabetic',
         });
         c.restore();
+        if (moving) s._unsettled--;
       }
       cx += widths[i] + space;
     });
@@ -632,6 +657,7 @@ export class UI {
   }
 
   input(x, y, w, h, o = {}) {
+    this.s._seen(null);
     const c = this.c;
     const C = this.colors;
     const focus = o.focus ?? 0;
@@ -739,7 +765,7 @@ export class UI {
     const rows = opts.map((_, i) => my + 8 + i * rowH + rowH / 2);
     if (open <= 0.001) return rows;
     const c = this.c;
-    this.over(() => {
+    this.covering(() => {
       c.save();
       c.globalAlpha *= clamp(open * 1.6) * (o.alpha ?? 1);
       c.translate(x + w / 2, my);
@@ -764,6 +790,7 @@ export class UI {
   }
 
   toggle(x, y, on, o = {}) {
+    this.s._seen(null);
     const c = this.c;
     const w = o.w ?? 64;
     const h = o.h ?? 36;
@@ -788,6 +815,7 @@ export class UI {
   }
 
   checkbox(x, y, on, o = {}) {
+    this.s._seen(null);
     const c = this.c;
     const size = o.size ?? 26;
     const p = clamp(on);
@@ -808,6 +836,7 @@ export class UI {
   }
 
   radio(x, y, on, o = {}) {
+    this.s._seen(null);
     const c = this.c;
     const r = (o.size ?? 26) / 2;
     const p = clamp(on);
@@ -866,6 +895,7 @@ export class UI {
   }
 
   spinner(x, y, r, color = this.colors.accent) {
+    this.s._seen(null);
     const c = this.c;
     const a = this.s.t * 7;
     c.save();
@@ -884,6 +914,7 @@ export class UI {
   }
 
   progress(x, y, w, p, o = {}) {
+    this.s._seen(null);
     const c = this.c;
     const h = o.h ?? 10;
     c.save();
@@ -901,6 +932,7 @@ export class UI {
   }
 
   avatar(x, y, r, initials = '', o = {}) {
+    this.s._seen(null);
     const c = this.c;
     c.save();
     c.beginPath();
@@ -919,11 +951,13 @@ export class UI {
 
   icon(name, x, y, size, color = this.colors.text, weight = 2) {
     if (this.hidden) return;
+    this.s._seen(null);
     this.s._iconAt(name, x, y, size, color, 1, 1, weight);
   }
 
   // Grey bars standing in for text, for article bodies and backgrounds.
   lines(x, y, w, n, o = {}) {
+    this.s._seen(null);
     const c = this.c;
     const gap = o.gap ?? 22;
     c.save();
@@ -947,6 +981,7 @@ export class UI {
     const c = this.c;
     c.save();
     c.globalAlpha *= o.alpha ?? 1;
+    this.s._seen(null);
     c.drawImage(img, o.align === 'left' ? x : x - w / 2, y - h / 2, w, h);
     c.restore();
     return h;
@@ -1002,6 +1037,7 @@ export class UI {
     let alpha = clamp((s.t - start) / 0.25);
     if (o.out !== undefined) alpha *= 1 - this._p(o.out, 0.3, 'in');
     if (alpha <= 0) return { x, y, press };
+    s._seen(null);
     const size = (o.size ?? 34) * (1 - 0.14 * press);
     c.save();
     c.globalAlpha *= alpha;

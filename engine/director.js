@@ -124,13 +124,15 @@ function clean(shot, box, others, view, frame, usable) {
 // or right outside the frame's edge, and keeps the closest, best centered
 // shot. At zoom 1 the shot is the frame as it was written, which always
 // works.
-export function compose(focus, visible, view, frame, usable = { x0: 0, y0: 0, x1: frame.W, y1: frame.H }, fill = FILL, maxZoom = MAX_ZOOM) {
+// `keep`: arrows and marks that point at or mark an element, which a shot may
+// not cut either.
+export function compose(focus, visible, view, frame, usable = { x0: 0, y0: 0, x1: frame.W, y1: frame.H }, fill = FILL, maxZoom = MAX_ZOOM, keep = []) {
   const box = union(focus.map((e) => e.box));
-  // Arrows and lines may run off the edge of a close-up, and so may an
-  // element the shot looks into, like a code window around its highlighted
-  // lines. A cut label or card may not.
+  // Arrows and lines may run off the edge of a close-up, unless they belong
+  // to an element, and so may an element the shot looks into, like a code
+  // window around its highlighted lines. A cut label or card may not.
   const looking = focus.every((e) => e.kind === 'focus');
-  const others = visible.filter((e) => !focus.includes(e) && !['arrow', 'line', 'focus'].includes(e.kind) && !(looking && contains(e.box, box)));
+  const others = [...visible.filter((e) => !focus.includes(e) && !['arrow', 'line', 'focus'].includes(e.kind) && !(looking && contains(e.box, box))), ...keep.filter((e) => !focus.includes(e))];
   const cx = view.x + view.w / 2;
   const cy = view.y + view.h / 2;
   const best0 = frameBox(box, view, frame, Math.max(1, maxZoom), fill);
@@ -164,7 +166,9 @@ export function compose(focus, visible, view, frame, usable = { x0: 0, y0: 0, x1
       }
     }
   }
-  if (best) return best.shot;
+  // A shot that looks into an element, like a code window around its
+  // highlighted lines, says what it looks at, since it may cut that element.
+  if (best) return looking ? { ...best.shot, into: box } : best.shot;
   // Otherwise the frame as it was written. Its slow push stays off when it
   // would move something into the captions or the app's buttons.
   const full = frameBox(box, view, frame, 1);
@@ -203,12 +207,15 @@ function differs(a, b, frame) {
 export function planCamera(elements, { dur, view, frame, pace = 1, voiceEnd = null, from = null, still = 0, usable = null }) {
   usable ??= { x0: 0, y0: 0, x1: frame.W, y1: frame.H };
   const area = frame.W * frame.H;
+  const timed = (e) => ({ ...e, at: Math.max(0, e.at), out: e.out ?? Infinity });
+  // Marks from s.annotate go with what they mark and are never a subject.
+  const marks = elements.filter((e) => e.kind === 'annotate' && e.box).map(timed);
   const items = elements
     // A plain shape, drawing or picture that covers most of the frame is a
     // background. Charts, code, text and what a scene draws by hand ("ink")
     // count however large they are.
-    .filter((e) => e.box && (!BACKDROPS.includes(e.kind) || e.box.w * e.box.h < area * 0.6) && (e.box.w > 2 || e.box.h > 2))
-    .map((e) => ({ ...e, at: Math.max(0, e.at), out: e.out ?? Infinity }))
+    .filter((e) => e.box && e.kind !== 'annotate' && (!BACKDROPS.includes(e.kind) || e.box.w * e.box.h < area * 0.6) && (e.box.w > 2 || e.box.h > 2))
+    .map(timed)
     .filter((e) => e.at < dur - 0.3)
     .sort((a, b) => a.at - b.at);
   if (!items.length) return null;
@@ -245,6 +252,30 @@ export function planCamera(elements, { dur, view, frame, pace = 1, voiceEnd = nu
       return body.every((e) => e.box.x - e.box.w / 2 >= u.x0 + pad && e.box.x + e.box.w / 2 <= u.x1 - pad && e.box.y - e.box.h / 2 >= u.y0 + pad && e.box.y + e.box.h / 2 <= u.y1 - pad);
     });
   };
+  // The arrows, their labels and the marks that belong to the elements in
+  // `list` between t0 and t1: they point at one of them by its id or end
+  // right at it, or mark it. A shot that moves to an element takes them in
+  // too, so an arrow never comes in from outside a close-up of what it
+  // points at.
+  const attached = (list, t0, t1) => {
+    const ids = new Set(list.map((e) => e.id).filter((id) => id !== undefined && id !== null));
+    const boxes = solid(list).map((e) => e.box);
+    const at = (p, b, pad) => Math.abs(p[0] - b.x) <= b.w / 2 + pad && Math.abs(p[1] - b.y) <= b.h / 2 + pad;
+    const named = (e) => (e.ends ?? []).some((id) => id !== null && ids.has(id));
+    const during = (e) => e.at <= t1 && e.out > t0;
+    const arrows = items.filter((e) => e.kind === 'arrow' && !list.includes(e) && during(e) && (named(e) || (e.tips ?? []).some((p) => boxes.some((b) => at(p, b, 30)))));
+    const serials = new Set(arrows.map((e) => e.serial));
+    const labels = items.filter((e) => e.kind === 'label' && !list.includes(e) && serials.has(e.serial));
+    const marked = marks.filter((e) => during(e) && (named(e) || (e.around && boxes.some((b) => at([e.around.x, e.around.y], b, 0)))));
+    return [...arrows, ...labels, ...marked];
+  };
+  // The arrows, labels and marks that belong to some element, as they show
+  // from t0 to t1. A close-up takes them in whole or leaves them out, so it
+  // never cuts the arrow to something it shows.
+  const pointers = attached(solid(items), -Infinity, Infinity);
+  const keep = (t0, t1) => pointers.filter((e) => e.at <= t1 && e.out > t0);
+  // What the camera may move to: everything but elements with camera: false.
+  const subjects = (list) => list.filter((e) => e.camera !== false);
   // The one or two elements in `before` closest to `els`.
   const nearest = (els, before) => {
     if (!before.length) return [];
@@ -334,16 +365,16 @@ export function planCamera(elements, { dur, view, frame, pace = 1, voiceEnd = nu
       // close-up. Nor does an icon or shape without words: up close it shows
       // nothing more. It tries the new thing with its neighbours first, then
       // on its own.
-      const own = solid(fresh).filter((e) => !e.bare && !before.some((f) => f.box.w * f.box.h >= e.box.w * e.box.h * 2 && contains(f.box, e.box)));
+      const own = subjects(solid(fresh)).filter((e) => !e.bare && !before.some((f) => f.box.w * f.box.h >= e.box.w * e.box.h * 2 && contains(f.box, e.box)));
       // It is on screen already, so the push may wait a moment for its turn.
       const at = Math.max(begin, last + hold);
       if (!own.length || at > beat.start + 1 / pace || at - zoomed < PUSH_GAP / pace) continue;
       // What comes soon after belongs to the same shot when it can.
-      const soon = beats.slice(i + 1).filter((b) => b.start - beat.start <= PUSH_HOLD / pace).flatMap((b) => solid(picture(b.els)));
+      const soon = beats.slice(i + 1).filter((b) => b.start - beat.start <= PUSH_HOLD / pace).flatMap((b) => subjects(solid(picture(b.els))));
       const near = nearest(own, before);
       const seen = visibleDuring(at, at + PUSH_HOLD / pace + hold);
       for (const list of [[...near, ...own, ...soon], [...near, ...own], [...own, ...soon], own]) {
-        const shot = compose(list, seen, view, frame, usable);
+        const shot = compose([...list, ...attached(list, at, at + PUSH_HOLD / pace + hold)], seen, view, frame, usable, FILL, MAX_ZOOM, keep(at, at + PUSH_HOLD / pace + hold));
         const until = Math.min(heldUntil(shot, i), fits(shot, picture(visibleDuring(revealAt, revealAt + 0.1))) ? dur : revealAt);
         if (shot.z >= cur.z * PUSH && until - at - moveLength(cur, shot, 'push', frame) / pace >= PUSH_HOLD / pace) {
           take(shot, at, 'push');
@@ -356,8 +387,15 @@ export function planCamera(elements, { dur, view, frame, pace = 1, voiceEnd = nu
     // close as the camera may go now.
     const visible = visibleDuring(begin, Math.max(next, window));
     const limit = closer ? MAX_ZOOM : cur.z;
-    let subject = compose([...nearest(fresh, before), ...fresh], visible, view, frame, usable, FILL, limit);
-    if (subject.z < Math.min(1.15, limit)) subject = compose(fresh, visible, view, frame, usable, FILL, limit);
+    const moveTo = subjects(fresh);
+    if (!moveTo.length) {
+      take(overview(begin, window), begin, 'follow', true);
+      continue;
+    }
+    const until = Math.max(next, window);
+    const along = (list) => [...list, ...attached(list, begin, until)];
+    let subject = compose(along([...nearest(moveTo, before), ...moveTo]), visible, view, frame, usable, FILL, limit, keep(begin, until));
+    if (subject.z < Math.min(1.15, limit)) subject = compose(along(moveTo), visible, view, frame, usable, FILL, limit, keep(begin, until));
     take(fits(subject, fresh) ? subject : overview(begin, window), begin, 'follow', true);
   }
   if (!shots.length && !from) return null;
@@ -447,6 +485,14 @@ export function cameraAt(plan, t, drift = true) {
 // True while the camera is in a move (not counting the slow drift).
 export function cameraMoving(plan, t) {
   return plan.moves.some((m) => t > m.start && t < m.start + m.dur);
+}
+
+// The shot the camera holds at t, or null while it moves.
+export function heldShot(plan, t) {
+  if (cameraMoving(plan, t)) return null;
+  let shot = plan.start;
+  for (const m of plan.moves) if (t >= m.start + m.dur) shot = m.to;
+  return shot;
 }
 
 // Whether scene B picks up where scene A left off: what A's last frame

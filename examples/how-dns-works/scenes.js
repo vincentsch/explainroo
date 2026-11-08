@@ -103,7 +103,7 @@ export default {
     s.arrow('resolver', 'tld', { at: -1 });
     auth(s, { at: 'name' });
     s.arrow('resolver', 'auth', { at: s.cue('name') + 0.2, bend: 0.1 });
-    s.arrow('auth', 'resolver', { at: '#ip', bend: 0.6, color: 'accent', width: 6, label: 'the IP address', labelColor: 'yellow', labelOffset: 44 });
+    s.arrow('auth', 'resolver', { at: '#ip', bend: 0.6, color: 'accent', width: 6, label: 'the IP address', labelSize: 34, labelColor: 'yellow', labelOffset: 44 });
     s.arrow('resolver', 'you', { at: s.mark('ip') + 0.9, bend: 0.25, color: 'accent', width: 6 });
     s.annotate('q', { type: 'box', color: 'green', at: s.mark('ip') + 1.4 });
     s.icon('check', { x: q.right + 60, y: q.y, size: 70, color: 'green', at: s.mark('ip') + 1.6, enter: 'pop' });

@@ -10,6 +10,7 @@ import { alignSpeech, bareWord, nearList } from './align.js';
 import { heardInstead, heardQuote } from './voice.js';
 import { estimateLength, targetNotes } from './timeline.js';
 import { buildChapters, chapterHints } from './chapters.js';
+import { coverTime } from './render.js';
 import { languageIssues, outputPath, ProjectError, scriptName } from './project.js';
 import { recordVersion, relativeFile, sha256File } from './history.js';
 import { decodedSound } from './server.js';
@@ -117,12 +118,19 @@ export function speechFindings(project, voices) {
   return { issues, speech };
 }
 
-export async function check(project, { log = () => {}, step = 0.25, viewWidth = null } = {}) {
+// The sizes that are made for YouTube's wide player, where chapters show.
+const YOUTUBE_SIZES = ['youtube', '16:9'];
+
+// `platform` is the platform of a package being made. Chapter hints are about
+// YouTube, so they show for a YouTube package, or without a package for a
+// YouTube size.
+export async function check(project, { log = () => {}, step = 0.25, viewWidth = null, platform = null } = {}) {
   if (viewWidth !== null && (!Number.isFinite(viewWidth) || viewWidth <= 0)) throw new Error("--view-width must be a positive number");
   // How long the video will be about, when check is the step that makes the narration.
   let estimate = null;
   const { voices, timeline } = await prepare(project, { log, onEstimate: (e) => { estimate = e; } });
-  const issues = chapterHints(buildChapters(timeline, project.script.title || project.config.title));
+  const youtube = platform ? platform === 'youtube' : YOUTUBE_SIZES.includes(project.config.size);
+  const issues = youtube ? chapterHints(buildChapters(timeline, project.script.title || project.config.title)) : [];
   const { issues: spoken, speech } = speechFindings(project, voices);
   issues.push(...spoken);
   issues.push(...targetNotes(timeline, estimateLength(project)?.perMinute).map((n) => ({ ...n, scene: null, t: null })));
@@ -135,9 +143,18 @@ export async function check(project, { log = () => {}, step = 0.25, viewWidth = 
       issues.push({ level: 'error', scene: null, t: null, message: `music: ${e.message}` });
     }
   }
+  // The cover's moment. One at a scene that isn't there is an error, which
+  // would stop render.
+  let cover = null;
+  try {
+    cover = coverTime(project.config, timeline);
+  } catch (e) {
+    issues.push({ level: 'error', scene: null, t: null, message: `cover: ${e.message}` });
+  }
   const pageIssues = await withEngine(project, timeline, { scale: 0.5, log }, async (page) => [
     ...(await page.evaluate(([s, w]) => window.explainroo.check(s, w), [step, viewWidth])),
     ...(await page.evaluate(() => window.explainroo.soundFileIssues())),
+    ...(cover ? [await page.evaluate((T) => window.explainroo.coverIssue(T), cover.T)].filter(Boolean) : []),
   ]);
   issues.push(...pageIssues);
   const order = { error: 0, warn: 1, hint: 2 };

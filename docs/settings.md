@@ -34,7 +34,7 @@ videos/<name>/
 | `music` | `true` | `true` (the look's style), `warm`, `upbeat`, `calm`, `tech`, `playful`, `{ "style", "volume" }`, `false`, or your own file as `{ "src", "volume", "credit", "loop" }`, see `explainroo docs music` |
 | `sfx` | `true` | sound effects: `true`, `"minimal"` or `false` |
 | `captions` | `"auto"` | text of the narration at the bottom; `"auto"` turns it on for vertical, 4:5 and square videos, and leaves it off for 16:9; `"bold"` shows 2 to 4 big words at a time, with numbers, money and `*starred*` words in color |
-| `cover` | `"auto"` | full-size JPEG, without captions. `"auto"` takes the end of the first scene, and 1.0 second into it for `shorts`, `tiktok`, `reels` and `vertical`. Or a still spec: `12.5`, `"intro"`, `"intro@2.4"`, `"intro@end"` |
+| `cover` | `"auto"` | full-size JPEG, without captions. `"auto"` takes the frame in the first 3 seconds of the first scene with the most elements fully on screen. Or a still spec: `12.5`, `"intro"`, `"intro@2.4"`, `"intro@end"`. A new cover needs no new render |
 | `transition` | `"auto"` | the look's default, or `fade`, `slide`, `wipe`, `zoom`, `brush`, `cut` |
 | `camera` | `"auto"` | `"auto"` films each scene with a camera that follows the narration; `"still"` keeps every frame as written |
 | `motionBlur` | `true` | motion blur on moving frames in the final render; `render --quality fast` leaves it out for one run |

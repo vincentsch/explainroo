@@ -101,9 +101,11 @@ the scene it pulls back, so the last frame shows the whole idea. During each
 scene it also pushes in very slowly.
 
 While a shot holds, every card and label is either fully in the shot or out
-of it. Arrows and lines may run off the edge, but their labels stay whole, and
-so do the labels of charts. While the camera moves from
-one shot to the next, things may pass the edge of the frame for a moment.
+of it. When the camera moves to an element, the arrows that point at it and
+the marks around it come along whole. Other arrows and lines may run off the
+edge, but their labels stay whole, and so do the labels of charts. While the
+camera moves from one shot to the next, things may pass the edge of the frame
+for a moment. `camera: false` on an element keeps the camera from moving to it.
 Shots stay clear of the captions and of the parts the app covers on Shorts,
 TikTok and Reels.
 
@@ -134,8 +136,9 @@ when they are small in the shot. `s.focus` points the camera at any part of
 the picture.
 
 `"camera": "still"` in `video.json` turns the camera off for the whole video.
-`check` checks the layout as you wrote it, without the camera. Stills, sheets
-and renders show the camera.
+`check` checks the layout as you wrote it. It also judges text at the size the
+camera shows it, and warns about text or a shape that a held shot cuts at the
+edge. Stills, sheets and renders show the camera.
 
 The final render adds motion blur to frames where something moves, like a
 film camera. Drafts skip it. `"motionBlur": false` turns it off.

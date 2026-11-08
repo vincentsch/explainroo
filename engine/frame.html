@@ -121,6 +121,14 @@ window.explainrooReady = (async () => {
     check(step, viewWidth) {
       return engine.check(step, viewWidth);
     },
+    // The time "cover": "auto" takes, and check's hint about a cover with
+    // only text on it (T is null for "auto").
+    coverMoment() {
+      return engine.coverMoment();
+    },
+    coverIssue(T) {
+      return engine.coverIssue(T);
+    },
     // After check: the files its scenes play with s.sound that can't be read.
     soundFileIssues() {
       return engine.soundFileIssues();

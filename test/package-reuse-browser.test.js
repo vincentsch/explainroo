@@ -54,6 +54,25 @@ test('a full render is copied and all the files next to it are written again, an
   assert.equal(tiktok.verified, 'now');
 });
 
+test('a new cover leaves the video as it is: package keeps the file and writes only the new cover', { skip, timeout: 300000 }, async (t) => {
+  const dir = tiny(t, { size: '16:9' }, { narrated: false });
+  // Dark at first, light after half a second, so the two covers differ.
+  fs.writeFileSync(path.join(dir, 'scenes.js'), "export default { intro(s) { s.bg(s.t < 0.5 ? '#101010' : '#f0f0f0'); s.text('Tiny', { y: s.safe.y + s.safe.h / 2, size: 80, at: 0 }); } };");
+  const folder = path.join(dir, 'out/package/youtube');
+  const first = await pack(dir, 'youtube');
+  assert.equal(first.source.how, 'rendered');
+  const before = fs.readFileSync(path.join(folder, 'video.cover.jpg'));
+  const settings = read(path.join(dir, 'video.json'));
+  for (const cover of ['intro@0.2', 'intro@0.8']) {
+    fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ ...settings, cover }));
+    const again = await pack(dir, 'youtube');
+    assert.equal(again.source.how, 'kept', cover);
+    assert.equal(again.post.identity, first.post.identity, cover);
+    assert.equal(again.post.sha256, first.post.sha256, cover);
+  }
+  assert.notDeepEqual(fs.readFileSync(path.join(folder, 'video.cover.jpg')), before, 'the cover is new');
+});
+
 test('a --from/--to render and a --scale render are never reused, so package renders the whole video', { skip, timeout: 300000 }, async (t) => {
   const dir = tiny(t, { size: '16:9' }, { narrated: false });
   const part = await cli(['render', dir, '--from', '0', '--to', '0.5', '--workers', '1']);
@@ -88,16 +107,17 @@ test('a package that fails check says which size failed and writes nothing, and 
   assert.equal((await pack(dir, 'youtube')).ok, true);
   const folder = path.join(dir, 'out/package/youtube');
   const lines = readVersions(dir).length;
-  // A cover at a scene that isn't there stops the package before anything is rendered or copied.
+  // A cover at a scene that isn't there fails check, before anything is rendered or copied.
   const settings = path.join(dir, 'video.json');
   const raw = read(settings);
   fs.writeFileSync(settings, JSON.stringify({ ...raw, cover: 'nosuch@end' }));
   const cover = await cli(['package', dir, '--platform', 'youtube']);
   assert.equal(cover.code, 1);
-  assert.match(cover.stderr, /no scene "nosuch"/);
+  assert.match(cover.stdout, /^ERROR : cover: no scene "nosuch"/m);
   assert.doesNotMatch(cover.stderr, /^rendering /m);
   assert.equal(readVersions(dir).length, lines);
   fs.writeFileSync(settings, JSON.stringify(raw));
+  assert.equal((await pack(dir, 'youtube')).source.how, 'kept');
   // Once the project no longer passes check, the package from before is out of date.
   fs.writeFileSync(path.join(dir, 'scenes.js'), "export default { intro(s) { s.text('Wide', { x: 2600, y: 540, size: 60, at: 0 }); } };");
   const stale = await cli(['package', dir, '--platform', 'youtube']);

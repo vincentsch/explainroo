@@ -9,8 +9,8 @@ out.
 ```js
 export default {
   intro(s) {
-    s.title('How DNS works', { at: 0 });
-    s.icon('globe', { y: 700, at: 'browser' });
+    s.title('How DNS works', { y: s.safe.top + s.safe.h * 0.3, at: 0 });
+    s.icon('globe', { y: s.safe.top + s.safe.h * 0.7, size: s.safe.h * 0.25, at: 'browser' });
   },
 };
 ```
@@ -19,6 +19,33 @@ The canvas is 1920 x 1080 for 16:9. It is 1080 x 1920 for the vertical sizes,
 1080 x 1080 for square, and 1080 x 1350 for `instagram`, `linkedin` and 4:5.
 Positions are in pixels, counted from the top left corner. `x` and `y` are
 the center of an element unless the method says otherwise.
+
+## One layout for every size
+
+Place things from `s.safe`, the part of the frame that is free for content,
+and the same `scenes.js` works in 16:9 and on Reels. Side by side in a wide
+frame, stacked in a tall one:
+
+```js
+export default {
+  ask(s) {
+    const { left, top, w, h } = s.safe;
+    const u = Math.min(w, h) / 100;
+    const spots = s.portrait
+      ? [{ x: s.cx, y: top + h * 0.25 }, { x: s.cx, y: top + h * 0.75 }]
+      : [{ x: left + w * 0.25, y: s.cy }, { x: left + w * 0.75, y: s.cy }];
+    s.box('Your browser', { id: 'you', ...spots[0], size: u * 6, icon: 'globe', at: 0 });
+    s.box('Resolver', { id: 'res', ...spots[1], size: u * 6, icon: 'server', at: 'resolver' });
+    s.arrow('you', 'res', { label: 'asks', at: 'asks' });
+  },
+};
+```
+
+`s.safe.h` and `s.safe.w` are smaller on Shorts, TikTok and Reels, where the
+app covers parts of the frame, and with captions on. Sizes that come from
+them, like `u` here, shrink with the space. `explainroo docs sizes` says more,
+and `explainroo docs pictures` has whole layouts like this. The examples below
+use plain numbers for a 1920 x 1080 frame to keep them short.
 
 `explainroo docs pictures` says what makes a scene look good, and
 `explainroo docs troubleshooting` lists the mistakes that break one.
@@ -87,7 +114,9 @@ place the next thing below or beside them.
 | `color` | a color name (`blue`, `accent`, `ink`, `muted`, ...) or any CSS color |
 | `opacity`, `scale`, `rotate` | extra changes, `rotate` in degrees |
 | `float` | pixels of slow drift that keeps a still element alive |
-| `sfx` | the sound on entrance, or `false` |
+| `sfx` | the sound on entrance, `false` for none, or `true` for its usual sound after `s.quiet()` |
+| `overlap` | `true` when the shape may overlap other shapes, so `check` says nothing about it |
+| `camera` | `false` keeps the automatic camera from moving to it |
 
 `out` is when the exit starts, so an element is still fading while the next
 one comes in. To swap one label for another in the same place, give the old
@@ -165,14 +194,16 @@ s.path('M0 0 C 200 -150 400 150 600 0', { x: 660, y: 540, at: 3 });
 
 `s.arrow(from, to, options)` draws an arrow. `from` and `to` are `[x, y]`,
 `{ x, y }` or the `id` of an element drawn earlier. With an `id`, the arrow
-stops at the edge of that element. Options: `bend` (about -1 to 1), `head`
-(`end`, `start`, `both`, `none`), `label`, `labelSize`, `labelColor`,
-`labelFont` (the handwritten font by default; `'body'` suits `clean`),
-`labelOffset`, `labelSide`, `gap`, `dashed`, `width`, `headSize`.
-`s.connect` does the same.
+stops at the edge of that element. The label of an icon counts as part of the
+icon here, so an arrow leaves or reaches a labelled icon outside its label.
+Options: `bend` (about -1 to 1), `head` (`end`, `start`, `both`, `none`),
+`label`, `labelSize` (48, the size of body text), `labelColor`, `labelFont`
+(the handwritten font by default; `'body'` suits `clean`), `labelOffset`,
+`labelSide`, `gap`, `dashed`, `width`, `headSize`. `s.connect` does the same.
 
 A label sits above a straight arrow, left of a vertical one and on the outer
-side of a curve, `labelOffset` (34) away from the arrow's middle.
+side of a curve, `labelOffset` away from the arrow's middle: 44 for a label of
+48 pixels, and 34 for one of 34.
 `labelSide: 'left'`, `'right'`, `'above'` or `'below'` puts it on that side
 instead. The third arrow above is vertical, and its label goes to the right,
 for example because the left side is near the edge or full. `check` treats
@@ -250,7 +281,10 @@ s.annotate({ x: 960, y: 700, w: 400, h: 90 }, { type: 'circle', color: 'red', at
 
 `s.annotate(target, options)` marks an element or a box. `type` is
 `underline`, `circle`, `box`, `highlight`, `strike`, `cross` or `bracket`.
-Options: `color`, `padding`, `width`, `dur`.
+Options: `color`, `padding`, `width`, `dur`. An icon's `id` covers the icon
+without its label, so a circle around it can run through the label. `check`
+warns about that. Mark a box that holds both instead, like
+`s.annotate({ x, y, w, h })`.
 
 ## Lists, numbers and charts
 
@@ -348,8 +382,11 @@ Run `explainroo docs short-video` before you use it.
 Elements make a sound when they enter. The look picks the sound. Drawn lines
 scribble, cards pop, arrows whoosh, list items play rising notes, numbers
 tick, typing clicks, and scenes change with a swipe. `sfx: false` silences
-one element. `"sfx": "minimal"` in `video.json` keeps only the transitions
-and the sounds you add yourself.
+one element. `s.quiet()` at the top of a scene turns off the entrance sounds
+of everything after it in that scene, for example when twelve circles appear
+and one sound is enough. Give that one `sfx: true`. `"sfx": "minimal"` in
+`video.json` keeps only the transitions and the sounds you add yourself, and
+`sfx: true` there plays an element's usual sound too.
 
 `s.sfx(name, at, { gain, dur, pitch })` adds a sound: `pop`, `click`,
 `whoosh`, `swipe`, `tick`, `type`, `ding`, `chime`, `thud`, `scribble`,

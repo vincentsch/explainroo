@@ -4,11 +4,14 @@
 // the theme decides how they enter, and entering elements add sound effects.
 import { clamp, lerp, ease, easeFn, rand01, noise1, hashStr, mulberry32, suggest, normWord, withAlpha, contrast, mixColor, opaque } from './util.js';
 import { colorOf, tintOf, fontString } from './themes.js';
-import { scalePath, quadD, polyD, pathLength, pointAt, parsePath, absolutize } from './pathdata.js';
+import { scalePath, quadD, polyD, pathLength, pointAt, parsePath, absolutize, samplePath } from './pathdata.js';
 import { layoutText, lineStartX } from './text.js';
 import { clipFrame, clipURL, soundURL, FIT_SPEEDS } from './clips.js';
 import { highlightLine, codeTokens, matchTokens, resolveCodeSteps, codeMorphState } from './code.js';
+import { ring, bounds, along, rayThrough } from './geometry.js';
 
+// The size of body text, which s.text and arrow labels use unless told otherwise.
+export const TEXT_SIZE = 48;
 const DEFAULT_DUR = { draw: 0.9, write: 0.8, pop: 0.6, rise: 0.75, fade: 0.6, zoom: 0.75, drop: 0.75, grow: 1.0, none: 0.001, 'slide-left': 0.75, 'slide-right': 0.75, 'slide-up': 0.75, 'slide-down': 0.75 };
 const ENTERS = ['draw', 'write', 'type', 'words', 'sync', 'pop', 'rise', 'fade', 'zoom', 'drop', 'grow', 'none', 'slide-left', 'slide-right', 'slide-up', 'slide-down'];
 const EXITS = ['fade', 'pop', 'rise', 'drop', 'slide-left', 'slide-right', 'none'];
@@ -62,6 +65,15 @@ export class Stage {
     this._texts = 0;
     this._suppress = 0;
     this._camMoved = false;
+    // For check: groups and kit parts that are still arriving or leaving, the
+    // groups being drawn (outermost first) and the arrows drawn so far.
+    this._unsettled = 0;
+    this._groups = [];
+    this._groupCalls = 0;
+    this._arrowCalls = 0;
+    this._cover = 0;
+    // s.quiet() turns off the entrance sounds of the rest of the scene.
+    this._quiet = false;
   }
 
   // The UI kit for product demos (engine/ui.js): app cards, fields, buttons,
@@ -285,10 +297,14 @@ export class Stage {
       if (sc !== 1 || rad) box = { ...box, w: (Math.abs(box.w * Math.cos(rad)) + Math.abs(box.h * Math.sin(rad))) * sc, h: (Math.abs(box.w * Math.sin(rad)) + Math.abs(box.h * Math.cos(rad))) * sc };
       // _pendingExtra is already measured with the element's transform.
       if (this._pendingExtra) box = unionBox(box, this._pendingExtra);
-      this._attach(kind, at, out, box, this._pendingInfo);
+      // Its id tells the camera which arrows and marks belong to it, and
+      // camera: false keeps the camera from moving to it.
+      const info = { ...this._pendingInfo, ...(this._pendingId !== null && this._pendingId !== undefined ? { id: String(this._pendingId) } : {}), ...(o.camera === false ? { camera: false } : {}) };
+      this._attach(kind, at, out, box, info);
       this._pendingBox = null;
       this._pendingExtra = null;
       this._pendingInfo = null;
+      this._pendingId = null;
     }
     if (this._suppress > 0) return null;
     if (this.t < at) return null;
@@ -299,16 +315,67 @@ export class Stage {
     }
     const p = clamp((this.t - at) / dur);
     if ((p < 1 && enter !== 'none') || (q > 0 && q < 1)) this.engine.moving = true;
-    return { p, q, at, dur, enter, exit: o.exit ?? 'fade', local: this.t - at };
+    const life = { p, q, at, dur, enter, exit: o.exit ?? 'fade', local: this.t - at };
+    if (kind !== 'group') this._seen(kind, life);
+    return life;
   }
 
   _record(kind, at, dur, o, extra = {}) {
     const rec = this.engine.recorder;
     // Negative times mean "already on screen when the scene starts": no sound.
     if (!rec || at < 0) return;
-    let sfx = o.sfx === undefined ? (extra.sfx === undefined ? this.theme.sfx[kind] : extra.sfx) : o.sfx;
-    if (this.engine.sfxMode === 'minimal' && o.sfx === undefined) sfx = null;
+    // sfx: true asks for the element's usual sound, also where it would be off.
+    const usual = extra.sfx === undefined ? this.theme.sfx[kind] : extra.sfx;
+    let sfx = o.sfx === undefined || o.sfx === true ? usual : o.sfx;
+    if ((this.engine.sfxMode === 'minimal' || this._quiet) && o.sfx === undefined) sfx = null;
     rec.push({ kind, at, dur, sfx: sfx || null, gain: o.sfxGain ?? extra.gain ?? 1, pitch: extra.pitch, sustain: extra.sustain, key: `${kind}|${Math.round(at * 1000)}|${o.id ?? extra.label ?? ''}|${extra.pitch ?? ''}` });
+  }
+
+  // ---------- what check sees ----------
+
+  // While check samples a scene, engine.drawLog collects what each frame shows
+  // besides text: the shapes, the lines of arrows and annotations, and how many
+  // elements are on screen. Boxes are in design pixels, as drawn at that moment.
+
+  // Whether an element has fully arrived and isn't leaving, inside groups and
+  // kit parts that have too.
+  _settled(life) {
+    return Boolean(life) && (life.p >= 1 || life.enter === 'none') && life.q === 0 && this._unsettled === 0;
+  }
+
+  // Something other than the background is on screen.
+  _seen(kind, life = null) {
+    const log = this.engine.drawLog;
+    if (!log || this._suppress > 0 || this.ctx.globalAlpha <= 0.01) return;
+    log.shown++;
+    if (kind) log.lives.push({ kind, settled: life ? this._settled(life) : this._unsettled === 0 });
+  }
+
+  _designPoints(points) {
+    const m = this._matrix();
+    return points.map(([px, py]) => {
+      const p = m.transformPoint(new DOMPoint(px, py));
+      return [p.x, p.y];
+    });
+  }
+
+  // A shape for check: a box or, with `round`, an ellipse around x, y in the
+  // current transform. `o.overlap: true` says it may overlap other shapes.
+  _logShape(kind, { x = 0, y = 0, w, h, round = false }, settled, o = {}, name = '') {
+    const log = this.engine.drawLog;
+    if (!log || this._suppress > 0 || !(w > 0) || !(h > 0)) return;
+    this._seen(null);
+    const local = round ? ring(x, y, w / 2, h / 2) : [[x - w / 2, y - h / 2], [x + w / 2, y - h / 2], [x + w / 2, y + h / 2], [x - w / 2, y + h / 2]];
+    const poly = this._designPoints(local);
+    log.shapes.push({ kind, name: String(name ?? ''), poly, box: bounds(poly), settled, alpha: this.ctx.globalAlpha, group: this._groups[0] ?? null, overlap: o.overlap === true, cover: this._cover > 0, ui: this._ui ? this._ui._layer + 1 : 0, order: log.order++ });
+  }
+
+  // The drawn line of an arrow or an annotation for check, as points in the
+  // current transform.
+  _logStroke(kind, points, settled, extra = {}) {
+    const log = this.engine.drawLog;
+    if (!log || this._suppress > 0 || !points.length) return;
+    log.strokes.push({ kind, points: this._designPoints(points), settled, alpha: this.ctx.globalAlpha, order: log.order++, ...extra });
   }
 
   // Entrances move on a spring: they go a little past their place and settle
@@ -402,15 +469,18 @@ export class Stage {
     if (id !== undefined && id !== null) this._ids.set(String(id), box);
     // While the camera is planned, the next _life call gives this box its
     // timing.
-    if (this.engine.layoutLog) this._pendingBox = box;
+    if (this.engine.layoutLog) {
+      this._pendingBox = box;
+      this._pendingId = id;
+    }
     return box;
   }
 
   // Records an element's place and timing for the automatic camera. x, y is
   // the center in local coordinates.
-  _logLayout(kind, at, out, x, y, w, h) {
+  _logLayout(kind, at, out, x, y, w, h, extra = null) {
     if (!this.engine.layoutLog) return;
-    this._attach(kind, at, out, this._designBox(x, y, w, h));
+    this._attach(kind, at, out, this._designBox(x, y, w, h), extra);
   }
 
   // A box inside an element drawn at (ax, ay), in scene coordinates, with
@@ -505,10 +575,19 @@ export class Stage {
   _logText(entry) {
     const log = this.engine.textLog;
     if (!log) return;
+    this._seen(null);
     const m = this._matrix();
     const pts = [[entry.x0, entry.y0], [entry.x1, entry.y0], [entry.x1, entry.y1], [entry.x0, entry.y1]].map(([px, py]) => m.transformPoint(new DOMPoint(px, py)));
     const scale = Math.hypot(m.a, m.b);
+    const drawn = this.engine.drawLog;
     log.push({
+      // Whether it has fully arrived, the color of its *starred* words, the
+      // option that sets its color, the arrow it labels and when it was drawn.
+      settled: entry.settled ?? this._unsettled === 0,
+      mark: entry.mark ?? null,
+      option: entry.option ?? null,
+      owner: entry.owner ?? null,
+      order: drawn ? drawn.order++ : 0,
       scene: this.id,
       t: this.t,
       text: entry.text,
@@ -561,6 +640,13 @@ export class Stage {
     ctx.fillRect(0, 0, this.W, this.H);
     ctx.restore();
     this._page = { top: fill, bottom: fill };
+  }
+
+  // Turns off the entrance sounds of everything drawn after it in this scene,
+  // so call it at the top. An element with sfx: true or a sound name of its
+  // own still plays, and so do s.sfx and s.sound.
+  quiet() {
+    this._quiet = true;
   }
 
   sfx(name, at, o = {}) {
@@ -619,6 +705,8 @@ export class Stage {
   // as one piece. Times inside stay scene times.
   group(o, fn) {
     if (typeof o === 'function') [o, fn] = [{}, o];
+    // check counts what a group holds as one piece, so its shapes may overlap.
+    const serial = ++this._groupCalls;
     const life = this._life(o, 'group', { enter: o.enter ?? 'none', sfx: null, dur: o.dur });
     const planning = Boolean(this.engine.layoutLog);
     if (planning) (this._spans ??= []).push({ at: this.time(o.at ?? 0), out: o.out === undefined ? Infinity : this.time(o.out) });
@@ -640,7 +728,14 @@ export class Stage {
         return;
       }
       this._push(o.x ?? 0, o.y ?? 0, life, o);
-      try { fn(this); } finally { this.ctx.restore(); }
+      const moving = (life.p < 1 && life.enter !== 'none') || life.q > 0;
+      if (moving) this._unsettled++;
+      this._groups.push(serial);
+      try { fn(this); } finally {
+        this._groups.pop();
+        if (moving) this._unsettled--;
+        this.ctx.restore();
+      }
     } finally {
       if (planning) this._spans.pop();
     }
@@ -734,7 +829,7 @@ export class Stage {
     const ctx = this.ctx;
     const role = o.font ?? 'body';
     if (!th.fonts[role]) throw new SceneError(`font "${role}" is not one of display, body, hand, mono`);
-    const size = o.size ?? 48;
+    const size = o.size ?? TEXT_SIZE;
     const weight = o.weight ?? (o.bold ? BOLD[role] ?? 700 : undefined);
     const font = fontString(th, role, size, weight);
     const align = o.align ?? 'center';
@@ -857,7 +952,8 @@ export class Stage {
         for (const w of line.words) drawWord(w, lx0 + w.x, oy + line.y, a);
       });
     }
-    this._logText({ text: plain, x0: ox, y0: oy, x1: -ox, y1: -oy, size, fg: color, bg: o.bg ? colorOf(th, o.bg === true ? 'surface' : o.bg) : null });
+    const marked = o.bg && lay.lines.some((line) => line.words.some((w) => w.accent));
+    this._logText({ text: plain, x0: ox, y0: oy, x1: -ox, y1: -oy, size, fg: color, bg: o.bg ? colorOf(th, o.bg === true ? 'surface' : o.bg) : null, settled: this._settled(life), mark: marked ? accent : null });
     ctx.restore();
     return g;
   }
@@ -914,7 +1010,7 @@ export class Stage {
       const path = scalePath(d, unit, -w / 2 - vx * unit, -h / 2 - vy * unit);
       this.pen.draw(ctx, { kind: 'path', d: path }, { stroke: draw && life.p < 1 ? color : 'none', width: Math.max(0.7, size / 72), fill: color, rough: false }, { stroke, fill });
     }
-    this._logText({ text: tex, x0: -w / 2, y0: -h / 2, x1: w / 2, y1: h / 2, size, fg: color, bg: null });
+    this._logText({ text: tex, x0: -w / 2, y0: -h / 2, x1: w / 2, y1: h / 2, size, fg: color, bg: null, settled: this._settled(life) });
     ctx.restore();
     return g;
   }
@@ -947,6 +1043,8 @@ export class Stage {
     const life = this._life(o, 'shape', { label: plain.slice(0, 40) || o.icon });
     if (!life) return g;
     this._push(x, y, life, o);
+    const settled = this._settled(life);
+    this._logShape('box', { w, h, round: shape === 'ellipse' || shape === 'circle' }, settled, o, plain || o.id);
     const prog = this._drawProgress(life);
     const stroke = colorOf(th, o.stroke ?? o.color, 'ink');
     const fill = o.fill !== undefined ? colorOf(th, o.fill) : o.color ? tintOf(th, o.color) : th.surface;
@@ -963,14 +1061,16 @@ export class Stage {
       ctx.textAlign = 'left';
       const ty = top + iconSize + gapIL;
       const accent = colorOf(th, o.mark ?? 'accent');
+      let marked = false;
       for (const line of lay.lines) {
         const lx = -lay.width / 2 + (lay.width - line.width) / 2;
         for (const wd of line.words) {
           ctx.fillStyle = wd.accent ? accent : textColor;
           ctx.fillText(wd.text, lx + wd.x, ty + line.y);
+          marked ||= Boolean(wd.accent);
         }
       }
-      this._logText({ text: plain, x0: -lay.width / 2, y0: ty, x1: lay.width / 2, y1: ty + lay.height, size, fg: textColor, bg: fill });
+      this._logText({ text: plain, x0: -lay.width / 2, y0: ty, x1: lay.width / 2, y1: ty + lay.height, size, fg: textColor, bg: fill, settled, mark: marked ? accent : null });
     }
     ctx.globalAlpha = prevA;
     ctx.restore();
@@ -991,7 +1091,7 @@ export class Stage {
       const ys = pts.map((p) => p[1]);
       // A line thick enough to read as a bar is a shape the camera keeps whole.
       const thick = (o.width ?? th.stroke.width) >= 10;
-      this._logLayout(thick ? 'shape' : 'line', this.time(o.at ?? 0), o.out === undefined ? Infinity : this.time(o.out), (Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2, Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+      this._logLayout(thick ? 'shape' : 'line', this.time(o.at ?? 0), o.out === undefined ? Infinity : this.time(o.out), (Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2, Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), o.camera === false ? { camera: false } : null);
     }
     if (!life) return;
     this.ctx.save();
@@ -1015,7 +1115,7 @@ export class Stage {
         const xs = pts.map((q) => q[0] + (o.x ?? 0));
         const ys = pts.map((q) => q[1] + (o.y ?? 0));
         // A closed or filled path is a shape; an open one is a line.
-        this._logLayout(/z/i.test(d) || o.fill ? 'shape' : 'line', this.time(o.at ?? 0), o.out === undefined ? Infinity : this.time(o.out), (Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2, Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+        this._logLayout(/z/i.test(d) || o.fill ? 'shape' : 'line', this.time(o.at ?? 0), o.out === undefined ? Infinity : this.time(o.out), (Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2, Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), o.camera === false ? { camera: false } : null);
       }
     }
     if (!life) return;
@@ -1029,12 +1129,19 @@ export class Stage {
   arrow(from, to, o = {}) {
     if (o.labelSide !== undefined && !Object.hasOwn(LABEL_SIDES, o.labelSide)) throw new SceneError(`arrow: labelSide "${o.labelSide}" is not one of ${Object.keys(LABEL_SIDES).join(', ')}`);
     const th = this.theme;
+    // Arrows are always drawn, so the n-th arrow of a scene is the same arrow at
+    // every moment; its label and the camera's records carry the number.
+    const serial = ++this._arrowCalls;
     const A = this._point(from);
     const B = this._point(to);
     const gap = o.gap ?? 14;
-    const a = typeof from === 'string' ? this._edge(A, B, gap) : A;
-    const b = typeof to === 'string' ? this._edge(B, A, gap) : B;
+    let a = typeof from === 'string' ? this._edge(A, B, gap) : A;
+    let b = typeof to === 'string' ? this._edge(B, A, gap) : B;
     if (typeof from === 'string' && typeof to !== 'string') Object.assign(a, this._edge(A, b, gap));
+    // An icon's label belongs to the icon here, so the arrow leaves and
+    // arrives outside it.
+    if (typeof from === 'string') a = this._pastLabel(from, a, A, B, gap);
+    if (typeof to === 'string') b = this._pastLabel(to, b, B, A, gap);
     const bend = o.bend ?? 0;
     const dx = b.x - a.x;
     const dy = b.y - a.y;
@@ -1046,7 +1153,10 @@ export class Stage {
       const ys = [a.y, b.y, c.y];
       const at = this.time(o.at ?? 0);
       const out = o.out === undefined ? Infinity : this.time(o.out);
-      this._logLayout('arrow', at, out, (Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2, Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+      // What it points at, so a shot that moves to one of them takes the arrow in.
+      const ends = [typeof from === 'string' ? from : null, typeof to === 'string' ? to : null];
+      const tips = this._designPoints([[a.x, a.y], [b.x, b.y]]);
+      this._logLayout('arrow', at, out, (Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2, Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), { serial, ends, tips });
       // The line may run off the edge of a close-up, but its label is text,
       // so the camera keeps it whole. A label outside the frame is never
       // seen, so the camera leaves it alone.
@@ -1054,7 +1164,7 @@ export class Stage {
         const label = this._arrowLabel(o, d, a, b, bend);
         const box = this._textExtent([{ text: String(o.label), x: label.x, y: label.y, font: label.font }]);
         const seen = box.x + box.w / 2 > 0 && box.x - box.w / 2 < this.W && box.y + box.h / 2 > 0 && box.y - box.h / 2 < this.H;
-        if (seen) this._attach('label', at, out, box);
+        if (seen) this._attach('label', at, out, box, { serial });
       }
     }
     const result = { from: a, to: b, control: c };
@@ -1071,21 +1181,31 @@ export class Stage {
     const head = o.head ?? 'end';
     const hs = o.headSize ?? width * 3.2 + 12;
     const L = pathLength(d);
-    const drawHead = (dist, dir) => {
+    const headAt = (dist, dir) => {
       const tip = pointAt(d, dist);
       const back = pointAt(d, Math.max(0, Math.min(L, dist - dir * Math.min(12, L / 3))));
       const ang = Math.atan2(tip.y - back.y, tip.x - back.x);
       const s1 = [tip.x - hs * Math.cos(ang - 0.5), tip.y - hs * Math.sin(ang - 0.5)];
       const s2 = [tip.x - hs * Math.cos(ang + 0.5), tip.y - hs * Math.sin(ang + 0.5)];
+      return [s1, [tip.x, tip.y], s2];
+    };
+    const drawHead = (dist, dir) => {
+      const points = headAt(dist, dir);
       if (th.stroke.rough) {
-        this.pen.draw(ctx, { kind: 'poly', points: [s1, [tip.x, tip.y], s2] }, { stroke: color, width, seed: seed + 7, single: true, roughness: 0.6 }, { stroke: 1, fill: 1 });
+        this.pen.draw(ctx, { kind: 'poly', points }, { stroke: color, width, seed: seed + 7, single: true, roughness: 0.6 }, { stroke: 1, fill: 1 });
       } else {
-        this.pen.draw(ctx, { kind: 'poly', points: [s1, [tip.x, tip.y], s2], close: true }, { stroke: color, width: width * 0.6, fill: color, seed, glow: o.glow ?? 0 }, { stroke: 1, fill: 1 });
+        this.pen.draw(ctx, { kind: 'poly', points, close: true }, { stroke: color, width: width * 0.6, fill: color, seed, glow: o.glow ?? 0 }, { stroke: 1, fill: 1 });
       }
     };
     if (L > 1 && prog > 0.02) {
       if (head === 'end' || head === 'both') drawHead(L * prog, 1);
       if ((head === 'start' || head === 'both') && prog > 0.2) drawHead(0.001, -1);
+    }
+    // check sees the whole line once it is drawn, heads included.
+    if (this.engine.drawLog && L > 1 && prog >= 1) {
+      const heads = [...(head === 'end' || head === 'both' ? [headAt(L, 1)] : []), ...(head === 'start' || head === 'both' ? [headAt(0.001, -1)] : [])];
+      const end = (v, p) => (typeof v === 'string' ? `"${v}"` : `${Math.round(p.x)},${Math.round(p.y)}`);
+      this._logStroke('arrow', [...samplePath(d), ...heads.flatMap((h) => along(h))], this._settled(life), { serial, name: `the arrow from ${end(from, a)} to ${end(to, b)}` });
     }
     if (o.label) {
       const la = clamp((life.p - 0.55) / 0.35);
@@ -1098,12 +1218,29 @@ export class Stage {
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(String(o.label), lx, ly);
-        this._logText({ text: String(o.label), x0: lx - w / 2, y0: ly - ls / 2, x1: lx + w / 2, y1: ly + ls / 2, size: ls, fg: ctx.fillStyle, bg: null });
+        this._logText({ text: String(o.label), x0: lx - w / 2, y0: ly - ls / 2, x1: lx + w / 2, y1: ly + ls / 2, size: ls, fg: ctx.fillStyle, bg: null, owner: serial, settled: la >= 1 && this._settled(life) });
         ctx.restore();
       }
     }
     ctx.restore();
     return result;
+  }
+
+  // Where an arrow from an icon with a label starts, or where one to it ends:
+  // `end` on the icon's edge, unless the line from the icon's middle toward
+  // `toward` runs through the label. Then it starts past the label, `gap` away.
+  _pastLabel(id, end, center, toward, gap) {
+    const label = this._ids.get(String(id))?.label;
+    if (!label) return end;
+    const L = this._fromDesign(label);
+    const dx = toward.x - center.x;
+    const dy = toward.y - center.y;
+    const len = Math.hypot(dx, dy);
+    if (len < 1e-6) return end;
+    const hit = rayThrough(center, dx / len, dy / len, { x0: L.left - gap, y0: L.top - gap, x1: L.right + gap, y1: L.bottom + gap });
+    const from = Math.hypot(end.x - center.x, end.y - center.y);
+    if (!hit || hit[1] <= from || hit[0] >= len) return end;
+    return { x: center.x + (dx / len) * hit[1], y: center.y + (dy / len) * hit[1] };
   }
 
   // Where an arrow's label goes: on the side `labelSide` names, or else on the
@@ -1131,8 +1268,9 @@ export class Stage {
         ny = -ny;
       }
     }
-    const off = o.labelOffset ?? 34;
-    const size = o.labelSize ?? 34;
+    const size = o.labelSize ?? TEXT_SIZE;
+    // 34 for a 34 pixel label, as before body size was the default, and 44 for 48.
+    const off = o.labelOffset ?? Math.round(size * 0.7 + 10);
     const font = fontString(this.theme, o.labelFont ?? 'hand', size);
     this.ctx.save();
     this.ctx.font = font;
@@ -1162,6 +1300,21 @@ export class Stage {
     return v;
   }
 
+  // The box the lines of an icon fill when it is drawn `size` wide around 0,0,
+  // for check. Icons leave a little room around their lines.
+  _glyphBox(name, size, weight = 2) {
+    const cache = (this.engine.glyphBoxes ??= new Map());
+    let b = cache.get(name);
+    if (!b) {
+      b = bounds((this.engine.icons[name] ?? []).flatMap((d) => samplePath(d, 0.5)));
+      if (!Number.isFinite(b.x0)) b = { x0: 0, y0: 0, x1: 24, y1: 24 };
+      cache.set(name, b);
+    }
+    const k = size / 24;
+    const half = (weight * k) / 2;
+    return { x: ((b.x0 + b.x1) / 2 - 12) * k, y: ((b.y0 + b.y1) / 2 - 12) * k, w: (b.x1 - b.x0) * k + half * 2, h: (b.y1 - b.y0) * k + half * 2 };
+  }
+
   _iconAt(name, x, y, size, color, stroke = 1, seed = 1, weight) {
     const paths = this._iconPaths(name, size);
     const th = this.theme;
@@ -1181,23 +1334,29 @@ export class Stage {
     const x = o.x ?? this.cx;
     const y = o.y ?? this.cy;
     const bgSize = o.bg ? size * (o.bgScale ?? 1.7) : size;
-    this._register(o.id, x, y, bgSize, bgSize, o.bg === 'square' ? 'rect' : o.bg ? 'ellipse' : 'rect');
+    const box = this._register(o.id, x, y, bgSize, bgSize, o.bg === 'square' ? 'rect' : o.bg ? 'ellipse' : 'rect');
     // Nor has an icon without a label.
     if (this.engine.layoutLog && !o.label) this._pendingInfo = { bare: true };
-    if (this.engine.layoutLog && o.label) {
-      // The label belongs to the icon for the camera, not for arrows.
+    if (o.label) {
       const ls = o.labelSize ?? 36;
       this.ctx.save();
       this.ctx.font = fontString(th, o.labelFont ?? 'body', ls, BOLD[o.labelFont ?? 'body']);
       const lw = this.ctx.measureText(String(o.label)).width;
       this.ctx.restore();
-      this._pendingExtra = this._elementBox(o, x, y, x, y + bgSize / 2 + ls * 0.45 + ls / 2, lw, ls * 1.1);
+      const ly = y + bgSize / 2 + ls * 0.45 + ls / 2;
+      // The label belongs to the icon for the camera, and for arrows, which
+      // leave and arrive outside it, but not for s.get().
+      if (o.id !== undefined && o.id !== null) this._ids.set(String(o.id), { ...box, label: this._designBox(x, ly, lw, ls * 1.1) });
+      if (this.engine.layoutLog) this._pendingExtra = this._elementBox(o, x, y, x, ly, lw, ls * 1.1);
     }
     this._iconPaths(name, size);
     const life = this._life(o, 'icon', { label: name });
     const g = geom(x, y, bgSize, bgSize);
     if (!life) return g;
     this._push(x, y, life, o);
+    const settled = this._settled(life);
+    // check compares what is drawn: the background, or else the lines of the icon.
+    this._logShape('icon', o.bg ? { w: bgSize, h: bgSize, round: o.bg !== 'square' } : this._glyphBox(name, size, o.weight), settled, o, name);
     const prog = this._drawProgress(life);
     const color = colorOf(th, o.color, 'ink');
     if (o.bg) {
@@ -1218,7 +1377,7 @@ export class Stage {
       const ly = bgSize / 2 + ls * 0.45;
       ctx.fillText(String(o.label), 0, ly);
       const w = ctx.measureText(String(o.label)).width;
-      this._logText({ text: String(o.label), x0: -w / 2, y0: ly, x1: w / 2, y1: ly + ls, size: ls, fg: ctx.fillStyle, bg: null });
+      this._logText({ text: String(o.label), x0: -w / 2, y0: ly, x1: w / 2, y1: ly + ls, size: ls, fg: ctx.fillStyle, bg: null, settled });
       ctx.restore();
     }
     this.ctx.restore();
@@ -1277,6 +1436,7 @@ export class Stage {
     const g = geom(x, y, fw, fh);
     if (!life) return g;
     this._push(x, y, life, o);
+    this._logShape('image', { w: fw, h: fh }, this._settled(life), o, src);
     const ctx = this.ctx;
     const r = o.radius ?? (frame === 'phone' ? 46 : th.radius);
     if (frame === 'phone') {
@@ -1352,10 +1512,33 @@ export class Stage {
     const w = b.w + pad * 2;
     const h = b.h + pad * 2;
     const life = this._life(o, 'annotate', { enter: 'draw', dur: o.dur ?? (type === 'circle' ? 0.8 : 0.6), label: type });
+    // Where the mark's line runs, around the target's middle. A highlight is a
+    // fill over its target, with no line.
+    const line = () => {
+      const yy = h / 2 - pad * 0.4;
+      switch (type) {
+        case 'underline': return samplePath(`M${-w / 2} ${yy}Q0 ${yy + 8} ${w / 2} ${yy - 4}`);
+        case 'circle': return along([...ring(0, 0, w * 0.56, h * 0.625, 48), [w * 0.56, 0]]);
+        case 'box': return along([[-w / 2, -h / 2], [w / 2, -h / 2], [w / 2, h / 2], [-w / 2, h / 2], [-w / 2, -h / 2]]);
+        case 'strike': return along([[-w / 2, 4], [w / 2, -4]]);
+        case 'cross': return [...along([[-w / 2, -h / 2], [w / 2, h / 2]]), ...along([[w / 2, -h / 2], [-w / 2, h / 2]])];
+        case 'bracket': return along([[-w / 2 + 16, -h / 2], [-w / 2, -h / 2], [-w / 2, h / 2], [-w / 2 + 16, h / 2]]);
+        default: return [];
+      }
+    };
+    if (this.engine.layoutLog && type !== 'highlight') {
+      // The camera keeps a mark with what it marks.
+      const r = bounds(line());
+      if (Number.isFinite(r.x0)) this._attach('annotate', this.time(o.at ?? 0), o.out === undefined ? Infinity : this.time(o.out), this._designBox(b.x + (r.x0 + r.x1) / 2, b.y + (r.y0 + r.y1) / 2, r.x1 - r.x0, r.y1 - r.y0), { ends: [typeof target === 'string' ? target : null], around: this._designBox(b.x, b.y, b.w, b.h) });
+    }
     if (!life) return;
     const ctx = this.ctx;
     ctx.save();
     ctx.translate(b.x, b.y);
+    if (this.engine.drawLog && type !== 'highlight' && life.p >= 1) {
+      const t = this._designBox(0, 0, b.w, b.h);
+      this._logStroke('annotate', line(), this._settled(life), { target: { x0: t.x - t.w / 2, y0: t.y - t.h / 2, x1: t.x + t.w / 2, y1: t.y + t.h / 2 }, name: `the ${type} around ${typeof target === 'string' ? `"${target}"` : `${Math.round(b.x)},${Math.round(b.y)}`}` });
+    }
     const prog = ease.inOut(life.p);
     const qa = life.q > 0 ? 1 - ease.in(life.q) : 1;
     ctx.globalAlpha *= qa;
@@ -1770,6 +1953,7 @@ export class Stage {
     }
     if (!life) return geom(x, y, w, h);
     this._push(x, y, life, o);
+    this._logShape('code', { w, h }, this._settled(life), o, o.title || 'code');
     this.pen.draw(ctx, { kind: 'rect', w, h, r: Math.min(th.radius, 18) }, { fill: C.bg, stroke: th.stroke.rough ? C.border : 'none', width: th.stroke.width * 0.8, seed: this._seed('codebg', o), shadow: this._shadow(undefined, { color: 'rgba(0,0,0,0.2)', blur: 24, y: 10 }), rough: th.stroke.rough, fillStyle: 'solid' }, { stroke: 1, fill: 1 });
     const left = -w / 2 + pad;
     const top = -h / 2 + barH + pad * 0.8;
@@ -1945,6 +2129,7 @@ export class Stage {
     }
     if (!life) return geom(x, y, w, h);
     this._push(x, y, life, o);
+    this._logShape('terminal', { w, h }, this._settled(life), o, o.title ?? 'terminal');
     this.pen.draw(ctx, { kind: 'rect', w, h, r: Math.min(th.radius, 16) }, { fill: T.bg, stroke: th.stroke.rough ? th.ink : 'none', width: th.stroke.width * 0.8, seed: this._seed('termbg', o), shadow: this._shadow(undefined, { color: 'rgba(0,0,0,0.22)', blur: 26, y: 10 }), rough: th.stroke.rough, fillStyle: 'solid' }, { stroke: 1, fill: 1 });
     ctx.save();
     const clip = new Path2D();

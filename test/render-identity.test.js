@@ -173,3 +173,14 @@ test('each finished render adds a line with its range, scale and identity, and v
   assert.notEqual(identity(dir).identity, one.identity);
   assert.equal(fs.existsSync(path.join(dir, 'history/jobs')), false);
 });
+
+test('the cover is left out of the identity, since it is a picture next to the video', (t) => {
+  const dir = makeProject(t);
+  const base = identity(dir).identity;
+  for (const cover of ['first@end', '0.5', 'first@0.2']) {
+    fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ size: '320x180', fps: 24, cover }));
+    assert.equal(identity(dir).identity, base, cover);
+  }
+  fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ size: '320x180', fps: 24, cover: 'first@0.2', captions: true }));
+  assert.notEqual(identity(dir).identity, base);
+});

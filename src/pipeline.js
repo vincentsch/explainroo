@@ -87,10 +87,13 @@ export function renderingCodeHash(root = ROOT, version = VERSION) {
 // only has to reload files in the page: it misses helpers in subfolders and the
 // engine's own code. Narration stays out of this, so a new engine version renders
 // frames again and makes no voice again.
+// The cover is a picture next to the video, so a new cover leaves the video's
+// identity as it is, and package makes only the new cover.
 export function renderIdentity(project, timeline) {
   const skip = (name, folder) => name === 'node_modules' || name.startsWith('.') || (!folder && NOT_SCRIPTS.has(name));
   const scripts = filesUnder(project.dir, '', skip).filter((f) => /\.m?js$/.test(f));
-  const hash = crypto.createHash('sha256').update(makeState(project, timeline).version).update('\0').update(renderingCodeHash()).update('\0');
+  const { cover, ...frames } = project.config;
+  const hash = crypto.createHash('sha256').update(makeState({ ...project, config: frames }, timeline).version).update('\0').update(renderingCodeHash()).update('\0');
   return hashFiles(hash, project.dir, scripts).digest('hex').slice(0, 32);
 }
 

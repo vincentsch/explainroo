@@ -174,34 +174,25 @@ test('package uses the platform\'s own block first, and a project without blocks
   assert.deepEqual(packageOverrides(tiktok, 'tiktok'), { watermark: false }, 'the project\'s own size stays, with its block');
 });
 
-test('an automatic cover is 1.0 second into the first scene for the tall sizes, and at its end for the others', (t) => {
+test('an automatic cover is worked out in the page at every size, and a cover that is set wins', (t) => {
   const dir = project(t);
-  const timeline = (overrides) => {
-    const p = loadProject(dir, overrides);
-    return { p, timeline: buildTimeline(p, {}) };
-  };
-  for (const size of ['shorts', 'tiktok', 'reels', 'vertical']) {
-    const { p, timeline: tl } = timeline({ size });
-    assert.equal(coverSpec(p.config, tl), 'intro@1.0', size);
-    assert.equal(planExtras(p, tl).coverTime.T, 1, size);
+  for (const size of ['shorts', 'tiktok', 'reels', 'vertical', 'youtube', '16:9', 'square', '1:1', 'linkedin', 'instagram', '4:5', '9:16', '1080x1920']) {
+    const p = loadProject(dir, { size });
+    const tl = buildTimeline(p, {});
+    assert.equal(coverSpec(p.config), 'auto', size);
+    assert.deepEqual(planExtras(p, tl).coverTime, { auto: true, T: null, label: 'auto' }, size);
   }
-  for (const size of ['youtube', '16:9', 'square', '1:1', 'linkedin', 'instagram', '4:5', '9:16', '1080x1920']) {
-    const { p, timeline: tl } = timeline({ size });
-    assert.equal(coverSpec(p.config, tl), 'intro@end', size);
-    assert.equal(planExtras(p, tl).coverTime.T, 2.7, size);
-  }
-  // A first scene shorter than a second and a bit gives its last frame.
-  const short = project(t, { size: 'tiktok' });
-  fs.writeFileSync(path.join(short, 'script.md'), '# Test\n## intro {min=1}\n## outro {min=2}\n');
-  const p = loadProject(short);
-  const tl = buildTimeline(p, {});
-  assert.equal(tl.scenes[0].dur, 1);
-  assert.equal(planExtras(p, tl).coverTime.T, resolveTimes(tl, ['intro@5'])[0].T);
-  assert.ok(planExtras(p, tl).coverTime.T < 1);
   // A cover at the top or in a block wins over "auto".
   const set = project(t, { cover: 'outro@0.5', sizes: { reels: { cover: 'intro@2' } } });
   assert.equal(planExtras(loadProject(set, { size: 'tiktok' }), buildTimeline(loadProject(set, { size: 'tiktok' }), {})).coverTime.T, 3.5);
   assert.equal(planExtras(loadProject(set, { size: 'reels' }), buildTimeline(loadProject(set, { size: 'reels' }), {})).coverTime.T, 2);
+  // A cover past the end of its scene gives the scene's last frame.
+  const short = project(t, { cover: 'intro@5' });
+  fs.writeFileSync(path.join(short, 'script.md'), '# Test\n## intro {min=1}\n## outro {min=2}\n');
+  const p = loadProject(short);
+  const tl = buildTimeline(p, {});
+  assert.equal(planExtras(p, tl).coverTime.T, resolveTimes(tl, ['intro@5'])[0].T);
+  assert.ok(planExtras(p, tl).coverTime.T < 1);
 });
 
 test('formats prints the content area with and without the watermark, the same areas check uses', (t) => {

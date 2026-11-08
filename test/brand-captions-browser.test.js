@@ -1,5 +1,5 @@
 // brand.accent colors the spoken word in normal captions, in real stills: a look
-// file with caption colors wins, a dark accent keeps the look's highlight with a
+// file with caption colors wins, a dark accent keeps its hue made lighter with a
 // hint from check, bold captions keep their palette, and the built-in look that
 // every engine in a page shares never changes.
 import test from 'node:test';
@@ -29,6 +29,8 @@ const COLORS = {
   look: (r, g, b) => r > 110 && r < 135 && g > 150 && g < 175 && b > 245,
   green: (r, g, b) => r < 90 && g > 165 && b > 55 && b < 135,
   yellow: (r, g, b) => r > 220 && g > 180 && b < 110,
+  // #94a9e8, the dark blue below made lighter.
+  tinted: (r, g, b) => r > 135 && r < 160 && g > 158 && g < 182 && b > 220 && b < 245,
 };
 // clean's own highlight, which the look counter above finds.
 assert.equal(THEMES.clean.caption.active, '#7aa2ff');
@@ -85,15 +87,16 @@ test('a look file with caption colors wins over brand.accent', { skip, timeout: 
   assert.ok(brand.orange.band > 150, `the brand's orange: ${JSON.stringify(brand)}`);
 });
 
-test('a dark accent keeps the look\'s highlight, and check says why in a hint', { skip, timeout: 240000 }, async (t) => {
+test('a dark accent keeps its hue, made lighter until it reads, and check names that color in a hint', { skip, timeout: 240000 }, async (t) => {
   const dir = bakery(t, { brand: { accent: '#1e3a8a' } });
   const counts = await colorsIn(dir);
-  assert.ok(counts.look.band > 150, `the look's highlight stays: ${JSON.stringify(counts)}`);
+  assert.ok(counts.tinted.band > 150, `the lighter blue: ${JSON.stringify(counts)}`);
+  assert.equal(counts.look.band, 0, 'not the look\'s highlight');
   const r = await cli(['check', dir, '--json']);
   assert.equal(r.code, 0, r.text);
   const hints = JSON.parse(r.stdout).issues.filter((i) => i.message.includes('brand.accent'));
   assert.deepEqual(hints.map((i) => [i.level, i.scene]), [['hint', null]]);
-  assert.match(hints[0].message, /^brand\.accent #1e3a8a is hard to read on the caption background \(1\.\d:1, below 3:1\), so captions keep the look's highlight #7aa2ff$/);
+  assert.equal(hints[0].message, 'brand.accent #1e3a8a is hard to read on the caption background (1.0:1, below 3:1), so captions use #94a9e8, the same hue made lighter, at 4.5:1');
   // A readable accent gets no hint.
   fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ ...SETTINGS, brand: { accent: ORANGE } }));
   const fine = await cli(['check', dir, '--json']);
