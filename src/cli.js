@@ -32,6 +32,7 @@ import { formatShare, share } from './share.js';
 import { formatPublish, publish } from './publish.js';
 
 // Paid voices that can list what a key may use, each with its own flag.
+import { COMMAND_HELP, commandHelp } from './help.js';
 const LISTS_VOICES = CONNECTORS.filter((c) => c.voices);
 
 const HELP = `explainroo ${VERSION}: narrated explainer videos from code
@@ -120,6 +121,8 @@ Reference
 Options: --size <size> and --no-watermark override video.json for preview, still, sheet, check, render and export.
          Their outputs get a suffix, like video-tiktok.mp4, player-tiktok/ or video-no-watermark.mp4. --out still wins.
          "sizes" in video.json sets captions, cover, pace, watermark and targetSeconds for one size, see "docs sizes".
+"explainroo <command> --help" prints the options of one command and an example.
+
          --lang es picks the version from script.es.md, for voice, preview, still, sheet, check, render, verify,
          export, package, share and publish. It builds into build/es/ and writes to out/es/.
          --json for machine-readable output. The project defaults to the current folder.
@@ -171,7 +174,9 @@ export async function main(argv) {
     return 0;
   }
   if (!cmd || cmd === 'help' || flags.help) {
-    process.stdout.write(HELP + '\n');
+    // "still --help" and "help still" print the help of that command.
+    const name = cmd === 'help' ? pos[0] : cmd;
+    process.stdout.write(`${name && Object.hasOwn(COMMAND_HELP, name) ? commandHelp(name) : HELP}\n`);
     return 0;
   }
 

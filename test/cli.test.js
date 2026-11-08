@@ -206,3 +206,21 @@ test('a scene without a function lists every such scene of script.md with a stub
   assert.match(r.err, /scenes\.js has no function for the scenes "prompt", "outro-2" of script\.md\. scenes\.js has "steps", which no scene in script\.md uses\. Rename it, or add these to the object that scenes\.js exports:\n {2}prompt\(s\) \{\n {4}s\.text\('prompt', \{ y: s\.safe\.top \+ s\.safe\.h \/ 2, at: 0 \}\);\n {2}\},\n {2}"outro-2"\(s\) \{/);
 });
 
+// Each command has help of its own, and "help <command>" prints the same.
+test('every command prints its own usage, options and one example with --help', async (t) => {
+  const { COMMAND_HELP } = await import('../src/help.js');
+  const source = fs.readFileSync(new URL('../src/cli.js', import.meta.url), 'utf8');
+  const cases = [...source.matchAll(/^ {6}case '([a-z]+)':/gm)].map((m) => m[1]);
+  assert.deepEqual(cases.filter((c) => !Object.hasOwn(COMMAND_HELP, c)), [], 'every command has help');
+  const still = await runAll(['still', '--help']);
+  assert.equal(still.code, 0);
+  assert.match(still.out, /^Usage: explainroo still \[project\] \[time…\] \[options\]\n\nWrites PNG stills/);
+  assert.match(still.out, /^ {2}--platform <name> {2}the size, its block in "sizes" and the watermark rule that "package --platform <name>" uses$/m);
+  assert.match(still.out, /^Example:\n {2}explainroo still videos\/how-dns-works intro@2\.4 resolver@end\n$/m);
+  assert.equal((await runAll(['help', 'still'])).out, still.out);
+  assert.match((await runAll(['words', '-h'])).out, /^Usage: explainroo words \[project\] \[scene\] \[options\]/);
+  // Without a command, or with an unknown one, the general help.
+  assert.match((await runAll(['--help'])).out, /^explainroo .*: narrated explainer videos from code\n/);
+  assert.match((await runAll(['help', 'nothing'])).out, /"explainroo <command> --help" prints the options of one command and an example\./);
+});
+

@@ -3,6 +3,8 @@
 In these commands, `explainroo` is short for `npx --yes explainroo`, or for
 `node bin/explainroo.js` in a source checkout. Commands that work on a video
 take the project folder first, and every command accepts `--json`.
+`explainroo <command> --help` prints the usage of one command, its options and
+an example.
 
 | Command | What it does |
 |---|---|
