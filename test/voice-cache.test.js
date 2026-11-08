@@ -249,17 +249,28 @@ test('voice says what it heard for each word it could not confirm, with the quot
   assert.equal(await main(['voice', dir]), 0);
   assert.match(output, /intro .* confirmed {2}unconfirmed: soundroo\.com, there\n/);
   assert.match(output, /^ {2}"soundroo\.com": it heard "Publish it on Soundray\.com and put the link…"\. \{soundroo\.com\|sound roo dot com\} was heard as "Soundray\.com", so the override didn't help\. Try a different spoken spelling, like \{soundroo\.com\|another spelling\}, or reword the sentence\.$/m);
-  assert.match(output, /^ {2}"there": it heard "…put the link over then today\."\. If it is mispronounced, write it as \{there\|spoken spelling\} in script\.md\.$/m);
+  assert.match(output, /^ {2}"there": it heard "…put the link over then today\."\. If the voice says it wrong, write it as \{there\|spoken spelling\} in script\.md\. If it is said right and only heard wrong, reword the sentence\.$/m);
   output = '';
   assert.equal(await main(['voice', dir, '--json']), 0);
   const [row] = JSON.parse(output).scenes;
   assert.deepEqual(row.heard.map((u) => [u.word, u.heard]), [['soundroo.com', 'Soundray.com'], ['there', 'then']]);
   assert.equal(row.heard[1].quote, '"…put the link over then today."');
-  assert.match(row.heard[1].advice, /^If it is mispronounced/);
+  assert.match(row.heard[1].advice, /^If the voice says it wrong/);
   // A word heard as a word that may sound the same, in a language whose sounds can't be compared.
   const { unconfirmedWords } = await import('../src/qa.js');
   const german = olderProject(t, '# Test\n\n## intro\nDas Rad dreht sich.\n', { transcript: 'Das Rat dreht sich.', unmatched: ['Rad'], matchRate: 0.75 });
   fs.writeFileSync(path.join(german.dir, 'video.json'), JSON.stringify({ size: '320x180', fps: 24, lead: 0, hold: 0, end: 0, language: 'de', voice: { provider: 'elevenlabs', id: 'x' } }));
   const v = JSON.parse(fs.readFileSync(german.files.json, 'utf8'));
   assert.match(unconfirmedWords(loadProject(german.dir), v)[0].advice, /^"Rat" may sound the same, and in this language the speech check can't compare sounds, so \{shown\|spoken\} can't help\. Reword the sentence\.$/);
+  // A short, common word has no better spelling, so the advice is to reword.
+  const its = olderProject(t, '# Test\n\n## intro\nTides slow the planet down and its spin wobbles.\n', { transcript: 'Tides slow the planet down and it spin wobbles.', unmatched: ['its'], matchRate: 0.89 });
+  const [word] = unconfirmedWords(loadProject(its.dir), JSON.parse(fs.readFileSync(its.files.json, 'utf8')));
+  assert.deepEqual([word.word, word.quote], ['its', '"…the planet down and it spin wobbles."']);
+  assert.equal(word.advice, '"its" is a short, common word, so a spelling hint can\'t change how it sounds. Reword the sentence.');
+});
+
+test('a short, common word is one that a spelling hint can\'t change, and an acronym or a longer word is not', async () => {
+  const { shortWord } = await import('../src/qa.js');
+  for (const word of ['its', 'Its', "it's", 'the', 'a', 'and,', 'then', 'Bob']) assert.equal(shortWord(word), true, word);
+  for (const word of ['AI', 'SQL', 'Then', 'there', '1972', 'tides', '']) assert.equal(shortWord(word), false, word);
 });

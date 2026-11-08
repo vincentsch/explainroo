@@ -78,8 +78,8 @@ test('check lists near matches with the rate, and says when an override did not 
   assert.match(site, /\{soundroo\.com\|sound roo dot com\} was heard as "soundray\.com", so the override didn't help\. Try a different spoken spelling, like \{soundroo\.com\|another spelling\}, or reword the sentence\.$/);
   assert.doesNotMatch(site, /write it as \{shown\|spoken\}/);
   // A word without an override keeps the advice it had.
-  assert.match(finding('plain', 'warn'), /could not confirm "Gravitation"\. It heard: "The station pulls\."\. If a word is mispronounced, write it as \{shown\|spoken\} in script\.md\.$/);
-  assert.match(finding('both', 'warn'), /the override didn't help\. .* If another word is mispronounced, write it as \{shown\|spoken\} in script\.md\.$/);
+  assert.match(finding('plain', 'warn'), /could not confirm "Gravitation"\. It heard: "The station pulls\."\. If the voice says a word wrong, write it as \{shown\|spoken\} in script\.md\. If it is said right and only heard wrong, reword the sentence\.$/);
+  assert.match(finding('both', 'warn'), /the override didn't help\. .* If the voice says another word wrong, write it as \{shown\|spoken\} in script\.md\.$/);
   const text = await runCli(['check', dir]);
   assert.match(text.stdout, /^HINT +intro: understood 100%, 2 words only nearly matched: Soundroo \(heard "Soundru"\), Codex \(heard "codecs"\)$/m);
   // No voice was made, and the saved narration is as it was.

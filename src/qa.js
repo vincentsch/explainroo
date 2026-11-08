@@ -65,7 +65,7 @@ function override(word) {
 // has {shown|spoken} needs another spoken spelling, so that advice isn't repeated.
 // `others` says whether a word without an override wasn't confirmed either.
 function unconfirmedAdvice(overridden, others, script) {
-  const general = `If a word is mispronounced, write it as {shown|spoken} in ${script}.`;
+  const general = `If the voice says a word wrong, write it as {shown|spoken} in ${script}. If it is said right and only heard wrong, reword the sentence.`;
   if (!overridden.length) return general;
   const said = overridden.map(({ word, heard }) => {
     const { shown, spoken } = override(word);
@@ -73,7 +73,17 @@ function unconfirmedAdvice(overridden, others, script) {
   });
   const one = overridden.length === 1;
   const ask = `${said.join(', and ')}, so ${one ? 'the override' : 'the overrides'} didn't help. Try a different spoken spelling, like {${override(overridden[0].word).shown}|another spelling}, or reword the sentence.`;
-  return others ? `${ask} If another word is mispronounced, write it as {shown|spoken} in ${script}.` : ask;
+  return others ? `${ask} If the voice says another word wrong, write it as {shown|spoken} in ${script}.` : ask;
+}
+
+// A short everyday word, like "its", "the" or "and". A spelling hint can't change
+// how it sounds. An acronym like "AI" or a word with digits is no such word.
+export function shortWord(text) {
+  const word = bareWord(text).replace(/['’]/g, '');
+  const letters = Array.from(word);
+  if (!letters.length || /\p{N}/u.test(word)) return false;
+  if (letters.length > 1 && word === word.toUpperCase() && word !== word.toLowerCase()) return false;
+  return letters.length <= 3 || (letters.length === 4 && word === word.toLowerCase());
 }
 
 // A saved word whose shown and spoken text differ, from {shown|spoken}.
@@ -81,9 +91,11 @@ const hasOverride = (word) => word.spoken !== undefined && word.spoken.replace(/
 
 // Each word of a scene that the speech check couldn't confirm, with what was heard
 // there, quoted as check quotes it, and what to do about it: another spoken
-// spelling for a word with {shown|spoken}, rewording for a word that was heard as
-// a word that sounds alike where explainroo can't compare sounds, and else a
-// spelling hint. Empty for a recording, which has advice of its own.
+// spelling for a word with {shown|spoken}, rewording for a short everyday word or
+// a word that was heard as a word that sounds alike where explainroo can't
+// compare sounds, and else both: a spelling hint if the voice says it wrong, and
+// rewording if it is said right and only heard wrong. Empty for a recording,
+// which has advice of its own.
 export function unconfirmedWords(project, v) {
   if (project.config.voice.provider === 'recording' || !Array.isArray(v?.words)) return [];
   const { language } = project.config;
@@ -97,7 +109,8 @@ export function unconfirmedWords(project, v) {
     let advice;
     if (hasOverride(word)) advice = unconfirmedAdvice([{ word, heard }], false, script);
     else if (heard && !hasPhonemizer(language) && soundsAlike(normWord(heard), normWord(word.text))) advice = `"${heard}" may sound the same, and in this language the speech check can't compare sounds, so {shown|spoken} can't help. Reword the sentence.`;
-    else advice = `If it is mispronounced, write it as {${bareWord(word.text)}|spoken spelling} in ${script}.`;
+    else if (shortWord(word.text)) advice = `"${bareWord(word.text)}" is a short, common word, so a spelling hint can't change how it sounds. Reword the sentence.`;
+    else advice = `If the voice says it wrong, write it as {${bareWord(word.text)}|spoken spelling} in ${script}. If it is said right and only heard wrong, reword the sentence.`;
     return { word: word.text, heard, quote, advice };
   });
 }

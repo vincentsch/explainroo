@@ -223,9 +223,9 @@ test('an override of any length that did not help is told so, and other words ke
   const { issues, speech } = speechFindings(project, voices);
   const warning = (scene) => issues.find((i) => i.scene === scene && i.level === 'warn')?.message;
   assert.equal(warning('short'), 'the voice check could not confirm "SQL.". It heard: "Try xylophone,". {SQL|sequel} was heard as "xylophone", so the override didn\'t help. Try a different spoken spelling, like {SQL|another spelling}, or reword the sentence.');
-  assert.equal(warning('mixed'), 'the voice check could not confirm "SQL", "Gravitation.". It heard: "Try xylophone with the station.". {SQL|sequel} was heard as "xylophone", so the override didn\'t help. Try a different spoken spelling, like {SQL|another spelling}, or reword the sentence. If another word is mispronounced, write it as {shown|spoken} in script.md.');
+  assert.equal(warning('mixed'), 'the voice check could not confirm "SQL", "Gravitation.". It heard: "Try xylophone with the station.". {SQL|sequel} was heard as "xylophone", so the override didn\'t help. Try a different spoken spelling, like {SQL|another spelling}, or reword the sentence. If the voice says another word wrong, write it as {shown|spoken} in script.md.');
   // Without an override, the message is the one it was.
-  assert.equal(warning('plain'), 'the voice check could not confirm 50% of the words. It heard: "Try cow,". If a word is mispronounced, write it as {shown|spoken} in script.md.');
+  assert.equal(warning('plain'), 'the voice check could not confirm 50% of the words. It heard: "Try cow,". If the voice says a word wrong, write it as {shown|spoken} in script.md. If it is said right and only heard wrong, reword the sentence.');
   // A short override that didn't help is reported also when the rest of the scene was heard.
   assert.match(warning('long'), /^the voice check could not confirm "SQL"\. .*\{SQL\|sequel\} was heard as "xylophone", so the override didn't help\./);
   assert.deepEqual(speech.map((s) => s.scene), ['short', 'mixed', 'plain', 'long']);
