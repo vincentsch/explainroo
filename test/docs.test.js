@@ -507,3 +507,8 @@ test('the start page has the watermark, captions on 16:9, a choice already made,
   assert.match(page('settings'), /^\| `clipBudget` \| none \|/m);
   assert.match(page('settings'), /^\| `targetSeconds` \| none \|/m);
 });
+
+test('the scene-api topic says where s.draw puts 0, 0, how the camera measures a drawing, and what at, dur, enter and exit do', () => {
+  const api = oneLine(page('scene-api'));
+  for (const words of ['`ctx` is already moved to `x`, `y`', 'Without `x` and `y`, 0, 0 is the top left corner of the frame', '`life.p` goes from 0 to 1 over `dur` seconds after `at`', 'At `out` it leaves with `exit`', 'The automatic camera measures a drawing once, as it looks at the end of the scene', 'a drawing that moves is measured where it ends up']) assert.ok(api.includes(words), words);
+});
