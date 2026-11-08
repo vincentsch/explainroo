@@ -19,7 +19,8 @@
   hint goes away.
 - Apostrophes in cue words. Cues ignore punctuation, so "visitor's" is heard
   as "visitors". `at: 'visitor'` then waits for the next plain "visitor".
-  Use a `[#marker]` there.
+  Use a `[#marker]` there. A French or Italian article is different:
+  `at: 'ombre'` finds "l'ombre".
 - Elements inside `s.group`. Each one makes its sound at its own `at`, even
   while the group is still hidden. Give them the group's `at`, or
   `sfx: false`.

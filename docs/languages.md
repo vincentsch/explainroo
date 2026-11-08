@@ -30,7 +30,12 @@ A Kokoro voice must match the video's language. If a project already has
 Write the narration in that language as a person would say it. Do not
 translate English word for word. The writing rules in `explainroo docs writing`
 apply in spirit.
-Cue words and `[#markers]` work the same. `at: 'qué'` matches "Qué".
+Cue words and `[#markers]` work the same. `at: 'qué'` matches "Qué". A cue
+also finds a word after an elided article or pronoun, so `at: 'ombre'` finds
+"l'ombre". This works after `l'`, `d'`, `j'`, `m'`, `n'`, `s'`, `t'`, `c'`
+and `qu'`, and after the Italian `un'` and `dell'`. Writing `at: "l'ombre"`
+works too. Write French with its spaces before "?", "!", ":" and ";". That
+punctuation is not a word, so the speech check doesn't wait for it.
 Hindi sentences can end with `।`. Captions and subtitle files keep the
 written text. The looks include a Hindi font, so no system font is needed.
 

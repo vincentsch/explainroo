@@ -19,6 +19,10 @@ const BOLD = { display: undefined, body: 600, hand: undefined, mono: 700 };
 // labelSide of an arrow: the direction from the arrow's middle to its label.
 const LABEL_SIDES = { left: [-1, 0], right: [1, 0], above: [0, -1], below: [0, 1] };
 
+// The elided articles and pronouns of French, like "l'" or "qu'", and of Italian,
+// like "un'" or "dell'", that a cue may leave out.
+const ELIDED = /^(?:qu|dell|un|[cdjlmnst])['’]/i;
+
 export class SceneError extends Error {}
 
 export class Stage {
@@ -153,19 +157,30 @@ export class Stage {
     const ws = this.words;
     if (!ws.length) throw new SceneError(`cue("${written}"): scene "${this.id}" has no narration`);
     const norms = ws.map((w) => normWord(w.text));
-    let seen = 0;
-    let found = null;
-    for (let i = 0; i + want.length <= norms.length; i++) {
-      let ok = true;
-      let end = i + want.length;
-      if (cjk) {
-        let phrase = norms[i];
-        while (phrase.length < want[0].length && end < norms.length) phrase += norms[end++];
-        ok = phrase === want[0];
-      } else {
-        for (let k = 0; k < want.length; k++) if (norms[i + k] !== want[k]) { ok = false; break; }
+    const search = (forms) => {
+      let count = 0;
+      let at = null;
+      for (let i = 0; i + want.length <= norms.length; i++) {
+        let ok = true;
+        let end = i + want.length;
+        if (cjk) {
+          let phrase = norms[i];
+          while (phrase.length < want[0].length && end < norms.length) phrase += norms[end++];
+          ok = phrase === want[0];
+        } else {
+          for (let k = 0; k < want.length; k++) if (!forms(i + k).includes(want[k])) { ok = false; break; }
+        }
+        if (ok && ++count === n && !at) at = { start: ws[i].start, end: ws[end - 1].end };
       }
-      if (ok && ++seen === n && !found) found = { start: ws[i].start, end: ws[end - 1].end };
+      return { count, at };
+    };
+    let { count: seen, at: found } = search((i) => [norms[i]]);
+    // A word after an elided article or pronoun, like "ombre" in "l'ombre", when the
+    // cue isn't there as written. Cues that worked before keep their time.
+    if (!found && !cjk) {
+      const bare = ws.map((w) => normWord(String(w.text).replace(/^[^\p{L}\p{N}]+/u, '').replace(ELIDED, '')));
+      const again = search((i) => [norms[i], bare[i]]);
+      if (again.at) ({ count: seen, at: found } = again);
     }
     if (found) {
       // A word spoken more than once silently means its first time; tell the check.

@@ -80,3 +80,22 @@ test('Japanese and Chinese cues take "#n" too', () => {
   assert.equal(s.cue('水が入る'), 0);
   assert.deepEqual(notes.map((n) => n.word), ['水が入る']);
 });
+
+test('a cue finds a word after an elided article, like "ombre" in "l\'ombre", and the whole word works too', () => {
+  const { s, notes } = stage(['Les', 'gouttes', 'autour', 'de', "l'ombre", 'de', 'la', 'tête,', "qu’elle", 'voit', 'dell’acqua', 'et', "un'altra."], { language: 'fr' });
+  assert.equal(s.cue('ombre'), 2);
+  assert.equal(s.cue("l'ombre"), 2);
+  assert.equal(s.cue('lombre'), 2);
+  assert.equal(s.cue('elle voit'), 4);
+  assert.equal(s.cue('acqua'), 5);
+  assert.equal(s.cue('altra'), 6);
+  assert.equal(s.cue('ombre de la'), 2);
+  assert.deepEqual(notes, []);
+  assert.throws(() => s.cue('soleil'), /cue\("soleil"\) is not in the narration of scene "tank"/);
+});
+
+test('a cue that matched as written keeps its time when an elided form of it comes first', () => {
+  const { s } = stage(["l'ombre", 'puis', 'une', 'ombre'], { language: 'fr' });
+  assert.equal(s.cue('ombre'), 1.5);
+  assert.equal(s.cue("l'ombre"), 0);
+});

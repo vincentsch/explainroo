@@ -711,6 +711,9 @@ export class Engine {
       // Each text at the smallest size it is shown at while it is on screen.
       const smallest = new Map();
       let shownAt = null;
+      // A scene that stopped with an error has its error, and nothing is said about
+      // what it would have shown after it.
+      let broke = false;
       const n = Math.ceil(sc.dur / step);
       for (let k = 0; k <= n; k++) {
         const t = Math.min(sc.dur - 0.001, k * step);
@@ -721,6 +724,7 @@ export class Engine {
           this.drawScene(ctx, sc.index, t);
         } catch (e) {
           once(`err:${sc.id}:${e.message}`, () => add('error', sc.id, t, e.message));
+          broke = true;
           break;
         }
         const laid = { texts: this.textLog.filter((x) => !x.problem), draw: this.drawLog };
@@ -855,9 +859,11 @@ export class Engine {
       // first element's own time says how long, when there is one.
       const first = times.find((x) => x >= 0);
       const bare = shownAt === null ? null : first !== undefined && first > shownAt - step - 1e-6 && first <= shownAt + 1e-6 ? first : shownAt;
-      const emptyStart = bare !== null && bare > EMPTY_START;
+      const emptyStart = !broke && bare !== null && bare > EMPTY_START;
       if (emptyStart) add('hint', sc.id, 0, `the scene shows only its background for the first ${bare.toFixed(1)}s; put something on screen sooner, for example give the first element an earlier at`);
-      if (!times.length) {
+      if (broke) {
+        // its error says it all
+      } else if (!times.length) {
         add('warn', sc.id, null, 'nothing enters in this scene; add at least one element with an "at" time');
       } else {
         const marks = [0, ...times.filter((x) => x >= 0 && x <= sc.dur), sc.dur];
