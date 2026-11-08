@@ -205,7 +205,8 @@ test('each German short form is in one table, and the speech check reads it as i
 
 test('the other languages keep their own number rules', () => {
   for (const language of ['es', 'fr', 'it', 'pt-br', 'hi']) {
-    assert.deepEqual(expand('3,5', language), ['35']);
+    // A decimal comma stays in the number, and Hindi writes the decimal point as English does.
+    assert.deepEqual(expand('3,5', language), [language === 'hi' ? '35' : '3,5']);
     assert.deepEqual(expand('usw.', language), ['usw']);
   }
   assert.equal(alignWords(words('zweiundvierzig'), heard('42'), 1, 'es').matchRate, 0);

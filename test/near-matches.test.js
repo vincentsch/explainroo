@@ -84,8 +84,10 @@ test('joined number pieces and a word heard as two words report exact and near t
   const amount = (spoken, pieces) => near(alignWords([{ spoken }], heard(pieces), 1));
   assert.deepEqual(amount('one thousand dollars', [['$1,000', 0, 1]]), ['exact']);
   assert.deepEqual(amount('one thousand dollars', [['$1', 0, 0.5], [',000', 0.5, 1]]), ['exact']);
-  assert.deepEqual(amount('one thousand dollar', [['$1,000', 0, 1]]), ['near:$1,000']);
-  assert.deepEqual(amount('one thousand dollar', [['$1', 0, 0.5], [',000', 0.5, 1]]), ['near:$1,000']);
+  // "dollar" and "dollars" are the same unit word, and a misspelled one only nearly matches.
+  assert.deepEqual(amount('one thousand dollar', [['$1,000', 0, 1]]), ['exact']);
+  assert.deepEqual(amount('one thousand dolars', [['$1,000', 0, 1]]), ['near:$1,000']);
+  assert.deepEqual(amount('one thousand dolars', [['$1', 0, 0.5], [',000', 0.5, 1]]), ['near:$1,000']);
   assert.deepEqual(amount('Soundroo', [['Sound', 0, 0.4], ['roo', 0.4, 0.8]]), ['exact']);
   assert.deepEqual(amount('Soundroo', [['Sound', 0, 0.4], ['ru', 0.4, 0.8]]), ['near:Sound ru']);
 });

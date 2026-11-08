@@ -56,11 +56,13 @@ test('each language picks its default and rejects every voice from a different l
 
 test('non-English numbers stay digits, including Devanagari, and are never fuzzy matched or spelled out', () => {
   for (const language of ['es', 'fr', 'it', 'pt-br', 'hi']) {
-    assert.deepEqual(expand('1,050', language), ['1050']);
+    // Thousands as each language writes them: a comma in Hindi, a period or a space in the others.
+    const thousand = language === 'hi' ? '1,050' : '1.050';
+    assert.deepEqual(expand(thousand, language), ['1050']);
     assert.deepEqual(expand('€1.050', language), ['1050']);
     assert.deepEqual(expand('१२%', language), ['12']);
     assert.deepEqual(expand('twenty', language), ['twenty']);
-    const r = alignWords([{ spoken: '१२३' }, { spoken: '1050' }], [{ text: '123', start: 0, end: 0.5 }, { text: '1,050', start: 0.5, end: 1 }], 1, language);
+    const r = alignWords([{ spoken: '१२३' }, { spoken: '1050' }], [{ text: '123', start: 0, end: 0.5 }, { text: thousand, start: 0.5, end: 1 }], 1, language);
     assert.equal(r.matchRate, 1);
     assert.equal(alignWords([{ spoken: '1234' }], [{ text: '1235', start: 0, end: 1 }], 1, language).matchRate, 0);
     assert.equal(alignWords([{ spoken: 'twenty' }], [{ text: '20', start: 0, end: 1 }], 1, language).matchRate, 0);

@@ -23,9 +23,10 @@
 - Elements inside `s.group`. Each one makes its sound at its own `at`, even
   while the group is still hidden. Give them the group's `at`, or
   `sfx: false`.
-- Words that sound like other words. The speech check hears "won" as "one"
-  and "plain" as "plane", and `{shown|spoken}` cannot fix that. Reword the
-  sentence. For acronyms that are spelled out letter by letter, write
+- Words that sound like other words. When the speech check hears "plain" as
+  "plane", it counts the word and lists it as sounding the same, so it needs
+  no fix. In German it can't tell, and `{shown|spoken}` cannot fix that, so
+  reword the sentence there. For acronyms that are spelled out letter by letter, write
   `{API|A, P, I}`. Do not write `A.P.I.`, because the voice reads the dots
   like a web address.
 - Growing a shape by changing `w` or `h` over time in the hand-drawn looks.
