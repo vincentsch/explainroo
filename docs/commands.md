@@ -39,7 +39,12 @@ runs at 15 frames per second and is at most 960 pixels on its long side.
 the size, made even, so a 1080 x 1350 video gives a 540 x 676 draft.
 
 A final draws 6 samples per frame for motion blur, which makes it several times
-slower than a draft. `render` says so before the frames. `--quality fast` makes
+slower than a draft. `render` says so before the frames. Once this computer has
+made a final of the same kind, with the same samples and `--workers`, `render`
+also says about how long it takes, like "about 1 min 40 s: 1,400 frames at about
+14 a second here". It keeps the speed of the last one in `render-speed.json` in
+the cache folder, `~/.cache/explainroo/` or `EXPLAINROO_CACHE`. Before the
+first final there is no estimate. `--quality fast` makes
 a final without motion blur: full size, with the final encoder settings and one
 sample per frame. It writes `out/video.mp4` like any final, and the record says
 that motion blur was off. `package` copies such a file only when `video.json`

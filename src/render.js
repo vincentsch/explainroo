@@ -10,6 +10,7 @@ import { buildChapters, toChaptersText, toChapterMetadata } from './chapters.js'
 import { resolveTimes } from './qa.js';
 import { outputPath, scriptName, TALL_FORMATS } from './project.js';
 import { recordVersion, relativeFile, sha256File } from './history.js';
+import { cacheRoot } from './models.js';
 
 export function renderFormat({ format = 'mp4', out, transparent = false } = {}) {
   if (!['mp4', 'gif', 'webm', 'mov'].includes(format)) throw new Error('--format must be mp4, gif, webm or mov');
@@ -38,7 +39,7 @@ export async function render(project, opts = {}) {
   recordVersion(project.dir, versionLine(project, video));
   const secs = (Date.now() - t0) / 1000;
   log(`wrote ${path.relative(process.cwd(), video.out) || video.out} in ${secs.toFixed(1)}s`);
-  return { out: video.out, ...files, duration: video.duration, frames: video.frames, seconds: secs, width: video.width, height: video.height, sha256: video.sha256, identity: video.identity };
+  return { out: video.out, ...files, duration: video.duration, frames: video.frames, seconds: secs, estimated_seconds: video.estimated_seconds, width: video.width, height: video.height, sha256: video.sha256, identity: video.identity };
 }
 
 // The frames that --from and --to ask for.
@@ -49,6 +50,55 @@ function frameRange(project, timeline, opts) {
   const to = Math.min(total, opts.to !== undefined ? Math.ceil(opts.to * fps) : total);
   if (to <= from) throw new Error('nothing to render: --from must be before --to');
   return { from, to, partial: from > 0 || to < total };
+}
+
+// How fast final renders run on this computer, kept in the cache folder. Each kind
+// of render has its own speed: the samples per frame for motion blur, alpha and
+// the number of pages. A render of fewer frames than this says little about it.
+const SPEED_FRAMES = 90;
+export const renderSpeedFile = () => path.join(cacheRoot(), 'render-speed.json');
+
+export function renderKind({ samples, transparent, workers }) {
+  return `${samples} sample${samples === 1 ? '' : 's'}${transparent ? ', alpha' : ''}, ${workers} worker${workers === 1 ? '' : 's'}`;
+}
+
+function readSpeeds() {
+  try {
+    const kept = JSON.parse(fs.readFileSync(renderSpeedFile(), 'utf8'));
+    return kept && typeof kept === 'object' && !Array.isArray(kept) ? kept : {};
+  } catch {
+    return {};
+  }
+}
+
+// A cache folder that can't be written only means no estimate next time.
+function keepSpeed(kind, measured) {
+  const file = renderSpeedFile();
+  const temp = `${file}.${process.pid}.tmp`;
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(temp, JSON.stringify({ ...readSpeeds(), [kind]: measured }, null, 2) + '\n');
+    fs.renameSync(temp, file);
+  } catch {
+    try { fs.rmSync(temp, { force: true }); } catch {}
+  }
+}
+
+// The time a render of `frames` frames of `pixels` pixels takes, from the last
+// measured speed of the same kind of render. The speed scales with the pixels of a
+// frame, so a tall video after a wide one of the same size gets the same speed.
+export function renderEstimate(measured, { frames, pixels }) {
+  if (!(measured?.frames_per_second > 0 && measured.pixels > 0 && pixels > 0)) return null;
+  const rate = measured.frames_per_second * measured.pixels / pixels;
+  return { seconds: frames / rate, frames_per_second: rate, frames };
+}
+
+// "about 1 min 40 s: 1,240 frames at about 14 a second here"
+export function estimateText({ seconds, frames, frames_per_second: rate }) {
+  const rounded = seconds < 60 ? Math.max(5, Math.round(seconds / 5) * 5) : Math.round(seconds / 10) * 10;
+  const time = rounded < 60 ? `${rounded} s` : `${Math.floor(rounded / 60)} min${rounded % 60 ? ` ${rounded % 60} s` : ''}`;
+  const speed = rate >= 10 ? Math.round(rate) : Math.round(rate * 10) / 10;
+  return `about ${time}: ${frames.toLocaleString('en-US')} frames at about ${speed} a second here`;
 }
 
 // Draws the frames and writes the video file at `out`, without the files that go
@@ -86,6 +136,12 @@ export async function encodeVideo(project, timeline, opts) {
   log(`rendering ${((to - from) / fps).toFixed(1)}s (${to - from} frames at ${fps} fps) to a ${width}x${height} ${format === 'gif' ? 'GIF' : 'video'} with ${workers} worker${workers > 1 ? 's' : ''}`);
   // `withoutBlur` says how the caller leaves the blur out.
   if (samples > 1) log(`motion blur: a final draws ${samples} samples per frame, which makes it several times slower than a draft. ${opts.withoutBlur ?? '--quality fast'} leaves the blur out.`);
+  // A final says up front how long it takes, once this computer has made one.
+  const kind = renderKind({ samples, transparent, workers });
+  const pixels = Math.round(project.config.width * scale) * Math.round(project.config.height * scale);
+  const estimate = draft ? null : renderEstimate(readSpeeds()[kind], { frames: to - from, pixels });
+  if (estimate) log(`this takes ${estimateText(estimate)}`);
+  const started = Date.now();
 
   const mix = path.join(project.paths.build, 'mix.wav');
   const mixNorm = path.join(project.paths.build, 'mix-norm.wav');
@@ -160,6 +216,8 @@ export async function encodeVideo(project, timeline, opts) {
     await ffmpeg(['-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', listFile, ...audioArgs, ...metadataArgs, '-map', '0:v', '-map', '1:a', '-c:v', 'copy', ...audioCodec, ...containerArgs, '-shortest', out]);
   }
   fs.rmSync(segDir, { recursive: true, force: true });
+  const seconds = (Date.now() - started) / 1000;
+  if (!draft && to - from >= SPEED_FRAMES && seconds > 0) keepSpeed(kind, { frames_per_second: Math.round((to - from) / seconds * 100) / 100, pixels, frames: to - from, seconds: Math.round(seconds * 10) / 10, measured: new Date().toISOString() });
   return {
     out,
     format,
@@ -176,6 +234,7 @@ export async function encodeVideo(project, timeline, opts) {
     motionBlur: samples > 1,
     sha256: sha256File(out),
     identity,
+    estimated_seconds: estimate ? Math.round(estimate.seconds) : null,
   };
 }
 
