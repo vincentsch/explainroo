@@ -198,10 +198,13 @@ export class Stage {
       return found;
     }
     const count = seen ? ` (it is spoken ${seen} time${seen > 1 ? 's' : ''})` : '';
+    // A cue with the name of one of the scene's markers, written without its #.
+    const marker = want.length === 1 ? Object.keys(this.marks ?? {}).find((m) => normWord(m) === want[0]) : undefined;
+    const mean = marker === undefined ? '' : `; did you mean '#${marker}'? [#${marker}] is a marker in this scene, and a marker needs its #`;
     const hint = suggest(want[0], [...new Set(norms)], 6).join(', ');
     // Each language says other words, so a cue that works in one fails in another.
     const several = this.engine.state?.text?.languages ? ' Word cues differ between languages, so a scene that every language draws is safer with the same [#marker] in each script.' : '';
-    return this._noCue(`cue("${written}"${counted === null && n > 1 ? `, ${n}` : ''}) is not in the narration of scene "${this.id}"${count}. Close words: ${hint}${several ? `.${several}` : ''}`);
+    return this._noCue(`cue("${written}"${counted === null && n > 1 ? `, ${n}` : ''}) is not in the narration of scene "${this.id}"${count}${mean}. Close words: ${hint}${several ? `.${several}` : ''}`);
   }
 
   mark(name) {

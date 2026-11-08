@@ -60,6 +60,17 @@ test('only digits after the last # count, so "C#" stays a word and "#pump" a mar
   assert.throws(() => s.cue('fills#two'), /cue\("fills#two"\) is not in the narration/);
 });
 
+test('a cue with the name of a marker in the scene, written without its #, suggests the marker first', () => {
+  const { s } = stage();
+  assert.throws(() => s.time('pump'), /^Error: cue\("pump"\) is not in the narration of scene "tank"; did you mean '#pump'\? \[#pump\] is a marker in this scene, and a marker needs its #\. Close words: /);
+  assert.throws(() => s.cue('Pump'), /^Error: cue\("Pump"\) is not in the narration of scene "tank"; did you mean '#pump'\?/);
+  // A word that is no marker gets only the close words.
+  assert.throws(() => s.time('pomp'), /^Error: cue\("pomp"\) is not in the narration of scene "tank"\. Close words: /);
+  // With a marker of that name, the spoken word still wins.
+  const { s: both } = stage(WORDS, { marks: { fills: 4 } });
+  assert.equal(both.time('fills'), 1);
+});
+
 test('a number larger than the times a word is spoken fails with the count', () => {
   const { s } = stage();
   assert.throws(() => s.cue('fills#3'), /^Error: cue\("fills#3"\) is not in the narration of scene "tank" \(it is spoken 2 times\)\. Close words: fills/);

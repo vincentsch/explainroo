@@ -117,7 +117,9 @@ It also finds:
 - a `lift` above 2 in `s.ui`
 - a cue or a `#marker` that isn't in the narration. That is an error, and
   `check` goes on with the rest of the scene as if the cue were at the scene
-  start, so one run shows all of its findings
+  start, so one run shows all of its findings. A marker needs its `#`, as in
+  `at: '#listen'`. When a cue without it has the name of a marker in that
+  scene, the error asks first whether you meant the marker
 
 A finding names the element it is about by what it shows, like the box
 "Your phone", with its `id` when it has one. An element with neither is named
