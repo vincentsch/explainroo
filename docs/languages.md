@@ -110,7 +110,8 @@ writes them:
 | German, Spanish, French, Italian and Portuguese | 300.000 and 300 000 |
 
 The space can also be a thin space or a no-break space. The decimal mark
-stays, so "7,5" never matches "75".
+stays, so "7,5" never matches "75". Zeros at the end of the decimals change
+no value, so "1,50" matches "1,5", and "2.0" matches "2".
 
 ## German
 
