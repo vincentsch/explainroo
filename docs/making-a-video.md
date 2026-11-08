@@ -100,7 +100,10 @@ user. Read it first.
    Open the images and judge them like a viewer would. Is the text big
    enough? Is anything cut off or on top of something else? Is half the frame
    empty? Does the sheet show something new every few seconds? Fix what is
-   wrong and look again.
+   wrong and look again. A frame caught while the camera moves, or while
+   something draws itself in, has "camera moving" or "drawing in" under it
+   on the sheet. `still` prints the same next to the file. Such a frame can
+   look cut off or empty and still be fine, so look at a moment after it.
 
    For Reddit and other feeds, also run `check videos/<name> --view-width
    854`. It warns when visible text shrinks below 16px in that player.

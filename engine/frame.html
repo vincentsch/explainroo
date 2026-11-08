@@ -49,6 +49,18 @@ window.explainrooReady = (async () => {
       ctx.restore();
     }
   };
+  // Draws a frame and says whether it caught the camera moving or something
+  // drawing in: "camera moving", "drawing in", both, or null.
+  const drawNoted = (draw) => {
+    engine.motion = { camera: false, drawing: false };
+    try {
+      draw();
+      const { camera, drawing } = engine.motion;
+      return camera && drawing ? 'camera moving, drawing in' : camera ? 'camera moving' : drawing ? 'drawing in' : null;
+    } finally {
+      engine.motion = null;
+    }
+  };
   window.explainroo = {
     info() {
       return { duration: state.timeline.duration, frames: state.timeline.frames, fps, width: canvas.width, height: canvas.height, scenes: state.timeline.scenes.map((s) => ({ id: s.id, start: s.start, dur: s.dur })) };
@@ -75,23 +87,44 @@ window.explainrooReady = (async () => {
       }
       return out;
     },
+    // Each still says whether it caught the camera moving or something drawing in,
+    // as a note for the terminal, or null.
     async stills(list, { type = 'image/png', quality, captions = true } = {}) {
+      const notes = [];
       for (const { T, path } of list) {
         try {
           if (engine.clips.size) await engine.prepareFrame(T);
-          engine.renderFrame(T, undefined, { captions });
+          notes.push(drawNoted(() => engine.renderFrame(T, undefined, { captions })));
         } catch (e) {
           throw new Error(describe(e));
         }
         const blob = await new Promise((r) => canvas.toBlob(r, type, quality));
         await upload(path, blob);
       }
-      return list.length;
+      return notes;
     },
+    // A frame caught in a camera move, or while something draws itself in, gets
+    // that note under its label. A sheet without such a frame looks as before.
     async sheet({ times, labels, cols, thumb, path }) {
       const tw = thumb;
       const th = Math.round((tw * canvas.height) / canvas.width);
-      const labelH = 30;
+      const thumbs = [];
+      const notes = [];
+      for (let i = 0; i < times.length; i++) {
+        try {
+          if (engine.clips.size) await engine.prepareFrame(times[i]);
+          notes.push(drawNoted(() => engine.renderFrame(times[i])));
+        } catch (e) {
+          throw new Error(describe(e));
+        }
+        const small = document.createElement('canvas');
+        small.width = tw;
+        small.height = th;
+        small.getContext('2d').drawImage(canvas, 0, 0, tw, th);
+        thumbs.push(small);
+      }
+      const noted = notes.some(Boolean);
+      const labelH = noted ? 50 : 30;
       const rows = Math.ceil(times.length / cols);
       const sheet = document.createElement('canvas');
       sheet.width = cols * (tw + 8) + 8;
@@ -99,24 +132,23 @@ window.explainrooReady = (async () => {
       const g = sheet.getContext('2d');
       g.fillStyle = '#16181d';
       g.fillRect(0, 0, sheet.width, sheet.height);
-      g.font = '600 17px Inter, sans-serif';
       g.textBaseline = 'middle';
-      for (let i = 0; i < times.length; i++) {
-        try {
-          if (engine.clips.size) await engine.prepareFrame(times[i]);
-          engine.renderFrame(times[i]);
-        } catch (e) {
-          throw new Error(describe(e));
-        }
+      thumbs.forEach((small, i) => {
         const x = 8 + (i % cols) * (tw + 8);
         const y = 8 + Math.floor(i / cols) * (th + labelH + 8);
-        g.drawImage(canvas, x, y, tw, th);
+        g.drawImage(small, x, y);
+        g.font = '600 17px Inter, sans-serif';
         g.fillStyle = '#e6e9ef';
-        g.fillText(labels[i], x + 4, y + th + labelH / 2);
-      }
+        g.fillText(labels[i], x + 4, y + th + 15);
+        if (notes[i]) {
+          g.font = '600 15px Inter, sans-serif';
+          g.fillStyle = '#f5b453';
+          g.fillText(notes[i], x + 4, y + th + 36);
+        }
+      });
       const blob = await new Promise((r) => sheet.toBlob(r, 'image/jpeg', 0.88));
       await upload(path, blob);
-      return { width: sheet.width, height: sheet.height };
+      return { width: sheet.width, height: sheet.height, notes };
     },
     check(step, viewWidth) {
       return engine.check(step, viewWidth);

@@ -21,6 +21,8 @@ const EXITS = ['fade', 'pop', 'rise', 'drop', 'slide-left', 'slide-right', 'none
 const BOLD = { display: undefined, body: 600, hand: undefined, mono: 700 };
 // labelSide of an arrow: the direction from the arrow's middle to its label.
 const LABEL_SIDES = { left: [-1, 0], right: [1, 0], above: [0, -1], below: [0, 1] };
+// Entrances that show an element bit by bit, so a frame in the middle looks unfinished.
+const DRAWN_IN = new Set(['draw', 'write', 'type', 'words', 'sync', 'grow']);
 
 // The elided articles and pronouns of French, like "l'" or "qu'", and of Italian,
 // like "un'" or "dell'", that a cue may leave out.
@@ -344,6 +346,8 @@ export class Stage {
     }
     const p = clamp((this.t - at) / dur);
     if ((p < 1 && enter !== 'none') || (q > 0 && q < 1)) this.engine.moving = true;
+    // An element that draws itself in, or one that has only just begun to arrive.
+    if (this.engine.motion && enter !== 'none' && (DRAWN_IN.has(enter) ? p < 1 : p < 0.3)) this.engine.motion.drawing = true;
     const life = { p, q, at, dur, enter, exit: o.exit ?? 'fade', local: this.t - at };
     if (kind !== 'group') this._seen(kind, life);
     return life;
@@ -723,13 +727,20 @@ export class Stage {
     if (this.engine.planning) this.engine.manualCamera = true;
     const list = [{ at: 0, x: this.cx, y: this.cy, zoom: 1, dur: 0 }, ...keys.map((k) => ({ x: this.cx, y: this.cy, zoom: 1, dur: 1.1, ...k, at: this.time(k.at ?? 0) }))].sort((a, b) => a.at - b.at);
     let cur = { ...list[0] };
-    if (o.shake) this.engine.moving = true;
+    const motion = this.engine.motion;
+    if (o.shake) {
+      this.engine.moving = true;
+      if (motion) motion.camera = true;
+    }
     for (let i = 1; i < list.length; i++) {
       const k = list[i];
       if (this.t < k.at) break;
       const prev = cur;
       const raw = (this.t - k.at) / Math.max(0.001, k.dur / this.pace);
-      if (raw > 0 && raw < 1) this.engine.moving = true;
+      if (raw > 0 && raw < 1) {
+        this.engine.moving = true;
+        if (motion) motion.camera = true;
+      }
       const p = easeFn(k.ease ?? 'inOut')(clamp(raw));
       cur = { x: lerp(prev.x, k.x, p), y: lerp(prev.y, k.y, p), zoom: lerp(prev.zoom, k.zoom, p), rotate: lerp(prev.rotate || 0, k.rotate || 0, p) };
     }

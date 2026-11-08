@@ -257,13 +257,14 @@ export async function main(argv) {
         const isProject = pos[0] && fs.existsSync(path.join(pos[0], 'video.json'));
         const { project } = runProject(isProject ? pos.shift() : undefined, flags);
         const list = await stills(project, pos, { log, scale: num(flags.scale, 'scale') ?? 1, transparent: !!flags.transparent });
-        print(list.map((s) => `${s.label.padEnd(24)} ${s.file}`).join('\n'), { stills: list });
+        print(list.map((s) => `${s.label.padEnd(24)} ${s.file}${s.note ? `  (${s.note})` : ''}`).join('\n'), { stills: list });
         return 0;
       }
       case 'sheet': {
         const { project } = runProject(pos[0], flags);
         const r = await sheet(project, { scene: flags.scene, every: num(flags.every, 'every'), times: timesFlag(flags), cols: num(flags.cols, 'cols'), log });
-        print(`${r.file} (${r.frames} frames)`, r);
+        const marked = r.marked.length ? `, ${r.marked.length} marked "camera moving" or "drawing in" under the frame` : '';
+        print(`${r.file} (${r.frames} frames${marked})`, r);
         return 0;
       }
       case 'check': {

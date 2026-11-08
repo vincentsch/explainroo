@@ -68,3 +68,28 @@ test('covers leave out the burned-in captions', { skip: !chrome }, async () => {
     });
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('still and sheet mark a frame caught in a camera move or while something draws itself in', { skip: !chrome && 'no browser here', timeout: 240000 }, async (t) => {
+  const { runCli } = await import('./helpers/tiny-project.js');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-moving-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ size: '640x360', theme: 'clean', captions: false, music: false, sfx: false, lead: 0, hold: 0, end: 0, transition: 'cut', watermark: false, camera: 'still' }));
+  fs.writeFileSync(path.join(dir, 'script.md'), '# Moving\n\n## pan {min=4}\n\n## write {min=4}\n');
+  fs.writeFileSync(path.join(dir, 'scenes.js'), `export default {
+  pan(s) { s.camera([{ at: 1, zoom: 1.5, dur: 2 }]); s.box('A', { at: 0, enter: 'none' }); },
+  write(s) { s.text('Being written', { at: 1, enter: 'write', dur: 2 }); },
+};
+`);
+  const r = await runCli(['still', dir, 'pan@2', 'pan@3.5', 'write@2', 'write@3.5', '--json']);
+  assert.equal(r.code, 0, r.stderr);
+  assert.deepEqual(JSON.parse(r.stdout).stills.map((s) => [s.label, s.note ?? null]), [['pan@2', 'camera moving'], ['pan@3.5', null], ['write@2', 'drawing in'], ['write@3.5', null]]);
+  const text = await runCli(['still', dir, 'pan@2', 'write@3.5']);
+  assert.match(text.stdout, /^pan@2 +\S+pan@2\.png {2}\(camera moving\)$/m);
+  assert.match(text.stdout, /^write@3\.5 +\S+write@3\.5\.png$/m);
+  // The sheet writes the note under the frame, and says how many it marked.
+  const sheet = await runCli(['sheet', dir, '--times', 'pan@2,pan@3.5,write@2', '--json']);
+  assert.equal(sheet.code, 0, sheet.stderr);
+  assert.deepEqual(JSON.parse(sheet.stdout).marked, [{ time: 2, label: 'pan@2', note: 'camera moving' }, { time: 6, label: 'write@2', note: 'drawing in' }]);
+  const plain = await runCli(['sheet', dir, '--times', 'pan@2,pan@3.5,write@2']);
+  assert.match(plain.stdout, /sheet-times\.jpg \(3 frames, 2 marked "camera moving" or "drawing in" under the frame\)$/m);
+});

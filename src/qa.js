@@ -277,8 +277,9 @@ export async function stills(project, specs, { log = () => {}, scale = 1, transp
   const { timeline } = await prepare(project, { log });
   const dir = path.relative(project.dir, outputPath(project, 'stills')).split(path.sep).join('/');
   const list = resolveTimes(timeline, specs).map((x) => ({ ...x, path: `${dir}/${x.label.replace(/[^\w@.-]/g, '_')}.png` }));
-  await withEngine(project, timeline, { scale, transparent, log }, (page) => page.evaluate((l) => window.explainroo.stills(l), list));
-  return list.map((x) => ({ time: Math.round(x.T * 100) / 100, label: x.label, file: path.join(project.dir, x.path) }));
+  const notes = await withEngine(project, timeline, { scale, transparent, log }, (page) => page.evaluate((l) => window.explainroo.stills(l), list));
+  // A still caught in a camera move, or while something draws itself in, says so.
+  return list.map((x, i) => ({ time: Math.round(x.T * 100) / 100, label: x.label, file: path.join(project.dir, x.path), ...(notes[i] ? { note: notes[i] } : {}) }));
 }
 
 // `times` takes what still takes, like ["3", "intro@2"], and shows just those
@@ -313,8 +314,10 @@ export async function sheet(project, { scene = null, every = null, times: moment
   }
   const c = cols ?? Math.min(times.length, times.length > 20 ? 6 : times.length > 9 ? 5 : 4);
   const thumb = timeline.width >= timeline.height ? 320 : 200;
-  await withEngine(project, timeline, { scale: 0.5, log }, (page) => page.evaluate((o) => window.explainroo.sheet(o), { times, labels, cols: c, thumb, path: file }));
-  return { file: path.join(project.dir, file), frames: times.length, ...(moments ? { times: times.map((T, i) => ({ time: Math.round(T * 100) / 100, label: labels[i] })) } : {}) };
+  const { notes } = await withEngine(project, timeline, { scale: 0.5, log }, (page) => page.evaluate((o) => window.explainroo.sheet(o), { times, labels, cols: c, thumb, path: file }));
+  // The frames caught in a camera move, or while something draws itself in.
+  const marked = notes.flatMap((note, i) => (note ? [{ time: Math.round(times[i] * 100) / 100, label: labels[i], note }] : []));
+  return { file: path.join(project.dir, file), frames: times.length, ...(moments ? { times: times.map((T, i) => ({ time: Math.round(T * 100) / 100, label: labels[i] })) } : {}), marked };
 }
 
 // The report goes to `report`, and by default to out/report.json, also for a

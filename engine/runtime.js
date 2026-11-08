@@ -318,7 +318,10 @@ export class Engine {
       ctx.translate(v.x + v.w / 2, v.y + v.h / 2);
       ctx.scale(cam.z, cam.z);
       ctx.translate(-cam.x, -cam.y);
-      if (cameraMoving(plan, t)) this.moving = true;
+      if (cameraMoving(plan, t)) {
+        this.moving = true;
+        if (this.motion) this.motion.camera = true;
+      }
     }
     const s = new Stage(this, ctx, sc, t);
     // While the camera is planned, anything a scene draws straight on s.ctx
