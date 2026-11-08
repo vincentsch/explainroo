@@ -118,8 +118,10 @@ With ElevenLabs or Cartesia, the commands that make missing narration, like
 
 The first run downloads the voice and speech models from Hugging Face. Other
 languages need one more speech model, which downloads the first time, and
-Japanese and Chinese also download their fonts from GitHub. Nothing of yours
-goes along with these downloads. explainroo has no telemetry, so it sends
+Japanese and Chinese also download their fonts from GitHub. On Debian and
+Ubuntu, `doctor --fetch` downloads espeak-ng's packages from the computer's own
+package sources when a language needs it. Nothing of yours goes along with
+these downloads. explainroo has no telemetry, so it sends
 nothing about how you use it.
 
 Nothing uploads to the hosted service without the explicit `explainroo share`

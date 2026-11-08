@@ -61,8 +61,9 @@ reads the same list when it lists clips, at most once a day. `share` will
 upload the video and its title to explainroo.com, and sends nothing until that
 service runs.
 `capture` loads the page you name. The models and fonts download the first
-time, and nothing of the user's goes along. Nothing else leaves the computer,
-and everything else is free.
+time, and `doctor --fetch` may download espeak-ng's packages. Nothing of the
+user's goes along. Nothing else leaves the computer, and everything else is
+free.
 
 ## Before you start
 
