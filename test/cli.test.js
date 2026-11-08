@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { main } from '../src/cli.js';
+import { ASR_MODEL, TTS_MODEL, cacheRoot } from '../src/models.js';
 
 // Run the CLI in-process and collect what it wrote to stderr.
 async function run(args) {
@@ -22,6 +23,15 @@ async function run(args) {
 function tempDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-cli-'));
 }
+
+// The real command line in its own process: { code, out, err }.
+async function runAll(args) {
+  const { runCli } = await import('./helpers/tiny-project.js');
+  const r = await runCli(args);
+  return { code: r.code, out: r.stdout, err: r.stderr };
+}
+
+const hasModels = [TTS_MODEL, ASR_MODEL].every((m) => fs.existsSync(path.join(cacheRoot(), 'models', m)));
 
 test('init rejects an unknown theme and creates no folder', async () => {
   const base = tempDir();
@@ -147,3 +157,52 @@ test('icons prints one match per line, and close names when nothing matches', ()
   // More than 40 matches name how many there are.
   assert.match(icons('arrow').stdout, /^\d+ icons match "arrow"\. These are the 40 best:\n/);
 });
+
+// A new project starts neutral: the same scene names in script.md and scenes.js,
+// built on s.safe, the title and one placeholder line per scene, and the
+// defaults of this version. voice and check run on it as it is.
+test('init writes a neutral starter whose scenes match, with "defaults", and says to write script.md and run voice next', async (t) => {
+  const base = tempDir();
+  t.after(() => fs.rmSync(base, { recursive: true, force: true }));
+  const target = path.join(base, 'bees');
+  const r = await runAll(['init', target, '--title', 'How Bees Make Honey']);
+  assert.equal(r.code, 0, r.err);
+  assert.match(r.out, /^next: write the narration in script\.md, then run ".+ voice .+bees"\. After that, draw each scene in scenes\.js and run ".+ check .+bees"\.$/m);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(target, 'video.json'), 'utf8')).defaults, '0.5');
+  const script = fs.readFileSync(path.join(target, 'script.md'), 'utf8');
+  const scenes = fs.readFileSync(path.join(target, 'scenes.js'), 'utf8');
+  const { parseScript } = await import('../src/script.js');
+  const ids = parseScript(script).scenes.map((s) => s.id);
+  const mod = await import(`file://${path.join(target, 'scenes.js')}`);
+  assert.deepEqual(Object.keys(mod.default), ids);
+  assert.match(scenes, /s\.title\('How Bees Make Honey'/);
+  assert.match(scenes, /s\.safe/);
+  assert.match(scenes, /s\.portrait/);
+  // No pixel sizes written as numbers, and nothing about a topic.
+  assert.doesNotMatch(scenes, /size: \d/);
+  assert.doesNotMatch(script + scenes, /browser|server|click|link|mouse/i);
+});
+
+test('init followed by voice and check gives no errors', { skip: !hasModels && 'the voice and speech check models are not downloaded', timeout: 300000 }, async (t) => {
+  const base = tempDir();
+  t.after(() => fs.rmSync(base, { recursive: true, force: true }));
+  const target = path.join(base, 'starter');
+  assert.equal((await run(['init', target, '--title', 'How Bees Make Honey'])).code, 0);
+  const voice = await runAll(['voice', target]);
+  assert.equal(voice.code, 0, voice.err);
+  const checked = await runAll(['check', target, '--json']);
+  assert.equal(checked.code, 0, checked.err);
+  assert.deepEqual(JSON.parse(checked.out).issues.filter((i) => i.level === 'error'), []);
+});
+
+test('a scene without a function lists every such scene of script.md with a stub to paste', async (t) => {
+  const dir = tempDir();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ size: '320x180', music: false, sfx: false }));
+  fs.writeFileSync(path.join(dir, 'script.md'), '## hook {min=1}\n## prompt {min=1}\n## outro-2 {min=1}\n');
+  fs.writeFileSync(path.join(dir, 'scenes.js'), 'export default { hook(s) {}, steps(s) {} };');
+  const r = await runAll(['check', dir]);
+  assert.equal(r.code, 1);
+  assert.match(r.err, /scenes\.js has no function for the scenes "prompt", "outro-2" of script\.md\. scenes\.js has "steps", which no scene in script\.md uses\. Rename it, or add these to the object that scenes\.js exports:\n {2}prompt\(s\) \{\n {4}s\.text\('prompt', \{ y: s\.safe\.top \+ s\.safe\.h \/ 2, at: 0 \}\);\n {2}\},\n {2}"outro-2"\(s\) \{/);
+});
+

@@ -1,7 +1,7 @@
 // explainroo command line.
 import fs from 'node:fs';
 import path from 'node:path';
-import { loadProject, ProjectError, THEMES, MUSIC_STYLES, FORMATS, resolveSize, normalizeConfig, scriptName, checkClipBudget, checkLanguage, noKokoroVoice } from './project.js';
+import { loadProject, ProjectError, THEMES, MUSIC_STYLES, FORMATS, resolveSize, normalizeConfig, scriptName, checkClipBudget, checkLanguage, noKokoroVoice, DEFAULTS_VERSIONS } from './project.js';
 import { layoutAreas } from '../engine/layout.js';
 import { suggest } from '../engine/util.js';
 import { ScriptError } from './script.js';
@@ -531,7 +531,9 @@ function init(dir, flags, print) {
   const tpl = path.join(ROOT, 'templates', 'starter');
   const size = textFlag(flags, 'size') || '16:9';
   resolveSize(size);
-  const config = { title, theme, size, voice, music: true, captions: 'auto' };
+  // A new project gets the defaults of this version. A project without the line
+  // keeps the look of the version it was made with.
+  const config = { title, theme, size, voice, music: true, captions: 'auto', defaults: DEFAULTS_VERSIONS.at(-1) };
   if (flags.language !== undefined) config.language = language;
   if (flags.pace !== undefined) config.pace = num(flags.pace, 'pace');
   normalizeConfig(config);
@@ -542,7 +544,7 @@ function init(dir, flags, print) {
   fs.writeFileSync(path.join(target, 'script.md'), fs.readFileSync(path.join(tpl, 'script.md'), 'utf8').replace('{{title}}', title));
   fs.writeFileSync(path.join(target, 'scenes.js'), fs.readFileSync(path.join(tpl, 'scenes.js'), 'utf8').replace(/\{\{title\}\}/g, title.replace(/'/g, "\\'")));
   fs.writeFileSync(path.join(target, '.gitignore'), 'build/\nout/\n.env\nhistory/private/\n');
-  print(`created ${target}\nnext: edit script.md and scenes.js, then run "explainroo preview ${dir}" or "explainroo render ${dir} --draft"`, { dir: target });
+  print(`created ${target}\nnext: write the narration in script.md, then run "${selfCommand()} voice ${dir}". After that, draw each scene in scenes.js and run "${selfCommand()} check ${dir}".`, { dir: target });
   return 0;
 }
 

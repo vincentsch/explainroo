@@ -134,11 +134,15 @@ export class Engine {
     });
     const ids = new Set(timeline.scenes.map((s) => s.id));
     this.extraScenes = Object.keys(scenes).filter((k) => !ids.has(k));
-    for (const sc of timeline.scenes) {
-      if (typeof scenes[sc.id] !== 'function') {
-        const have = Object.keys(scenes);
-        throw new SceneError(`scenes.js has no function for scene "${sc.id}".${have.length ? ' Close names: ' + suggest(sc.id, have, 3).join(', ') : ''}`);
-      }
+    // Every scene of the script without a function, each with a stub to paste
+    // into scenes.js, and the names it has that no scene uses.
+    const missing = timeline.scenes.filter((sc) => typeof scenes[sc.id] !== 'function').map((sc) => sc.id);
+    if (missing.length) {
+      const script = state.text?.files?.script ?? 'script.md';
+      const names = missing.map((id) => `"${id}"`).join(', ');
+      const stubs = missing.map((id) => `  ${/^[A-Za-z_$][\w$]*$/.test(id) ? id : JSON.stringify(id)}(s) {\n    s.text('${id}', { y: s.safe.top + s.safe.h / 2, at: 0 });\n  },`).join('\n');
+      const unused = this.extraScenes.length ? ` scenes.js has ${this.extraScenes.map((k) => `"${k}"`).join(', ')}, which no scene in ${script} uses. Rename ${this.extraScenes.length === 1 ? 'it' : 'them'}, or add these to the object that scenes.js exports:` : ' Add these to the object that scenes.js exports:';
+      throw new SceneError(`scenes.js has no function for ${missing.length === 1 ? 'the scene' : 'the scenes'} ${names} of ${script}.${unused}\n${stubs}`);
     }
   }
 
