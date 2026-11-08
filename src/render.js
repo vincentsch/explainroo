@@ -31,19 +31,24 @@ export async function render(project, opts = {}) {
   const out = renderOutput(project, opts);
   const t0 = Date.now();
   const { timeline } = await prepare(project, { log });
+  const prepared = (Date.now() - t0) / 1000;
   const { from, to, partial } = frameRange(project, timeline, opts);
   // A cover at a scene that isn't there, or a caption word that is too long, stops
   // the render here, before any frame is drawn.
   const plan = planExtras(project, timeline, { range: { from: from / project.config.fps, to: to / project.config.fps }, full: !partial });
   const video = await encodeVideo(project, timeline, { ...opts, out, log });
-  const files = await writeExtras(project, timeline, video.out.slice(0, -path.extname(video.out).length), { plan, log });
+  const files = await step('writing the subtitles, chapters and cover', log, () => writeExtras(project, timeline, video.out.slice(0, -path.extname(video.out).length), { plan, log }));
   recordVersion(project.dir, versionLine(project, video));
   const secs = (Date.now() - t0) / 1000;
-  log(`wrote ${path.relative(process.cwd(), video.out) || video.out} in ${secs.toFixed(1)}s`);
+  // Where the time went: the narration and the pages before the first frame,
+  // the frames, and the sound, the file and the cover after the last one.
+  const { ready, frames } = video.timing;
+  const after = Math.max(0, secs - prepared - ready - frames);
+  log(`wrote ${path.relative(process.cwd(), video.out) || video.out} in ${secs.toFixed(1)}s: ${(prepared + ready).toFixed(1)}s before the first frame, ${frames.toFixed(1)}s of frames and ${after.toFixed(1)}s after them`);
   // Another size that says an older script is out of date now. It is only named, never rendered here.
   const outdated = outdatedRenders(project);
   for (const r of outdated) log(outdatedLine(r));
-  return { out: video.out, ...files, duration: video.duration, frames: video.frames, seconds: secs, estimated_seconds: video.estimated_seconds, width: video.width, height: video.height, sha256: video.sha256, identity: video.identity, ...(outdated.length ? { outdated } : {}) };
+  return { out: video.out, ...files, duration: video.duration, frames: video.frames, seconds: secs, timing: { before_frames: Math.round((prepared + ready) * 10) / 10, frames: Math.round(frames * 10) / 10, after_frames: Math.round(after * 10) / 10 }, estimated_seconds: video.estimated_seconds, width: video.width, height: video.height, sha256: video.sha256, identity: video.identity, ...(outdated.length ? { outdated } : {}) };
 }
 
 // The frames that --from and --to ask for.
@@ -105,6 +110,18 @@ export function estimateText({ seconds, frames, frames_per_second: rate }) {
   return `about ${time}: ${frames.toLocaleString('en-US')} frames at about ${speed} a second here`;
 }
 
+// Runs one step of a render, and says which step it is once it has taken 2
+// seconds, so a long wait after the frames never goes quiet.
+export async function step(name, log, fn) {
+  const timer = setTimeout(() => log(`${name}…`), 2000);
+  timer.unref?.();
+  try {
+    return await fn();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // Draws the frames and writes the video file at `out`, without the files that go
 // next to it.
 export async function encodeVideo(project, timeline, opts) {
@@ -150,8 +167,13 @@ export async function encodeVideo(project, timeline, opts) {
   const mix = path.join(project.paths.build, 'mix.wav');
   const mixNorm = path.join(project.paths.build, 'mix-norm.wav');
   const encoders = [];
+  // How long the pages took to start, the frames and the steps after them.
+  const timing = { ready: 0, frames: 0 };
+  const starting = setTimeout(() => log(`starting ${workers} browser page${workers > 1 ? 's' : ''}…`), 2000);
+  starting.unref?.();
   try {
     await withEngine(project, timeline, { scale, pages: workers, transparent, log }, async (pages) => {
+      clearTimeout(starting);
       const list = Array.isArray(pages) ? pages : [pages];
       let norm;
       if (format !== 'gif') {
@@ -166,6 +188,7 @@ export async function encodeVideo(project, timeline, opts) {
       let done = 0;
       let lastLog = Date.now();
       const tf = Date.now();
+      timing.ready = (tf - started) / 1000;
       await Promise.all(list.map(async (page, k) => {
         const a = from + k * per;
         const b = Math.min(to, a + per);
@@ -187,12 +210,15 @@ export async function encodeVideo(project, timeline, opts) {
         }
         await enc.close();
       }));
-      log(`frames done in ${((Date.now() - tf) / 1000).toFixed(1)}s`);
-      await norm;
+      timing.frames = (Date.now() - tf) / 1000;
+      log(`frames done in ${timing.frames.toFixed(1)}s`);
+      await step('finishing the sound', log, () => norm);
     });
   } catch (e) {
     for (const enc of encoders) enc.kill();
     throw e;
+  } finally {
+    clearTimeout(starting);
   }
 
   const segs = fs.readdirSync(segDir).filter((f) => f.endsWith(`.${segmentFormat}`)).sort();
@@ -207,9 +233,11 @@ export async function encodeVideo(project, timeline, opts) {
     const palette = path.join(project.paths.build, 'gif-palette.png');
     const filter = `fps=15,scale=${width}:${height}:flags=lanczos`;
     try {
-      await ffmpeg(['-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', listFile, '-map', '0:v', '-c:v', 'copy', '-an', temp]);
-      await ffmpeg(['-loglevel', 'error', '-i', temp, '-vf', `${filter},palettegen=stats_mode=diff`, '-frames:v', '1', '-threads', '1', palette]);
-      await ffmpeg(['-loglevel', 'error', '-i', temp, '-i', palette, '-lavfi', `${filter}[v];[v][1:v]paletteuse=dither=sierra2_4a`, '-an', out]);
+      await step('making the GIF', log, async () => {
+        await ffmpeg(['-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', listFile, '-map', '0:v', '-c:v', 'copy', '-an', temp]);
+        await ffmpeg(['-loglevel', 'error', '-i', temp, '-vf', `${filter},palettegen=stats_mode=diff`, '-frames:v', '1', '-threads', '1', palette]);
+        await ffmpeg(['-loglevel', 'error', '-i', temp, '-i', palette, '-lavfi', `${filter}[v];[v][1:v]paletteuse=dither=sierra2_4a`, '-an', out]);
+      });
     } finally {
       fs.rmSync(temp, { force: true });
       fs.rmSync(palette, { force: true });
@@ -217,7 +245,7 @@ export async function encodeVideo(project, timeline, opts) {
   } else {
     const audioCodec = AUDIO_CODECS[format];
     const containerArgs = format === 'webm' ? [] : ['-movflags', '+faststart'];
-    await ffmpeg(['-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', listFile, ...audioArgs, ...metadataArgs, '-map', '0:v', '-map', '1:a', '-c:v', 'copy', ...audioCodec, ...containerArgs, '-shortest', out]);
+    await step('joining the frames and the sound', log, () => ffmpeg(['-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', listFile, ...audioArgs, ...metadataArgs, '-map', '0:v', '-map', '1:a', '-c:v', 'copy', ...audioCodec, ...containerArgs, '-shortest', out]));
   }
   fs.rmSync(segDir, { recursive: true, force: true });
   const seconds = (Date.now() - started) / 1000;
@@ -239,6 +267,7 @@ export async function encodeVideo(project, timeline, opts) {
     sha256: sha256File(out),
     identity,
     estimated_seconds: estimate ? Math.round(estimate.seconds) : null,
+    timing,
   };
 }
 

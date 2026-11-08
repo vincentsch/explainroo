@@ -73,3 +73,23 @@ test('a render of fewer than 90 frames keeps no speed', { skip: !chrome && 'no b
   assert.equal(r.code, 0, r.text);
   assert.equal(fs.existsSync(path.join(cache, 'render-speed.json')), false);
 });
+
+// After the frames, render joins the sound and writes the cover, and before them
+// it starts its pages. A step that takes 2 seconds says what it is, and the last
+// line says where the time went.
+test('a slow step of a render says what it is once, and the render says where its time went', { skip: !chrome && 'no browser here', timeout: 300000 }, async (t) => {
+  const { step } = await import('../src/render.js');
+  const lines = [];
+  assert.equal(await step('joining the frames and the sound', (m) => lines.push(m), () => new Promise((resolve) => setTimeout(() => resolve(7), 2300))), 7);
+  assert.deepEqual(lines, ['joining the frames and the sound…']);
+  await step('quick', (m) => lines.push(m), () => 1);
+  assert.equal(lines.length, 1);
+  const dir = tinyProject(t, {}, { narrated: false });
+  const said = await runCli(['render', dir, '--workers', '1']);
+  assert.equal(said.code, 0, said.text);
+  assert.match(said.stderr, /^wrote \S*video\.mp4 in \d+\.\ds: \d+\.\ds before the first frame, \d+\.\ds of frames and \d+\.\ds after them$/m);
+  const r = await runCli(['render', dir, '--workers', '1', '--json']);
+  assert.equal(r.code, 0, r.text);
+  const { timing, seconds } = JSON.parse(r.stdout);
+  assert.ok(Math.abs(timing.before_frames + timing.frames + timing.after_frames - seconds) < 0.3, JSON.stringify(timing));
+});

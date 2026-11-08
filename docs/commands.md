@@ -15,7 +15,7 @@ an example.
 | `still [project] [times]` | PNG pictures at `12.5`, `scene`, `scene@2.4` or `scene@end` (`--size`, `--platform`, `--no-watermark`, `--transparent` keeps alpha) |
 | `sheet [project]` | one image with many frames of the video or of one scene (`--scene`, `--every`, `--size`, `--platform`, `--no-watermark`). `--times 3,12.5,intro@2` makes `out/sheet-times.jpg` of just those moments, in that order. It takes every time that `still` takes. With `--size tiktok` the file is `out/sheet-times-tiktok.jpg` |
 | `check [project]` | finds layout, timing and pronunciation problems (`--size`, `--platform`, `--no-watermark`) |
-| `render [project]` | the video plus subtitle files, chapters and a cover (`--format mp4`, `gif`, `webm` or `mov`, `--transparent`, `--size`, `--platform`, `--no-watermark`, `--draft`, `--quality final` or `fast`, `--from`, `--to`, `--workers`, `--out`) |
+| `render [project]` | the video plus subtitle files, chapters and a cover (`--format mp4`, `gif`, `webm` or `mov`, `--transparent`, `--size`, `--platform`, `--no-watermark`, `--draft`, `--quality final` or `fast`, `--from`, `--to`, `--workers`, `--out`). Its last line says how long it took before the first frame, for the frames and after them, and a step that takes longer than 2 seconds says what it is |
 | `verify [project]` | checks the finished MP4, WebM or MOV: loudness, true peak, black frames, silence, clear voice (`--file` picks another file) |
 | `export [project]` | writes a web player folder (`--out dir`, `--size`, `--no-watermark`, `--json`), by default `out/player/`, or `out/player-tiktok/` with `--size tiktok` |
 | `package [project]` | a folder to post on one platform (`--platform`, `--title`, `--description`, `--hashtags`, `--size` for x, `--workers`) |
