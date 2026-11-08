@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { loadProject, normalizeConfig, outputPath, sizeArg, FORMATS, ProjectError } from '../src/project.js';
+import { loadProject, normalizeConfig, outputPath, sizeArg, FORMATS, TALL_FORMATS, ProjectError } from '../src/project.js';
 import { buildTimeline } from '../src/timeline.js';
 import { renderIdentity } from '../src/pipeline.js';
 import { coverSpec, planExtras } from '../src/render.js';
@@ -236,6 +236,39 @@ test('formats prints the content area with and without the watermark, the same a
   const { content: on, content_without_watermark: off } = tiktok;
   assert.ok(text.includes(`content area ${on.w}x${on.h} at ${on.x},${on.y} with the watermark, ${off.w}x${off.h} at ${off.x},${off.y} without it, captions below it`), text);
   assert.match(text, /"check --size <name> --no-watermark" the one without it/);
+  // With bold captions too, and the caption band is not part of the area.
+  for (const f of formats) {
+    assert.deepEqual(f.content_bold_captions, area({ size: f.name, captions: 'bold' }), `${f.name} with bold captions`);
+    assert.deepEqual(f.content_bold_captions_without_watermark, area({ size: f.name, captions: 'bold', watermark: false }), `${f.name} with bold captions, without the watermark`);
+  }
+  const bold = tiktok.content_bold_captions_without_watermark;
+  assert.ok(text.includes(`with bold captions ${tiktok.content_bold_captions.w}x${tiktok.content_bold_captions.h} at ${tiktok.content_bold_captions.x},${tiktok.content_bold_captions.y} with the watermark, ${bold.w}x${bold.h} at ${bold.x},${bold.y} without it`), text);
+  assert.match(text, /The content area is s\.safe\. The caption band sits below it and is not part of it\./);
+});
+
+test('the content areas in the sizes docs are the ones the code gives every tall size, and check names the same area', () => {
+  const doc = fs.readFileSync(fileURLToPath(new URL('../docs/sizes.md', import.meta.url)), 'utf8');
+  const rows = [...doc.matchAll(/^\| `(\w+)` \| (normal|bold|none) \| (\d+) x (\d+) at (\d+),(\d+) \| (\d+) x (\d+) at (\d+),(\d+) \|$/gm)];
+  const area = (size, captions, watermark) => {
+    const config = normalizeConfig({ size, captions, ...(watermark ? {} : { watermark: false }) });
+    const { safe, band } = layoutAreas(config, config.width, config.height);
+    if (band) assert.ok(safe.bottom < band.top, `${size}: the caption band is below the content area`);
+    return [safe.w, safe.h, safe.x, safe.y];
+  };
+  const seen = [];
+  for (const [, size, captions, ...n] of rows) {
+    const value = { normal: true, bold: 'bold', none: false }[captions];
+    assert.deepEqual(n.slice(0, 4).map(Number), area(size, value, true), `${size}, ${captions} captions, with the watermark`);
+    assert.deepEqual(n.slice(4).map(Number), area(size, value, false), `${size}, ${captions} captions, without the watermark`);
+    seen.push(`${size} ${captions}`);
+  }
+  assert.deepEqual(seen.sort(), TALL_FORMATS.flatMap((size) => ['normal', 'bold', 'none'].map((c) => `${size} ${c}`)).sort());
+  // A TikTok package: bold captions in its block and no watermark.
+  const [w, h, x, y] = area('tiktok', 'bold', false);
+  const text = doc.replace(/\s+/g, ' ');
+  assert.ok(text.includes(`With \`"captions": "bold"\` in its block, its content area is ${w} x ${h} at ${x},${y}.`), 'the TikTok package sentence');
+  // The warning check gives names the area as left,top to right,bottom and its size.
+  assert.ok(text.includes(`"outside the tiktok content area (${x},${y} to ${x + w},${y + h}, ${w}x${h})"`), 'the example warning');
 });
 
 test('the command that continues a paid sentence at the pace of a size names the size, and a strange size never reaches it', () => {

@@ -68,7 +68,8 @@ Bold captions sit in a band of their own in the lower middle of the content
 area. On Shorts, TikTok and Reels the apps cover the bottom and the right side
 of the frame with their own buttons and text, and the band sits right above
 that. `s.safe` ends above the band, so place everything from `s.safe`. `check`
-warns about text in the band and about text where the app's buttons go.
+warns about text and shapes in the band and where the app's buttons go.
+`explainroo docs sizes` has the content area of each size in pixels.
 
 Numbers, amounts of money and words with `*stars*` in `script.md` get the
 keyword color in bold captions. Use stars for one or two words a sentence, or

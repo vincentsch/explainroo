@@ -406,7 +406,7 @@ test('the scene-api, troubleshooting, product-demos and commands topics and the 
 
 test('the docs say that verify takes no --size, that German is a language, and that only Kokoro needs espeak-ng', () => {
   assert.ok(oneLine(page('sizes')).includes('`verify` takes no `--size`, so check such a video with `verify --file out/video-tiktok.mp4`.'));
-  assert.ok(oneLine(page('sizes')).includes('Bold captions need a shorter band, so with them it is 745 x 799 and 745 x 863.'));
+  assert.ok(oneLine(page('sizes')).includes('Bold captions are one line, so their band is shorter and the content area taller.'));
   assert.match(page('settings'), /^\| `language` \| `en` \| .*and `de` with a paid voice or a recording/m);
   assert.ok(oneLine(read('README.md')).includes('For narration with Kokoro, the free voice, in Spanish, French, Italian, Portuguese or Hindi, also install'));
   assert.ok(oneLine(read('AGENTS.md')).includes('With `--fetch` it also downloads the speech models that setup needs, the first time only: about 400 MB for English, and 252 MB for another language.'));

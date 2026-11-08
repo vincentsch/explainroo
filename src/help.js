@@ -152,7 +152,7 @@ export const COMMAND_HELP = {
     example: 'say "Hello there" --voice am_michael',
   },
   themes: { usage: 'themes [options]', about: 'Lists the looks and the music styles.', options: [JSON_OUT], example: 'themes' },
-  formats: { usage: 'formats [options]', about: 'Lists the sizes, with the content area of each with and without the watermark.', options: [JSON_OUT], example: 'formats' },
+  formats: { usage: 'formats [options]', about: 'Lists the sizes, with the content area of each with and without the watermark, also with bold captions. The content area is s.safe, and the caption band is not part of it.', options: [JSON_OUT], example: 'formats' },
   icons: { usage: 'icons <word…> [options]', about: 'Searches the built-in icons, one match per line.', options: [JSON_OUT], example: 'icons database' },
   doctor: {
     usage: 'doctor [project] [options]',

@@ -20,22 +20,49 @@ video.
 
 Shorts, TikTok and Reels put their own buttons, the account name and the post
 text on top of the video. With `shorts`, `tiktok`, `reels` and `vertical`,
-explainroo keeps your content away from those spots. `s.safe` is the part the
-app leaves free, and `s.cx` and `s.cy` are its center. The captions sit right
+explainroo keeps your content away from those spots. The captions sit right
 above the app's bottom band, and the watermark moves to the top right corner.
-`check` warns about any text outside that area. Plain `9:16` has no such
+`s.safe` is the content area, and `s.cx` and `s.cy` are its center. `check`
+warns about text, shapes and arrows outside it. Plain `9:16` has no such
 margins, so use it only when the video is not meant for those apps.
 
 Vertical videos have little room. Stack things instead of putting them side
 by side, use fewer words on screen, and place everything from `s.safe`.
-`explainroo formats` prints the content area of each size in pixels, with the
-watermark and without it, for normal captions. On TikTok it is 745 x 746 with
-the watermark and 745 x 810 without it, which is what a TikTok package uses.
-Bold captions need a shorter band, so with them it is 745 x 799 and 745 x 863.
-`check --size tiktok` measures the area with the watermark, and
-`check --size tiktok --no-watermark` the one without it.
 `explainroo docs short-video` has a kit for the parts these videos share, like a
 hook title on the first frame.
+
+## The content area
+
+The content area is the part the app leaves free, without the caption band and
+without the strip the watermark takes at the top. The caption band sits below
+the content area and is not part of it. Bold captions are one line, so their
+band is shorter and the content area taller. Without captions, the content
+area reaches down to the app's own text.
+
+These are the content areas of the tall app sizes in pixels, as width x height
+at the top left corner, with the watermark and without it. `explainroo formats`
+prints the same numbers, and `check` names the area in its warnings, like
+"outside the tiktok content area (119,240 to 864,1103, 745x863)".
+
+| Size | Captions | With the watermark | Without the watermark |
+|---|---|---|---|
+| `shorts` | normal | 885 x 679 at 65,352 | 885 x 743 at 65,288 |
+| `shorts` | bold | 885 x 732 at 65,352 | 885 x 796 at 65,288 |
+| `shorts` | none | 885 x 896 at 65,352 | 885 x 960 at 65,288 |
+| `tiktok` | normal | 745 x 746 at 119,304 | 745 x 810 at 119,240 |
+| `tiktok` | bold | 745 x 799 at 119,304 | 745 x 863 at 119,240 |
+| `tiktok` | none | 745 x 963 at 119,304 | 745 x 1027 at 119,240 |
+| `reels` | normal | 896 x 698 at 65,333 | 896 x 762 at 65,269 |
+| `reels` | bold | 896 x 751 at 65,333 | 896 x 815 at 65,269 |
+| `reels` | none | 896 x 915 at 65,333 | 896 x 979 at 65,269 |
+| `vertical` | normal | 745 x 679 at 119,352 | 745 x 743 at 119,288 |
+| `vertical` | bold | 745 x 732 at 119,352 | 745 x 796 at 119,288 |
+| `vertical` | none | 745 x 896 at 119,352 | 745 x 960 at 119,288 |
+
+A TikTok package has no watermark. With `"captions": "bold"` in its block, its
+content area is 745 x 863 at 119,240. `check --size tiktok` measures the area
+with the watermark, `check --size tiktok --no-watermark` the one without it,
+and `check --platform tiktok` the one a TikTok package has.
 
 ## Where the captions sit
 

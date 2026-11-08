@@ -117,7 +117,7 @@ Reference
   say "text"            hear a Kokoro voice (--voice am_michael, --speed 1, --out sample.wav)
   themes                list looks
   formats               list sizes for YouTube, Shorts, TikTok, Reels, Instagram and LinkedIn. For each it
-                        shows the content area with the watermark and without it
+                        shows the content area with the watermark and without it, also with bold captions
   icons <word…>         search the 1,800+ built-in icons
   doctor [project]      check ffmpeg, Chrome, espeak-ng, misaki and models: each is ready, not needed or missing.
                         With a project, for its languages and voices. Before there is a project, --language es
@@ -417,9 +417,10 @@ export async function main(argv) {
       }
       case 'formats': {
         // The free area for content with the defaults (captions as "auto"
-        // decides), the same box scenes get as s.safe: with the watermark, as
-        // "check --size <name>" uses it, and without, as "--no-watermark" and a
-        // TikTok package use it.
+        // decides), and with bold captions, the same box scenes get as s.safe
+        // and check measures: with the watermark, as "check --size <name>" uses
+        // it, and without, as "--no-watermark" and a TikTok package use it. The
+        // caption band is below it and not part of it.
         const content = (settings) => {
           const cfg = normalizeConfig(settings);
           const { safe } = layoutAreas(cfg, cfg.width, cfg.height);
@@ -428,11 +429,12 @@ export async function main(argv) {
         const info = Object.entries(FORMATS).map(([name, f]) => ({
           name, width: f.size[0], height: f.size[1], use: f.use, captions: normalizeConfig({ size: name }).captions,
           content: content({ size: name }), content_without_watermark: content({ size: name, watermark: false }),
+          content_bold_captions: content({ size: name, captions: 'bold' }), content_bold_captions_without_watermark: content({ size: name, captions: 'bold', watermark: false }),
         }));
         const area = (a) => `${a.w}x${a.h} at ${a.x},${a.y}`;
-        const areas = (r) => (area(r.content) === area(r.content_without_watermark) ? `${area(r.content)} with or without the watermark` : `${area(r.content)} with the watermark, ${area(r.content_without_watermark)} without it`);
-        const rows = info.map((r) => `${r.name.padEnd(10)} ${`${r.width}x${r.height}`.padEnd(10)} ${r.use}\n${''.padEnd(22)}content area ${areas(r)}${r.captions ? ', captions below it' : ''}`);
-        print(rows.join('\n') + '\n\nAlso: 16:9, 9:16, 1:1, 4:5 or WIDTHxHEIGHT. Set it with "size" in video.json or --size on init, preview, still, sheet, check, render or export. "check --size <name>" uses the area with the watermark, and "check --size <name> --no-watermark" the one without it.', { formats: info });
+        const areas = (on, off) => (area(on) === area(off) ? `${area(on)} with or without the watermark` : `${area(on)} with the watermark, ${area(off)} without it`);
+        const rows = info.map((r) => `${r.name.padEnd(10)} ${`${r.width}x${r.height}`.padEnd(10)} ${r.use}\n${''.padEnd(22)}content area ${areas(r.content, r.content_without_watermark)}${r.captions ? ', captions below it' : ', no captions'}\n${''.padEnd(22)}with bold captions ${areas(r.content_bold_captions, r.content_bold_captions_without_watermark)}`);
+        print(rows.join('\n') + '\n\nThe content area is s.safe. The caption band sits below it and is not part of it. On shorts, tiktok, reels and vertical, check warns about anything outside it.\nAlso: 16:9, 9:16, 1:1, 4:5 or WIDTHxHEIGHT. Set it with "size" in video.json or --size on init, preview, still, sheet, check, render or export. "check --size <name>" uses the area with the watermark, and "check --size <name> --no-watermark" the one without it. "check --platform <name>" uses the area of that package, so "check --platform tiktok" uses the one without the watermark.', { formats: info });
         return 0;
       }
       case 'icons': return icons(pos, print);
