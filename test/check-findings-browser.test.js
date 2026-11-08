@@ -89,7 +89,8 @@ test('check treats an arrow label as text: overlap, off the frame, caption band 
   const found = (scene, start) => wide.filter((i) => i.scene === scene && i.message.startsWith(start));
   assert.deepEqual(found('overlap', '"Resolver" overlaps').map((i) => [i.level, i.message]), [['error', '"Resolver" overlaps "asks"']]);
   const off = offFrame(wide.filter((i) => i.scene === 'offframe'), 'too far');
-  assert.ok(off.x0 < -1 && Math.abs(off.x1 - (30 - 34)) <= 1, JSON.stringify(off));
+  // The default label is 48 pixels, the size of body text, 44 pixels from the arrow.
+  assert.ok(off.x0 < -1 && Math.abs(off.x1 - (30 - 44)) <= 1, JSON.stringify(off));
   assert.deepEqual(found('band', '"low"').map((i) => [i.level, i.message]), [['warn', '"low" is in the caption band (y 851 to 990), where captions can cover it; keep content above s.safe.bottom (827)']]);
 
   const tall = await check(project(t, { size: 'tiktok' }, {
@@ -111,21 +112,21 @@ test('labelSide moves the label, the box check measures and the box the camera k
   });
   const { issues, more: cameras } = await check(sides, (page) => page.evaluate(() => window.explainroo.cameras()));
   const at = (scene) => issues.filter((i) => i.scene === scene);
-  // Each label runs off the frame on the side it names, labelOffset (34) from the
-  // arrow's middle: beside a vertical arrow its near edge, above or below a
-  // horizontal one its center.
+  // Each label runs off the frame on the side it names, labelOffset (44 for the
+  // default 48 pixel label) from the arrow's middle: beside a vertical arrow its
+  // near edge, above or below a horizontal one its center.
   const left = offFrame(at('left'), 'LEFT');
   const right = offFrame(at('right'), 'RIGHT');
   const above = offFrame(at('above'), 'ABOVE');
   const below = offFrame(at('below'), 'BELOW');
   const near = (a, b, what) => assert.ok(Math.abs(a - b) <= 2, `${what}: ${a} is not ${b}`);
-  near(left.x1, 80 - 34, 'the right edge of the left label');
+  near(left.x1, 80 - 44, 'the right edge of the left label');
   near(left.y, 540, 'the middle of the left label');
-  near(right.x0, 1840 + 34, 'the left edge of the right label');
+  near(right.x0, 1840 + 44, 'the left edge of the right label');
   near(right.y, 540, 'the middle of the right label');
-  near(above.y, 40 - 34, 'the middle of the label above');
+  near(above.y, 40 - 44, 'the middle of the label above');
   near(above.x, 960, 'the middle of the label above');
-  near(below.y, 1040 + 34, 'the middle of the label below');
+  near(below.y, 1040 + 44, 'the middle of the label below');
   near(below.x, 960, 'the middle of the label below');
   // Without labelSide the same arrows keep their labels left and above, in the frame.
   assert.deepEqual(at('plain').filter((i) => i.message.includes('runs off the frame')), []);

@@ -167,12 +167,13 @@ test('check measures text and starred words against their sticker or box, and st
   assert.equal(more.white, '#c8102e');
 });
 
-test('check judges text at the size the camera shows it', { skip }, async (t) => {
+test('check judges text at the size the camera shows it, and arrow labels are body size', { skip }, async (t) => {
   const scenes = {
     // Small text alone: the camera moves close, so it is shown big enough.
     alone: `s.text('fine print', { size: 18, at: 0 });`,
     // A scene that zooms out itself makes text smaller than written.
     away: `s.camera([{ at: 1, zoom: 0.5, dur: 0.2 }]); s.text('readable at first', { size: 30, at: 0 });`,
+    label: `s.arrow([600, 540], [1300, 540], { label: 'water vapor', at: 0 });`,
   };
   const filmed = await check(project(t, { camera: 'auto' }, scenes, { dur: 4 }));
   assert.deepEqual(messages(filmed, 'alone', 'hard to read'), []);
@@ -180,6 +181,9 @@ test('check judges text at the size the camera shows it', { skip }, async (t) =>
   // Without the camera the layout is what shows.
   const still = await check(project(t, { camera: 'still' }, scenes, { dur: 4 }));
   assert.deepEqual(messages(still, 'alone', 'hard to read'), ['"fine print" is 18px, hard to read (use at least 24px)']);
+  // At 48 pixels the label stays above 16 pixels in an 854 pixel player.
+  const { more: size } = await check(project(t, {}, { label: scenes.label }), (page) => page.evaluate(() => window.explainroo.check(0.5, 854)));
+  assert.deepEqual(size, []);
 });
 
 test('check warns about text and shapes a held shot cuts at the edge, not about those fully out of it or cut during a move', { skip }, async (t) => {

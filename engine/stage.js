@@ -1268,8 +1268,9 @@ export class Stage {
         ny = -ny;
       }
     }
-    const off = o.labelOffset ?? 34;
-    const size = o.labelSize ?? 34;
+    const size = o.labelSize ?? TEXT_SIZE;
+    // 34 for a 34 pixel label, as before body size was the default, and 44 for 48.
+    const off = o.labelOffset ?? Math.round(size * 0.7 + 10);
     const font = fontString(this.theme, o.labelFont ?? 'hand', size);
     this.ctx.save();
     this.ctx.font = font;

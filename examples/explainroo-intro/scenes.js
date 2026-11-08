@@ -65,7 +65,7 @@ export default {
     s.text('Word cues', { font: 'display', size: 84, y: 160, at: 0.1 });
     s.icon('image', { id: 'pic', x: 700, y: 540, size: 170, color: 'blue', at: 'picture', out: '#code', bg: 'circle' });
     s.icon('speech', { id: 'said', x: 1220, y: 540, size: 170, color: 'accent', at: 'mentions', out: '#code', bg: 'circle' });
-    s.arrow('pic', 'said', { head: 'both', dashed: true, label: 'at the same time', at: s.cue('mentions') + 0.25, out: '#code', color: 'muted' });
+    s.arrow('pic', 'said', { head: 'both', dashed: true, label: 'at the same time', labelSize: 34, at: s.cue('mentions') + 0.25, out: '#code', color: 'muted' });
     s.code("s.icon('database', {\n  at: 'database',\n});", { x: 640, y: 560, w: 860, size: 44, title: 'scenes.js', at: '#code', reveal: 'type', cps: 34 });
     const db = s.icon('database', { id: 'db', x: 1450, y: 560, size: 260, color: 'purple', at: 'database', enter: 'pop', bg: 'circle', bgScale: 1.45 });
     s.note('appears when the voice says it', { x: db.x, y: db.bottom + 60, size: 38, at: 'appears' });
