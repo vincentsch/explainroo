@@ -200,3 +200,48 @@ test('the list of near matches shows sound-alike words and two words heard as on
   assert.equal(nearlyText([{ word: 'See', heard: 'Seacosts', joined: true }, { word: 'costs', heard: 'Seacosts', joined: true }, { word: 'Soundroo', heard: 'Soundru' }, { word: 'piece', heard: 'peace', alike: true }]),
     '3 words only nearly matched: See costs (heard "Seacosts"), Soundroo (heard "Soundru"); 1 word sounded the same: piece (heard "peace")');
 });
+
+test('punctuation on its own is never a word: it joins its word for the voice, the timings, the captions and the cues', async () => {
+  const { parseScript } = await import('../src/script.js');
+  const units = (text, language = 'fr') => parseScript(`## a\n${text}`, { language }).scenes[0].units.filter((u) => u.type === 'word');
+  const shown = (text, language) => units(text, language).map((u) => u.display);
+  assert.deepEqual(shown('Que voit-on après la pluie ?'), ['Que', 'voit-on', 'après', 'la', 'pluie ?']);
+  assert.deepEqual(shown('« Bonjour » dit-il : oui ; non !'), ['« Bonjour »', 'dit-il :', 'oui ;', 'non !']);
+  assert.deepEqual(shown('¿ Qué pasa ?', 'es'), ['¿ Qué', 'pasa ?']);
+  assert.deepEqual(shown('A dash — here.', 'en'), ['A', 'dash —', 'here.']);
+  // The voice gets the text as written, with plain spaces.
+  const scene = parseScript('## a\nAprès la pluie ?', { language: 'fr' }).scenes[0];
+  assert.equal(scene.spoken, 'Après la pluie ?');
+  // A sign that is said stays a word, and so does a spelling hint for one.
+  assert.deepEqual(shown('Prix : 5 % et {?|point d’interrogation}'), ['Prix :', '5', '%', 'et', '?']);
+  // Stars still mark a keyword next to it.
+  const starred = units('Une *pluie* !');
+  assert.deepEqual([starred[1].display, starred[1].spoken, starred[1].key], ['pluie !', 'pluie !', true]);
+  // The speech check never waits for it.
+  const words = units('Il faut des gouttes après la pluie ?').map((u) => ({ spoken: u.spoken, display: u.display }));
+  const r = alignWords(words, said('Il faut des gouttes après la pluie?'), 3, 'fr');
+  assert.deepEqual(state(r), words.map(() => 'exact'));
+  assert.equal(r.matchRate, 1);
+});
+
+test('a hyphenated word is confirmed by its parts heard as separate words', () => {
+  const fr = (script, transcript) => state(alignWords(words(script), said(transcript), 3, 'fr'));
+  assert.deepEqual(fr('Voici un arc-en-ciel.', 'Voici un arc en ciel.'), ['exact', 'exact', 'exact']);
+  assert.deepEqual(fr('Que voit-on là', 'Que voit on là'), ['exact', 'exact', 'exact']);
+  assert.deepEqual(fr('Voici un arc-en-ciel.', 'Voici un arc-en-ciel.'), ['exact', 'exact', 'exact']);
+  assert.deepEqual(state(alignWords(words('A well-known fact.'), said('A well known fact.'), 2)), ['exact', 'exact', 'exact']);
+  // A part that was never heard still shows.
+  assert.deepEqual(fr('Voici un arc-en-ciel.', 'Voici un en ciel.'), ['exact', 'exact', 'near:en ciel']);
+});
+
+test('a spelling hint heard with the same sound as its spoken form counts, listed as sounding the same', async () => {
+  const site = [{ spoken: 'Publish' }, { spoken: 'it' }, { spoken: 'on' }, { spoken: 'sound roo dot com', display: 'soundroo.com' }, { spoken: 'and' }, { spoken: 'share.' }];
+  const r = await alignSpeech(site, said('Publish it on SoundRue.com and share.'), 3);
+  assert.deepEqual(state(r), ['exact', 'exact', 'exact', 'alike:SoundRue.com', 'exact', 'exact']);
+  assert.equal(r.matchRate, 1);
+  assert.deepEqual(nearList(site, r.words), [{ word: 'soundroo.com', heard: 'SoundRue.com', alike: true }]);
+  // Over several heard words too, without spaces.
+  assert.deepEqual(state(await alignSpeech(site, said('Publish it on Sound Rue dot com and share.'), 3))[3], 'alike:Sound Rue dot com');
+  // Another sound is still not confirmed.
+  assert.equal(state(await alignSpeech(site, said('Publish it on SoundRay.com and share.'), 3))[3].split(':')[0], 'no');
+});

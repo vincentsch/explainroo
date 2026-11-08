@@ -321,6 +321,10 @@ export function alignWords(words, heard, duration, language = 'en', { sounds = n
     const shown = w.display === undefined ? '' : read(String(w.display).split(/\s+/)).filter(Boolean).flat().join('');
     const first = tokens.findIndex((t) => t.wi === wi);
     if (shown && shown !== parts.join('')) tokens[first].shown = shown;
+    // A spelling hint, like {soundroo.com|sound roo dot com}, and a word with a
+    // hyphen, like "arc-en-ciel", may be heard as several words.
+    if (w.display !== undefined && String(w.display).replace(/\s+/g, ' ') !== String(w.spoken).replace(/\s+/g, ' ')) tokens[first].override = true;
+    if (pieces[wi].some((p) => /[\p{L}\p{N}][-‐‑][\p{L}\p{N}]/u.test(p))) tokens[first].hyphen = true;
   });
   const H = [];
   read(joined.map((h) => h.text), tokens.map((t) => t.norm)).forEach((parts, source) => {
@@ -353,6 +357,11 @@ export function alignWords(words, heard, duration, language = 'en', { sounds = n
     groupEnd[i] = e;
   }
   const joinTokens = (from, to) => tokens.slice(from, to + 1).map((t) => t.norm).join('');
+  // The sound of a spelling hint's spoken form, without spaces, when every part of it has one.
+  const soundOf = (from, to) => {
+    const parts = tokens.slice(from, to + 1).map((t) => sounds?.get(t.norm));
+    return parts.every(Boolean) ? parts.join('') : null;
+  };
   // Per first token of a word: the word's tokens joined, and the same with the next word.
   const wordJoin = tokens.map((t, i) => (t.first ? joinTokens(i, groupEnd[i]) : ''));
   const pairJoin = tokens.map((t, i) => (t.first && groupEnd[i] + 1 < T ? joinTokens(i, groupEnd[groupEnd[i] + 1]) : ''));
@@ -367,7 +376,7 @@ export function alignWords(words, heard, duration, language = 'en', { sounds = n
         const v = c + (how ? 0 : 1.6);
         if (v < cost[i + 1][j + 1]) { cost[i + 1][j + 1] = v; move[i + 1][j + 1] = how ? 1 : 4; near[i + 1][j + 1] = MARK[how] ?? 0; }
       }
-      if (i < T && j < N && tokens[i].first && (groupEnd[i] > i || tokens[i].shown)) {
+      if (i < T && j < N && tokens[i].first && (groupEnd[i] > i || tokens[i].shown || tokens[i].hyphen)) {
         const e = groupEnd[i];
         const group = wordJoin[i];
         const how = Math.max(groupEnd[i] > i ? compare(group, H[j].norm) : 0, tokens[i].shown ? compare(tokens[i].shown, H[j].norm) : 0);
@@ -391,6 +400,23 @@ export function alignWords(words, heard, duration, language = 'en', { sounds = n
               near[e + 1][j + L] = 0;
             }
           }
+          // A spelling hint heard with the same sound as its spoken form, over one
+          // or more heard words and without spaces, like "SoundRue.com" for
+          // {soundroo.com|sound roo dot com}. It counts as sounding the same.
+          const want = sounds && tokens[i].override ? soundOf(i, e) : null;
+          let heardSound = '';
+          for (let L = 1; want && j + L <= N; L++) {
+            const part = sounds.get(H[j + L - 1].norm);
+            if (!part) break;
+            heardSound += part;
+            if (heardSound.length > want.length) break;
+            if (heardSound === want && c + 2 * STEP < cost[e + 1][j + L]) {
+              cost[e + 1][j + L] = c + 2 * STEP;
+              move[e + 1][j + L] = 8;
+              length[e + 1][j + L] = L;
+              near[e + 1][j + L] = MARK[ALIKE];
+            }
+          }
         }
       }
       if (cjk && i < T && tokens[i].first && tokens[i].shown) {
@@ -400,6 +426,7 @@ export function alignWords(words, heard, duration, language = 'en', { sounds = n
           cost[e + 1][j + shownLength] = c;
           move[e + 1][j + shownLength] = 7;
           length[e + 1][j + shownLength] = shownLength;
+          near[e + 1][j + shownLength] = 0;
         }
       }
       if (i < T && j + 1 < N && c < cost[i + 1][j + 2]) {
@@ -480,7 +507,7 @@ export function alignWords(words, heard, duration, language = 'en', { sounds = n
       const L = length[i][j];
       const s = wordStart(i);
       add(tokens[i - 1].wi, H[j - L].start, H[j - 1].end, i - s);
-      pair(tokens[i - 1].wi, j - L, j - 1);
+      pair(tokens[i - 1].wi, j - L, j - 1, near[i][j]);
       matched += i - s;
       i = s;
       j -= L;

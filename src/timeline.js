@@ -5,7 +5,7 @@
 // video that comes out shorter gets the missing time spread over the holds of
 // its scenes.
 import path from 'node:path';
-import { normWord, speechChunks } from './script.js';
+import { normWord, speechChunks, spokenWords } from './script.js';
 
 export const TRANSITION_SECONDS = 0.7;
 
@@ -116,7 +116,7 @@ export function estimateLength(project) {
   script.scenes.forEach((scene, index) => {
     const a = scene.attrs;
     const isLast = index === script.scenes.length - 1;
-    const count = cjk ? Array.from(normWord(scene.spoken).normalize('NFC')).length : scene.spoken.split(/\s+/).filter(Boolean).length;
+    const count = cjk ? Array.from(normWord(scene.spoken).normalize('NFC')).length : spokenWords(scene.spoken).length;
     let dur;
     if (count) {
       const talk = (count / perMinute) * 60;

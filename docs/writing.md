@@ -60,12 +60,18 @@ Narration for this scene. [#marker] A marker names a moment you can animate on.
   (`{CLI|C L I}`), versions (`{v2.1|version two point one}`), symbols and
   domains (`{example.com|example dot com}`, otherwise the voice says "example
   comm"). The speech check counts the word when it hears either form, so
-  "example.com" confirms `{example.com|example dot com}`.
+  "example.com" confirms `{example.com|example dot com}`. It also counts what
+  sounds the same as the spoken form, so "SoundRue.com" confirms
+  `{soundroo.com|sound roo dot com}`.
 - The speech check also counts a word heard as another word with the same
   sound, like "peace" for "piece", and two words heard as one, like
-  "Seacosts" for "See costs". `check` lists them with the words that only
-  nearly matched. `{shown|spoken}` can't change how they are heard, and they
-  need no fix.
+  "Seacosts" for "See costs". A word with hyphens counts when its parts are
+  heard as separate words, like "well known" for "well-known". `check` lists
+  them with the words that only nearly matched. `{shown|spoken}` can't change
+  how they are heard, and they need no fix.
+- Punctuation that stands on its own, like the space before "?" in French, is
+  not a word. It stays in the captions next to its word, and the speech check
+  and the cues never wait for it.
 - A scene can have these settings in the braces after its id: `hold`
   (seconds after the voice, default 0.7), `min` (the shortest the scene can
   be, in seconds), `lead` (seconds before the voice, default 0.35) and

@@ -55,15 +55,35 @@ function parseAttrs(src, line) {
   return attrs;
 }
 
+// Text with no letter, digit or spoken sign in it, like the "?" that French
+// writes after a space, or a dash between two words. Stars are left to
+// markKeywords.
+const PUNCTUATION_ONLY = /^[^\p{L}\p{N}%$€£+#@&°=*]+$/u;
+// Punctuation that opens what comes after it.
+const NBSP = '\u00a0';
+const OPENING = /^[(\[«“‘„‚¿¡「『（]+$/u;
+
+// The words of a spoken text, without punctuation that stands alone.
+export function spokenWords(text) {
+  return String(text).split(/\s+/).filter((w) => w && !PUNCTUATION_ONLY.test(w));
+}
+
 // Splits one scene's narration into units. A unit is a word (or an override
-// group) with separate display and spoken text, a marker, or a pause.
+// group) with separate display and spoken text, a marker, or a pause. A token
+// of punctuation alone is never a word: it joins the word before it, and an
+// opening one like "«" or "¿" joins the word after it. The space stays, as a
+// space that doesn't break the line, so "pluie ?" is shown as written, and the
+// voice gets the same text as before.
 export function tokenizeNarration(text, line = 0, language = 'en') {
   const units = [];
   const segmenter = ['ja', 'zh'].includes(language) ? new Intl.Segmenter(language, { granularity: 'word' }) : null;
   const punctuation = segmenter ? /^[.,;:!?।。！？、，；：）」』)\]"'’”…]+$/ : /^[.,;:!?।)\]"'’…]+$/;
   let i = 0;
   let pendingSpace = false;
+  // Opening punctuation that waits for its word.
+  let opener = null;
   const n = text.length;
+  const lastWord = () => units.findLast((u) => u.type === 'word') ?? null;
   const pushWord = (display, spoken) => {
     const prev = units[units.length - 1];
     if (!pendingSpace && prev && prev.type === 'word' && punctuation.test(display)) {
@@ -71,8 +91,36 @@ export function tokenizeNarration(text, line = 0, language = 'en') {
       prev.spoken += spoken;
       return;
     }
+    if (PUNCTUATION_ONLY.test(display) && PUNCTUATION_ONLY.test(spoken)) {
+      const before = lastWord();
+      if (opener || OPENING.test(display) || !before) {
+        opener = opener
+          ? { ...opener, display: opener.display + (pendingSpace ? NBSP : '') + display, spoken: opener.spoken + (pendingSpace ? ' ' : '') + spoken }
+          : { display, spoken, space: pendingSpace || !before };
+      } else {
+        before.display += (pendingSpace ? NBSP : '') + display;
+        before.spoken += (pendingSpace ? ' ' : '') + spoken;
+      }
+      pendingSpace = false;
+      return;
+    }
+    if (opener) {
+      units.push({ type: 'word', display: opener.display + (pendingSpace ? NBSP : '') + display, spoken: opener.spoken + (pendingSpace ? ' ' : '') + spoken, space: opener.space });
+      opener = null;
+      pendingSpace = false;
+      return;
+    }
     units.push({ type: 'word', display, spoken, space: pendingSpace || !units.some((u) => u.type === 'word') });
     pendingSpace = false;
+  };
+  // Opening punctuation with no word after it joins the last word.
+  const finishOpener = () => {
+    const before = lastWord();
+    if (opener && before) {
+      before.display += (opener.space ? NBSP : '') + opener.display;
+      before.spoken += (opener.space ? ' ' : '') + opener.spoken;
+    }
+    opener = null;
   };
   while (i < n) {
     const c = text[i];
@@ -123,11 +171,14 @@ export function tokenizeNarration(text, line = 0, language = 'en') {
     } else pushWord(word, word);
     i = j;
   }
+  finishOpener();
   return markKeywords(units);
 }
 
-const STAR_OPEN = /^([(\[{"'“‘«¿¡「『（]*)\*+(?=[^*])/u;
-const STAR_CLOSE = /([^*])\*+([.,;:!?…।)\]}"'’”»。！？、，；：」』）]*)$/u;
+// Punctuation that stands alone joins its word with a space that doesn't break,
+// so the stars may have one, or a plain space in the spoken text, on their outer side.
+const STAR_OPEN = /^([(\[{"'“‘«¿¡「『（\u00a0 ]*)\*+(?=[^*])/u;
+const STAR_CLOSE = /([^*])\*+([.,;:!?…।)\]}"'’”»。！？、，；：」』）\u00a0 ]*)$/u;
 // Stars with nothing but punctuation around them, like "*" or "*。".
 const STARS = /^([^\p{L}\p{N}*]*)\*+([^\p{L}\p{N}*]*)$/u;
 const hasText = (word) => /[\p{L}\p{N}]/u.test(word);
