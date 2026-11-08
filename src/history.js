@@ -19,7 +19,7 @@ import { ProjectError, hideSecrets } from './errors.js';
 import { findService, localTime } from './services.js';
 import { LANGUAGES } from './models.js';
 import { isSize } from './project.js';
-import { lockAge, processGone, withLock, withLockSync } from './lock.js';
+import { secondsWords, withLock, withLockSync } from './lock.js';
 
 const BIN = fileURLToPath(new URL('../bin/explainroo.js', import.meta.url));
 const JOB_FILE = /^([0-9a-f]+)(?:\.(\d+))?\.json$/;
@@ -267,12 +267,19 @@ export function saveOutputFile(dir, name, temp) {
   return { file, name, sha256, bytes: size };
 }
 
+// How long a run waits for another one that moves files or moves a post to its
+// next stage. Either takes a moment, so a run that holds the lock this long is stuck
+// or paused. Tests set it shorter.
+const nameLockMs = () => Number(process.env.EXPLAINROO_NAME_LOCK_MS) || 30 * 1000;
+
 // One run at a time moves files under a public name, or moves a post to its next
-// stage. Either takes far less than the 15 seconds after which a lock counts as left
-// behind, also when its process still runs.
-export function withNameLock(dir, name, fn) {
+// stage. While the run that holds the lock is still running, the others wait,
+// and after the wait busy(words) gives the error to stop with, from words like
+// "30 seconds". A lock whose run is gone counts as free (src/lock.js).
+export function withNameLock(dir, name, fn, busy) {
   const lock = historyDir(dir, 'locks', crypto.createHash('sha256').update(name).digest('hex').slice(0, 16));
-  return withLockSync(lock, fn, { left: (owner) => processGone(owner) || lockAge(owner) > 15000 });
+  const waitMs = nameLockMs();
+  return withLockSync(lock, fn, { waitMs, busy: () => busy(secondsWords(waitMs)) });
 }
 
 // One run at a time in this project for a step that reads the record and then adds
@@ -296,6 +303,10 @@ export function moveFile(from, to) {
   }
 }
 
+function placeBusy(words) {
+  return new ProjectError(`another run is moving files in this project right now, and this one waited ${words} for it. The file this run has is kept in the record. Run the same command again in a minute, and it puts the file in place without buying it again.`);
+}
+
 // Puts a job's output under its public name. Whatever is there moves aside first,
 // and so do the other files in `others`.
 export function placeOutput(dir, { key, attempt }, others = []) {
@@ -312,7 +323,7 @@ export function placeOutput(dir, { key, attempt }, others = []) {
     fs.mkdirSync(path.dirname(path.join(dir, name)), { recursive: true });
     moveFile(path.join(dir, source), path.join(dir, name));
     return { job: updateJob(dir, job, { output: { ...job.output, file: name } }), moved };
-  });
+  }, placeBusy);
 }
 
 export function recordVersion(dir, line) {

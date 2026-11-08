@@ -7,7 +7,7 @@ import crypto from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import { createJob, decide, ensureIgnored, findJob, goodOutput, historyDir, historyReport, jobKey, listAttempts, listJobs, moveAside, placeOutput, readVersions, recordVersion, saveOutput, selfCommand, sha256File, shellWord, shortId, updateJob, writePrivate } from '../src/history.js';
-import { hideSecrets, rememberSecret } from '../src/errors.js';
+import { ProjectError, hideSecrets, rememberSecret } from '../src/errors.js';
 
 function temp(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-history-'));
@@ -214,39 +214,68 @@ test('a damaged copy in history/replaced never costs the original', (t) => {
   assert.deepEqual(fs.readdirSync(historyDir(dir, 'replaced')), [path.basename(saved)]);
 });
 
-// The lock as a run makes it: a folder with the file of its holder.
-function nameLock(dir, key, pid, time) {
+// The lock as a run makes it: a folder with the file of its holder. `started` is
+// what the file says about when the holder started, and without it the file has
+// only the process id, like one from an older copy.
+function nameLock(dir, key, pid, { time, started } = {}) {
   const lock = historyDir(dir, 'locks', sha(key).slice(0, 16));
   fs.mkdirSync(lock, { recursive: true });
   const file = path.join(lock, `held-by-${pid}-0123456789abcdef`);
-  fs.writeFileSync(file, `${pid}\n`);
+  fs.writeFileSync(file, started === undefined ? `${pid}\n` : JSON.stringify({ pid, started }) + '\n');
   if (time) fs.utimesSync(file, time, time);
   return file;
 }
 
-test('a lock with a time in the future can\'t hold anyone up', (t) => {
+function shortLockWait(t, ms) {
+  const before = process.env.EXPLAINROO_NAME_LOCK_MS;
+  process.env.EXPLAINROO_NAME_LOCK_MS = String(ms);
+  t.after(() => {
+    if (before === undefined) delete process.env.EXPLAINROO_NAME_LOCK_MS;
+    else process.env.EXPLAINROO_NAME_LOCK_MS = before;
+  });
+}
+
+const BUSY = /^another run is moving files in this project right now, and this one waited 0\.3 seconds for it\. The file this run has is kept in the record\. Run the same command again in a minute, and it puts the file in place without buying it again\.$/;
+
+test('a lock never runs out with time: a holder that still runs is waited for, however old or new its file is, and then the move stops with a message', async (t) => {
+  const { startOf } = await import('../src/lock.js');
   const dir = temp(t);
+  shortLockWait(t, 300);
   const job = updateJob(dir, createJob(dir, 'abcd1234', { kind: 'image', request: { name: 'hero' } }), { status: 'done', output: saveOutput(dir, 'assets/hero.png', Buffer.from('bytes')) });
-  nameLock(dir, 'abcd1234', process.pid, new Date(Date.now() + 3600000));
-  const started = Date.now();
+  const holders = [
+    { time: new Date(Date.now() - 3600000) },
+    { time: new Date(Date.now() + 3600000) },
+    { time: new Date(Date.now() - 3600000), started: startOf(process.pid) },
+    // Where the system gives no start time, the process id alone counts.
+    { time: new Date(Date.now() - 3600000), started: null },
+  ];
+  for (const holder of holders) {
+    const file = nameLock(dir, 'abcd1234', process.pid, holder);
+    const started = Date.now();
+    assert.throws(() => placeOutput(dir, job), (e) => e instanceof ProjectError && BUSY.test(e.message), JSON.stringify(holder));
+    assert.ok(Date.now() - started >= 250, 'it waited for the holder');
+    assert.equal(fs.existsSync(file), true, 'the holder keeps its lock');
+    assert.equal(fs.existsSync(path.join(dir, 'assets/hero.png')), false);
+    assert.deepEqual(fs.readdirSync(historyDir(dir, 'locks')), [sha('abcd1234').slice(0, 16)], 'the run that gave up left nothing of its own');
+    fs.rmSync(path.dirname(file), { recursive: true });
+  }
+  // The same command once the lock is free puts the file in place, and buys nothing.
   assert.equal(placeOutput(dir, job).job.output.file, 'assets/hero.png');
-  assert.ok(Date.now() - started < 5000);
 });
 
-test('a lock that a dead run left behind does not stop the next one for long', (t) => {
+test('a lock whose holder is gone is taken over at once, also when a new process got its id', (t) => {
   const dir = temp(t);
   const job = updateJob(dir, createJob(dir, 'abcd1234', { kind: 'image', request: { name: 'hero' } }), { status: 'done', output: saveOutput(dir, 'assets/hero.png', Buffer.from('bytes')) });
-  // One whose process still runs, after 15 seconds.
-  nameLock(dir, 'abcd1234', process.pid, new Date(Date.now() - 60000));
-  assert.equal(placeOutput(dir, job).job.output.file, 'assets/hero.png');
-  assert.deepEqual(fs.readdirSync(historyDir(dir, 'locks')), []);
-  // One whose process is gone, at once.
-  const gone = spawnSync(process.execPath, ['-e', 'console.log(process.pid)'], { encoding: 'utf8' });
-  nameLock(dir, 'abcd1234', Number(gone.stdout.trim()));
-  const started = Date.now();
-  assert.equal(placeOutput(dir, job).job.output.file, 'assets/hero.png');
-  assert.ok(Date.now() - started < 5000);
-  assert.deepEqual(fs.readdirSync(historyDir(dir, 'locks')), []);
+  const gone = Number(spawnSync(process.execPath, ['-e', 'console.log(process.pid)'], { encoding: 'utf8' }).stdout.trim());
+  // No process has the id any more, with a start time in the file and without.
+  // Or a process runs under that id, and it started at another time than the holder.
+  for (const [pid, started] of [[gone, undefined], [gone, 'a start time'], [process.pid, 'another start time']]) {
+    nameLock(dir, 'abcd1234', pid, { started });
+    const begun = Date.now();
+    assert.equal(placeOutput(dir, job).job.output.file, 'assets/hero.png');
+    assert.ok(Date.now() - begun < 5000, `${pid} ${started}`);
+    assert.deepEqual(fs.readdirSync(historyDir(dir, 'locks')), []);
+  }
 });
 
 test('a lock held by a run that still runs waits for it', (t) => {

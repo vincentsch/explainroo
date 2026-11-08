@@ -16,7 +16,7 @@ import path from 'node:path';
 import { readEnvFile, saveKeys } from './env.js';
 import { ProjectError, rememberSecret } from './errors.js';
 import { configRoot } from './models.js';
-import { lockAge, processGone, withLock } from './lock.js';
+import { secondsWords, withLock } from './lock.js';
 
 // Retry-After holds seconds or a date.
 function waitWords(value) {
@@ -29,8 +29,9 @@ function waitWords(value) {
 const SIGN_IN_MS = 60 * 60 * 1000;
 // A saved access token is used while it is good for at least this much longer.
 const MARGIN_MS = 5 * 60 * 1000;
-// A refresh takes seconds. A lock older than this was left by a run that died.
-const LOCK_STALE_MS = 60 * 1000;
+// How long a run waits for another one that renews the same login. A renewal is one
+// request with a timeout of 30 seconds. Tests set it shorter.
+const loginLockMs = () => Number(process.env.EXPLAINROO_LOGIN_LOCK_MS) || 60 * 1000;
 
 function fail(message) {
   throw new ProjectError(message);
@@ -149,16 +150,17 @@ function lockFile(file) {
   return path.join(configRoot(), 'locks', crypto.createHash('sha256').update(path.resolve(file)).digest('hex').slice(0, 16));
 }
 
-// One run at a time refreshes the tokens of one .env file. A lock counts as left
-// behind once its process is gone, or after LOCK_STALE_MS.
-async function withTokenLock(file, fn) {
+// One run at a time refreshes the tokens of one .env file. While the run that holds
+// the lock is still running, the others wait for it, also when it is paused, and
+// then stop. A lock counts as left behind only once its run is gone (src/lock.js).
+async function withTokenLock(file, name, fn) {
   const lock = lockFile(file);
   fs.mkdirSync(path.dirname(lock), { recursive: true, mode: 0o700 });
+  const waitMs = loginLockMs();
   return withLock(lock, fn, {
-    waitMs: 2 * LOCK_STALE_MS,
+    waitMs,
     pauseMs: 100,
-    left: (owner) => processGone(owner) || lockAge(owner) > LOCK_STALE_MS,
-    busy: () => new ProjectError('another run has been renewing the login for a long time. Run the same command again in a minute.'),
+    busy: () => new ProjectError(`another run is renewing the ${name} login right now, and this one waited ${secondsWords(waitMs)} for it. Nothing was sent. Run the same command again in a minute.`),
   });
 }
 
@@ -174,7 +176,7 @@ export async function rotatingAccessToken({ source, names, refresh, name, comman
   const good = (expires) => Date.parse(expires) - Date.now() > MARGIN_MS;
   const { file } = source;
   if (!file) fail(`${names.refresh} is set in the environment. ${name} gives a new refresh token each time the login is renewed and the old one stops working, so explainroo keeps it in a .env file it can update. Remove ${names.refresh} from the environment and run "${command}".`);
-  return withTokenLock(file, async () => {
+  return withTokenLock(file, name, async () => {
     const access = readEnvFile(file, names.access);
     if (access && good(readEnvFile(file, names.expires))) return rememberSecret(access);
     const old = rememberSecret(readEnvFile(file, names.refresh));

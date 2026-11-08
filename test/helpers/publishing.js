@@ -76,6 +76,51 @@ export function jobs(dir) {
   return fs.existsSync(folder) ? fs.readdirSync(folder).filter((f) => f.endsWith('.json')).map((f) => JSON.parse(fs.readFileSync(path.join(folder, f), 'utf8'))) : [];
 }
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// A run that pauses right before it writes text that matches `pattern`, while it
+// holds whatever lock it holds at that moment. resume() lets it go on.
+export async function pausedRun(t, s, args, pattern, extra = {}) {
+  const note = path.join(temp(t, 'explainroo-paused-'), 'stopped');
+  const nodeOptions = `${process.env.NODE_OPTIONS ?? ''} --import=${DIE_BEFORE}`.trim();
+  const run = s.start(args, { extra: { NODE_OPTIONS: nodeOptions, EXPLAINROO_TEST_STOP_BEFORE: pattern, EXPLAINROO_TEST_STOPPED: note, ...extra } });
+  // A test that fails while the run is paused still ends it.
+  t.after(() => {
+    if (run.child.exitCode === null && run.child.signalCode === null) run.child.kill('SIGKILL');
+  });
+  const deadline = Date.now() + 60000;
+  while (!fs.existsSync(note)) {
+    if (run.child.exitCode !== null || run.child.signalCode !== null) assert.fail(`the run ended before it paused:\n${(await run.result).text}`);
+    if (Date.now() > deadline) assert.fail('the run never paused');
+    await sleep(20);
+  }
+  return { ...run, pid: run.child.pid, resume: () => run.child.kill('SIGCONT') };
+}
+
+// The files of the locks that a process holds in a folder of locks.
+export function heldBy(folder, pid) {
+  return fs.readdirSync(folder, { withFileTypes: true }).filter((e) => e.isDirectory() && !e.name.startsWith('.')).flatMap((e) => {
+    return fs.readdirSync(path.join(folder, e.name)).filter((name) => name.startsWith(`held-by-${pid}-`)).map((name) => path.join(folder, e.name, name));
+  });
+}
+
+// Resolves once a process waits for a lock in that folder: its own folder, which it
+// renames into place once it gets the lock, is there.
+export async function waitsForLock(folder, pid) {
+  const deadline = Date.now() + 60000;
+  while (!(fs.existsSync(folder) && fs.readdirSync(folder).some((name) => name.startsWith(`.lock-${pid}-`)))) {
+    if (Date.now() > deadline) assert.fail(`process ${pid} never waited for a lock in ${folder}`);
+    await sleep(20);
+  }
+}
+
+// Gives a file the time it would have after a pause of an hour. Locks used to run
+// out by the age of the holder's file.
+export function anHourOld(file) {
+  const time = new Date(Date.now() - 3600 * 1000);
+  fs.utimesSync(file, time, time);
+}
+
 export const mutations = (fake) => fake.requests('buffer', GQL).filter((r) => /\bmutation\b/.test(r.body?.query ?? ''));
 
 // Every request that changes something at a posting service. A YouTube PUT with no

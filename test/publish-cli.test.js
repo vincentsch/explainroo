@@ -8,7 +8,7 @@ import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { startFakeServices } from './helpers/fake-services.js';
 import { BLOTATO_KEY, BUFFER_CLIENT, BUFFER_REDIRECT } from './helpers/fake-publishing.js';
-import { DIE_BEFORE, GQL, NONE, PLACEHOLDER, SESSION, UPLOAD, bin, jobs, linkChecks, mutations, setup, writePackage } from './helpers/publishing.js';
+import { DIE_BEFORE, GQL, NONE, PLACEHOLDER, SESSION, UPLOAD, anHourOld, bin, heldBy, jobs, linkChecks, mutations, pausedRun, setup, waitsForLock, writePackage } from './helpers/publishing.js';
 import { readEnvFile } from '../src/env.js';
 
 // --- The dry run shows what a real run sends ------------------------------------
@@ -689,6 +689,37 @@ test('a Buffer refresh saves the new refresh token before anything uses it, keep
   assert.equal(s.fake.count('buffer-auth', 'POST /token'), 1, 'the new access token was still good');
 });
 
+// The lock of a renewal used to run out after 60 seconds. A second run then sent the
+// same refresh token again, and Buffer ended the whole login.
+test('a run that hangs while it renews the Buffer login keeps the lock: the next run waits and sends nothing, and the login stays good', { skip: process.platform === 'win32' && 'needs SIGSTOP' }, async (t) => {
+  const s = await setup(t, { platforms: ['tiktok'], login: ['buffer'] });
+  const media = ['--media-url', 'https://media.example/v.mp4'];
+  const dry = ['publish', s.dir, '--via', 'buffer', ...media, '--dry-run'];
+  expireBufferLogin(s);
+  // It has the answer with the new tokens, and hangs right before it saves them.
+  const first = await pausedRun(t, s, dry, 'BUFFER_REFRESH_TOKEN=');
+  assert.equal(s.fake.count('buffer-auth', 'POST /token'), 1);
+  const [held] = heldBy(path.join(s.settings, 'locks'), first.pid);
+  assert.ok(held, 'the run that hangs holds the lock of the login');
+  anHourOld(held);
+
+  // A real run, so that the problem stops it.
+  const waited = await s.cli(['publish', s.dir, '--via', 'buffer', ...media, '--yes'], { extra: { EXPLAINROO_LOGIN_LOCK_MS: '1500' } });
+  assert.equal(waited.code, 1, waited.text);
+  assert.match(waited.stderr, /^error: another run is renewing the Buffer login right now, and this one waited 1\.5 seconds for it\. Nothing was sent\. Run the same command again in a minute\.$/m);
+  assert.equal(s.fake.count('buffer-auth', 'POST /token'), 1, 'the waiting run sent no renewal');
+  assert.deepEqual(s.changes(), NONE);
+
+  first.resume();
+  assert.equal((await first.result).code, 0);
+  const next = await s.json('--via', 'buffer', ...media, '--dry-run');
+  assert.equal(next.code, 0, next.text);
+  assert.deepEqual(next.out.missing, []);
+  assert.equal(s.fake.count('buffer-auth', 'POST /token'), 1, 'the next run used the saved token');
+  assert.ok([...s.fake.publishing.grants.values()].every((grant) => !grant.revoked), 'Buffer still has the login');
+  assert.deepEqual(fs.readdirSync(path.join(s.settings, 'locks')), []);
+});
+
 test('an old Buffer refresh token that comes back ends the login, and the message says to sign in again', async (t) => {
   const s = await setup(t, { platforms: ['tiktok'], login: ['buffer'] });
   const media = ['--media-url', 'https://media.example/v.mp4'];
@@ -949,6 +980,42 @@ test('two identical posts at once make one post', async (t) => {
   assert.deepEqual(results.map((r) => r.code).toSorted(), [0, 1]);
   assert.equal(s.fake.count('blotato', 'POST /posts'), 1);
   assert.equal(jobs(s.dir).length, 1);
+});
+
+// A run that read the stage of a post under the lock and then hangs keeps the lock,
+// however long it hangs. A lock used to run out after 15 seconds, and then the next
+// run took it over and posted, and the first one posted again once it went on.
+test('a run that hangs while it holds the lock of a post keeps it: the next run waits and sends nothing, and the post goes out once', { skip: process.platform === 'win32' && 'needs SIGSTOP' }, async (t) => {
+  const s = await setup(t, { platforms: ['tiktok'], login: ['blotato'] });
+  const locks = path.join(s.dir, 'history/locks');
+  const post = ['publish', s.dir, '--via', 'blotato', '--yes'];
+  // It has read "media_uploaded" under the lock, and hangs right before it writes "sending".
+  const first = await pausedRun(t, s, post, '"stage": "sending"');
+  const [held] = heldBy(locks, first.pid);
+  assert.ok(held, 'the run that hangs holds the lock of the post');
+  anHourOld(held);
+
+  const waited = await s.cli(post, { extra: { EXPLAINROO_NAME_LOCK_MS: '1500' } });
+  assert.equal(waited.code, 1, waited.text);
+  assert.match(waited.stderr, /^error: another run is posting this right now, and this one waited 1\.5 seconds for it\. Nothing more was sent\. Run the same command again in a minute to see where it is\.$/m);
+  assert.equal(s.fake.count('blotato', 'POST /posts'), 0);
+  assert.equal(fs.existsSync(held), true, 'the lock stays with the run that hangs');
+
+  // A run that still waits when the first one goes on gets in after it, sees that
+  // the post went out and sends nothing.
+  const late = s.start(post, { extra: { EXPLAINROO_NAME_LOCK_MS: '60000' } });
+  await waitsForLock(locks, late.child.pid);
+  first.resume();
+  const [done, after] = await Promise.all([first.result, late.result]);
+  assert.equal(done.code, 0, done.text);
+  assert.equal(after.code, 1, after.text);
+  assert.match(after.stderr, /another run is posting this right now, or did a moment ago\. Run the same command again in a minute to see where it is\. Nothing more was sent\./);
+  assert.equal(s.fake.count('blotato', 'POST /posts'), 1);
+  const again = await s.json('--via', 'blotato', '--yes');
+  assert.equal(again.code, 0, again.text);
+  assert.equal(again.out.already, true);
+  assert.deepEqual(s.changes(), { ...NONE, blotato: 3 }, 'one upload request, one file, one post');
+  assert.deepEqual(fs.readdirSync(locks), []);
 });
 
 // A run in a real terminal that stops at its question until the test answers it.

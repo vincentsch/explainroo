@@ -22,7 +22,7 @@ const RUN = `
 import fs from 'node:fs';
 import path from 'node:path';
 import { withProjectLock } from ${JSON.stringify(HISTORY)};
-const [dir, holdMs, rounds, crash] = process.argv.slice(1);
+const [dir, holdMs, rounds, crash, waitMs] = process.argv.slice(1);
 const log = path.join(dir, 'log');
 const inside = path.join(dir, 'inside');
 const pause = new Int32Array(new SharedArrayBuffer(4));
@@ -38,13 +38,13 @@ for (let round = 0; round < Number(rounds); round++) {
     Atomics.wait(pause, 0, 0, Number(holdMs));
     fs.appendFileSync(log, 'out ' + process.pid + ' ' + (performance.timeOrigin + performance.now()) + '\\n');
     fs.rmSync(inside, { force: true });
-  }, { waitMs: 60000, busy: () => new Error('waited too long') });
+  }, { waitMs: Number(waitMs), busy: () => new Error('waited too long') });
 }
 `;
 
-function run(dir, { holdMs = 0, rounds = 1, crash = false, env = {} } = {}) {
+function run(dir, { holdMs = 0, rounds = 1, crash = false, waitMs = 60000, env = {} } = {}) {
   const nodeOptions = `${process.env.NODE_OPTIONS ?? ''} --import=${RACE}`.trim();
-  const child = spawn(process.execPath, ['--input-type=module', '-e', RUN, dir, String(holdMs), String(rounds), crash ? 'crash' : ''], {
+  const child = spawn(process.execPath, ['--input-type=module', '-e', RUN, dir, String(holdMs), String(rounds), crash ? 'crash' : '', String(waitMs)], {
     env: { ...process.env, NODE_OPTIONS: nodeOptions, ...env },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -155,6 +155,60 @@ test('a file where the lock goes stops the purchase with a plain message', async
   await assert.rejects(withProjectLock(dir, 'clip-purchase', () => { ran = true; }, { waitMs: 1000, busy: () => new Error('busy') }), (e) => e instanceof ProjectError && /history[\\/]locks[\\/]clip-purchase is a file, and explainroo needs that name for a lock\. Move the file somewhere else/.test(e.message));
   assert.equal(ran, false);
   assert.deepEqual(lockFiles(dir), ['clip-purchase'], 'the file stays, and nothing of the run is left');
+});
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+test('a process has the same start time each time it is read, and none once it is gone or on Windows', async () => {
+  const { startOf } = await import('../src/lock.js');
+  const gone = spawnSync(process.execPath, ['-e', '']).pid;
+  // macOS and the BSDs read it with ps, which most Linux systems have too.
+  const hasPs = spawnSync('ps', ['-o', 'lstart=', '-p', String(process.pid)]).status === 0;
+  const platforms = [...(process.platform === 'linux' ? ['linux'] : []), ...(hasPs && process.platform !== 'win32' ? ['darwin'] : [])];
+  for (const platform of platforms) {
+    const mine = startOf(process.pid, platform);
+    assert.ok(mine, platform);
+    assert.equal(startOf(process.pid, platform), mine, platform);
+    assert.equal(startOf(gone, platform), null, platform);
+  }
+  if (process.platform === 'linux') {
+    const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 5000)']);
+    await sleep(50);
+    assert.notEqual(startOf(child.pid, 'linux'), startOf(process.pid, 'linux'), 'another process started at another time');
+    child.kill();
+  }
+  assert.equal(startOf(process.pid, 'win32'), null);
+});
+
+// A holder can hang inside the lock, in a debugger or on a busy computer. It still
+// holds the lock, so nobody else gets in, however long that takes.
+test('a holder that hangs inside the lock keeps it, however old its file is, and the next run waits and then stops', { skip: process.platform === 'win32' && 'needs SIGSTOP' }, async (t) => {
+  const { startOf } = await import('../src/lock.js');
+  const dir = temp(t);
+  const holder = run(dir, { holdMs: 1000 });
+  t.after(() => holder.child.kill('SIGKILL'));
+  const log = path.join(dir, 'log');
+  while (!(fs.existsSync(log) && fs.readFileSync(log, 'utf8').includes(`in ${holder.child.pid} `))) await sleep(10);
+  holder.child.kill('SIGSTOP');
+  const lock = path.join(dir, 'history/locks/clip-purchase');
+  const [name] = fs.readdirSync(lock);
+  assert.equal(name.startsWith(`held-by-${holder.child.pid}-`), true);
+  // The file says when the holder started, so a new process with its id can't pass for it.
+  const saved = JSON.parse(fs.readFileSync(path.join(lock, name), 'utf8'));
+  assert.equal(saved.pid, holder.child.pid);
+  assert.equal(saved.started, startOf(holder.child.pid));
+  const time = new Date(Date.now() - 3600 * 1000);
+  fs.utimesSync(path.join(lock, name), time, time);
+
+  const waited = await run(dir, { waitMs: 1000 }).done;
+  assert.equal(waited.code, 1);
+  assert.match(waited.stderr, /waited too long/);
+  assert.deepEqual(fs.readdirSync(lock), [name], 'the lock stays with its holder');
+  holder.child.kill('SIGCONT');
+  assert.equal((await holder.done).code, 0);
+  assert.equal((await run(dir).done).code, 0);
+  assert.equal(stays(dir).length, 2);
+  assert.deepEqual(lockFiles(dir), []);
 });
 
 // A service like Buffer gives a new refresh token each time and kills the old one,

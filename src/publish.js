@@ -465,14 +465,15 @@ function readSession(dir, job) {
 }
 
 // Moves a job to its next stage, if no other run moved it first. Two runs that go on
-// with the same post can't both send it.
+// with the same post can't both send it. A run that is paused while it holds the
+// lock keeps it, so the other run waits, and then stops without sending anything.
 function advance(dir, job, from, to, fields = {}, before = () => {}) {
   return withNameLock(dir, `publish ${job.key}.${job.attempt}`, () => {
     const current = listAttempts(dir, job.key).find((a) => a.attempt === job.attempt);
     if (!from.includes(current?.stage)) throw new ProjectError(`another run is posting this right now, or did a moment ago. Run the same command again in a minute to see where it is. Nothing more was sent.`);
     before();
     return setStage(dir, current, to, fields);
-  });
+  }, (words) => new ProjectError(`another run is posting this right now, and this one waited ${words} for it. Nothing more was sent. Run the same command again in a minute to see where it is.`));
 }
 
 function destinationWords(job) {
