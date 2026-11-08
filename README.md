@@ -27,7 +27,7 @@ https://github.com/user-attachments/assets/6dd5dc32-c975-4e0e-8cd4-2ef3ccc11e61
 
 ## News
 
-- **Nov 2026 (draft)**: explainroo 0.5 runs with npx, so you don't have to clone it. It can also use outside services on your own key, like AI video clips and posting through YouTube, Buffer or Blotato. German narration works with a paid voice or your own recording.
+- **Nov 2026 (draft)**: explainroo 0.5 runs with npx, so you don't have to clone it. It can also use outside services on your own key, like AI video clips and posting through YouTube, Buffer or Blotato. German narration works with a paid voice or your own recording. A project made before keeps its look, frame for frame, until you add `"defaults": "0.5"` to its `video.json`, which brings the new look, like bigger arrow labels.
 - **Oct 20, 2026**: [explainroo 0.4.1](https://www.explainroo.com/news/explainroo-0-4-1/) keeps arrow and chart labels whole while a shot holds.
 - **Oct 15, 2026**: [explainroo 0.4](https://www.explainroo.com/news/explainroo-0-4/) films each scene with a camera that follows the narration.
 - **Oct 13, 2026**: [explainroo 0.3](https://www.explainroo.com/news/explainroo-0-3/) narrates in Japanese and Mandarin Chinese, and adds the editorial look.
