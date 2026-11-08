@@ -4,7 +4,7 @@ import path from 'node:path';
 import { loadProject, ProjectError, THEMES, MUSIC_STYLES, FORMATS, resolveSize, normalizeConfig, scriptName, checkClipBudget, checkLanguage, noKokoroVoice, DEFAULTS_VERSIONS } from './project.js';
 import { layoutAreas } from '../engine/layout.js';
 import { suggest } from '../engine/util.js';
-import { ScriptError } from './script.js';
+import { normWord, ScriptError } from './script.js';
 import { prepare, makeState, outdatedLine, outdatedRenders, VERSION } from './pipeline.js';
 import { render } from './render.js';
 import { exportPlayer } from './export.js';
@@ -22,17 +22,19 @@ import { CONNECTORS } from './connectors/index.js';
 import { hideSecrets } from './errors.js';
 import { formatHistory, historyReport, selfCommand } from './history.js';
 import { boughtCharacters, speechConnector } from './paid-speech.js';
-import { formatServices, findService, findStep, needsKey, SERVICES, STEPS, stepNames, stepServices } from './services.js';
+import { allOf, formatServices, findService, findStep, needsKey, SERVICES, STEPS, stepNames, stepServices } from './services.js';
 import { clipPricesToday, showsClipPrices } from './price-list.js';
 import { narrationTime, speechKeys } from './voice.js';
 import { estimateLength, targetNotes } from './timeline.js';
 import { findEnv } from './env.js';
-import { formatPackage, packageVideo } from './package.js';
+import { formatPackage, packageOverrides, packageVideo } from './package.js';
+import { PLATFORMS } from './post.js';
+import { bareWord } from './align.js';
 import { formatShare, share } from './share.js';
 import { formatPublish, publish } from './publish.js';
+import { COMMAND_HELP, commandHelp } from './help.js';
 
 // Paid voices that can list what a key may use, each with its own flag.
-import { COMMAND_HELP, commandHelp } from './help.js';
 const LISTS_VOICES = CONNECTORS.filter((c) => c.voices);
 
 const HELP = `explainroo ${VERSION}: narrated explainer videos from code
@@ -45,6 +47,7 @@ Make a video
   voice [project]       make the narration and word timings (--force makes every scene again,
                         --new buys again only the paid sentences with no good saved answer, --size makes
                         the narration of a size whose block in "sizes" sets its own pace)
+  words [project] [scene]  each spoken word of a scene with its start time, for choosing cues
   preview [project]     live preview in your browser, reloads on save (--port, --size, --no-watermark)
   still [project] [t…]  PNG stills: "12.5", "scene", "scene@2.4" (default: end of every scene; --size,
                         --no-watermark, --transparent)
@@ -118,11 +121,13 @@ Reference
                         heading (--list shows the topics, --sections the sections of a topic with their size)
   version               print the version (--version works too)
 
-Options: --size <size> and --no-watermark override video.json for preview, still, sheet, check, render and export.
-         Their outputs get a suffix, like video-tiktok.mp4, player-tiktok/ or video-no-watermark.mp4. --out still wins.
-         "sizes" in video.json sets captions, cover, pace, watermark and targetSeconds for one size, see "docs sizes".
 "explainroo <command> --help" prints the options of one command and an example.
 
+Options: --size <size> and --no-watermark override video.json for preview, still, sheet, check, render and export.
+         --platform <name> on check, still, sheet and render sets the size, its block and the watermark rule
+         that "package --platform <name>" uses.
+         Their outputs get a suffix, like video-tiktok.mp4, player-tiktok/ or video-no-watermark.mp4. --out still wins.
+         "sizes" in video.json sets captions, cover, pace, watermark and targetSeconds for one size, see "docs sizes".
          --lang es picks the version from script.es.md, for voice, preview, still, sheet, check, render, verify,
          export, package, share and publish. It builds into build/es/ and writes to out/es/.
          --json for machine-readable output. The project defaults to the current folder.
@@ -232,23 +237,30 @@ export async function main(argv) {
         });
         return 0;
       }
+      case 'words': {
+        const isProject = pos[0] && fs.existsSync(path.join(pos[0], 'video.json'));
+        const project = loadProject(isProject ? pos.shift() : undefined, { size: textFlag(flags, 'size'), ...langOverride(flags) });
+        const r = await spokenWords(project, pos[0], { log, notice });
+        print(formatWords(r), r);
+        return 0;
+      }
       case 'preview': return await preview(pos[0], flags, log);
       case 'still': {
         const isProject = pos[0] && fs.existsSync(path.join(pos[0], 'video.json'));
-        const project = loadProject(isProject ? pos.shift() : undefined, runOverrides(flags));
+        const { project } = runProject(isProject ? pos.shift() : undefined, flags);
         const list = await stills(project, pos, { log, scale: num(flags.scale, 'scale') ?? 1, transparent: !!flags.transparent });
         print(list.map((s) => `${s.label.padEnd(24)} ${s.file}`).join('\n'), { stills: list });
         return 0;
       }
       case 'sheet': {
-        const project = loadProject(pos[0], runOverrides(flags));
+        const { project } = runProject(pos[0], flags);
         const r = await sheet(project, { scene: flags.scene, every: num(flags.every, 'every'), times: timesFlag(flags), cols: num(flags.cols, 'cols'), log });
         print(`${r.file} (${r.frames} frames)`, r);
         return 0;
       }
       case 'check': {
-        const project = loadProject(pos[0], runOverrides(flags));
-        const r = await check(project, { log, step: num(flags.step, 'step') ?? 0.25, viewWidth: num(flags['view-width'], 'view-width') ?? null });
+        const { project, platform } = runProject(pos[0], flags);
+        const r = await check(project, { log, step: num(flags.step, 'step') ?? 0.25, viewWidth: num(flags['view-width'], 'view-width') ?? null, platform });
         const errors = r.issues.filter((i) => i.level === 'error').length;
         const human = r.issues.length
           ? r.issues.map((i) => `${i.level.toUpperCase().padEnd(5)} ${i.scene ?? ''}${i.t !== null && i.t !== undefined ? ' @' + i.t + 's' : ''}: ${i.message}`).join('\n') + `\n${errors} error(s), ${r.issues.length - errors} other finding(s) in ${r.scenes} scenes (${r.duration.toFixed(1)}s)`
@@ -257,7 +269,7 @@ export async function main(argv) {
         return errors ? 1 : 0;
       }
       case 'render': {
-        const project = loadProject(pos[0], { ...runOverrides(flags), ...qualityOverride(flags) });
+        const { project } = runProject(pos[0], flags, qualityOverride(flags));
         const r = await render(project, { log, draft: !!flags.draft, transparent: !!flags.transparent, from: num(flags.from, 'from'), to: num(flags.to, 'to'), workers: num(flags.workers, 'workers'), scale: num(flags.scale, 'scale'), out: textFlag(flags, 'out'), format: textFlag(flags, 'format') });
         print([r.out, r.subtitles?.srt, r.subtitles?.vtt, r.chapters, r.cover].filter(Boolean).map((f) => path.relative(process.cwd(), f) || f).join('\n'), r);
         return 0;
@@ -501,6 +513,55 @@ function runOverrides(flags) {
 
 function langOverride(flags) {
   return { lang: textFlag(flags, 'lang') };
+}
+
+// The project of one run of check, still, sheet or render, and the platform it
+// is for. --platform sets what "package --platform <name>" uses: the size, its
+// block in "sizes" and the watermark rule, so a run shows what the package will.
+function runProject(dir, flags, extra = {}) {
+  const platform = textFlag(flags, 'platform');
+  if (platform === undefined) return { project: loadProject(dir, { ...runOverrides(flags), ...extra }), platform: null };
+  if (!Object.hasOwn(PLATFORMS, platform)) throw new ProjectError(`there is no platform "${platform}". The platforms are ${allOf(Object.keys(PLATFORMS))}.`);
+  if (flags['no-watermark']) throw new ProjectError(`--platform ${platform} sets the watermark the way its package does, so leave out --no-watermark`);
+  const own = loadProject(dir, langOverride(flags));
+  return { project: loadProject(own.dir, { ...packageOverrides(own, platform, textFlag(flags, 'size')), ...langOverride(flags), ...extra }), platform };
+}
+
+// The spoken words of the scenes, or of one, with their times in seconds into the
+// scene, the times a cue like at: 'word' gives. A word spoken more than once in a
+// scene has the cue that names its time, like "fills#2".
+async function spokenWords(project, only, { log, notice }) {
+  const ids = project.script.scenes.map((s) => s.id);
+  if (only !== undefined && !ids.includes(only)) throw new ProjectError(`there is no scene "${only}" in ${scriptName(project)}. Its scenes are: ${ids.join(', ')}`);
+  const { timeline } = await prepare(project, { log, notice });
+  const round = (v) => Math.round(v * 100) / 100;
+  const scenes = timeline.scenes.filter((s) => only === undefined || s.id === only).map((sc) => {
+    const seen = new Map();
+    const total = new Map();
+    for (const w of sc.words) total.set(normWord(w.text), (total.get(normWord(w.text)) ?? 0) + 1);
+    const words = sc.words.map((w) => {
+      const key = normWord(w.text);
+      const n = (seen.get(key) ?? 0) + 1;
+      seen.set(key, n);
+      const cue = bareWord(w.text);
+      return { text: w.text, start: round(w.start), end: round(w.end), cue: total.get(key) > 1 ? `${cue}#${n}` : cue };
+    });
+    return { scene: sc.id, start: round(sc.start), duration: round(sc.dur), words, marks: Object.fromEntries(Object.entries(sc.marks).map(([k, v]) => [k, round(v)])) };
+  });
+  return { scenes };
+}
+
+function formatWords(r) {
+  return r.scenes.map((s) => {
+    const head = `${s.scene}: ${s.start.toFixed(1)} s to ${(s.start + s.duration).toFixed(1)} s of the video. The times are seconds into the scene, as at: 'word' uses them.`;
+    if (!s.words.length) return `${head}\n  no narration`;
+    // A marker comes before the word it starts on.
+    const rows = [
+      ...Object.entries(s.marks).map(([name, t]) => ({ t, line: `${t.toFixed(2).padStart(7)}  [#${name}]` })),
+      ...s.words.map((w) => ({ t: w.start, line: `${w.start.toFixed(2).padStart(7)}  ${w.text}${w.cue.toLowerCase() !== w.text.toLowerCase() ? `  (cue "${w.cue}")` : ''}` })),
+    ].sort((a, b) => a.t - b.t);
+    return [head, ...rows.map((x) => x.line)].join('\n');
+  }).join('\n\n');
 }
 
 // --times 3,12.5,intro@2: the times that still takes, separated by commas.

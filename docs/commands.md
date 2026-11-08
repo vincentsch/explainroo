@@ -10,11 +10,12 @@ an example.
 |---|---|
 | `init <dir>` | creates a project (`--theme`, `--size`, `--pace`, `--language`, `--voice`, `--title`) |
 | `voice [project]` | makes the narration and the word times, saved per scene so only changed scenes are made again (`--force` makes every scene again, `--new` buys again only paid sentences with no good answer, `--size` makes the narration of a size whose block in `"sizes"` sets its own pace, `--lang`) |
+| `words [project] [scene]` | prints each spoken word of a scene, or of every scene, with its start time in seconds into the scene, and the markers. A word spoken more than once shows its cue, like `fills#2` (`--size`, `--lang`, `--json`) |
 | `preview [project]` | a live preview in the browser that reloads when you save (`--size`, `--no-watermark`) |
-| `still [project] [times]` | PNG pictures at `12.5`, `scene`, `scene@2.4` or `scene@end` (`--size`, `--no-watermark`, `--transparent` keeps alpha) |
-| `sheet [project]` | one image with many frames of the video or of one scene (`--scene`, `--every`, `--size`, `--no-watermark`). `--times 3,12.5,intro@2` makes `out/sheet-times.jpg` of just those moments, in that order. It takes every time that `still` takes. With `--size tiktok` the file is `out/sheet-times-tiktok.jpg` |
-| `check [project]` | finds layout, timing and pronunciation problems (`--size`, `--no-watermark`) |
-| `render [project]` | the video plus subtitle files, chapters and a cover (`--format mp4`, `gif`, `webm` or `mov`, `--transparent`, `--size`, `--no-watermark`, `--draft`, `--quality final` or `fast`, `--from`, `--to`, `--workers`, `--out`) |
+| `still [project] [times]` | PNG pictures at `12.5`, `scene`, `scene@2.4` or `scene@end` (`--size`, `--platform`, `--no-watermark`, `--transparent` keeps alpha) |
+| `sheet [project]` | one image with many frames of the video or of one scene (`--scene`, `--every`, `--size`, `--platform`, `--no-watermark`). `--times 3,12.5,intro@2` makes `out/sheet-times.jpg` of just those moments, in that order. It takes every time that `still` takes. With `--size tiktok` the file is `out/sheet-times-tiktok.jpg` |
+| `check [project]` | finds layout, timing and pronunciation problems (`--size`, `--platform`, `--no-watermark`) |
+| `render [project]` | the video plus subtitle files, chapters and a cover (`--format mp4`, `gif`, `webm` or `mov`, `--transparent`, `--size`, `--platform`, `--no-watermark`, `--draft`, `--quality final` or `fast`, `--from`, `--to`, `--workers`, `--out`) |
 | `verify [project]` | checks the finished MP4, WebM or MOV: loudness, true peak, black frames, silence, clear voice (`--file` picks another file) |
 | `export [project]` | writes a web player folder (`--out dir`, `--size`, `--no-watermark`, `--json`), by default `out/player/`, or `out/player-tiktok/` with `--size tiktok` |
 | `package [project]` | a folder to post on one platform (`--platform`, `--title`, `--description`, `--hashtags`, `--size` for x, `--workers`) |
@@ -33,6 +34,11 @@ an example.
 | `doctor [project]` | checks Node, ffmpeg, Chrome, the models, and espeak-ng and Python with misaki for other languages, for one project when given. Before there is a project, `--language es` checks one language, and `--language es,fr` several (`--fetch` downloads only English models). It also prints the settings file, where `EXPLAINROO_ESPEAK` can be set once, the folder explainroo runs from and where its examples are |
 | `docs [topic] [section]` | prints the start page, one topic, or one section of a topic, named by its heading or by a word only its heading has (`--list` lists the topics, `--sections` lists the sections of a topic with their size) |
 | `version` | prints the version (`--version` also works) |
+
+`--platform <name>` on `check`, `still`, `sheet` and `render` sets the size,
+its block in `"sizes"` and the watermark rule that `package --platform <name>`
+uses, so you look at exactly what the package will show. TikTok has no
+watermark, and the other platforms keep the one in `video.json`.
 
 The extra files share the video's name, also with `--out`: `video.srt`,
 `video.vtt`, `video.cover.jpg` and `video.chapters.txt`. A GIF has no sound,

@@ -224,3 +224,53 @@ test('every command prints its own usage, options and one example with --help', 
   assert.match((await runAll(['help', 'nothing'])).out, /"explainroo <command> --help" prints the options of one command and an example\./);
 });
 
+test('words prints each spoken word of a scene with its start time, the cue of a word spoken twice, and the markers, also in JSON', async (t) => {
+  const { tinyProject } = await import('./helpers/tiny-project.js');
+  const { cachedVoice } = await import('./helpers/cached-voice.js');
+  const dir = tinyProject(t, {}, { narrated: false });
+  fs.writeFileSync(path.join(dir, 'script.md'), '# Tiny\n\n## intro\nThe tank fills [#full] and fills again.\n\n## outro\nDone.\n');
+  fs.writeFileSync(path.join(dir, 'scenes.js'), 'export default { intro() {}, outro() {} };');
+  cachedVoice(dir, 'intro');
+  cachedVoice(dir, 'outro');
+  const r = await runAll(['words', dir, 'intro']);
+  assert.equal(r.code, 0, r.err);
+  assert.equal(r.out, [
+    "intro: 0.0 s to 1.8 s of the video. The times are seconds into the scene, as at: 'word' uses them.",
+    '   0.00  The',
+    '   0.30  tank',
+    '   0.60  fills  (cue "fills#1")',
+    '   0.90  [#full]',
+    '   0.90  and',
+    '   1.20  fills  (cue "fills#2")',
+    '   1.50  again.  (cue "again")',
+    '',
+  ].join('\n'));
+  const json = JSON.parse((await runAll(['words', dir, '--json'])).out);
+  assert.deepEqual(json.scenes.map((s) => s.scene), ['intro', 'outro']);
+  assert.deepEqual(json.scenes[0].words[2], { text: 'fills', start: 0.6, end: 0.84, cue: 'fills#1' });
+  assert.deepEqual(json.scenes[0].marks, { full: 0.9 });
+  const wrong = await runAll(['words', dir, 'middle']);
+  assert.equal(wrong.code, 1);
+  assert.match(wrong.err, /there is no scene "middle" in script\.md\. Its scenes are: intro, outro/);
+});
+
+test('--platform on check, still, sheet and render takes the size and the watermark rule its package uses', async (t) => {
+  const { tinyProject } = await import('./helpers/tiny-project.js');
+  const dir = tinyProject(t, { size: '16:9', sizes: { tiktok: { captions: false } } }, { narrated: false });
+  const tiktok = await runAll(['check', dir, '--platform', 'tiktok', '--json']);
+  assert.equal(tiktok.code, 0, tiktok.err);
+  const still = JSON.parse((await runAll(['still', dir, 'intro@end', '--platform', 'tiktok', '--json'])).out);
+  assert.match(still.stills[0].file, /out\/stills-tiktok-no-watermark\/intro@end\.png$/);
+  // A 16:9 project is already the YouTube setup, so its normal stills are the package's.
+  const youtube = JSON.parse((await runAll(['still', dir, 'intro@end', '--platform', 'youtube', '--json'])).out);
+  assert.match(youtube.stills[0].file, /out\/stills\/intro@end\.png$/);
+  for (const [args, message] of [
+    [['--platform', 'myspace'], /there is no platform "myspace"\. The platforms are youtube, shorts, tiktok, reels, linkedin and x\./],
+    [['--platform', 'tiktok', '--no-watermark'], /--platform tiktok sets the watermark the way its package does, so leave out --no-watermark/],
+    [['--platform', 'tiktok', '--size', 'square'], /--size works only with --platform x/],
+  ]) {
+    const r = await runAll(['check', dir, ...args]);
+    assert.equal(r.code, 1, args.join(' '));
+    assert.match(r.err, message);
+  }
+});

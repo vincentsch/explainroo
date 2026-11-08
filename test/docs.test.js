@@ -366,7 +366,7 @@ test('the sizes, settings, short-video and publishing topics explain settings pe
   const short = oneLine(page('short-video'));
   for (const words of ['"tiktok": { "captions": "bold", "pace": 1.2 }', 'the frame of the first scene with the most elements fully arrived, a frame with a picture first', 'A cover has no captions.', '`"captions": "auto"` means no captions on 16:9', 'the same scene function draws it when `s.portrait` is true']) assert.ok(short.includes(words), words);
   const publishing = oneLine(page('publishing'));
-  for (const words of ['the package uses that size and its block', 'a TikTok package has no watermark, whatever its block says', 'it is the fullest frame of the first scene', '### Look at a platform\'s version first', 'explainroo render videos/<name> --size tiktok --no-watermark', '`source.command`', '`"motionBlur": false`']) assert.ok(publishing.includes(words), words);
+  for (const words of ['the package uses that size and its block', 'a TikTok package has no watermark, whatever its block says', 'it is the fullest frame of the first scene', '### Look at a platform\'s version first', 'explainroo render videos/<name> --platform tiktok', '`source.command`', '`"motionBlur": false`']) assert.ok(publishing.includes(words), words);
   const commands = page('commands');
   assert.match(commands, /^\| `voice \[project\]` \|.*`--size`/m);
   assert.match(commands, /^\| `render \[project\]` \|.*`--quality final` or `fast`/m);

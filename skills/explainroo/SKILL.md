@@ -152,6 +152,8 @@ there and publishes nothing.
    (`explainroo docs writing`).
 5. **Plan the pictures.** Decide what appears on each cue, what leaves and
    what stays in place (`explainroo docs pictures`).
+   `explainroo words videos/<name> <scene>` lists the spoken words with their
+   times.
 6. **Make images**, if the video needs them and the user agrees
    (`explainroo docs images`).
 7. **Write `scenes.js`**, one function per scene, with each picture tied to a
@@ -160,7 +162,8 @@ there and publishes nothing.
    every warning (`explainroo docs troubleshooting`).
 9. **Look at the frames** with `explainroo still videos/<name>` and
    `explainroo sheet videos/<name>`. Open the images and judge them like a
-   viewer would.
+   viewer would. For a platform's version, add `--platform tiktok` to
+   `check`, `still`, `sheet` and `render`.
 10. **Make the video** with `explainroo render videos/<name>`. Make a draft
     with `--draft` only when you will watch it, because `still` and `sheet`
     are the cheap way to see frames. Check the file with

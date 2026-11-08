@@ -182,16 +182,18 @@ copy as well as its full-size copy.
 
 Render the platform's version with the setup of its package, look at it, and
 then package it. The package copies that file instead of rendering the video
-again, and it says `copied from` with the file's name. For TikTok:
+again, and it says `copied from` with the file's name. `--platform` gives
+`check`, `still`, `sheet` and `render` the setup of that platform's package:
+its size, its block in `"sizes"` and its watermark rule. For TikTok:
 
 ```bash
-explainroo render videos/<name> --size tiktok --no-watermark
+explainroo check videos/<name> --platform tiktok
+explainroo render videos/<name> --platform tiktok
 explainroo package videos/<name> --platform tiktok
 ```
 
-The other platforms keep the watermark that `video.json` sets, so leave out
-`--no-watermark` for them. A project whose own size suits the platform needs no
-`--size`, like a `16:9` project for YouTube. When `package` renders anyway, the
+That is the same as `--size tiktok --no-watermark`. The other platforms keep
+the watermark that `video.json` sets. When `package` renders anyway, the
 command it names is the one to run next time.
 
 ## Post a package
