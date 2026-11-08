@@ -125,25 +125,35 @@ export function unitReading(word, before, language, other = []) {
 // groups thousands: a space, a thin space, a period, a comma or an apostrophe.
 const POINT = { en: '.', hi: '.' };
 
+// Decimals without the zeros at their end, which change no value: "50" gives "5",
+// and "0" gives nothing.
+export const decimalDigits = (digits) => digits.replace(/0+$/, '');
+
 // A number written with digits, as its value: "300.000", "300 000" and "300000"
-// in Spanish all give "300000", and "7,5" gives "7,5". Hindi groups by lakh, like
-// "3,00,000". Returns null for anything else.
+// in Spanish all give "300000", "7,5" gives "7,5", and "1,50" gives "1,5", like
+// "2,0" gives "2". Hindi groups by lakh, like "3,00,000". A number that only
+// reads with a period as its point, like "1.5" in Spanish, reads that way.
+// Returns null for anything else.
 export function numberValue(word, language) {
   const text = strip(word).replace(/[\s'’]/g, ' ');
   if (!/^\d(?:[\d., ]*\d)?$/.test(text)) return null;
   const point = POINT[language] ?? ',';
+  return valueWith(text, point, language) ?? (point === ',' ? valueWith(text, '.', language) : null);
+}
+
+function valueWith(text, point, language) {
   let whole = text;
   let decimals = null;
   const at = text.lastIndexOf(point);
   if (at !== -1 && text.indexOf(point) === at) {
     whole = text.slice(0, at);
-    decimals = text.slice(at + 1);
-    if (!/^\d+$/.test(decimals)) return null;
+    decimals = decimalDigits(text.slice(at + 1));
+    if (!/^\d*$/.test(decimals)) return null;
   }
   const groups = whole.split(/[., ]/);
   const grouped = groups.length === 1 || (/^\d{1,3}$/.test(groups[0]) && groups.slice(1).every((g, i, rest) => g.length === 3 || (language === 'hi' && g.length === 2 && i < rest.length - 1)));
   if (!grouped) return null;
-  return groups.join('') + (decimals === null ? '' : `,${decimals}`);
+  return groups.join('') + (decimals ? `,${decimals}` : '');
 }
 
 // Thousands written with spaces reach the check as separate words, like "300"

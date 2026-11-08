@@ -171,6 +171,22 @@ test('numbers count by value, with thousands written the way each language write
   assert.equal(numberValue('1.000.000,5', 'es'), '1000000,5');
   assert.equal(numberValue('300,000', 'en'), '300000');
   assert.equal(numberValue('3,0,0', 'es'), null);
+  // Zeros at the end of the decimals change no value, and a decimal is still never a whole number.
+  for (const language of ['es', 'fr', 'it', 'pt-br', 'de']) {
+    assert.ok(same(language, 'son 1,50 metros', 'son 1,5 metros'), language);
+    assert.ok(same(language, 'son 2,0 metros', 'son 2 metros'), language);
+    assert.ok(!same(language, 'son 1,50 metros', 'son 150 metros'), language);
+    assert.ok(!same(language, 'son 7,5 metros', 'son 75 metros'), language);
+  }
+  assert.ok(same('es', 'Recorre 1,50 metros.', 'Recorre 1,5 m.'));
+  assert.ok(same('en', 'It is 2.0 meters.', 'It is 2 meters.'));
+  assert.ok(same('en', 'about 1.50 meters', 'about 1.5 meters'));
+  assert.ok(!same('en', 'about 7.5 meters', 'about 75 meters'));
+  assert.ok(same('en', 'It costs $2.50.', 'It costs $2.50.'));
+  assert.equal(numberValue('1,50', 'es'), '1,5');
+  assert.equal(numberValue('2,0', 'es'), '2');
+  assert.equal(numberValue('1.5', 'es'), '1,5', 'only a point fits');
+  assert.equal(numberValue('1.500', 'es'), '1500');
   // A script that writes thousands with a space has two words, and both are confirmed by one heard number.
   const spaced = alignWords(words('unos 300 000 años'), heard([['unos', 0, 0.3], ['300.000', 0.3, 0.9], ['años', 0.9, 1.2]]), 1.3, 'es');
   assert.deepEqual(state(spaced), ['exact', 'exact', 'exact', 'exact']);

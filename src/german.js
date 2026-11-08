@@ -128,8 +128,10 @@ function special(word) {
   const lower = c.toLowerCase();
   const digits = DIGITS.exec(lower);
   if (digits) {
-    const [, before, whole, decimals, after] = digits;
-    return [whole.replace(/\./g, ''), ...(decimals !== undefined ? ['komma', ...decimals] : []), ...(SIGNS[before] ?? []), ...(SIGNS[after] ?? [])];
+    const [, before, whole, written, after] = digits;
+    // Zeros at the end of the decimals change no value, so "1,50" reads like "1,5".
+    const decimals = written === undefined ? '' : written.replace(/0+$/, '');
+    return [whole.replace(/\./g, ''), ...(decimals ? ['komma', ...decimals] : []), ...(SIGNS[before] ?? []), ...(SIGNS[after] ?? [])];
   }
   const joined = digitsTimes(lower.replace(/\.$/, ''));
   if (joined !== null) return [String(joined)];

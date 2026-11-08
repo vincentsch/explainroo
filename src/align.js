@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import { normWord } from './script.js';
 import { japaneseReadings, hasPhonemizer, soundsOf } from './phonemes.js';
 import { isScale, readGerman, saysOne } from './german.js';
-import { numberGroups, numberValue, sameUnitWord, unitReading } from './units.js';
+import { decimalDigits, numberGroups, numberValue, sameUnitWord, unitReading } from './units.js';
 
 const require = createRequire(import.meta.url);
 
@@ -154,10 +154,11 @@ export function expand(word, language = 'en') {
     const year = !cur && dec === undefined && !pct && /^\d{4}$/.test(int) && !/\d,\d/.test(raw) ? yearWords(Number(int)) : null;
     if (year) return [...lead, ...year].map(canon);
     const out = [...lead, ...intWords(Number(int))];
-    if (dec !== undefined) {
-      if (cur) out.push(CURRENCY[cur], ...intWords(Number(dec)), 'cents');
-      else out.push('point', ...dec.split('').map((d) => ONES[Number(d)]));
-    } else if (cur) out.push(CURRENCY[cur]);
+    // Zeros at the end of the decimals change no value, so "2.0" reads like "2".
+    const point = dec === undefined ? '' : decimalDigits(dec);
+    if (dec !== undefined && cur) out.push(CURRENCY[cur], ...intWords(Number(dec)), 'cents');
+    else if (point) out.push('point', ...point.split('').map((d) => ONES[Number(d)]));
+    else if (cur) out.push(CURRENCY[cur]);
     if (pct) out.push('percent');
     return out.map(canon);
   }
