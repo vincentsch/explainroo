@@ -180,6 +180,28 @@ test('a process has the same start time each time it is read, and none once it i
   assert.equal(startOf(process.pid, 'win32'), null);
 });
 
+// A process that ended keeps its id until its parent collects it, and until then
+// the system still says that it runs.
+test('a holder that ended and that its parent has not collected yet counts as gone', { skip: process.platform !== 'linux' && 'reads /proc' }, async (t) => {
+  const { startOf } = await import('../src/lock.js');
+  const { withProjectLock } = await import('../src/history.js');
+  // The shell starts a short process and becomes a sleep, which never collects it.
+  const parent = spawn('sh', ['-c', 'sleep 0 & echo $!; exec sleep 30']);
+  t.after(() => parent.kill('SIGKILL'));
+  const pid = Number(await new Promise((resolve) => parent.stdout.once('data', (d) => resolve(String(d).trim()))));
+  while (!/^\S+ \(sleep\) Z /.test(fs.readFileSync(`/proc/${pid}/stat`, 'utf8'))) await sleep(10);
+  const ended = startOf(pid);
+  assert.match(ended, / ended$/);
+  const dir = temp(t);
+  const lock = path.join(dir, 'history/locks/clip-purchase');
+  fs.mkdirSync(lock, { recursive: true });
+  fs.writeFileSync(path.join(lock, `held-by-${pid}-0123456789abcdef`), JSON.stringify({ pid, started: ended.replace(/ ended$/, '') }));
+  let ran = false;
+  await withProjectLock(dir, 'clip-purchase', () => { ran = true; }, { waitMs: 1000, busy: () => new Error('waited too long') });
+  assert.equal(ran, true);
+  assert.deepEqual(lockFiles(dir), []);
+});
+
 // A holder can hang inside the lock, in a debugger or on a busy computer. It still
 // holds the lock, so nobody else gets in, however long that takes.
 test('a holder that hangs inside the lock keeps it, however old its file is, and the next run waits and then stops', { skip: process.platform === 'win32' && 'needs SIGSTOP' }, async (t) => {

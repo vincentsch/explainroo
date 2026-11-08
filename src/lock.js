@@ -48,14 +48,18 @@ let bootId;
 // that died, whose id another process got by chance, still counts as running. The
 // next run waits for it and stops with a message, and it never takes over a lock
 // whose holder may still run.
+//
+// A process that has ended and that its parent hasn't collected yet still has its
+// id. It gets " ended" after its start time, so it never passes for a holder.
 export function startOf(pid, platform = process.platform) {
   try {
     if (platform === 'win32') return null;
     if (platform === 'linux' || platform === 'android') {
       const stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf8');
       // The name of the program is in brackets and may hold spaces, so the fields
-      // are counted from the last ")". The start time is field 22.
-      const ticks = stat.slice(stat.lastIndexOf(')') + 2).split(' ')[19];
+      // are counted from the last ")". The state is field 3, the start time field 22.
+      const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
+      const ticks = fields[19];
       if (!/^\d+$/.test(ticks ?? '')) return null;
       if (bootId === undefined) {
         try {
@@ -64,11 +68,13 @@ export function startOf(pid, platform = process.platform) {
           bootId = '';
         }
       }
-      return `${bootId}:${ticks}`;
+      return `${bootId}:${ticks}${/^[ZXx]/.test(fields[0]) ? ' ended' : ''}`;
     }
     // In UTC and in English, so every run reads the same words for the same process.
-    const out = execFileSync('ps', ['-o', 'lstart=', '-p', String(pid)], { encoding: 'utf8', env: { ...process.env, LC_ALL: 'C', TZ: 'UTC0' }, stdio: ['ignore', 'pipe', 'ignore'], timeout: 10000, windowsHide: true });
-    return out.trim().replace(/\s+/g, ' ') || null;
+    const out = execFileSync('ps', ['-o', 'stat=', '-o', 'lstart=', '-p', String(pid)], { encoding: 'utf8', env: { ...process.env, LC_ALL: 'C', TZ: 'UTC0' }, stdio: ['ignore', 'pipe', 'ignore'], timeout: 10000, windowsHide: true });
+    const [, state, started] = /^\s*(\S+)\s+(.+?)\s*$/.exec(out) ?? [];
+    if (!started) return null;
+    return `${started.replace(/\s+/g, ' ')}${state.startsWith('Z') ? ' ended' : ''}`;
   } catch {
     return null;
   }
