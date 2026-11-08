@@ -5,7 +5,7 @@ import { loadProject, ProjectError, THEMES, MUSIC_STYLES, FORMATS, resolveSize, 
 import { layoutAreas } from '../engine/layout.js';
 import { suggest } from '../engine/util.js';
 import { ScriptError } from './script.js';
-import { prepare, makeState, VERSION } from './pipeline.js';
+import { prepare, makeState, outdatedLine, outdatedRenders, VERSION } from './pipeline.js';
 import { render } from './render.js';
 import { exportPlayer } from './export.js';
 import { check, formatVerify, stills, sheet, verify } from './qa.js';
@@ -25,6 +25,7 @@ import { boughtCharacters, speechConnector } from './paid-speech.js';
 import { formatServices, findService, findStep, needsKey, SERVICES, STEPS, stepNames, stepServices } from './services.js';
 import { clipPricesToday, showsClipPrices } from './price-list.js';
 import { narrationTime, speechKeys } from './voice.js';
+import { estimateLength, targetNotes } from './timeline.js';
 import { findEnv } from './env.js';
 import { formatPackage, packageVideo } from './package.js';
 import { formatShare, share } from './share.js';
@@ -118,7 +119,7 @@ Reference
 
 Options: --size <size> and --no-watermark override video.json for preview, still, sheet, check, render and export.
          Their outputs get a suffix, like video-tiktok.mp4, player-tiktok/ or video-no-watermark.mp4. --out still wins.
-         "sizes" in video.json sets captions, cover, pace and watermark for one size, see "docs sizes".
+         "sizes" in video.json sets captions, cover, pace, watermark and targetSeconds for one size, see "docs sizes".
          --lang es picks the version from script.es.md, for voice, preview, still, sheet, check, render, verify,
          export, package, share and publish. It builds into build/es/ and writes to out/es/.
          --json for machine-readable output. The project defaults to the current folder.
@@ -191,7 +192,8 @@ export async function main(argv) {
         const project = loadProject(pos[0], { size: textFlag(flags, 'size'), ...langOverride(flags) });
         const paid = speechConnector(project.config);
         const before = paid ? boughtCharacters(project.dir) : 0;
-        const { voices, timeline } = await prepare(project, { log, notice, force: !!flags.force, fresh: !!flags.new });
+        let estimate = null;
+        const { voices, timeline } = await prepare(project, { log, notice, force: !!flags.force, fresh: !!flags.new, onEstimate: (e) => { estimate = e; } });
         const characters = paid ? boughtCharacters(project.dir) - before : 0;
         const recorded = project.config.voice.provider === 'recording';
         const rows = project.script.scenes.map((s) => {
@@ -207,7 +209,17 @@ export async function main(argv) {
         const speed = paid ? paid.speed(wanted) : wanted;
         const speedNote = paid && speed !== wanted ? `\n${paid.name} speed ${wanted.toFixed(2)} is outside ${paid.speedRange.join(' to ')}; using ${speed}.` : '';
         const usage = paid ? `\n${paid.name}: ${characters} characters used` : '';
-        print(rows.map((r) => `${r.scene.padEnd(18)} ${length(r)}  ${Math.round(r.confirmed * 100)}% confirmed${r.unconfirmed.length ? '  unconfirmed: ' + r.unconfirmed.slice(0, 6).join(', ') : ''}`).join('\n') + `\ntotal ${timeline.duration.toFixed(1)}s` + mismatch + usage + speedNote, { scenes: rows, duration: timeline.duration, ...(paid ? { characters, speed, ...(speed !== wanted ? { requested_speed: wanted } : {}) } : {}) });
+        // "targetSeconds" lengthens the holds, or says how far over the video runs.
+        const { target } = timeline;
+        const added = target?.added ? ` (targetSeconds ${target.seconds} added ${target.added.toFixed(1)} s to the hold of each scene)` : '';
+        const notes = targetNotes(timeline, estimateLength(project)?.perMinute);
+        // A finished render of another size that says an older script.
+        const outdated = outdatedRenders(project);
+        const after = [...notes.map((n) => `${n.level.toUpperCase().padEnd(5)} ${n.message}`), ...outdated.map(outdatedLine)].map((line) => `\n${line}`).join('');
+        print(rows.map((r) => `${r.scene.padEnd(18)} ${length(r)}  ${Math.round(r.confirmed * 100)}% confirmed${r.unconfirmed.length ? '  unconfirmed: ' + r.unconfirmed.slice(0, 6).join(', ') : ''}`).join('\n') + `\ntotal ${timeline.duration.toFixed(1)}s${added}` + mismatch + usage + speedNote + after, {
+          scenes: rows, duration: timeline.duration, ...(paid ? { characters, speed, ...(speed !== wanted ? { requested_speed: wanted } : {}) } : {}),
+          ...(estimate ? { estimate } : {}), ...(target ? { target } : {}), ...(notes.length ? { notes } : {}), ...(outdated.length ? { outdated } : {}),
+        });
         return 0;
       }
       case 'preview': return await preview(pos[0], flags, log);

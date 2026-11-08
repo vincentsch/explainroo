@@ -19,9 +19,22 @@ something to a friend at a table.
 
 ## Length and pace
 
-- Aim for 45 to 120 seconds unless the user says otherwise. A finished video
-  has about 150 words a minute, pauses included. In Japanese it is about 270
-  characters a minute, and in Chinese about 200.
+- Aim for 45 to 120 seconds unless the user says otherwise. The voice says
+  about 180 words a minute at the default speed. On top of that, each scene
+  adds about 1.5 seconds for its lead and its hold, and the end adds 1.4
+  seconds. So 105 words in 6 scenes make about 45 seconds, and a finished
+  video has about 140 to 155 words a minute. In Japanese the voice says about
+  300 characters a minute, and in Chinese about 230.
+- Before the narration exists, `voice` and `check` print an estimate, like
+  "about 45 s: 105 words of speech at about 180 a minute, plus about 1.5 s per
+  scene for leads, holds and pauses". When it is too long, cut words before
+  you make the voice.
+- For an exact length, set `"targetSeconds": 40` in `video.json`, or in the
+  block of one size under `"sizes"`. When the video comes out shorter, the
+  missing time goes evenly into the holds of its scenes, so it ends at 40
+  seconds. When that adds more than 3 seconds to each scene, or when the video
+  runs longer, `voice` and `check` say so and name the longest scenes. Without
+  `targetSeconds`, a video is as long as its narration.
 - Start with the question or problem. Explain it in small steps. Give one
   concrete example, then sum up.
 - One idea per scene, usually 1 to 3 sentences (4 to 15 seconds).
@@ -46,7 +59,13 @@ Narration for this scene. [#marker] A marker names a moment you can animate on.
 - Use `{shown|spoken}` for anything the voice may misread: acronyms
   (`{CLI|C L I}`), versions (`{v2.1|version two point one}`), symbols and
   domains (`{example.com|example dot com}`, otherwise the voice says "example
-  comm").
+  comm"). The speech check counts the word when it hears either form, so
+  "example.com" confirms `{example.com|example dot com}`.
+- The speech check also counts a word heard as another word with the same
+  sound, like "peace" for "piece", and two words heard as one, like
+  "Seacosts" for "See costs". `check` lists them with the words that only
+  nearly matched. `{shown|spoken}` can't change how they are heard, and they
+  need no fix.
 - A scene can have these settings in the braces after its id: `hold`
   (seconds after the voice, default 0.7), `min` (the shortest the scene can
   be, in seconds), `lead` (seconds before the voice, default 0.35) and

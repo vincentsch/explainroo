@@ -6,24 +6,48 @@ import { prepare, withEngine } from './pipeline.js';
 import { dbtp, probe, loudness, ffmpeg, PEAK_CEILING } from './ffmpeg.js';
 import { transcribeWords } from './models.js';
 import { readWav } from './wav.js';
-import { alignWords, nearList, readAlike } from './align.js';
-import { heardInstead } from './voice.js';
+import { alignSpeech, bareWord, nearList } from './align.js';
+import { heardInstead, heardQuote } from './voice.js';
+import { estimateLength, targetNotes } from './timeline.js';
 import { buildChapters, chapterHints } from './chapters.js';
 import { languageIssues, outputPath, ProjectError, scriptName } from './project.js';
 import { recordVersion, relativeFile, sha256File } from './history.js';
 import { decodedSound } from './server.js';
 
-// "2 words only nearly matched: Soundroo (heard "Soundru"), Codex (heard "codecs")".
-// The same word heard the same way counts once, with how often.
+// "2 words only nearly matched: Soundroo (heard "Soundru"), Codex (heard "codecs")",
+// and "1 word sounded the same: piece (heard "peace")" for words heard as
+// another word with the same sound. Two words heard as one show together, like
+// See costs (heard "Seacosts"). The same word heard the same way counts once,
+// with how often.
 export function nearlyText(nearly) {
-  const seen = new Map();
-  for (const { word, heard } of nearly) {
-    const text = heard ? `${word} (heard "${heard}")` : word;
-    seen.set(text, (seen.get(text) ?? 0) + 1);
+  const groups = { near: { seen: new Map(), words: 0 }, alike: { seen: new Map(), words: 0 } };
+  for (let i = 0; i < nearly.length; i++) {
+    const n = nearly[i];
+    const next = nearly[i + 1];
+    const pair = n.joined && next?.joined && next.heard === n.heard && next.scene === n.scene;
+    const word = pair ? `${n.word} ${next.word}` : n.word;
+    const text = n.heard ? `${word} (heard "${n.heard}")` : word;
+    const group = groups[n.alike ? 'alike' : 'near'];
+    group.seen.set(text, (group.seen.get(text) ?? 0) + 1);
+    group.words += pair ? 2 : 1;
+    if (pair) i++;
   }
-  const list = [...seen].slice(0, 8).map(([text, n]) => (n > 1 ? `${text} ${n} times` : text));
-  const more = seen.size > 8 ? `, and ${seen.size - 8} more` : '';
-  return `${nearly.length} word${nearly.length === 1 ? '' : 's'} only nearly matched: ${list.join(', ')}${more}`;
+  const list = ({ seen }) => {
+    const shown = [...seen].slice(0, 8).map(([text, n]) => (n > 1 ? `${text} ${n} times` : text));
+    return `${shown.join(', ')}${seen.size > 8 ? `, and ${seen.size - 8} more` : ''}`;
+  };
+  const count = (n) => `${n} word${n === 1 ? '' : 's'}`;
+  return [
+    ...(groups.near.words ? [`${count(groups.near.words)} only nearly matched: ${list(groups.near)}`] : []),
+    ...(groups.alike.words ? [`${count(groups.alike.words)} sounded the same: ${list(groups.alike)}`] : []),
+  ].join('; ');
+}
+
+// A transcript cut at a whole word, for a scene whose words have no place in it.
+function cutTranscript(text, length = 200) {
+  if (text.length <= length) return `"${text}"`;
+  const cut = text.slice(0, length + 1).replace(/\s+\S*$/, '');
+  return `"${cut || text.slice(0, length)}…"`;
 }
 
 // The shown and spoken text of an override without the punctuation after it,
@@ -65,7 +89,8 @@ export function speechFindings(project, voices) {
     const suspicious = v ? v.unmatched.filter((w) => w.replace(/[^\p{L}\p{M}\p{N}]/gu, '').length > 3) : [];
     // A word that already has {shown|spoken} counts at any length, like {SQL|sequel},
     // because its override didn't help.
-    const missed = !recording && Array.isArray(v?.words) ? v.words.map((word, k) => ({ word, k })).filter(({ word }) => !word.matched) : [];
+    const unconfirmed = Array.isArray(v?.words) ? v.words.map((word, k) => ({ word, k })).filter(({ word }) => !word.matched) : [];
+    const missed = recording ? [] : unconfirmed;
     const overridden = missed.filter(({ word }) => hasOverride(word));
     if (v && v.duration && (v.matchRate < 0.9 || suspicious.length || overridden.length)) {
       // In the order of the script, the long words and every word with an override.
@@ -74,10 +99,13 @@ export function speechFindings(project, voices) {
       // What was heard in place of each listed override.
       const instead = shown.length ? heardInstead(v, project.config.language) : {};
       const names = listed ? listed.map(({ word }) => word.text) : suspicious.slice(0, 8);
+      // The transcript where the named words should be, four words on each side.
+      const named = listed ?? unconfirmed.filter(({ word }) => suspicious.includes(word.text)).slice(0, 8);
+      const quote = heardQuote(v, project.config.language, (named.length ? named : unconfirmed.slice(0, 3)).map(({ k }) => k)) ?? cutTranscript(v.transcript);
       const advice = recording
         ? `The recording does not match ${script} here. Make ${script} say what was actually said.`
         : unconfirmedAdvice(shown.map(({ word, k }) => ({ word, heard: instead[k] })), missed.some(({ word }) => !hasOverride(word)), script);
-      issues.push({ level: 'warn', scene: sc.id, t: null, message: `the voice check could not confirm ${names.length ? names.map((w) => `"${w}"`).join(', ') : `${Math.round((1 - v.matchRate) * 100)}% of the words`}. It heard: "${v.transcript.slice(0, 200)}". ${advice}` });
+      issues.push({ level: 'warn', scene: sc.id, t: null, message: `the voice check could not confirm ${names.length ? names.map((w) => `"${w}"`).join(', ') : `${Math.round((1 - v.matchRate) * 100)}% of the words`}. It heard: ${quote}. ${advice}` });
     }
     if (v && v.duration > 40) issues.push({ level: 'hint', scene: sc.id, t: null, message: `the narration runs ${v.duration.toFixed(0)}s; long scenes are easier to follow when split` });
     if (v && v.duration) {
@@ -91,10 +119,13 @@ export function speechFindings(project, voices) {
 
 export async function check(project, { log = () => {}, step = 0.25, viewWidth = null } = {}) {
   if (viewWidth !== null && (!Number.isFinite(viewWidth) || viewWidth <= 0)) throw new Error("--view-width must be a positive number");
-  const { voices, timeline } = await prepare(project, { log });
+  // How long the video will be about, when check is the step that makes the narration.
+  let estimate = null;
+  const { voices, timeline } = await prepare(project, { log, onEstimate: (e) => { estimate = e; } });
   const issues = chapterHints(buildChapters(timeline, project.script.title || project.config.title));
   const { issues: spoken, speech } = speechFindings(project, voices);
   issues.push(...spoken);
+  issues.push(...targetNotes(timeline, estimateLength(project)?.perMinute).map((n) => ({ ...n, scene: null, t: null })));
   if (project.languages) issues.push(...languageIssues(project));
   if (project.config.music?.src) {
     try {
@@ -111,7 +142,7 @@ export async function check(project, { log = () => {}, step = 0.25, viewWidth = 
   issues.push(...pageIssues);
   const order = { error: 0, warn: 1, hint: 2 };
   issues.sort((a, b) => order[a.level] - order[b.level]);
-  return { issues, duration: timeline.duration, scenes: timeline.scenes.length, speech };
+  return { issues, duration: timeline.duration, scenes: timeline.scenes.length, speech, ...(estimate ? { estimate } : {}) };
 }
 
 // Specs: "12.5" (seconds into the video), "scene" (end of the scene, when it
@@ -237,10 +268,16 @@ export async function verify(project, { file = null, report: reportFile = null, 
     const spokenWords = (sc) => sc.units.filter((u) => u.type === 'word').map((u) => ({ spoken: u.spoken, display: u.display }));
     const byId = new Map(project.script.scenes.map((sc) => [sc.id, sc]));
     const sameScenes = timeline && timeline.scenes.length === project.script.scenes.length && timeline.scenes.every((t) => byId.has(t.id)) && Math.abs(timeline.duration - duration) < 1;
+    // Each word the check could not confirm, with its time in the video. `offset`
+    // is where the transcribed piece starts.
+    const missedWords = (words, aligned, offset, scene) => aligned.words.flatMap((a, k) => (a.matched ? [] : [{
+      ...(scene ? { scene } : {}), word: bareWord(words[k].display ?? words[k].spoken), time: Math.round((offset + a.start) * 100) / 100, ...(a.heard ? { heard: a.heard } : {}),
+    }]));
     if (sameScenes) {
       const texts = [];
       const scenes = [];
       const nearly = [];
+      const unconfirmed = [];
       let total = 0;
       let matched = 0;
       for (const t of timeline.scenes) {
@@ -250,26 +287,26 @@ export async function verify(project, { file = null, report: reportFile = null, 
         const to = Math.min(samples.length, Math.ceil((t.start + t.dur) * 16000));
         const heard = await transcribe(samples.subarray(from, to), { log, language: project.config.language });
         texts.push(heard.text);
-        const alike = await readAlike(words, heard.words, project.config.language);
-        const aligned = alignWords(alike.words, alike.heard, t.dur, project.config.language);
+        const aligned = await alignSpeech(words, heard.words, t.dur, project.config.language);
         const rate = aligned.matchRate;
         const near = nearList(words, aligned.words);
         scenes.push({ id: t.id, matchRate: Math.round(rate * 1000) / 1000, nearly: near });
         nearly.push(...near.map((n) => ({ scene: t.id, ...n })));
+        unconfirmed.push(...missedWords(words, aligned, from / 16000, t.id));
         total += words.length;
         matched += rate * words.length;
         if (rate < 0.8) issues.push({ level: 'warn', message: `scene "${t.id}": only ${Math.round(rate * 100)}% of the narration was understood in the final mix; it heard "${heard.text.slice(0, 120)}"` });
       }
       const rate = total ? matched / total : 1;
-      speech = { matchRate: Math.round(rate * 1000) / 1000, transcript: texts.join(' '), scenes, nearly };
+      speech = { matchRate: Math.round(rate * 1000) / 1000, transcript: texts.join(' '), scenes, nearly, unconfirmed };
     } else {
       // The whole file at once, so a word that only nearly matched has no scene.
       const heard = await transcribe(samples, { log, language: project.config.language });
       const script = project.script.scenes.flatMap(spokenWords);
-      const alike = await readAlike(script, heard.words, project.config.language);
-      const aligned = alignWords(alike.words, alike.heard, duration, project.config.language);
-      speech = { matchRate: Math.round(aligned.matchRate * 1000) / 1000, transcript: heard.text, nearly: nearList(script, aligned.words) };
+      const aligned = await alignSpeech(script, heard.words, duration, project.config.language);
+      speech = { matchRate: Math.round(aligned.matchRate * 1000) / 1000, transcript: heard.text, nearly: nearList(script, aligned.words), unconfirmed: missedWords(script, aligned, 0, null) };
     }
+    if (speech.unconfirmed.length) issues.push({ level: 'warn', message: unconfirmedText(speech.unconfirmed) });
     if (speech.matchRate < 0.85) issues.push({ level: 'warn', message: `only ${Math.round(speech.matchRate * 100)}% of the script was understood in the final mix; lower music.volume or check pronunciation` });
     fs.rmSync(wav, { force: true });
   }
@@ -301,6 +338,14 @@ export async function verify(project, { file = null, report: reportFile = null, 
     report: relativeFile(project.dir, target),
   });
   return report;
+}
+
+// "the speech check could not confirm 2 words in the final mix: "key" at 12.3 s
+// (heard "can"), "needed" at 12.6 s". Up to 12 words, then how many more.
+export function unconfirmedText(list) {
+  const shown = list.slice(0, 12).map((u) => `"${u.word}" at ${u.time.toFixed(1)} s${u.heard ? ` (heard "${u.heard}")` : ''}`);
+  const more = list.length > 12 ? `, and ${list.length - 12} more` : '';
+  return `the speech check could not confirm ${list.length} word${list.length === 1 ? '' : 's'} in the final mix: ${shown.join(', ')}${more}`;
 }
 
 // What verify prints: the file, the narration understood with the words that

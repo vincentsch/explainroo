@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { prepare, renderIdentity, withEngine, VERSION } from './pipeline.js';
+import { outdatedLine, outdatedRenders, prepare, renderIdentity, scriptStamp, withEngine, VERSION } from './pipeline.js';
 import { projectUrl } from './timeline.js';
 import { AUDIO_CODECS, finishMix, frameEncoder, ffmpeg } from './ffmpeg.js';
 import { subtitleCues, toSrt, toVtt } from './subtitles.js';
@@ -39,7 +39,10 @@ export async function render(project, opts = {}) {
   recordVersion(project.dir, versionLine(project, video));
   const secs = (Date.now() - t0) / 1000;
   log(`wrote ${path.relative(process.cwd(), video.out) || video.out} in ${secs.toFixed(1)}s`);
-  return { out: video.out, ...files, duration: video.duration, frames: video.frames, seconds: secs, estimated_seconds: video.estimated_seconds, width: video.width, height: video.height, sha256: video.sha256, identity: video.identity };
+  // Another size that says an older script is out of date now. It is only named, never rendered here.
+  const outdated = outdatedRenders(project);
+  for (const r of outdated) log(outdatedLine(r));
+  return { out: video.out, ...files, duration: video.duration, frames: video.frames, seconds: secs, estimated_seconds: video.estimated_seconds, width: video.width, height: video.height, sha256: video.sha256, identity: video.identity, ...(outdated.length ? { outdated } : {}) };
 }
 
 // The frames that --from and --to ask for.
@@ -253,6 +256,9 @@ export function versionLine(project, video) {
     height: video.height,
     fps: video.fps,
     size: project.config.size,
+    // The language and what its script said, so a render of another size can tell when they differ.
+    lang: project.language,
+    script: scriptStamp(project),
     watermark: project.config.watermark !== false,
     // Whether the frames have motion blur. A final with --quality fast has none.
     motionBlur: video.motionBlur,

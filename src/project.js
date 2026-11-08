@@ -43,7 +43,7 @@ export const FORMATS = {
 export const TALL_FORMATS = ['shorts', 'tiktok', 'reels', 'vertical'];
 
 // What a block under "sizes" in video.json can set for one size.
-const SIZE_SETTINGS = ['captions', 'cover', 'pace', 'watermark'];
+const SIZE_SETTINGS = ['captions', 'cover', 'pace', 'watermark', 'targetSeconds'];
 
 export const DEFAULTS = {
   title: null,
@@ -72,6 +72,9 @@ export const DEFAULTS = {
   seed: 1,
   boil: 0,
   watermark: 'explainroo.com',
+  // The length the video should have, in seconds. Left out of the settings when
+  // it isn't set, so a video without it keeps its render identity.
+  targetSeconds: undefined,
   images: null,
   brand: null,
   fonts: [],
@@ -424,6 +427,11 @@ function settingsOf(raw, input, dir, block = null) {
     if (!(typeof cfg[k] === 'number' && cfg[k] >= 0 && cfg[k] <= 10)) fail(`${k} must be a number of seconds between 0 and 10`);
   }
   if (!(cfg.loudness <= -8 && cfg.loudness >= -30)) fail('loudness must be between -30 and -8 LUFS');
+  // null in the block of a size turns off a target set at the top.
+  if (cfg.targetSeconds === null || cfg.targetSeconds === undefined) delete cfg.targetSeconds;
+  else if (!(typeof cfg.targetSeconds === 'number' && cfg.targetSeconds >= 1 && cfg.targetSeconds <= 3600)) {
+    fail('targetSeconds must be the length you want in seconds, from 1 to 3600, like 40');
+  }
   if (!(cfg.boil >= 0 && cfg.boil <= 12)) fail('boil must be between 0 (off) and 12 redraws per second');
   if (cfg.watermark !== false && !(typeof cfg.watermark === 'string' && cfg.watermark.trim() && cfg.watermark.length <= 40)) {
     fail('watermark must be false or a short text of up to 40 characters, like "example.com"');

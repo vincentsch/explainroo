@@ -78,6 +78,34 @@ export async function phonemize(texts, language) {
   return parts.map(p => mapPhonemes(p.map(x => x.index === undefined ? x.text : x.before + output[x.index] + x.after).join('')));
 }
 
+// Whether the speech check can hear words by their sound in a language: English
+// with the phonemizer that Kokoro uses, and the languages espeak-ng reads for
+// Kokoro. Japanese and Chinese compare readings of their own, and German has no
+// phonemizer here.
+export function hasPhonemizer(language) {
+  return language === 'en' || Object.hasOwn(ESPEAK_LANGUAGES, language);
+}
+
+const sounds = new Map();
+
+// The sound of each word, without stress marks, as a Map from the word to its
+// phonemes. "peace" and "piece" both give "piːs". A word is phonemized once per
+// run. It throws when espeak-ng is missing.
+export async function soundsOf(words, language) {
+  const key = (word) => `${language}\0${word}`;
+  const todo = [...new Set(words)].filter((word) => word && !sounds.has(key(word)));
+  if (todo.length) {
+    let found;
+    if (language === 'en') {
+      const { phonemize: espeakWasm } = await import('phonemizer');
+      found = [];
+      for (const word of todo) found.push((await espeakWasm(word, 'en-us')).join(' '));
+    } else found = await phonemize(todo, language);
+    todo.forEach((word, i) => sounds.set(key(word), String(found[i] ?? '').replace(/[ˈˌ\s]/g, '')));
+  }
+  return new Map(words.flatMap((word) => (sounds.get(key(word)) ? [[word, sounds.get(key(word))]] : [])));
+}
+
 export function generateSpeech(tts, text, { language = 'en', voice, speed, phonemes } = {}) {
   if (language === 'en') return tts.generate(text, { voice, speed });
   const { input_ids } = tts.tokenizer(phonemes, { truncation: true });

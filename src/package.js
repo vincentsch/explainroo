@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { langArg, loadProject, resolveSize, ProjectError } from './project.js';
-import { prepare, renderIdentity, VERSION } from './pipeline.js';
+import { outdatedLine, outdatedRenders, prepare, renderIdentity, VERSION } from './pipeline.js';
 import { check, verify } from './qa.js';
 import { encodeVideo, planExtras, versionLine, writeExtras } from './render.js';
 import { buildChapters, toChaptersText } from './chapters.js';
@@ -221,7 +221,9 @@ export async function packageVideo(arg, { lang, platform, size, title, descripti
   writeAtomic(path.join(folder, 'credits.txt'), `${words.credits.join('\n')}\n`);
   // Written last: a folder with a post.json is complete.
   writeAtomic(path.join(folder, 'post.json'), JSON.stringify(post, null, 2) + '\n');
-  return { ok: post.verify.ok, platform, folder, setup, source, verified: earlier ? 'earlier' : 'now', post };
+  // Another size that says an older script is named, and never rendered here.
+  const outdated = outdatedRenders(project);
+  return { ok: post.verify.ok, platform, folder, setup, source, verified: earlier ? 'earlier' : 'now', post, ...(outdated.length ? { outdated } : {}) };
 }
 
 function oneLine(text, length = 100) {
@@ -256,6 +258,7 @@ export function formatPackage(r) {
     lines.push('Warnings:');
     for (const w of p.warnings) lines.push(`  ${w.from === 'check' ? `check ${w.scene ?? ''}${w.t !== null ? ` @${w.t}s` : ''}: ` : ''}${w.message}`);
   }
+  for (const o of r.outdated ?? []) lines.push(outdatedLine(o));
   if (!p.verify.ok) lines.push('Fix the errors and package it again before you post it.');
   if (r.platform === 'tiktok') lines.push('The TikTok file has no watermark, because TikTok asks apps that post to it to add no logo or watermark. "explainroo docs publishing" says more.');
   return lines.join('\n');

@@ -63,10 +63,54 @@ language. The speech check accepts digits for numbers. Outside English and
 German, it does not try to match spelled numbers to digits. Write the digits,
 or use an override whose spoken text has digits when that helps the check.
 
+In the languages that use espeak-ng, the speech check also counts a word heard
+as another word with the same sound, like "haya" for "halla", and lists it as
+sounding the same. German has no phonemizer here, so there such a word stays
+unconfirmed. Reword the sentence then.
+
 In Hindi, the speech check confirms fewer words than in the other languages,
 because the speech model knows Hindi less well. A few unconfirmed words are
 normal there. Fix a word when it stays unconfirmed in several scenes, or
 when the user hears it wrong.
+
+## Units, symbols and numbers in the speech check
+
+Whisper often writes "300 000 km/s" where the voice said "trescientos mil
+kilómetros por segundo". So the speech check reads these units and symbols as
+the words of the language before it compares:
+
+- lengths: km, m, cm and mm
+- speeds: km/h and km/s
+- weights: kg and g
+- times: s and ms
+- symbols: %, °C, € and $
+
+It knows them in the languages of this table, in the singular and the plural,
+like "kilómetro" and "kilómetros".
+
+| Language | km/h, km/s, % and °C read as |
+| --- | --- |
+| English | kilometers per hour, kilometers per second, percent, degrees Celsius |
+| German | Kilometer pro Stunde, Kilometer pro Sekunde, Prozent, Grad Celsius |
+| Spanish | kilómetros por hora, kilómetros por segundo, por ciento, grados Celsius |
+| French | kilomètres par heure or kilomètres-heure, kilomètres par seconde, pour cent, degrés Celsius |
+| Italian | chilometri orari or all'ora, chilometri al secondo, per cento, gradi Celsius |
+| Portuguese | quilômetros por hora, quilômetros por segundo, por cento, graus Celsius |
+
+"m", "mm", "g", "s" and "ms" count as units only right after a number, so a
+letter on its own stays a letter.
+
+Numbers count by their value, with thousands written the way the language
+writes them:
+
+| Language | Written the same as 300000 |
+| --- | --- |
+| English | 300,000 and 300 000 |
+| Hindi | 3,00,000 and 300,000 |
+| German, Spanish, French, Italian and Portuguese | 300.000 and 300 000 |
+
+The space can also be a thin space or a no-break space. The decimal mark
+stays, so "7,5" never matches "75".
 
 ## German
 
@@ -123,7 +167,7 @@ The speech check reads German the way a voice says it:
 | decimals and thousands, like "3,5" and "1.000" | "drei Komma fünf" and "tausend" |
 | "Mio.", "Mrd.", "%" and "€" | "Millionen", "Milliarden", "Prozent" and "Euro" |
 | "z. B.", "d. h.", "u. a.", "usw.", "bzw.", "ca.", "etc.", "Nr." and "Dr." | "zum Beispiel", "das heißt", "unter anderem", "und so weiter", "beziehungsweise", "circa", "et cetera", "Nummer" and "Doktor" |
-| "km", "kg", "km/h" and "°C" | "Kilometer", "Kilogramm", "Kilometer pro Stunde" and "Grad Celsius" |
+| "km", "kg", "km/h", "°C" and the other units above | "Kilometer", "Kilogramm", "Kilometer pro Stunde", "Grad Celsius" and so on |
 
 "ß" and "ss" count as the same. A number only matches the same number, so
 "3,5" never matches "35", and "Millionen" never matches "Milliarden". Another

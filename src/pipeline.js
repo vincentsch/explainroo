@@ -9,6 +9,7 @@ import { buildTimeline } from './timeline.js';
 import { listAssets, loadProject } from './project.js';
 import { startServer, ROOT } from './server.js';
 import { launch, openEngine } from './browser.js';
+import { readVersions, sha256File } from './history.js';
 
 export const VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
 
@@ -109,6 +110,39 @@ export async function withEngine(project, timeline, { scale = 1, pages = 1, tran
     if (browser) await browser.close();
     await server.close();
   }
+}
+
+// A short hash of what the narration says: the shown and the spoken words of
+// each scene. Markers, pauses and stars leave it as it is. Every render records
+// it, so a size made from another script can be found later.
+export function scriptStamp(project) {
+  return crypto.createHash('sha256').update(JSON.stringify(project.script.scenes.map((s) => [s.id, s.text, s.spoken]))).digest('hex').slice(0, 16);
+}
+
+// The finished renders of the other sizes of this video, in its language, that
+// say an older script, as [{ file, size, platform }]. Only the newest render of
+// each file counts, and only while the file is still that render. A render from
+// before the record had the script is left out, because nobody can tell.
+export function outdatedRenders(project) {
+  const stamp = scriptStamp(project);
+  const newest = new Map();
+  for (const line of readVersions(project.dir)) {
+    if (typeof line.file === 'string' && line.draft === false && line.full === true) newest.set(line.file, line);
+  }
+  const out = [];
+  for (const line of newest.values()) {
+    if (typeof line.script !== 'string' || line.script === stamp || line.lang !== project.language || line.size === project.config.size) continue;
+    const file = path.resolve(project.dir, line.file);
+    if (!fs.existsSync(file) || sha256File(file) !== line.sha256) continue;
+    out.push({ file: line.file, size: line.size, ...(line.event === 'package' ? { platform: line.platform } : {}) });
+  }
+  return out;
+}
+
+// "out/video.mp4 (16:9) was made from the old script. Render it again so both say the same."
+export function outdatedLine(render) {
+  const again = render.platform ? `Package it again with --platform ${render.platform}` : 'Render it again';
+  return `${render.file} (${render.size}) was made from the old script. ${again} so both say the same.`;
 }
 
 export function reloadProject(project) {

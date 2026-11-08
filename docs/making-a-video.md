@@ -41,9 +41,12 @@ user. Read it first.
    the word already has `{shown|spoken}`, `check` says so and quotes what was
    heard. Then try another spoken spelling, or reword the sentence. For a
    recording, make script.md say what was actually said. `check` also lists
-   the words that only nearly matched, like "Soundroo" heard as "Soundru".
-   They count as understood, and names the speech model doesn't know often
-   end up there.
+   the words that only nearly matched, like "Soundroo" heard as "Soundru". It
+   lists words that sounded the same, like "peace" for "piece", and two words
+   heard as one. They count as understood, and names the speech model doesn't
+   know often end up there.
+   Before it makes the narration, `voice` prints how long the video will be
+   about.
    Only the scenes you changed are made again. `check`, `still`, `sheet`,
    `render` and `preview` also make missing narration, so start them after
    `voice` has finished, not at the same time.
@@ -117,7 +120,8 @@ user. Read it first.
     lower. `verify` warns above that and fails above 0 dBTP, where the sound
     clips. It also runs the speech check on the finished sound to make sure
     the voice is still clear over the music, and it lists the words that only
-    nearly matched next to the percentage it understood.
+    nearly matched next to the percentage it understood. Each word it could
+    not confirm is a warning with its time in the video.
 
 11. **Tell the user** where the video and its subtitle files, chapters and
     cover are, how long the video is, what verify said, and what you could
