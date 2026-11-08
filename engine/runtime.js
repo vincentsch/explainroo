@@ -741,6 +741,9 @@ export class Engine {
     const scale1080 = Math.min(W, H) / 1080;
     const readable = H >= W ? Math.round(40 * scale1080) : 0;
     const uiMinSize = Math.round(Math.min(W, H) * 0.015);
+    // Where content may go: the frame, its margin, the content area of a
+    // platform size and the caption band.
+    const areas = { W, H, margin, app: this.appArea, band: this.captionBand, format: this.config.format, safe: this.safeArea };
     const colors = Object.fromEntries(['ink', 'accent', ...Object.keys(this.theme.colors)].map(name => [name, colorOf(this.theme, name)]));
     let colorCtx;
     const pixelColor = color => {
@@ -817,15 +820,14 @@ export class Engine {
           if (tx.x0 < -1 || tx.y0 < -1 || tx.x1 > W + 1 || tx.y1 > H + 1) {
             if (framed) once(`off:${sc.id}:${tx.text}`, () => add('error', sc.id, t, `"${label}" runs off the frame (${Math.round(tx.x0)},${Math.round(tx.y0)} to ${Math.round(tx.x1)},${Math.round(tx.y1)} in a ${W}x${H} frame)`));
           } else if (this.appArea) {
-            const a = this.appArea;
-            if (framed && (tx.x0 < a.left - 2 || tx.y0 < a.top - 2 || tx.x1 > a.right + 2 || tx.y1 > a.bottom + 2)) {
-              once(`app:${sc.id}:${tx.text}`, () => add('warn', sc.id, t, `"${label}" is outside the ${this.config.format} safe area (${a.left},${a.top} to ${a.right},${a.bottom}), where the app's buttons, name or caption can cover it`));
-            }
+            // On Shorts, TikTok and Reels: outside the content area, s.safe.
+            const message = framed ? contentMessage(`"${label}"`, tx, areas, { verb: 'is', band: inBand(tx, this.captionBand) }) : null;
+            if (message) once(`app:${sc.id}:${tx.text}`, () => add('warn', sc.id, t, message));
           } else if (framed && (tx.x0 < margin || tx.y0 < margin || tx.x1 > W - margin || tx.y1 > H - margin)) {
             once(`edge:${sc.id}:${tx.text}`, () => add('warn', sc.id, t, `"${label}" sits closer than ${margin}px to the edge`));
           }
           const b = this.captionBand;
-          if (b && tx.y1 > b.top + 2 && tx.y0 < b.bottom - 2 && tx.x1 > b.left && tx.x0 < b.right) {
+          if (inBand(tx, b)) {
             once(`cap:${sc.id}:${tx.text}`, () => add('warn', sc.id, t, `"${label}" is in the caption band (y ${Math.round(b.top)} to ${Math.round(b.bottom)}), where captions can cover it; keep content above s.safe.bottom (${Math.round(this.safeArea.bottom)})`));
           }
           // Text on a sticker, a box or a card of its own is measured against
@@ -865,25 +867,31 @@ export class Engine {
         for (const f of labelsIntoShapes(laid.draw.strokes, solid, laid.draw.shapes)) once(`label:${sc.id}:${f.key}`, () => add('warn', sc.id, t, f.message));
         for (const f of arrowsThroughShapes(laid.draw.strokes, laid.draw.shapes)) once(`through:${sc.id}:${f.key}`, () => add('warn', sc.id, t, f.message));
         // The box of a drawing counts in the frame like text: off the frame,
-        // outside the app's safe area, close to the edge or in the caption band.
+        // outside the content area of a platform size, close to the edge or in
+        // the caption band. Other shapes count in the content area and the
+        // caption band. A clip or image that fills the frame is a background, and
+        // an app screen may leave the frame while the scene's camera zooms.
         for (const sh of laid.draw.shapes) {
-          if (sh.kind !== 'drawing' || !sh.settled || sh.alpha <= 0.95) continue;
-          const message = edgeMessage(shapeName(sh), sh.box, { W, H, margin, app: this.appArea, band: this.captionBand, format: this.config.format, safe: this.safeArea });
+          if (!sh.settled || sh.alpha <= 0.95) continue;
+          const drawing = sh.kind === 'drawing';
+          if (!drawing && (fillsFrame(sh.box, W, H) || (sh.ui && sh.zoomed))) continue;
+          const message = edgeMessage(shapeName(sh), sh.box, areas, { edge: drawing });
           if (message) once(`drawing-edge:${sc.id}:${shapeKey(sh)}`, () => add('warn', sc.id, t, message));
         }
         // The line of an arrow counts in the frame like its label: off the frame,
-        // outside the app's safe area, close to the edge or in the caption band.
+        // outside the content area of a platform size, close to the edge or in
+        // the caption band.
         for (const line of laid.draw.strokes) {
           if (line.kind !== 'arrow' || !line.settled || line.alpha <= 0.95) continue;
           const b = bounds(line.points);
           const where = `${Math.round(b.x0)},${Math.round(b.y0)} to ${Math.round(b.x1)},${Math.round(b.y1)}`;
-          const a = this.appArea;
           const band = this.captionBand;
-          let message = null;
-          if (!inFrame(b)) message = `${line.name} runs off the frame (${where} in a ${W}x${H} frame); move its ends inside`;
-          else if (a && (b.x0 < a.left - 2 || b.y0 < a.top - 2 || b.x1 > a.right + 2 || b.y1 > a.bottom + 2)) message = `${line.name} reaches outside the ${this.config.format} safe area (${a.left},${a.top} to ${a.right},${a.bottom}), where the app's buttons, name or caption can cover it`;
-          else if (!a && (b.x0 < margin || b.y0 < margin || b.x1 > W - margin || b.y1 > H - margin)) message = `${line.name} comes closer than ${margin}px to the edge (${where})`;
-          else if (band && line.points.some(([x, y]) => y > band.top + 2 && y < band.bottom - 2 && x > band.left && x < band.right)) message = `${line.name} runs into the caption band (y ${Math.round(band.top)} to ${Math.round(band.bottom)}), where captions can cover it; keep it above s.safe.bottom (${Math.round(this.safeArea.bottom)})`;
+          const banded = !!band && line.points.some(([x, y]) => y > band.top + 2 && y < band.bottom - 2 && x > band.left && x < band.right);
+          const near = !this.appArea && (b.x0 < margin || b.y0 < margin || b.x1 > W - margin || b.y1 > H - margin);
+          const message = !inFrame(b) ? `${line.name} runs off the frame (${where} in a ${W}x${H} frame); move its ends inside`
+            : contentMessage(line.name, b, areas, { band: banded })
+              ?? (near ? `${line.name} comes closer than ${margin}px to the edge (${where})` : null)
+              ?? (banded ? `${line.name} runs into the caption band (y ${Math.round(band.top)} to ${Math.round(band.bottom)}), where captions can cover it; keep it above s.safe.bottom (${Math.round(this.safeArea.bottom)})` : null);
           if (message) once(`arrow-edge:${sc.id}:${line.name}`, () => add('warn', sc.id, t, message));
         }
         // What the viewer sees: as the camera films it, when it films this scene.
@@ -1088,14 +1096,37 @@ function emptyStretches(filled, dur, step, shown) {
   return found;
 }
 
-// What check says about a box that runs off the frame, outside the app's safe
-// area, close to the edge or into the caption band, or null.
-function edgeMessage(name, b, { W, H, margin, app, band, format, safe }) {
+// Whether a box reaches into the caption band.
+function inBand(b, band) {
+  return !!band && b.y1 > band.top + 2 && b.y0 < band.bottom - 2 && b.x1 > band.left && b.x0 < band.right;
+}
+
+// The content area of a platform size, like Shorts or TikTok, is s.safe: the part
+// the app leaves free, without the strip the watermark takes at the top and
+// without the caption band. What check says about a box outside it, or null.
+// A box in the caption band gets the finding of the band, unless it also
+// reaches where the app's buttons are.
+function contentMessage(name, b, { app, safe, format }, { verb = 'reaches', band = false } = {}) {
+  if (!app) return null;
+  const out = (r) => b.x0 < r.left - 2 || b.y0 < r.top - 2 || b.x1 > r.right + 2 || b.y1 > r.bottom + 2;
+  if (!out(safe) || (band && !out(app))) return null;
+  const R = Math.round;
+  const area = `the ${format} content area (${R(safe.left)},${R(safe.top)} to ${R(safe.right)},${R(safe.bottom)}, ${R(safe.right - safe.left)}x${R(safe.bottom - safe.top)})`;
+  if (out(app)) return `${name} ${verb} outside ${area}, where the app's buttons and post text can cover it`;
+  return `${name} ${verb} outside ${area}, ${b.y0 < safe.top - 2 ? 'in the strip at the top that the watermark takes' : 'right next to the captions'}`;
+}
+
+// What check says about a box that runs off the frame, outside the content area
+// of a platform size, close to the edge or into the caption band, or null.
+// `edge: false` leaves out the frame and its edge on other sizes.
+function edgeMessage(name, b, { W, H, margin, app, band, format, safe }, { edge = true } = {}) {
   const where = `${Math.round(b.x0)},${Math.round(b.y0)} to ${Math.round(b.x1)},${Math.round(b.y1)}`;
-  if (b.x0 < -1 || b.y0 < -1 || b.x1 > W + 1 || b.y1 > H + 1) return `${name} runs off the frame (${where} in a ${W}x${H} frame)`;
-  if (app && (b.x0 < app.left - 2 || b.y0 < app.top - 2 || b.x1 > app.right + 2 || b.y1 > app.bottom + 2)) return `${name} reaches outside the ${format} safe area (${app.left},${app.top} to ${app.right},${app.bottom}), where the app's buttons, name or caption can cover it`;
-  if (!app && (b.x0 < margin || b.y0 < margin || b.x1 > W - margin || b.y1 > H - margin)) return `${name} comes closer than ${margin}px to the edge (${where})`;
-  if (band && b.y1 > band.top + 2 && b.y0 < band.bottom - 2 && b.x1 > band.left && b.x0 < band.right) return `${name} runs into the caption band (y ${Math.round(band.top)} to ${Math.round(band.bottom)}), where captions can cover it; keep it above s.safe.bottom (${Math.round(safe.bottom)})`;
+  const banded = inBand(b, band);
+  if (edge && (b.x0 < -1 || b.y0 < -1 || b.x1 > W + 1 || b.y1 > H + 1)) return `${name} runs off the frame (${where} in a ${W}x${H} frame)`;
+  const content = contentMessage(name, b, { app, safe, format }, { band: banded });
+  if (content) return content;
+  if (edge && !app && (b.x0 < margin || b.y0 < margin || b.x1 > W - margin || b.y1 > H - margin)) return `${name} comes closer than ${margin}px to the edge (${where})`;
+  if (banded) return `${name} runs into the caption band (y ${Math.round(band.top)} to ${Math.round(band.bottom)}), where captions can cover it; keep it above s.safe.bottom (${Math.round(safe.bottom)})`;
   return null;
 }
 

@@ -78,7 +78,9 @@
 `check` looks at text and math formulas, and an arrow's label counts as
 text. It finds text that is:
 
-- off the frame, or closer than 3.5% to the edge
+- off the frame, or closer than 3.5% to the edge. On Shorts, TikTok and Reels
+  it is anything outside the content area, `s.safe`, see
+  `explainroo docs sizes`
 - too small at the size it is shown, with the camera's zoom. In a tall or
   square frame, which people watch on a phone, text below 40 pixels at 1080p
   gets a hint too
@@ -98,14 +100,17 @@ text. It finds text that is:
 It also finds:
 
 - shapes that partly overlap: boxes, cards, panels, images, icons and stickers
+- shapes in the caption band, and on Shorts, TikTok and Reels shapes outside
+  the content area. A shape that fills the whole frame is a background and
+  doesn't count
 - a mark from `s.annotate` that stays on screen more than 0.3 seconds after
   the element it marks has left
 - a code window or a terminal that is on screen empty for more than a second
   before its first line or step, and a terminal command that starts with the
   prompt, like `{ cmd: '$ npm test' }`, which shows `$ $ npm test`
 - an arrow whose line runs through a shape or icon that is not one of its
-  ends, and an arrow line off the frame, near its edge, outside the app's
-  safe area or in the caption band
+  ends, and an arrow line off the frame, near its edge, outside the content
+  area or in the caption band
 - code that types itself or shows its lines one by one, a terminal, a number
   that counts or text that writes itself, when it isn't all there by the end
   of its scene or by its `out`. It says how much is missing and which option
@@ -129,5 +134,5 @@ of the same kind.
 
 It does not see what a drawing made with `s.draw` or straight on `s.ctx`
 holds. Give `s.draw` a `box`, and `check` treats that box as a shape: for
-overlaps, text over its edge, the frame edge and the safe area. Look at the
+overlaps, text over its edge, the frame edge and the content area. Look at the
 stills for the rest.

@@ -332,15 +332,51 @@ test('s.draw with box is a shape for check: overlaps, text over its edge and the
   assert.match(bad.find((i) => i.scene === 'bad').message, /^s\.draw box must be \{ x, y, w, h \}: the center and the size of what it draws/);
 });
 
-test('s.draw with box counts in the safe area of a platform size and in the caption band', { skip }, async (t) => {
+test('s.draw with box counts in the content area of a platform size and in the caption band', { skip }, async (t) => {
   const issues = await check(project(t, { size: 'tiktok' }, {
     low: `s.draw({ x: 540, y: 1700, box: { x: 0, y: 0, w: 300, h: 200 }, at: 0 }, (ctx) => ctx.fillRect(-150, -100, 300, 200));`,
   }));
-  assert.match(messages(issues, 'low', 's.draw')[0], /^the 1st s\.draw at 540,1700 reaches outside the tiktok safe area \(/);
+  assert.match(messages(issues, 'low', 's.draw')[0], /^the 1st s\.draw at 540,1700 reaches outside the tiktok content area \(119,304 to 864,1267, 745x963\), where the app's buttons and post text can cover it$/);
   const band = await check(project(t, { captions: true }, {
     low: `s.draw({ x: 960, y: 900, box: { x: 0, y: 0, w: 300, h: 160 }, at: 0 }, (ctx) => ctx.fillRect(-150, -80, 300, 160));`,
   }));
   assert.match(messages(band, 'low', 's.draw')[0], /^the 1st s\.draw at 960,900 runs into the caption band \(y \d+ to \d+\), where captions can cover it; keep it above s\.safe\.bottom \(\d+\)$/);
+});
+
+test('on TikTok check measures text and every shape against one content area, s.safe, which ends above the caption band', { skip }, async (t) => {
+  // A TikTok package: bold captions and no watermark. The content area is
+  // 119,240 to 864,1103 and the caption band runs from y 1127 to 1243.
+  const scenes = {
+    band: `s.icon('plane', { x: 492, y: 1185, size: 100, at: 0 }); s.box({ id: 'panel', x: 492, y: 1150, w: 300, h: 100, at: 0 });`,
+    side: `s.icon('plane', { x: 930, y: 700, size: 100, at: 0 }); s.text('Right side', { x: 920, y: 800, size: 40, at: 0 });`,
+    gap: `s.text('Close to the captions', { x: 492, y: 1112, size: 24, at: 0 });`,
+    inside: `s.icon('plane', { x: s.cx, y: s.safe.bottom - 60, size: 100, at: 0 }); s.box('Fits', { x: s.cx, y: s.safe.top + 80, at: 0 });`,
+    full: `s.box({ x: s.W / 2, y: s.H / 2, w: s.W, h: s.H, at: 0 }); s.text('On top', { x: s.cx, y: s.cy, size: 60, at: 0 });`,
+    top: `s.text('Top row', { x: 300, y: 270, size: 40, at: 0 });`,
+  };
+  const issues = await check(project(t, { size: 'tiktok', captions: 'bold', watermark: false }, scenes));
+  const area = (scene) => issues.filter((i) => i.scene === scene && /content area|caption band/.test(i.message)).map((i) => i.message);
+  assert.deepEqual(area('band'), [
+    'the icon "plane" runs into the caption band (y 1127 to 1243), where captions can cover it; keep it above s.safe.bottom (1103)',
+    'the box "panel" runs into the caption band (y 1127 to 1243), where captions can cover it; keep it above s.safe.bottom (1103)',
+  ]);
+  assert.deepEqual(area('side'), [
+    '"Right side" is outside the tiktok content area (119,240 to 864,1103, 745x863), where the app\'s buttons and post text can cover it',
+    'the icon "plane" reaches outside the tiktok content area (119,240 to 864,1103, 745x863), where the app\'s buttons and post text can cover it',
+  ]);
+  assert.deepEqual(area('gap'), ['"Close to the captions" is outside the tiktok content area (119,240 to 864,1103, 745x863), right next to the captions']);
+  assert.deepEqual(area('inside'), []);
+  // A shape that fills the frame is a background, and the top row has no watermark here.
+  assert.deepEqual(area('full'), []);
+  assert.deepEqual(area('top'), []);
+  // With the watermark, the content area starts below the strip it takes.
+  const marked = await check(project(t, { size: 'tiktok', captions: 'bold' }, { top: scenes.top }));
+  assert.deepEqual(marked.filter((i) => i.message.includes('content area')).map((i) => i.message), ['"Top row" is outside the tiktok content area (119,304 to 864,1103, 745x799), in the strip at the top that the watermark takes']);
+  // On a size without an app, shapes count only in the caption band, not at the edge.
+  const wide = await check(project(t, { captions: true }, {
+    low: `s.icon('plane', { x: 960, y: 920, size: 100, at: 0 }); s.box({ x: 60, y: 300, w: 200, h: 100, at: 0 });`,
+  }));
+  assert.deepEqual(wide.filter((i) => /caption band|edge/.test(i.message)).map((i) => i.message.replace(/\d+/g, 'N')), ['the icon "plane" runs into the caption band (y N to N), where captions can cover it; keep it above s.safe.bottom (N)']);
 });
 
 test('an icon with a label returns the label\'s box and an outer box with both, and bottom stays the icon\'s own', { skip }, async (t) => {

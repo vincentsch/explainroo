@@ -411,7 +411,7 @@ Run `explainroo docs short-video` before you use it.
   - `check` sees that something is drawn, for the empty start and the cover,
     but not what. `box: { x, y, w, h }`, the center and size of what you
     draw, around 0, 0 like the drawing, makes `check` treat it as a shape
-    for overlaps, text over its edge, the frame edge and the safe area.
+    for overlaps, text over its edge, the frame edge and the content area.
     `round: true` in it makes it an ellipse. Without `box` it sees no more.
 - `s.burst({ x, y, at, count, colors })` fires confetti.
 - `s.bg(color)` paints over the background.

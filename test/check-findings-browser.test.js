@@ -79,7 +79,7 @@ test('check warns once for each text with a background but no words, also in gro
   assert.match(overflow[0].message, /^line 1 of the 1st s\.code \("const answer = computeTheAnswerToEvery/);
 });
 
-test('check treats an arrow label as text: overlap, off the frame, caption band and the TikTok safe area', { skip }, async (t) => {
+test('check treats an arrow label as text: overlap, off the frame, caption band and the TikTok content area', { skip }, async (t) => {
   const wide = await check(project(t, { size: '16:9', captions: true, defaults: '0.5' }, {
     overlap: `s.text('Resolver', { x: 960, y: 506, size: 40, at: 0 });
     s.arrow([600, 540], [1320, 540], { label: 'asks', at: 0 });`,
@@ -97,7 +97,7 @@ test('check treats an arrow label as text: overlap, off the frame, caption band 
     vault: `s.arrow([700, 700], [1000, 700], { label: 'scrambled vault only', at: 0 });`,
   }));
   assert.deepEqual(tall.filter((i) => i.message.startsWith('"scrambled vault only"')).map((i) => [i.level, i.message]),
-    [['warn', '"scrambled vault only" is outside the tiktok safe area (119,240 to 864,1267), where the app\'s buttons, name or caption can cover it']]);
+    [['warn', '"scrambled vault only" is outside the tiktok content area (119,304 to 864,1267, 745x963), where the app\'s buttons and post text can cover it']]);
 });
 
 test('labelSide moves the label, the box check measures and the box the camera keeps whole', { skip }, async (t) => {

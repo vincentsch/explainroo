@@ -451,7 +451,7 @@ export class Stage {
     const poly = this._designPoints(local);
     const m = this._matrix();
     const edge = border > 0 ? (border / 2) * Math.hypot(m.a, m.b) : 0;
-    log.shapes.push({ kind, name: String(name ?? ''), id: o.id === undefined || o.id === null ? null : String(o.id), serial, poly, box: bounds(poly), edge, call, partial, settled, alpha: this.ctx.globalAlpha, group: this._groups[0] ?? null, overlap: o.overlap === true, cover: this._cover > 0, ui: this._ui ? this._ui._layer + 1 : 0, order: log.order++ });
+    log.shapes.push({ kind, name: String(name ?? ''), id: o.id === undefined || o.id === null ? null : String(o.id), serial, poly, box: bounds(poly), edge, call, partial, settled, alpha: this.ctx.globalAlpha, group: this._groups[0] ?? null, overlap: o.overlap === true, cover: this._cover > 0, ui: this._ui ? this._ui._layer + 1 : 0, zoomed: !!this._camMoved, order: log.order++ });
     return serial;
   }
 
