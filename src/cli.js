@@ -114,7 +114,7 @@ Reference
 
 Options: --size <size> and --no-watermark override video.json for preview, still, sheet, check, render and export.
          Their outputs get a suffix, like video-tiktok.mp4, player-tiktok/ or video-no-watermark.mp4. --out still wins.
-         "sizes" in video.json sets captions, cover, pace and watermark for one size, see "docs sizes".
+         "sizes" in video.json sets captions, cover, pace, watermark and targetSeconds for one size, see "docs sizes".
          --lang es picks the version from script.es.md, for voice, preview, still, sheet, check, render, verify,
          export, package, share and publish. It builds into build/es/ and writes to out/es/.
          --json for machine-readable output. The project defaults to the current folder.

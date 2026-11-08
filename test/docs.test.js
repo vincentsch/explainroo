@@ -373,7 +373,7 @@ test('the sizes, settings, short-video and publishing topics explain settings pe
   assert.match(commands, /^\| `export \[project\]` \|.*`--size`.*`out\/player-tiktok\/` with `--size tiktok`/m);
   assert.ok(oneLine(page('web-player')).includes('`export --size tiktok` writes the player of that size to `out/player-tiktok/`, with the settings of its block in `"sizes"`.'));
   const help = oneLine(run('--help').stdout);
-  for (const words of ['--size makes the narration of a size whose block in "sizes" sets its own pace', '--quality final|fast', '--quality fast makes a final without it', '"sizes" in video.json sets captions, cover, pace and watermark for one size', 'export [project] write a web player folder (--out dir, default: out/player/; --size, --no-watermark)', 'override video.json for preview, still, sheet, check, render and export']) assert.ok(help.includes(words), words);
+  for (const words of ['--size makes the narration of a size whose block in "sizes" sets its own pace', '--quality final|fast', '--quality fast makes a final without it', '"sizes" in video.json sets captions, cover, pace, watermark and targetSeconds for one size', 'export [project] write a web player folder (--out dir, default: out/player/; --size, --no-watermark)', 'override video.json for preview, still, sheet, check, render and export']) assert.ok(help.includes(words), words);
 });
 
 test('the scene-api, troubleshooting, product-demos and commands topics and the help cover cues, arrow labels, captures, captions, lift and sheet --times', () => {
