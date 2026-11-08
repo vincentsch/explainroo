@@ -185,8 +185,10 @@ s.path('M0 0 C 200 -150 400 150 600 0', { x: 660, y: 540, at: 3 });
 `minW`, `minH`, `size`, `font`, `icon`, `iconSize`, `iconColor`, `color`
 (outline and a light fill), `fill`, `stroke`, `width`, `dashed`,
 `border: false`, `radius`, `shape: 'ellipse'`, `textColor`, `fillStyle`
-(hand-drawn looks: `solid`, `hachure`, `cross-hatch`, `zigzag`, `dots`).
-`s.circle({ r, label })` takes the same options.
+(hand-drawn looks: `solid`, `hachure`, `cross-hatch`, `zigzag`, `dots`),
+`maxWidth`. The label wraps at `maxWidth`, 560 pixels, or inside `w`.
+`minW` only widens the box, so to keep a long label on one line, raise
+`maxWidth`. `s.circle({ r, label })` takes the same options.
 
 `s.line(points, options)` and `s.path(d, options)` take `color`, `width`,
 `dashed`, `fill` and `glow`. `s.path` also takes `fillStyle`, and
@@ -196,7 +198,10 @@ s.path('M0 0 C 200 -150 400 150 600 0', { x: 660, y: 540, at: 3 });
 `{ x, y }` or the `id` of an element drawn earlier. With an `id`, the arrow
 stops at the edge of that element. The label of an icon counts as part of the
 icon here, so an arrow leaves or reaches a labelled icon outside its label.
-Options: `bend` (about -1 to 1), `head` (`end`, `start`, `both`, `none`),
+Options: `bend` (about -1 to 1: a positive one curves to the right of the
+way the arrow points, so one from left to right sags down, and a negative
+one to the left; at 1 its middle moves a quarter of its length), `head`
+(`end`, `start`, `both`, `none`),
 `label`, `labelSize` (48, the size of body text), `labelColor`, `labelFont`
 (the handwritten font by default; `'body'` suits `clean`), `labelOffset`,
 `labelSide`, `gap`, `dashed`, `width`, `headSize`. `s.connect` does the same.
