@@ -635,10 +635,14 @@ function icons(words, print) {
   const total = scored.length;
   scored.splice(40);
   const asked = words.join(' ');
-  if (!scored.length) {
-    // Close spellings, for a word that no name or tag has in it.
-    const close = suggest(q.join('-'), Object.keys(all), 5);
-    print(`no icon matches "${asked}". Close names: ${close.join(', ')}`, { icons: [], close });
+  // A word that is a name, a part of one, a tag or a word of a tag. "bee" is only
+  // inside "beef" and "beer", which is no match.
+  const whole = (name, tags) => q.some((w) => name === w || name.split('-').includes(w) || tags.some((t) => t === w || t.split(/[\s-]+/).includes(w)));
+  if (!scored.some((x) => whole(x.name, x.tags))) {
+    // The names that have the word inside them, or else close spellings.
+    const close = scored.length ? scored.slice(0, 5).map((x) => x.name) : suggest(q.join('-'), Object.keys(all), 5);
+    const instead = 'No icon shows it. Draw it with s.draw, or make a picture with "explainroo image", which costs money.';
+    print(`no icon matches "${asked}". Close names: ${close.join(', ')}\n${instead}`, { icons: [], close, instead });
     return 0;
   }
   // One icon per line, and the words it is also found by after it, so the tags

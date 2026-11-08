@@ -118,7 +118,8 @@ test('size overrides reject missing values and invalid sizes before building for
 });
 
 // One icon per line, with the words it is found by after it, so that a tag never
-// reads as another icon. A word with no match gets up to five close names.
+// reads as another icon. A word with no match gets up to five close names, and
+// the other ways to show it.
 test('icons prints one match per line, and close names when nothing matches', () => {
   const bin = new URL('../bin/explainroo.js', import.meta.url).pathname;
   const icons = (...args) => spawnSync(process.execPath, [bin, 'icons', ...args], { encoding: 'utf8' });
@@ -136,7 +137,13 @@ test('icons prints one match per line, and close names when nothing matches', ()
   const close = JSON.parse(icons('zzqx', '--json').stdout);
   assert.deepEqual(close.icons, []);
   assert.ok(close.close.length > 0 && close.close.length <= 5);
-  assert.equal(none.stdout, `no icon matches "zzqx". Close names: ${close.close.join(', ')}\n`);
+  assert.equal(none.stdout, `no icon matches "zzqx". Close names: ${close.close.join(', ')}\nNo icon shows it. Draw it with s.draw, or make a picture with "explainroo image", which costs money.\n`);
+  // A word that is only inside other names, like "bee" in "beef" and "beer", is no match either.
+  const bee = icons('bee');
+  assert.match(bee.stdout, /^no icon matches "bee"\. Close names: beef, [a-z, -]+\nNo icon shows it\. Draw it with s\.draw, or make a picture with "explainroo image", which costs money\.\n$/);
+  assert.deepEqual(JSON.parse(icons('bee', '--json').stdout).icons, []);
+  // A tag counts as a match.
+  assert.match(icons('ship').stdout, /^\d+ icons? match(es)? "ship"/);
   // More than 40 matches name how many there are.
   assert.match(icons('arrow').stdout, /^\d+ icons match "arrow"\. These are the 40 best:\n/);
 });
