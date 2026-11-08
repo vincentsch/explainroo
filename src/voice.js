@@ -223,6 +223,33 @@ function withNewCues(project, scene, chunks, cached, hash, recording) {
   return info;
 }
 
+// Says which step a scene is on once it has taken 2 seconds: making speech,
+// timing words or checking speech. In a terminal one line changes in place and
+// counts the sentences. Elsewhere each step gets one short line.
+function progress(id, log, sentences) {
+  const t0 = Date.now();
+  const said = new Set();
+  let step = null;
+  let sentence = 0;
+  const show = () => {
+    if (!step) return;
+    if (log.update) log.update(`voice ${id}: ${step}${sentences > 1 ? `, sentence ${sentence} of ${sentences}` : ''}`);
+    else if (!said.has(step)) {
+      said.add(step);
+      log(`voice ${id}: ${step}`);
+    }
+  };
+  const timer = setTimeout(show, 2000);
+  timer.unref?.();
+  return {
+    step(name, index = 0) {
+      step = name;
+      sentence = index + 1;
+      if (Date.now() - t0 >= 2000) show();
+    },
+    done: () => clearTimeout(timer),
+  };
+}
 
 export function readVoice(project, id) {
   const p = voicePaths(project, id);
@@ -388,9 +415,15 @@ export async function synthesize(project, { force = false, fresh = false, log = 
   }
   for (const { scene, chunks, hash, key } of todo) {
     const t0 = Date.now();
-    const info = recordings && chunks.length
-      ? await recordingScene(project, scene, hash, recordings.files[scene.id], take, cuts.find((c) => c.scene.id === scene.id), heardTake, log, transcribe, key)
-      : await synthesizeScene(project, scene, chunks, hash, tts, speech, log, transcribe);
+    const steps = progress(scene.id, log, chunks.length);
+    let info;
+    try {
+      info = recordings && chunks.length
+        ? await recordingScene(project, scene, hash, recordings.files[scene.id], take, cuts.find((c) => c.scene.id === scene.id), heardTake, log, transcribe, key, steps)
+        : await synthesizeScene(project, scene, chunks, hash, tts, speech, log, transcribe, steps);
+    } finally {
+      steps.done();
+    }
     result[scene.id] = info;
     if (chunks.length) {
       const warn = info.matchRate < 0.85 ? (recordings
@@ -402,7 +435,7 @@ export async function synthesize(project, { force = false, fresh = false, log = 
   return result;
 }
 
-async function synthesizeScene(project, scene, chunks, hash, tts, speech, log, transcribe) {
+async function synthesizeScene(project, scene, chunks, hash, tts, speech, log, transcribe, steps) {
   const { config } = project;
   const files = voicePaths(project, scene.id);
   if (!chunks.length) {
@@ -431,6 +464,7 @@ async function synthesizeScene(project, scene, chunks, hash, tts, speech, log, t
       pieces.push(new Float32Array(Math.round(gap * sr)));
       cursor += Math.round(gap * sr);
     }
+    steps.step('making speech', ci);
     const audio = speech
       ? await speech.get(scene.id, chunks, ci)
       : await generateSpeech(tts, chunk.text, { language: config.language, voice: config.voice, speed: config.speed * config.pace, phonemes: phonemes?.[ci] });
@@ -440,8 +474,10 @@ async function synthesizeScene(project, scene, chunks, hash, tts, speech, log, t
     pieces.push(samples);
     cursor += samples.length;
 
+    steps.step('timing words', ci);
     const heard = await transcribe(resample(samples, sr, 16000), { log, language: config.language });
     transcripts.push(heard.text);
+    steps.step('checking speech', ci);
     const aligned = await alignSpeech(chunk.words, heard.words, dur, config.language);
     chunk.words.forEach((w, k) => {
       const a = aligned.words[k];
@@ -486,7 +522,7 @@ async function synthesizeScene(project, scene, chunks, hash, tts, speech, log, t
   return info;
 }
 
-async function recordingScene(project, scene, hash, source, take, cut, heardTake, log, transcribe, key) {
+async function recordingScene(project, scene, hash, source, take, cut, heardTake, log, transcribe, key, steps) {
   const { config } = project;
   const audio = take || await decodeRecording(source.file, project.paths.build, project.config.speed * project.config.pace);
   const sr = audio.sampleRate;
@@ -507,10 +543,12 @@ async function recordingScene(project, scene, hash, source, take, cut, heardTake
     const start = Math.max(0, Math.min(duration, w.start - from / sr));
     return { ...w, start, end: Math.min(duration, Math.max(start + 0.05, w.end - from / sr)) };
   };
+  if (!heardTake) steps.step('timing words');
   const heard = heardTake ? {
     words: heardTake.words.filter((w) => w.start >= cut.start && w.start < cut.end).map(local),
   } : await transcribe(resample(samples, sr, 16000), { log, language: config.language });
   const units = scene.units.filter((u) => u.type === 'word');
+  steps.step('checking speech');
   const aligned = await alignSpeech(units, heard.words, duration, config.language);
   const times = cut ? cut.words.map(local) : aligned.words;
   const wordTimes = [];

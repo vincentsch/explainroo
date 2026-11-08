@@ -1,5 +1,6 @@
 // What voice keeps and what it makes again: a moved marker keeps the narration,
-// and an older scene gets today's speech check from its transcript.
+// an older scene gets today's speech check from its transcript, and a long scene
+// says which step it is on.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -149,4 +150,33 @@ test('a word that stays unconfirmed is quoted with four whole words on each side
   assert.equal(heardQuote(v, 'en', [1, 16]), '"It contains a harmless pizza of…" and "…from its surface. That peace a lot."');
   const warn = speechFindings(project, voices).issues.find((i) => i.level === 'warn');
   assert.match(warn.message, /^the voice check could not confirm "piece"\. It heard: "It contains a harmless pizza of the virus, such…"\. /);
+});
+
+test('a long scene says the step it is on, one line per step, and in a terminal one line that changes', async (t) => {
+  const { dir } = await paidProject(t, '# Test\n\n## intro\nOne sentence here. Two sentences there.\n');
+  const slow = (texts) => {
+    const say = echo(texts);
+    return async (...args) => {
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      return say(...args);
+    };
+  };
+  const lines = [];
+  await synthesize(loadProject(dir), { transcribe: slow(['One sentence here.', 'Two sentences there.']), log: (line) => lines.push(line) });
+  const steps = lines.filter((line) => /^voice intro: (making speech|timing words|checking speech)$/.test(line));
+  assert.ok(steps.length >= 2, lines.join('\n'));
+  assert.equal(new Set(steps).size, steps.length, 'each step once');
+  assert.match(lines.at(-1), /^voice intro: .* of narration/);
+  // A terminal gets one line that names the sentence too.
+  fs.rmSync(path.join(dir, 'build'), { recursive: true });
+  const updates = [];
+  const log = (line) => lines.push(line);
+  log.update = (line) => updates.push(line);
+  await synthesize(loadProject(dir), { transcribe: slow(['One sentence here.', 'Two sentences there.']), log });
+  assert.ok(updates.some((u) => /^voice intro: (making speech|timing words|checking speech), sentence 2 of 2$/.test(u)), updates.join('\n'));
+  // A quick scene says nothing about its steps.
+  fs.rmSync(path.join(dir, 'build'), { recursive: true });
+  lines.length = 0;
+  await synthesize(loadProject(dir), { transcribe: echo(['One sentence here.', 'Two sentences there.']), log: (line) => lines.push(line) });
+  assert.ok(!lines.some((line) => /making speech|timing words|checking speech/.test(line)), lines.join('\n'));
 });
