@@ -2,7 +2,7 @@
 // draws the whole frame from scratch as a function of the scene time `s.t`.
 // Elements take `at` (when they appear) and optional `out` (when they leave);
 // the theme decides how they enter, and entering elements add sound effects.
-import { clamp, lerp, ease, easeFn, rand01, noise1, hashStr, mulberry32, suggest, normWord, withAlpha, contrast, mixColor, opaque, newDefaults } from './util.js';
+import { clamp, lerp, ease, easeFn, rand01, noise1, hashStr, mulberry32, suggest, normWord, withAlpha, contrast, mixColor, opaque, newDefaults, ordinal } from './util.js';
 import { colorOf, tintOf, fontString } from './themes.js';
 import { scalePath, quadD, polyD, pathLength, pointAt, parsePath, absolutize, samplePath } from './pathdata.js';
 import { layoutText, lineStartX } from './text.js';
@@ -82,6 +82,9 @@ export class Stage {
     this._arrowCalls = 0;
     this._shapeCalls = 0;
     this._revealCalls = 0;
+    // How many times each call has run in this scene, so check can name an
+    // element without an id as "the 2nd s.draw".
+    this._calls = Object.create(null);
     this._cover = 0;
     // s.quiet() turns off the entrance sounds of the rest of the scene.
     this._quiet = false;
@@ -366,6 +369,24 @@ export class Stage {
 
   // ---------- what check sees ----------
 
+  // The place of this call among the calls of its kind in the scene, like "2nd
+  // s.draw". Elements are always called, so it is the same at every moment.
+  _call(name) {
+    this._calls[name] = (this._calls[name] ?? 0) + 1;
+    return `${ordinal(this._calls[name])} s.${name}`;
+  }
+
+  // How check names an element: by what it shows, with its id when it has one,
+  // by its id alone, or else by its call and where it is, like "the 2nd s.draw
+  // at 960,735".
+  _named(kind, call, name, id, where = null) {
+    const shown = name ? String(name) : '';
+    const own = id === undefined || id === null ? '' : String(id);
+    if (shown) return `the ${kind} "${shown.length > 40 ? shown.slice(0, 37) + '...' : shown}"${own && own !== shown ? ` (id "${own}")` : ''}`;
+    if (own) return `the ${kind} "${own}"`;
+    return `the ${call}${where ? ` at ${where}` : ''}`;
+  }
+
   // While check samples a scene, engine.drawLog collects what each frame shows
   // besides text: the shapes, the lines of arrows and annotations, and how many
   // elements are on screen. Boxes are in design pixels, as drawn at that moment.
@@ -396,7 +417,7 @@ export class Stage {
   // current transform. `o.overlap: true` says it may overlap other shapes.
   // `border` is the width of the line drawn on its outline, half of which lies
   // outside it. Returns its number in the scene, so its own text can say whose it is.
-  _logShape(kind, { x = 0, y = 0, w, h, round = false }, settled, o = {}, name = '', { border = 0 } = {}) {
+  _logShape(kind, { x = 0, y = 0, w, h, round = false }, settled, o = {}, name = '', { border = 0, call = null } = {}) {
     const log = this.engine.drawLog;
     const serial = ++this._shapeCalls;
     if (!log || this._suppress > 0 || !(w > 0) || !(h > 0)) return serial;
@@ -405,7 +426,7 @@ export class Stage {
     const poly = this._designPoints(local);
     const m = this._matrix();
     const edge = border > 0 ? (border / 2) * Math.hypot(m.a, m.b) : 0;
-    log.shapes.push({ kind, name: String(name ?? ''), id: o.id === undefined || o.id === null ? null : String(o.id), serial, poly, box: bounds(poly), edge, settled, alpha: this.ctx.globalAlpha, group: this._groups[0] ?? null, overlap: o.overlap === true, cover: this._cover > 0, ui: this._ui ? this._ui._layer + 1 : 0, order: log.order++ });
+    log.shapes.push({ kind, name: String(name ?? ''), id: o.id === undefined || o.id === null ? null : String(o.id), serial, poly, box: bounds(poly), edge, call, settled, alpha: this.ctx.globalAlpha, group: this._groups[0] ?? null, overlap: o.overlap === true, cover: this._cover > 0, ui: this._ui ? this._ui._layer + 1 : 0, order: log.order++ });
     return serial;
   }
 
@@ -841,6 +862,7 @@ export class Stage {
   // numbers do not depend on which other drawings are on screen.
   draw(o, fn) {
     if (typeof o === 'function') [o, fn] = [{}, o];
+    const call = this._call('draw');
     const box = o.box;
     if (box !== undefined && !(box && ['x', 'y', 'w', 'h'].every((k) => Number.isFinite(box[k])) && box.w > 0 && box.h > 0)) {
       throw new SceneError('s.draw box must be { x, y, w, h }: the center and the size of what it draws, around 0, 0 when the drawing has x and y');
@@ -851,7 +873,7 @@ export class Stage {
     if (!life) return;
     this._push(o.x ?? 0, o.y ?? 0, life, o);
     // check takes the box as a shape, where the drawing is now.
-    if (box) this._logShape('drawing', { x: box.x, y: box.y, w: box.w, h: box.h, round: box.round === true }, this._settled(life), o, o.id ?? '');
+    if (box) this._logShape('drawing', { x: box.x, y: box.y, w: box.w, h: box.h, round: box.round === true }, this._settled(life), o, o.id ?? '', { call });
     const saved = Math.random;
     Math.random = random;
     try { fn(this.ctx, life); } finally {
@@ -863,7 +885,7 @@ export class Stage {
   // ---------- text ----------
 
   text(str, o = {}) {
-    return this._text(str, o, o.kind || 'text');
+    return this._text(str, o, o.kind || 'text', this._call('text'));
   }
 
   // A width of `f` times the frame, never wider than the platform safe area.
@@ -877,18 +899,19 @@ export class Stage {
   }
 
   title(str, o = {}) {
-    return this._text(str, { font: 'display', size: 104, y: this._y(0.44), maxWidth: this._w(0.82), lineHeight: 1.12, ...o }, 'title');
+    return this._text(str, { font: 'display', size: 104, y: this._y(0.44), maxWidth: this._w(0.82), lineHeight: 1.12, ...o }, 'title', this._call('title'));
   }
 
   subtitle(str, o = {}) {
-    return this._text(str, { font: 'body', size: 46, color: 'muted', y: this._y(0.6), maxWidth: this._w(0.7), ...o }, 'text');
+    return this._text(str, { font: 'body', size: 46, color: 'muted', y: this._y(0.6), maxWidth: this._w(0.7), ...o }, 'text', this._call('subtitle'));
   }
 
   note(str, o = {}) {
-    return this._text(str, { size: 32, color: 'muted', ...o }, 'text');
+    return this._text(str, { size: 32, color: 'muted', ...o }, 'text', this._call('note'));
   }
 
-  _text(str, o, kind) {
+  // `method` is the call that drew it, like "2nd s.text", for check.
+  _text(str, o, kind, method = null) {
     const call = ++this._texts;
     const th = this.theme;
     const ctx = this.ctx;
@@ -959,8 +982,8 @@ export class Stage {
       const bgc = colorOf(th, o.bg === true ? 'surface' : o.bg);
       this.pen.draw(ctx, { kind: 'rect', w: g.w, h: g.h, r: o.radius ?? Math.min(th.radius, g.h / 2) }, { fill: bgc, stroke: o.border ? colorOf(th, o.border) : 'none', width: 2, shadow: this._shadow(), seed: this._seed('textbg', o, plain), rough: false }, { stroke: 1, fill: 1 });
       if (blank && bgc !== 'none') {
-        const name = place ? `at ${Math.round(place.x)},${Math.round(place.y)}` : `"${o.id}"`;
-        this._warn(`text ${name} has a background but no words, so it draws an empty card; for an empty field, use s.box({ w, h }) or another shape with a size`, place ? `blank text ${call}` : `blank text id ${o.id}`);
+        const name = place ? `the ${method ?? 'text'} at ${Math.round(place.x)},${Math.round(place.y)}` : `the text "${o.id}"`;
+        this._warn(`${name} has a background but no words, so it draws an empty card; for an empty field, use s.box({ w, h }) or another shape with a size`, place ? `blank text ${call}` : `blank text id ${o.id}`);
       }
     }
     ctx.font = font;
@@ -1093,7 +1116,13 @@ export class Stage {
   // ---------- shapes ----------
 
   box(label, o = {}) {
+    return this._box(label, o, 'box');
+  }
+
+  // A box or a circle. `method` is the call that drew it, for check.
+  _box(label, o, method) {
     if (label && typeof label === 'object') [o, label] = [label, label.label];
+    const call = this._call(method);
     const th = this.theme;
     const ctx = this.ctx;
     const size = o.size ?? 44;
@@ -1119,7 +1148,7 @@ export class Stage {
     if (!life) return g;
     this._push(x, y, life, o);
     const settled = this._settled(life);
-    const own = this._logShape('box', { w, h, round: shape === 'ellipse' || shape === 'circle' }, settled, o, plain || o.id, { border: o.border === false ? 0 : o.width ?? th.stroke.width });
+    const own = this._logShape('box', { w, h, round: shape === 'ellipse' || shape === 'circle' }, settled, o, plain || o.id, { border: o.border === false ? 0 : o.width ?? th.stroke.width, call });
     const prog = this._drawProgress(life);
     const stroke = colorOf(th, o.stroke ?? o.color, 'ink');
     const fill = o.fill !== undefined ? colorOf(th, o.fill) : o.color ? tintOf(th, o.color) : th.surface;
@@ -1154,7 +1183,7 @@ export class Stage {
 
   circle(o = {}) {
     const r = o.r ?? 80;
-    return this.box(o.label, { ...o, shape: 'ellipse', w: r * 2, h: r * 2, padding: 0 });
+    return this._box(o.label, { ...o, shape: 'ellipse', w: r * 2, h: r * 2, padding: 0 }, 'circle');
   }
 
   line(points, o = {}) {
@@ -1292,7 +1321,9 @@ export class Stage {
       const heads = [...(head === 'end' || head === 'both' ? [headAt(L, 1)] : []), ...(head === 'start' || head === 'both' ? [headAt(0.001, -1)] : [])];
       const end = (v, p) => (typeof v === 'string' ? `"${v}"` : `${Math.round(p.x)},${Math.round(p.y)}`);
       const body = samplePath(d);
-      this._logStroke('arrow', [...body, ...heads.flatMap((h) => along(h))], this._settled(life), { serial, name: `the arrow from ${end(from, a)} to ${end(to, b)}`, ends: [typeof from === 'string' ? from : null, typeof to === 'string' ? to : null], body: this._designPoints(body), tips: this._designPoints([[a.x, a.y], [b.x, b.y]]) });
+      // By its id, by the ids of its ends, or by its call and where it runs.
+      const name = o.id !== undefined && o.id !== null ? `the arrow "${o.id}"` : typeof from === 'string' && typeof to === 'string' ? `the arrow from ${end(from, a)} to ${end(to, b)}` : `the ${ordinal(serial)} s.arrow from ${end(from, a)} to ${end(to, b)}`;
+      this._logStroke('arrow', [...body, ...heads.flatMap((h) => along(h))], this._settled(life), { serial, name, ends: [typeof from === 'string' ? from : null, typeof to === 'string' ? to : null], body: this._designPoints(body), tips: this._designPoints([[a.x, a.y], [b.x, b.y]]) });
     }
     if (o.label) {
       const la = clamp((life.p - 0.55) / 0.35);
@@ -1605,6 +1636,7 @@ export class Stage {
 
   // type: underline | circle | box | highlight | strike | cross | bracket
   annotate(target, o = {}) {
+    const call = this._call('annotate');
     const th = this.theme;
     const b = this._point(target);
     const pad = o.padding ?? 14;
@@ -1638,7 +1670,7 @@ export class Stage {
     ctx.translate(b.x, b.y);
     if (this.engine.drawLog && type !== 'highlight' && life.p >= 1) {
       const t = this._designBox(0, 0, b.w, b.h);
-      this._logStroke('annotate', line(), this._settled(life), { target: { x0: t.x - t.w / 2, y0: t.y - t.h / 2, x1: t.x + t.w / 2, y1: t.y + t.h / 2 }, name: `the ${type} around ${typeof target === 'string' ? `"${target}"` : `${Math.round(b.x)},${Math.round(b.y)}`}` });
+      this._logStroke('annotate', line(), this._settled(life), { target: { x0: t.x - t.w / 2, y0: t.y - t.h / 2, x1: t.x + t.w / 2, y1: t.y + t.h / 2 }, name: o.id !== undefined && o.id !== null ? `the ${type} "${o.id}"` : typeof target === 'string' ? `the ${type} around "${target}"` : `the ${call} (a ${type}) around ${Math.round(b.x)},${Math.round(b.y)}` });
     }
     const prog = ease.inOut(life.p);
     const qa = life.q > 0 ? 1 - ease.in(life.q) : 1;
@@ -1998,6 +2030,7 @@ export class Stage {
   // ---------- code and terminal ----------
 
   code(src, o = {}) {
+    const call = this._call('code');
     const th = this.theme;
     const ctx = this.ctx;
     const C = th.code;
@@ -2038,7 +2071,7 @@ export class Stage {
       const total = lines.length;
       const out = o.out === undefined ? Infinity : this.time(o.out);
       this._reveal(`code|${++this._revealCalls}`, {
-        what: `the code "${o.title || 'code'}"`, at, out,
+        what: this._named('code', call, o.title, o.id), at, out,
         end: reveal === 'lines' ? startText + (total - 1) * lineDelay : startText + typeDur,
         missing: (t) => (reveal === 'lines' ? `shows ${clamp(Math.floor((t - startText) / lineDelay) + 1, 0, total)} of its ${total} lines` : `has typed ${Math.floor(clamp((t - startText) / typeDur) * 100)}% of its text`),
         advice: reveal === 'lines' ? `give it an earlier at, or a smaller lineDelay than ${o.lineDelay ?? 0.3}` : `give it an earlier at, or a higher cps than ${o.cps ?? 40}`,
@@ -2069,7 +2102,7 @@ export class Stage {
     }
     if (!life) return geom(x, y, w, h);
     this._push(x, y, life, o);
-    this._logShape('code', { w, h }, this._settled(life), o, o.title || 'code', { border: th.stroke.rough ? th.stroke.width * 0.8 : 0 });
+    this._logShape('code', { w, h }, this._settled(life), o, o.title || '', { border: th.stroke.rough ? th.stroke.width * 0.8 : 0, call });
     this.pen.draw(ctx, { kind: 'rect', w, h, r: Math.min(th.radius, 18) }, { fill: C.bg, stroke: th.stroke.rough ? C.border : 'none', width: th.stroke.width * 0.8, seed: this._seed('codebg', o), shadow: this._shadow(undefined, { color: 'rgba(0,0,0,0.2)', blur: 24, y: 10 }), rough: th.stroke.rough, fillStyle: 'solid' }, { stroke: 1, fill: 1 });
     const left = -w / 2 + pad;
     const top = -h / 2 + barH + pad * 0.8;
@@ -2116,7 +2149,7 @@ export class Stage {
     ctx.textBaseline = 'top';
     const room = w / 2 - pad * 0.5 - (left + numW);
     (steps || [{ lines }]).forEach((step, n) => step.lines.forEach((line, i) => {
-      if (ctx.measureText(line).width > room) this._overflow(`code ${steps ? `step ${n + 1} ` : ''}line ${i + 1} ("${line.trim().slice(0, 40)}") is wider than its window; shorten it, lower size or raise w`);
+      if (ctx.measureText(line).width > room) this._overflow(`line ${i + 1}${steps ? ` of step ${n + 1}` : ''} of ${this._named('code', call, o.title, o.id)} ("${line.trim().slice(0, 40)}") is wider than its window; shorten it, lower size or raise w`);
     }));
     ctx.save();
     ctx.beginPath();
@@ -2192,6 +2225,7 @@ export class Stage {
 
   // lines: "$ command" or plain output strings, or { cmd, at } / { out, at, color }.
   terminal(lines, o = {}) {
+    const call = this._call('terminal');
     const th = this.theme;
     const ctx = this.ctx;
     const T = th.terminal;
@@ -2224,7 +2258,7 @@ export class Stage {
       return r;
     });
     this._reveal(`terminal|${++this._revealCalls}`, {
-      what: `the terminal "${o.title ?? 'terminal'}"`, at, out: o.out === undefined ? Infinity : this.time(o.out),
+      what: this._named('terminal', call, o.title, o.id), at, out: o.out === undefined ? Infinity : this.time(o.out),
       end: Math.max(at, ...timed.map((r) => r.end)),
       missing: (t) => `shows ${timed.filter((r) => r.end <= t + 1e-6).length} of its ${timed.length} lines`,
       advice: `give it an earlier at, or a higher cps than ${o.cps ?? 22}`,
@@ -2251,7 +2285,7 @@ export class Stage {
     }
     if (!life) return geom(x, y, w, h);
     this._push(x, y, life, o);
-    this._logShape('terminal', { w, h }, this._settled(life), o, o.title ?? 'terminal', { border: th.stroke.rough ? th.stroke.width * 0.8 : 0 });
+    this._logShape('terminal', { w, h }, this._settled(life), o, o.title ?? '', { border: th.stroke.rough ? th.stroke.width * 0.8 : 0, call });
     this.pen.draw(ctx, { kind: 'rect', w, h, r: Math.min(th.radius, 16) }, { fill: T.bg, stroke: th.stroke.rough ? th.ink : 'none', width: th.stroke.width * 0.8, seed: this._seed('termbg', o), shadow: this._shadow(undefined, { color: 'rgba(0,0,0,0.22)', blur: 26, y: 10 }), rough: th.stroke.rough, fillStyle: 'solid' }, { stroke: 1, fill: 1 });
     ctx.save();
     const clip = new Path2D();
@@ -2278,7 +2312,7 @@ export class Stage {
     for (const it of timed) {
       for (const part of String(it.cmd ?? it.out ?? '').split('\n')) {
         const width = ctx.measureText(part).width + (it.cmd !== undefined ? promptW : 0);
-        if (width > w - pad * 2) this._overflow(`terminal line "${part.slice(0, 40)}" is wider than the terminal; shorten it, lower size or raise w`);
+        if (width > w - pad * 2) this._overflow(`the line "${part.slice(0, 40)}" of ${this._named('terminal', call, o.title, o.id)} is wider than the terminal; shorten it, lower size or raise w`);
       }
     }
     ctx.save();

@@ -675,6 +675,7 @@ export class Short {
   // ('chime'), id. Returns its box.
   payoff(o = {}) {
     const s = this.s;
+    const call = s._call('short.payoff');
     const tone = TONES[o.tone ?? 'good'] ?? TONES.good;
     // A little narrower than the content area, so a slow push-in keeps it inside.
     const w = o.w ?? s.safe.w * 0.92;
@@ -704,7 +705,7 @@ export class Short {
     if (!life) return geom(x, y, w, h);
     this.s.ui.over(() => this.popIn(life, x, y, () => {
       this.roundRect(x - w / 2, top, w, h, 40, card, { shadow: { color: 'rgba(0,0,0,0.35)', blur: 40, y: 18 } });
-      if (!this.hidden) this.s._logShape('card', { x, y: top + h / 2, w, h }, this.s._unsettled === 0, o, o.title ?? '');
+      if (!this.hidden) this.s._logShape('card', { x, y: top + h / 2, w, h }, this.s._unsettled === 0, o, o.title ?? '', { call });
       const icy = top + pad + iconR;
       // The icon breathes a little.
       const pulse = 1 + 0.04 * Math.sin(s.t * 3.2);

@@ -104,6 +104,12 @@ It also finds:
   `check` goes on with the rest of the scene as if the cue were at the scene
   start, so one run shows all of its findings
 
+A finding names the element it is about by what it shows, like the box
+"Your phone", with its `id` when it has one. An element with neither is named
+by its call and where it is, like "the 2nd s.draw at 960,735", the second
+`s.draw` of that scene. So give an element an `id` when a scene has several
+of the same kind.
+
 It does not see what a drawing made with `s.draw` or straight on `s.ctx`
 holds. Give `s.draw` a `box`, and `check` treats that box as a shape: for
 overlaps, text over its edge, the frame edge and the safe area. Look at the

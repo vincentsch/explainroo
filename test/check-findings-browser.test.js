@@ -62,21 +62,21 @@ test('check warns once for each text with a background but no words, also in gro
     code: `s.code('const answer = computeTheAnswerToEverythingWithAVeryLongName(first, second);', { x: 960, y: 540, w: 420, at: 0 });`,
   }));
   const blank = issues.filter((i) => i.message.includes('has a background but no words'));
-  const field = (name) => `text ${name} has a background but no words, so it draws an empty card; for an empty field, use s.box({ w, h }) or another shape with a size`;
+  const field = (name) => `${name} has a background but no words, so it draws an empty card; for an empty field, use s.box({ w, h }) or another shape with a size`;
   // Each field is drawn at every moment check looks at, and gives one warning,
-  // named by its id or by where it sits in the frame.
+  // named by its id, or by its call and where it sits in the frame.
   assert.deepEqual(blank.filter((i) => i.scene === 'form').map((i) => [i.level, i.message]), [
-    ['warn', field('"password"')],
-    ['warn', field('at 960,560')],
+    ['warn', field('the text "password"')],
+    ['warn', field('the 2nd s.text at 960,560')],
   ]);
   const grouped = blank.filter((i) => i.scene === 'grouped');
-  assert.deepEqual(grouped.slice(0, 2).map((i) => [i.level, i.message]), [['warn', field('at 600,400')], ['warn', field('at 1200,400')]]);
+  assert.deepEqual(grouped.slice(0, 2).map((i) => [i.level, i.message]), [['warn', field('the 1st s.text at 600,400')], ['warn', field('the 2nd s.text at 1200,400')]]);
   assert.equal(grouped.length, 3, JSON.stringify(grouped));
-  assert.match(grouped[2].message, /^text at 900,\d+ has a background but no words/);
+  assert.match(grouped[2].message, /^the 3rd s\.text at 900,\d+ has a background but no words/);
   const overflow = issues.filter((i) => i.message.includes('is wider than its window'));
   assert.equal(overflow.length, 1, JSON.stringify(issues));
   assert.equal(overflow[0].level, 'error');
-  assert.match(overflow[0].message, /^code line 1 \("const answer = computeTheAnswerToEvery/);
+  assert.match(overflow[0].message, /^line 1 of the 1st s\.code \("const answer = computeTheAnswerToEvery/);
 });
 
 test('check treats an arrow label as text: overlap, off the frame, caption band and the TikTok safe area', { skip }, async (t) => {
@@ -174,14 +174,16 @@ test('labelSide moves the label, the box check measures and the box the camera k
   }
 });
 
-test('check warns about a lift above 2 with the value and the range, and not about 2', { skip }, async (t) => {
+test('check warns about a lift above 2 with the card, the value and the range, and not about 2', { skip }, async (t) => {
   const issues = await check(project(t, {}, {
-    lifted: `s.ui.panel(200, 200, 700, 500, { at: 0, lift: 3 }, () => {});`,
+    lifted: `s.ui.panel(200, 200, 700, 500, { at: 0, lift: 3 }, () => {});
+    s.ui.card(1000, 200, 400, 300, { lift: 4, name: 'Plan' });`,
     normal: `s.ui.panel(200, 200, 700, 500, { at: 0, lift: 2 }, () => {});
     s.ui.modal(1000, 200, 700, 500, { at: 0 }, () => {});`,
   }));
   assert.deepEqual(issues.filter((i) => i.message.includes('lift')).map((i) => [i.level, i.scene, i.message]), [
-    ['warn', 'lifted', 'lift: 3 makes a shadow 3 times the normal one, which can cover much of the frame; use a lift from 0 (no shadow) to 2 (twice the normal shadow)'],
+    ['warn', 'lifted', 'the 1st s.ui.panel at 550,450 has lift: 3, which makes a shadow 3 times the normal one and can cover much of the frame; use a lift from 0 (no shadow) to 2 (twice the normal shadow)'],
+    ['warn', 'lifted', 'the card "Plan" has lift: 4, which makes a shadow 4 times the normal one and can cover much of the frame; use a lift from 0 (no shadow) to 2 (twice the normal shadow)'],
   ]);
 });
 
@@ -238,7 +240,7 @@ test('check warns when a reveal has not finished by the end of its scene or by i
   // The lines start 0.35 s after the window, at 0.85, 1.45, 2.05, 2.65 and 3.25 s.
   assert.equal(reveals[0].message, 'the code "app.js" shows 2 of its 5 lines by the end of the scene at 2.0s, and needs until 3.3s; give it an earlier at, or a smaller lineDelay than 0.6');
   assert.match(reveals[1].message, /^the code "typed\.js" has typed \d+% of its text by the end of the scene at 2\.0s, and needs until \d+\.\ds; give it an earlier at, or a higher cps than 10$/);
-  assert.match(reveals[2].message, /^the terminal "terminal" shows 0 of its 3 lines by the end of the scene at 2\.0s, and needs until \d+\.\ds; give it an earlier at, or a higher cps than 8$/);
+  assert.match(reveals[2].message, /^the 1st s\.terminal shows 0 of its 3 lines by the end of the scene at 2\.0s, and needs until \d+\.\ds; give it an earlier at, or a higher cps than 8$/);
   assert.match(reveals[3].message, /^the number counting to 1240 has counted \d+% of the way by the end of the scene at 2\.0s, and needs until 2\.6s; give it an earlier at, or a shorter dur than 1\.4$/);
   assert.match(reveals[4].message, /^"Writes itself slowly" has written \d+% of itself by its out at 1\.0s, and needs until 1\.7s; give it an earlier at, or a shorter dur$/);
 });
@@ -253,7 +255,7 @@ test('check warns about text that partly overlaps a shape, and not about a shape
   }));
   const found = issues.filter((i) => /partly overlap/.test(i.message));
   assert.deepEqual(found.map((i) => [i.level, i.scene]), [['warn', 'edge']], JSON.stringify(issues));
-  assert.match(found[0].message, /^"Mail, maps, music and photos" and the box "Your phone" partly overlap, by \d+px; move them apart, or give one of them overlap: true if that is meant$/);
+  assert.match(found[0].message, /^"Mail, maps, music and photos" and the box "Your phone" \(id "phone"\) partly overlap, by \d+px; move them apart, or give one of them overlap: true if that is meant$/);
 });
 
 // The clean look draws a box's border 3.5 pixels wide on its outline, so half of
@@ -271,7 +273,7 @@ test('check warns about text that reaches more than 4 pixels into a box\'s drawn
   }));
   const found = issues.filter((i) => /partly overlap/.test(i.message));
   assert.deepEqual(found.map((i) => i.scene).sort(), ['fromInside', 'onTop'], JSON.stringify(issues));
-  assert.match(found.find((i) => i.scene === 'onTop').message, /^"replaces" and the box at 960,400 partly overlap, by 5px; move them apart, or give one of them overlap: true if that is meant$/);
+  assert.match(found.find((i) => i.scene === 'onTop').message, /^"replaces" and the 1st s\.box at 960,400 partly overlap, by 5px; move them apart, or give one of them overlap: true if that is meant$/);
 });
 
 // The last scene of a LinkedIn video, in the layout that put "replaces" on the top
@@ -298,11 +300,11 @@ test('check warns about an arrow through a shape that is not one of its ends, an
   }));
   const through = issues.filter((i) => /runs through/.test(i.message));
   assert.deepEqual(through.map((i) => i.scene), ['through'], JSON.stringify(issues));
-  assert.match(through[0].message, /^the arrow from 600,540 to 1320,540 runs through the box "Compressor"; let it go around with bend, or move one of them$/);
-  const edges = issues.filter((i) => i.scene === 'edge' && /^the arrow/.test(i.message)).map((i) => i.message);
+  assert.match(through[0].message, /^the 1st s\.arrow from 600,540 to 1320,540 runs through the box "Compressor"; let it go around with bend, or move one of them$/);
+  const edges = issues.filter((i) => i.scene === 'edge' && /arrow from/.test(i.message)).map((i) => i.message);
   assert.deepEqual(edges.length, 2, JSON.stringify(issues));
-  assert.match(edges.find((m) => m.includes('1905')), /^the arrow from 1500,540 to 1905,540 comes closer than 38px to the edge \(/);
-  assert.match(edges.find((m) => m.includes('1100')), /^the arrow from 300,900 to 300,1100 runs off the frame \(/);
+  assert.match(edges.find((m) => m.includes('1905')), /^the 1st s\.arrow from 1500,540 to 1905,540 comes closer than 38px to the edge \(/);
+  assert.match(edges.find((m) => m.includes('1100')), /^the 2nd s\.arrow from 300,900 to 300,1100 runs off the frame \(/);
 });
 
 test('check gives a hint for text below 40 pixels in a tall or square frame, which people watch on a phone, and not in a wide one', { skip }, async (t) => {

@@ -1062,11 +1062,15 @@ function drawLog() {
 
 const SHAPE_NAMES = { box: 'box', icon: 'icon', image: 'image', code: 'code window', terminal: 'terminal', card: 'card', sticker: 'sticker', drawing: 'drawing' };
 
-// "the box "Rivers bring salt in"", or "the card at 200,300" without a name.
+// "the box "Rivers bring salt in"", with "(id "rivers")" after it when it has an
+// id, "the drawing "moon"" by its id alone, or by its call and where it is
+// without either, like "the 2nd s.draw at 960,735".
 function shapeName(sh) {
   const kind = SHAPE_NAMES[sh.kind] ?? sh.kind;
   const name = sh.name.length > 40 ? sh.name.slice(0, 37) + '...' : sh.name;
-  return name ? `the ${kind} "${name}"` : `the ${kind} at ${Math.round((sh.box.x0 + sh.box.x1) / 2)},${Math.round((sh.box.y0 + sh.box.y1) / 2)}`;
+  if (name) return `the ${kind} "${name}"${sh.id !== null && sh.id !== sh.name ? ` (id "${sh.id}")` : ''}`;
+  if (sh.id !== null) return `the ${kind} "${sh.id}"`;
+  return `the ${sh.call ?? kind} at ${Math.round((sh.box.x0 + sh.box.x1) / 2)},${Math.round((sh.box.y0 + sh.box.y1) / 2)}`;
 }
 
 function shapeKey(sh) {

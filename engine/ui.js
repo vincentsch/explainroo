@@ -228,7 +228,10 @@ export class UI {
     return out;
   }
 
+  // `o._call` is the kit part that drew the card, like "1st s.ui.panel", which
+  // check names it by.
   card(x, y, w, h, o = {}) {
+    const call = o._call ?? this.s._call('ui.card');
     const c = this.c;
     const r = o.r ?? 18;
     const k = this.k;
@@ -240,7 +243,7 @@ export class UI {
     if (o.shadow !== false) {
       // A multiplier for the shadow: 0 is none, 1 the normal shadow, 2 twice that.
       const lift = o.lift ?? 1;
-      if (lift > 2) this.s._warn(`lift: ${lift} makes a shadow ${lift} times the normal one, which can cover much of the frame; use a lift from 0 (no shadow) to 2 (twice the normal shadow)`);
+      if (lift > 2) this.s._warn(`${this.s._named('card', call, o.name, o.id, `${Math.round(x + w / 2)},${Math.round(y + h / 2)}`)} has lift: ${lift}, which makes a shadow ${lift} times the normal one and can cover much of the frame; use a lift from 0 (no shadow) to 2 (twice the normal shadow)`, `lift ${call}`);
       c.shadowColor = `rgba(16, 24, 40, ${0.05 * lift})`;
       c.shadowBlur = 3 * k;
       c.shadowOffsetY = 1 * k;
@@ -258,7 +261,7 @@ export class UI {
     }
     c.restore();
     // check compares cards with other shapes once they have arrived.
-    if (!this.hidden) this.s._logShape('card', { x: x + w / 2, y: y + h / 2, w, h }, this.s._unsettled === 0, o, o.name ?? '', { border: o.border === false ? 0 : o.borderWidth ?? 1.5 });
+    if (!this.hidden) this.s._logShape('card', { x: x + w / 2, y: y + h / 2, w, h }, this.s._unsettled === 0, o, o.name ?? '', { border: o.border === false ? 0 : o.borderWidth ?? 1.5, call });
   }
 
   // A card that pops up at `at`, then fn(x, y, w, h) draws inside it.
@@ -266,6 +269,7 @@ export class UI {
   panel(x, y, w, h, o = {}, fn) {
     if (typeof o === 'function') [o, fn] = [{}, o];
     const s = this.s;
+    const call = o._call ?? s._call('ui.panel');
     // What a panel holds counts as inside it for check, like a group.
     const serial = ++s._groupCalls;
     const a = this.at(o.at ?? 0);
@@ -292,7 +296,7 @@ export class UI {
     s._groups.push(serial);
     s._seen('panel');
     try {
-      this.card(x, y, w, h, o);
+      this.card(x, y, w, h, { ...o, _call: call });
       if (fn) fn(x, y, w, h);
     } finally {
       s._groups.pop();
@@ -307,7 +311,8 @@ export class UI {
   browser(x, y, w, h, o = {}, fn) {
     if (typeof o === 'function') [o, fn] = [{}, o];
     const bar = o.bar ?? 50;
-    return this.panel(x, y, w, h, o, () => {
+    const call = this.s._call('ui.browser');
+    return this.panel(x, y, w, h, { ...o, _call: call }, () => {
       const c = this.c;
       c.save();
       c.beginPath();
@@ -335,6 +340,7 @@ export class UI {
   modal(x, y, w, h, o = {}, fn) {
     if (typeof o === 'function') [o, fn] = [{}, o];
     const s = this.s;
+    const call = s._call('ui.modal');
     const a = this.at(o.at ?? 0);
     if (s.t < a) return 0;
     const q = o.out !== undefined ? this._p(o.out, 0.3, 'in') : 0;
@@ -348,13 +354,14 @@ export class UI {
       c.fillRect(0, 0, s.W, s.H);
       c.restore();
     }
-    return this.covering(() => this.panel(x, y, w, h, { r: 20, lift: 1.4, ...o, at: a, dur: 0.45 }, fn));
+    return this.covering(() => this.panel(x, y, w, h, { r: 20, lift: 1.4, ...o, _call: call, at: a, dur: 0.45 }, fn));
   }
 
   // A short message card that slides up, like "Saved" or "Sent".
   toast(label, o = {}) {
-    const a = this.at(o.at ?? 0);
     const s = this.s;
+    const call = s._call('ui.toast');
+    const a = this.at(o.at ?? 0);
     if (s.t < a) return;
     if (o.out !== undefined && s.t >= this.at(o.out) + 0.4) return;
     const size = o.size ?? 22;
@@ -363,7 +370,7 @@ export class UI {
     const y = o.y ?? s.H - 150;
     const tone = TONES[o.tone ?? 'green'] || TONES.green;
     this.covering(() => {
-      this.panel(x, y, w, 72, { at: a, out: o.out, r: 16, lift: 0.9, rise: 40, from: 0.9, sfx: o.sfx, _sfx: 'chime' }, () => {
+      this.panel(x, y, w, 72, { at: a, out: o.out, r: 16, lift: 0.9, rise: 40, from: 0.9, sfx: o.sfx, _sfx: 'chime', _call: call }, () => {
         let tx = x + 32;
         if (o.icon !== false) {
           this.icon(o.icon ?? 'circle-check', x + 40, y + 36, 30, tone.fg, 2.2);
@@ -759,6 +766,7 @@ export class UI {
   // highlighted option, selected gets a check. Returns each option row's
   // center y, for pointing the cursor at it.
   select(x, y, w, h, o = {}) {
+    const call = this.s._call('ui.select');
     const C = this.colors;
     const open = o.open ?? 0;
     this.input(x, y, w, h, { label: o.label, value: o.value, placeholder: o.placeholder, focus: o.focus ?? open, alpha: o.alpha, size: o.size, room: 30 });
@@ -775,7 +783,7 @@ export class UI {
       c.translate(x + w / 2, my);
       c.scale(1, lerp(0.92, 1, outCubic(open)));
       c.translate(-(x + w / 2), -my);
-      this.card(x, my, w, opts.length * rowH + 16, { r: 14, lift: 0.8 });
+      this.card(x, my, w, opts.length * rowH + 16, { r: 14, lift: 0.8, _call: call });
       opts.forEach((label, i) => {
         const ry = my + 8 + i * rowH;
         if (o.hover === i) {
