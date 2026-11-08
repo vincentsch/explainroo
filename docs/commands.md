@@ -9,7 +9,7 @@ an example.
 | Command | What it does |
 |---|---|
 | `init <dir>` | creates a project (`--theme`, `--size`, `--pace`, `--language`, `--voice`, `--title`) |
-| `voice [project]` | makes the narration and the word times, saved per scene so only changed scenes are made again (`--force` makes every scene again, `--new` buys again only paid sentences with no good answer, `--size` makes the narration of a size whose block in `"sizes"` sets its own pace, `--lang`) |
+| `voice [project]` | makes the narration and the word times, saved per scene so only changed scenes are made again (`--estimate` prints how long the video will be about and makes nothing, `--force` makes every scene again, `--new` buys again only paid sentences with no good answer, `--size` makes the narration of a size whose block in `"sizes"` sets its own pace, `--lang`) |
 | `words [project] [scene]` | prints each spoken word of a scene, or of every scene, with its start time in seconds into the scene, and the markers. A word spoken more than once shows its cue, like `fills#2` (`--size`, `--lang`, `--json`) |
 | `preview [project]` | a live preview in the browser that reloads when you save (`--size`, `--no-watermark`) |
 | `still [project] [times]` | PNG pictures at `12.5`, `scene`, `scene@2.4` or `scene@end` (`--size`, `--platform`, `--no-watermark`, `--transparent` keeps alpha) |

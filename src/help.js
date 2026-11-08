@@ -22,7 +22,7 @@ export const COMMAND_HELP = {
   voice: {
     usage: 'voice [project] [options]',
     about: 'Makes the narration and the word timings of every scene that changed, and checks what the speech model heard.',
-    options: [['--force', 'make every scene again'], ['--new', 'buy again only the paid sentences with no good saved answer'], ['--size <size>', 'the narration of a size whose block in "sizes" sets its own pace'], LANG, JSON_OUT],
+    options: [['--estimate', 'print how long the video will be about, and what that means for targetSeconds, and make nothing'], ['--force', 'make every scene again'], ['--new', 'buy again only the paid sentences with no good saved answer'], ['--size <size>', 'the narration of a size whose block in "sizes" sets its own pace'], LANG, JSON_OUT],
     example: 'voice videos/how-dns-works',
   },
   words: {

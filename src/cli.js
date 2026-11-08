@@ -25,7 +25,7 @@ import { boughtCharacters, speechConnector } from './paid-speech.js';
 import { allOf, formatServices, findService, findStep, needsKey, SERVICES, STEPS, stepNames, stepServices } from './services.js';
 import { clipPricesToday, showsClipPrices } from './price-list.js';
 import { narrationTime, speechKeys } from './voice.js';
-import { estimateLength, targetNotes } from './timeline.js';
+import { estimateLength, estimateLine, targetNotes } from './timeline.js';
 import { findEnv } from './env.js';
 import { formatPackage, packageOverrides, packageVideo } from './package.js';
 import { PLATFORMS } from './post.js';
@@ -46,7 +46,8 @@ Make a video
                         German works with a paid voice or a recording, see "explainroo docs languages"
   voice [project]       make the narration and word timings (--force makes every scene again,
                         --new buys again only the paid sentences with no good saved answer, --size makes
-                        the narration of a size whose block in "sizes" sets its own pace)
+                        the narration of a size whose block in "sizes" sets its own pace). --estimate
+                        prints how long the video will be about from the script, and makes nothing
   words [project] [scene]  each spoken word of a scene with its start time, for choosing cues
   preview [project]     live preview in your browser, reloads on save (--port, --size, --no-watermark)
   still [project] [t…]  PNG stills: "12.5", "scene", "scene@2.4" (default: end of every scene; --size,
@@ -148,7 +149,7 @@ function parseArgs(argv) {
   }
   return { pos, flags };
 }
-const BOOL = new Set(['json', 'draft', 'transparent', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'mobile', 'list', 'sections', 'new', 'key-stdin', 'audio', 'dry-run', 'no-wait', 'no-watermark', 'yes', 'media-url-unchecked', ...LISTS_VOICES.map((c) => c.id)]);
+const BOOL = new Set(['json', 'draft', 'estimate', 'transparent', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'mobile', 'list', 'sections', 'new', 'key-stdin', 'audio', 'dry-run', 'no-wait', 'no-watermark', 'yes', 'media-url-unchecked', ...LISTS_VOICES.map((c) => c.id)]);
 
 // publish refuses any other flag. A flag it ignored could change what a person
 // thinks is posted, like a time for a post, when it goes out right away.
@@ -200,6 +201,13 @@ export async function main(argv) {
       case 'voice': {
         // A size whose block sets its own pace has narration of its own, so --size picks it.
         const project = loadProject(pos[0], { size: textFlag(flags, 'size'), ...langOverride(flags) });
+        // The length from the script alone, before any speech is made or bought.
+        if (flags.estimate) {
+          const e = estimateLength(project);
+          const none = project.config.voice.provider === 'recording' ? 'A recording has its own length, so there is no estimate.' : `${scriptName(project)} has no narration yet, so there is no estimate.`;
+          print(e ? `${estimateLine(e)}\nNothing was made.` : none, { estimate: e });
+          return 0;
+        }
         const paid = speechConnector(project.config);
         const before = paid ? boughtCharacters(project.dir) : 0;
         let estimate = null;

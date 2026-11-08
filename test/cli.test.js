@@ -274,3 +274,18 @@ test('--platform on check, still, sheet and render takes the size and the waterm
     assert.match(r.err, message);
   }
 });
+
+test('voice --estimate prints the estimate with the target advice and makes nothing', async (t) => {
+  const dir = tempDir();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ targetSeconds: 5 }));
+  fs.writeFileSync(path.join(dir, 'script.md'), '# Test\n\n## a\nThe resolver asks the root servers where the name lives. Then it asks again.\n\n## b\nIt keeps the answer for a while.\n');
+  fs.writeFileSync(path.join(dir, 'scenes.js'), 'export default { a() {}, b() {} };');
+  const r = await runAll(['voice', dir, '--estimate']);
+  assert.equal(r.code, 0, r.err);
+  assert.match(r.out, /^about \d+ s: 21 words of speech at about \d+ a minute take \d+\.\d s\. The 2 scenes add 1\.05 s each for their lead and hold, and the pauses between sentences add 0\.3 s\. The end of the video adds 1\.4 s\. That is about \d+ s over targetSeconds 5, so cut about \d+ words\.\nNothing was made\.\n$/);
+  const json = JSON.parse((await runAll(['voice', dir, '--estimate', '--json'])).out);
+  assert.deepEqual([json.estimate.words, json.estimate.scenes, json.estimate.targetSeconds], [21, 2, 5]);
+  assert.equal(fs.existsSync(path.join(dir, 'build')), false, 'no voice was made');
+  assert.equal(r.err, '', 'no model was loaded');
+});

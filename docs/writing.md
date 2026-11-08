@@ -19,16 +19,25 @@ something to a friend at a table.
 
 ## Length and pace
 
-- Aim for 45 to 120 seconds unless the user says otherwise. The voice says
-  about 180 words a minute at the default speed. On top of that, each scene
-  adds about 1.5 seconds for its lead and its hold, and the end adds 1.4
-  seconds. So 105 words in 6 scenes make about 45 seconds, and a finished
-  video has about 140 to 155 words a minute. In Japanese the voice says about
-  300 characters a minute, and in Chinese about 230.
+- Aim for 45 to 120 seconds unless the user says otherwise. At the default
+  speed the voice says about 13 letters a second, which is 165 to 200 words a
+  minute in English, depending on how long the words are. A number takes
+  longer than its digits suggest, because "1972" is said as "nineteen
+  seventy-two". Some voices are slower, like `am_michael`, or faster, like
+  `af_jessica`. In Japanese the voice says about 300 characters a minute, and
+  in Chinese about 230.
+- On top of the speech, each scene adds its lead and its hold, 0.35 and 0.7
+  seconds by default, so 1.05 seconds. Each new sentence in a scene adds a
+  pause of 0.3 seconds, and a new paragraph adds 0.55. The end of the video
+  adds 1.4 seconds. So 105 words in 6 scenes make about 45 seconds, and a
+  finished video has about 130 to 155 words a minute.
 - Before the narration exists, `voice` and `check` print an estimate, like
-  "about 45 s: 105 words of speech at about 180 a minute, plus about 1.5 s per
-  scene for leads, holds and pauses". When it is too long, cut words before
-  you make the voice.
+  "about 45 s: 105 words of speech at about 180 a minute take 35.0 s. The 6
+  scenes add 1.05 s each for their lead and hold, and the pauses between
+  sentences add 2.1 s. The end of the video adds 1.4 s." The figures come from
+  the settings of your video. `explainroo voice videos/<name> --estimate`
+  prints only the estimate, with what it means for `targetSeconds`, and makes
+  nothing. When it is too long, cut words before you make the voice.
 - For an exact length, set `"targetSeconds": 40` in `video.json`. It counts
   for every size, also a quicker one, unless the block of a size under
   `"sizes"` sets its own, or `null` for none. When the video comes out

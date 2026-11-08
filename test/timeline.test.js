@@ -78,25 +78,35 @@ test('without targetSeconds the timeline and the settings are as they were, and 
   assert.throws(() => normalizeConfig({ sizes: { shorts: { targetSeconds: 0 } } }), /^.*sizes\.shorts: targetSeconds must be/);
 });
 
-test('the estimate counts the speech and, for each scene, its lead, its hold and its pauses', () => {
+test('the estimate counts the speech by its letters, and for each scene its lead, its hold and its pauses, and the end', () => {
   const src = '## a\nOne two three four five six. Seven eight nine ten.\n\n## b {hold=2}\nOne two three.\n\n## c {min=4}\n';
   const p = project(src, { voice: 'af_heart' });
   const e = estimateLength(p);
   assert.equal(e.words, 13);
-  assert.equal(e.perMinute, 180);
-  // Speech, then a: lead + hold + one sentence gap, b: lead + its hold, c: its min + the end.
-  const speech = (13 / 180) * 60;
+  // 50 letters at 12.95 a second, the rate of af_heart at its default speed.
+  const speech = 50 / 12.95;
+  assert.equal(e.speechSeconds, Math.round(speech * 10) / 10);
+  assert.equal(e.perMinute, Math.round((13 / speech) * 60));
+  // a: lead + hold + one sentence gap, b: lead + its hold, c: its min + the end.
   const rest = (0.35 + 0.7 + 0.3) + (0.35 + 2) + (4 + 1.4);
   assert.equal(e.seconds, Math.round((speech + rest) * 10) / 10);
-  assert.equal(e.perScene, Math.round((rest / 3) * 10) / 10);
-  assert.equal(estimateLine(e), `about ${Math.round(e.seconds)} s: 13 words of speech at about 180 a minute, plus about ${e.perScene.toFixed(1)} s per scene for leads, holds and pauses`);
+  // The two narrated scenes, each with its lead and hold as the settings give them.
+  assert.deepEqual([e.scenes, e.perScene, e.pauses, e.end, e.other], [2, (0.35 + 0.7 + 0.35 + 2) / 2, 0.3, 1.4, 4]);
+  assert.equal(estimateLine(e), `about ${Math.round(e.seconds)} s: 13 words of speech at about ${e.perMinute} a minute take ${e.speechSeconds.toFixed(1)} s. The 2 scenes add 1.7 s each for their lead and hold, and the pauses between sentences add 0.3 s. The end of the video adds 1.4 s. Scenes with a min, or without narration, add 4.0 s more.`);
+  // With the defaults it is the figure the writing docs give.
+  const plain = estimateLength(project('## a\nHello there.\n\n## b\nHello again.\n', { voice: 'af_heart' }));
+  assert.equal(plain.perScene, 1.05);
+  assert.match(estimateLine(plain), /\. The 2 scenes add 1\.05 s each for their lead and hold\. The end of the video adds 1\.4 s\.$/);
+  // A number is said as several words, and a slower voice takes longer.
+  assert.ok(estimateLength(project('## a\nIn 1972.\n', { voice: 'af_heart' })).speechSeconds > estimateLength(project('## a\nIn nineteen.\n', { voice: 'af_heart' })).speechSeconds);
+  assert.ok(estimateLength(project(src, { voice: 'am_michael' })).seconds > e.seconds);
   // A faster pace says more words a minute and shortens the gaps.
-  assert.ok(estimateLength(project(src, { pace: 1.2 })).perMinute > 180);
+  assert.ok(estimateLength(project(src, { pace: 1.2 })).perMinute > e.perMinute);
   assert.match(estimateLine({ ...e, targetSeconds: 10 }), /\. That is about \d+ s over targetSeconds 10, so cut about \d+ words\.$/);
   assert.match(estimateLine({ ...e, targetSeconds: 60 }), /\. The holds get longer to reach targetSeconds 60\.$/);
   // Japanese and Chinese count characters, and a recording has no estimate.
   const ja = { config: normalizeConfig({ language: 'ja' }), script: parseScript('## a\nうるう年は、なぜあるの？\n', { language: 'ja' }) };
-  assert.match(estimateLine(estimateLength(ja)), /^about \d+ s: 10 characters of speech at about 300 a minute/);
+  assert.match(estimateLine(estimateLength(ja)), /^about \d+ s: 10 characters of speech at about 300 a minute take 2\.0 s\./);
   assert.equal(estimateLength({ config: normalizeConfig({ voice: { provider: 'recording', src: 'assets/n.wav' } }), script: parseScript(src) }), null);
   assert.equal(estimateLength(project('## c {min=4}\n')), null);
 });
