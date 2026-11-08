@@ -545,3 +545,14 @@ test('the README says a budget makes --max-cost optional, and the recipe for esp
   assert.ok(!/x86_64-linux-gnu\/espeak-ng-data`/.test(languages), 'no fixed x86_64 data path');
   assert.ok(oneLine(languages).includes('put the line in the settings file, the same `.env` that holds keys'));
 });
+
+test('every topic sizes text with one rule: a hundredth of the short side of s.safe, as the starter scenes.js does', () => {
+  const starter = read('templates/starter/scenes.js');
+  assert.ok(starter.includes('const u = Math.min(w, h) / 100;'));
+  for (const file of ['AGENTS.md', ...fs.readdirSync(path.join(root, 'docs')).filter((f) => f.endsWith('.md')).map((f) => `docs/${f}`)]) {
+    assert.doesNotMatch(read(file), /Math\.max\(s\.W, s\.H\) \/ 100/, file);
+  }
+  const pictures = page('pictures');
+  assert.equal(pictures.match(/const \{ w, h \} = s\.safe;\n {4}const u = Math\.min\(w, h\) \/ 100;/g).length, 4);
+  assert.ok(oneLine(pictures).includes('Text sizes come from `u`, a hundredth of the short side of `s.safe`, the same rule as the `scenes.js` that `init` writes'));
+});

@@ -30,16 +30,18 @@ frames.
 export default {
   // One big number with a short caption under it.
   number(s) {
-    const u = Math.max(s.W, s.H) / 100;
+    const { w, h } = s.safe;
+    const u = Math.min(w, h) / 100;
     // The number also has to fit across a narrow, tall frame.
-    const n = s.number(1000000, { y: s.cy - u * 2, size: Math.min(u * 10, s.safe.w / 6), at: '#number' });
-    s.text('requests a day', { y: n.bottom + u * 3, size: u * 3.6, color: 'muted', at: '#caption' });
+    const n = s.number(1000000, { y: s.cy - u * 4, size: Math.min(u * 20, w / 6), at: '#number' });
+    s.text('requests a day', { y: n.bottom + u * 6, size: u * 7, color: 'muted', at: '#caption' });
   },
 
   // Two things side by side, or stacked in a tall frame.
   compare(s) {
-    const u = Math.max(s.W, s.H) / 100;
-    const cells = s.grid(s.portrait ? 1 : 2, s.portrait ? 2 : 1, { gap: u * 4 });
+    const { w, h } = s.safe;
+    const u = Math.min(w, h) / 100;
+    const cells = s.grid(s.portrait ? 1 : 2, s.portrait ? 2 : 1, { gap: u * 8 });
     const sides = [
       { title: 'Callbacks', note: 'one function inside another', color: 'orange', at: '#left' },
       { title: 'async / await', note: 'reads from top to bottom', color: 'green', at: '#right' },
@@ -47,20 +49,21 @@ export default {
     sides.forEach(({ title, note, color, at }, i) => {
       const c = cells[i];
       // The note hangs from the card, so a note that wraps grows downward.
-      const card = s.box(title, { x: c.x, y: c.y - u * 3, w: c.w * 0.8, size: u * 4, color, at });
-      s.text(note, { x: c.x, y: card.bottom + u * 1.2, valign: 'top', size: u * 2.6, color: 'muted', maxWidth: c.w * 0.85, at });
+      const card = s.box(title, { x: c.x, y: c.y - u * 6, w: c.w * 0.8, size: u * 8, color, at });
+      s.text(note, { x: c.x, y: card.bottom + u * 2.5, valign: 'top', size: u * 6, color: 'muted', maxWidth: c.w * 0.85, at });
     });
   },
 
   // Steps in order, left to right, or top to bottom in a tall frame.
   steps(s) {
-    const u = Math.max(s.W, s.H) / 100;
+    const { w, h } = s.safe;
+    const u = Math.min(w, h) / 100;
     const labels = ['Browser', 'Resolver', 'Address'];
-    const xs = s.portrait ? labels.map(() => s.cx) : s.row(labels.length, { width: s.safe.w * 0.72 });
+    const xs = s.portrait ? labels.map(() => s.cx) : s.row(labels.length, { width: w * 0.72 });
     const ys = s.portrait ? s.col(labels.length) : labels.map(() => s.cy);
     labels.forEach((label, i) => {
       const at = i ? `#step${i + 1}` : 0.3;
-      s.box(label, { id: `step${i}`, x: xs[i], y: ys[i], size: u * 3.6, at });
+      s.box(label, { id: `step${i}`, x: xs[i], y: ys[i], size: u * 7, at });
       if (i) s.arrow(`step${i - 1}`, `step${i}`, { at });
     });
   },
@@ -68,24 +71,28 @@ export default {
   // One main thing with its parts around it. A tall frame has no room
   // beside it, so the parts sit in a row underneath.
   hub(s) {
-    const u = Math.max(s.W, s.H) / 100;
+    const { w, h } = s.safe;
+    const u = Math.min(w, h) / 100;
     const parts = ['Email', 'Calendar', 'Files'];
-    const hubY = s.portrait ? s.cy - s.safe.h * 0.18 : s.cy;
+    const hubY = s.portrait ? s.cy - h * 0.18 : s.cy;
     const spots = s.portrait
-      ? s.row(parts.length, { width: s.safe.w * 0.72 }).map((x) => ({ x, y: s.cy + s.safe.h * 0.16 }))
-      : [-90, 30, 150].map((d) => ({ x: s.cx + Math.cos((d * Math.PI) / 180) * s.safe.w * 0.34, y: s.cy + Math.sin((d * Math.PI) / 180) * s.safe.h * 0.3 }));
-    s.box('Login server', { id: 'hub', x: s.cx, y: hubY, size: u * 4, color: 'accent', at: '#hub' });
+      ? s.row(parts.length, { width: w * 0.72 }).map((x) => ({ x, y: s.cy + h * 0.16 }))
+      : [-90, 30, 150].map((d) => ({ x: s.cx + Math.cos((d * Math.PI) / 180) * w * 0.34, y: s.cy + Math.sin((d * Math.PI) / 180) * h * 0.3 }));
+    s.box('Login server', { id: 'hub', x: s.cx, y: hubY, size: u * 8, color: 'accent', at: '#hub' });
     parts.forEach((label, i) => {
       const at = `#spoke${i + 1}`;
-      s.box(label, { id: `part${i}`, ...spots[i], size: u * (s.portrait ? 2.4 : 3.2), at });
+      s.box(label, { id: `part${i}`, ...spots[i], size: u * (s.portrait ? 6 : 6.5), at });
       s.arrow('hub', `part${i}`, { at });
     });
   },
 };
 ```
 
-Text sizes come from the frame's long side, so they look about the same in
-wide and tall frames. A big number also has to fit across a narrow frame.
+Text sizes come from `u`, a hundredth of the short side of `s.safe`, the
+same rule as the `scenes.js` that `init` writes and the `scene-api` examples.
+`s.safe` is the part of the frame that is free for content, so the sizes fit
+wide and tall frames alike. A big number also has to fit across a narrow
+frame.
 `explainroo docs scene-api` lists every call these layouts use, with all
 its options.
 
