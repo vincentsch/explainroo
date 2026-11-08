@@ -7,7 +7,7 @@ import { Pen } from './pen.js';
 import { drawTransition } from './transitions.js';
 import { buildPhrases, drawCaptions, buildChunks, drawBoldCaptions, captionHighlight } from './captions.js';
 import { AUDIO_FILE, clamp, hashStr, mulberry32, suggest, suggestColor, contrast, opaque, withAlpha, parseColor, mixColor, rgba, cssColor, newDefaults } from './util.js';
-import { overlapDepth, holds, crosses } from './geometry.js';
+import { overlapDepth, holds, crosses, bounds, inside, toEdge } from './geometry.js';
 import { layoutAreas } from './layout.js';
 import { loadClips, soundURL, ClipFrames, FREEZE_SECONDS, FIT_SPEEDS } from './clips.js';
 import { UI } from './ui.js';
@@ -688,6 +688,11 @@ export class Engine {
     const { W, H } = this;
     const margin = Math.round(Math.min(W, H) * 0.035);
     const minSize = Math.round(Math.min(W, H) * 0.022);
+    // In a tall or square frame, which people watch on a phone, text below the
+    // 40 pixels that labels need at 1080p gets a hint. Wide videos use smaller
+    // text on purpose, for notes and headings.
+    const scale1080 = Math.min(W, H) / 1080;
+    const readable = H >= W ? Math.round(40 * scale1080) : 0;
     const uiMinSize = Math.round(Math.min(W, H) * 0.015);
     const colors = Object.fromEntries(['ink', 'accent', ...Object.keys(this.theme.colors)].map(name => [name, colorOf(this.theme, name)]));
     let colorCtx;
@@ -728,6 +733,8 @@ export class Engine {
       // A scene that stopped with an error has its error, and nothing is said about
       // what it would have shown after it.
       let broke = false;
+      // What shows itself bit by bit, like code that types itself.
+      this.revealLog = new Map();
       const n = Math.ceil(sc.dur / step);
       for (let k = 0; k <= n; k++) {
         const t = Math.min(sc.dur - 0.001, k * step);
@@ -798,8 +805,25 @@ export class Engine {
           }
         }
         for (const f of shapeOverlaps(laid.draw.shapes)) once(`shapes:${sc.id}:${f.key}`, () => add('warn', sc.id, t, f.message));
+        for (const f of textsIntoShapes(solid, laid.draw.shapes)) once(`shapes:${sc.id}:${f.key}`, () => add('warn', sc.id, t, f.message));
         for (const f of linesOverText(laid.draw.strokes, solid)) once(`line:${sc.id}:${f.key}`, () => add('warn', sc.id, t, f.message));
         for (const f of labelsIntoShapes(laid.draw.strokes, solid, laid.draw.shapes)) once(`label:${sc.id}:${f.key}`, () => add('warn', sc.id, t, f.message));
+        for (const f of arrowsThroughShapes(laid.draw.strokes, laid.draw.shapes)) once(`through:${sc.id}:${f.key}`, () => add('warn', sc.id, t, f.message));
+        // The line of an arrow counts in the frame like its label: off the frame,
+        // outside the app's safe area, close to the edge or in the caption band.
+        for (const line of laid.draw.strokes) {
+          if (line.kind !== 'arrow' || !line.settled || line.alpha <= 0.95) continue;
+          const b = bounds(line.points);
+          const where = `${Math.round(b.x0)},${Math.round(b.y0)} to ${Math.round(b.x1)},${Math.round(b.y1)}`;
+          const a = this.appArea;
+          const band = this.captionBand;
+          let message = null;
+          if (!inFrame(b)) message = `${line.name} runs off the frame (${where} in a ${W}x${H} frame); move its ends inside`;
+          else if (a && (b.x0 < a.left - 2 || b.y0 < a.top - 2 || b.x1 > a.right + 2 || b.y1 > a.bottom + 2)) message = `${line.name} reaches outside the ${this.config.format} safe area (${a.left},${a.top} to ${a.right},${a.bottom}), where the app's buttons, name or caption can cover it`;
+          else if (!a && (b.x0 < margin || b.y0 < margin || b.x1 > W - margin || b.y1 > H - margin)) message = `${line.name} comes closer than ${margin}px to the edge (${where})`;
+          else if (band && line.points.some(([x, y]) => y > band.top + 2 && y < band.bottom - 2 && x > band.left && x < band.right)) message = `${line.name} runs into the caption band (y ${Math.round(band.top)} to ${Math.round(band.bottom)}), where captions can cover it; keep it above s.safe.bottom (${Math.round(this.safeArea.bottom)})`;
+          if (message) once(`arrow-edge:${sc.id}:${line.name}`, () => add('warn', sc.id, t, message));
+        }
         // What the viewer sees: as the camera films it, when it films this scene.
         let seen = texts;
         if (plan) {
@@ -840,9 +864,11 @@ export class Engine {
         }
         for (const tx of seen) {
           if (tx.block || !onScreen(tx)) continue;
-          const entry = smallest.get(tx.text) ?? { size: null, play: null };
+          const entry = smallest.get(tx.text) ?? { size: null, play: null, calm: null };
           if (!entry.size || tx.size < entry.size.tx.size - 0.01) entry.size = { tx, t };
           if (tx.alpha > 0.95 && (!entry.play || tx.size < entry.play.tx.size - 0.01)) entry.play = { tx, t };
+          // The smallest it shows once it has arrived, not while it grows in.
+          if (tx.alpha > 0.95 && tx.settled && (!entry.calm || tx.size < entry.calm.tx.size - 0.01)) entry.calm = { tx, t };
           smallest.set(tx.text, entry);
         }
       }
@@ -850,9 +876,13 @@ export class Engine {
       // Text is judged at the smallest size it is shown at: the size the
       // camera leaves it at when it shows the whole picture, or smaller where
       // the scene zooms out itself.
-      for (const [text, { size, play }] of smallest) {
+      for (const [text, { size, play, calm }] of smallest) {
         const least = size.tx.ui ? uiMinSize : minSize;
         if (Math.round(size.tx.size) < least) once(`small:${sc.id}:${text}`, () => add('warn', sc.id, size.t, `"${short(text)}" is ${Math.round(size.tx.size)}px, hard to read (use at least ${least}px)`));
+        // Above that, text that shows small on a phone gets a hint, as the
+        // camera shows it at its widest once it has arrived. App screens and
+        // code use smaller text on purpose.
+        else if (calm && !calm.tx.ui && !calm.tx.block && Math.round(calm.tx.size) < readable) once(`smallish:${sc.id}:${text}`, () => add('hint', sc.id, calm.t, `"${short(text)}" shows ${Math.round(calm.tx.size)}px tall at ${calm.t.toFixed(1)}s, small on a phone, where labels read best at ${Math.round(40 * scale1080)} to ${Math.round(56 * scale1080)}px; make it bigger, or give the picture more of the frame`));
         const message = viewWidth !== null && play ? playbackTextIssue(play.tx, W, H, viewWidth) : null;
         if (message) once(`playback:${sc.id}:${text}`, () => add('warn', sc.id, play.t, message));
       }
@@ -874,6 +904,16 @@ export class Engine {
       // first element's own time says how long, when there is one.
       const first = times.find((x) => x >= 0);
       const bare = shownAt === null ? null : first !== undefined && first > shownAt - step - 1e-6 && first <= shownAt + 1e-6 ? first : shownAt;
+      // A reveal that hasn't finished when the scene ends, or when it leaves.
+      if (!broke) {
+        for (const r of this.revealLog.values()) {
+          const deadline = Math.min(sc.dur, r.out);
+          if (r.at >= deadline - 0.05 || r.end <= deadline + 0.05) continue;
+          const by = r.out < sc.dur ? `by its out at ${r.out.toFixed(1)}s` : `by the end of the scene at ${sc.dur.toFixed(1)}s`;
+          once(`reveal:${sc.id}:${r.what}:${r.at}`, () => add('warn', sc.id, deadline, `${r.what} ${r.missing(deadline)} ${by}, and needs until ${r.end.toFixed(1)}s; ${r.advice}`));
+        }
+      }
+      this.revealLog = null;
       const emptyStart = !broke && bare !== null && bare > EMPTY_START;
       if (emptyStart) add('hint', sc.id, 0, `the scene shows only its background for the first ${bare.toFixed(1)}s; put something on screen sooner, for example give the first element an earlier at`);
       if (broke) {
@@ -969,6 +1009,50 @@ export function linesOverText(strokes, texts) {
       const label = tx.text.length > 40 ? tx.text.slice(0, 37) + '...' : tx.text;
       const advice = line.kind === 'arrow' ? 'move the text, or let the arrow start or end somewhere else' : 'mark a box that holds both, like s.annotate({ x, y, w, h }), or move the text';
       found.push({ key: `${line.name}|${tx.text}`, message: `${line.name} crosses the text "${label}"; ${advice}` });
+    }
+  }
+  return found;
+}
+
+// Text that partly covers a shape, like a note on the edge of a box: they reach
+// more than 4 pixels into each other and neither holds the other. A shape's own
+// text, text in the same group, app screens, arrow labels (which have a check of
+// their own) and overlap: true on either don't count.
+export function textsIntoShapes(texts, shapes) {
+  const list = shapes.filter((s) => s.settled && s.alpha > 0.95 && !s.overlap && !s.cover && !s.ui);
+  const found = [];
+  for (const tx of texts) {
+    if (!tx.settled || tx.alpha <= 0.95 || tx.block || tx.ui || tx.overlap || (tx.owner !== null && tx.owner !== undefined)) continue;
+    const box = [[tx.x0, tx.y0], [tx.x1, tx.y0], [tx.x1, tx.y1], [tx.x0, tx.y1]];
+    for (const sh of list) {
+      if ((tx.shape !== null && tx.shape === sh.serial) || (sh.group !== null && sh.group === tx.group)) continue;
+      const depth = overlapDepth(sh.poly, box);
+      if (depth <= 4 || holds(sh.poly, box) || holds(box, sh.poly)) continue;
+      const label = tx.text.length > 40 ? tx.text.slice(0, 37) + '...' : tx.text;
+      found.push({ key: `${shapeKey(sh)}/${tx.text}`, message: `"${label}" and ${shapeName(sh)} partly overlap, by ${Math.round(depth)}px; move them apart, or give one of them overlap: true if that is meant` });
+    }
+  }
+  return found;
+}
+
+// An arrow whose drawn line runs through a shape or icon that is none of its
+// ends: not the element it starts or ends at by id, and not a shape its end
+// points are in or at. A shape that holds the whole arrow, like a frame around
+// a diagram, doesn't count, nor does one drawn after the arrow, like a cross
+// put on it, which covers the line instead.
+export function arrowsThroughShapes(strokes, shapes) {
+  const list = shapes.filter((s) => s.settled && s.alpha > 0.95 && !s.overlap && !s.cover && !s.ui);
+  const found = [];
+  for (const line of strokes) {
+    if (line.kind !== 'arrow' || !line.settled || line.alpha <= 0.95 || !line.body) continue;
+    const span = bounds(line.points);
+    const outline = [[span.x0, span.y0], [span.x1, span.y0], [span.x1, span.y1], [span.x0, span.y1]];
+    for (const sh of list) {
+      if (sh.order > line.order || (sh.id !== null && line.ends.includes(sh.id))) continue;
+      if (line.tips.some((p) => inside(p, sh.poly) || toEdge(p, sh.poly) <= 20)) continue;
+      if (holds(sh.poly, outline)) continue;
+      if (!line.body.some((p) => inside(p, sh.poly) && toEdge(p, sh.poly) > 4)) continue;
+      found.push({ key: `${line.name}|${shapeKey(sh)}`, message: `${line.name} runs through ${shapeName(sh)}; let it go around with bend, or move one of them` });
     }
   }
   return found;

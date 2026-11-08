@@ -45,7 +45,7 @@ export function inside([x, y], poly) {
 }
 
 // The distance from a point to the nearest side of a polygon.
-function toEdge([x, y], poly) {
+export function toEdge([x, y], poly) {
   let best = Infinity;
   for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
     const [ax, ay] = poly[j];

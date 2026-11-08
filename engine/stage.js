@@ -78,6 +78,8 @@ export class Stage {
     this._groups = [];
     this._groupCalls = 0;
     this._arrowCalls = 0;
+    this._shapeCalls = 0;
+    this._revealCalls = 0;
     this._cover = 0;
     // s.quiet() turns off the entrance sounds of the rest of the scene.
     this._quiet = false;
@@ -379,13 +381,25 @@ export class Stage {
 
   // A shape for check: a box or, with `round`, an ellipse around x, y in the
   // current transform. `o.overlap: true` says it may overlap other shapes.
+  // Returns its number in the scene, so its own text can say whose it is.
   _logShape(kind, { x = 0, y = 0, w, h, round = false }, settled, o = {}, name = '') {
     const log = this.engine.drawLog;
-    if (!log || this._suppress > 0 || !(w > 0) || !(h > 0)) return;
+    const serial = ++this._shapeCalls;
+    if (!log || this._suppress > 0 || !(w > 0) || !(h > 0)) return serial;
     this._seen(null);
     const local = round ? ring(x, y, w / 2, h / 2) : [[x - w / 2, y - h / 2], [x + w / 2, y - h / 2], [x + w / 2, y + h / 2], [x - w / 2, y + h / 2]];
     const poly = this._designPoints(local);
-    log.shapes.push({ kind, name: String(name ?? ''), poly, box: bounds(poly), settled, alpha: this.ctx.globalAlpha, group: this._groups[0] ?? null, overlap: o.overlap === true, cover: this._cover > 0, ui: this._ui ? this._ui._layer + 1 : 0, order: log.order++ });
+    log.shapes.push({ kind, name: String(name ?? ''), id: o.id === undefined || o.id === null ? null : String(o.id), serial, poly, box: bounds(poly), settled, alpha: this.ctx.globalAlpha, group: this._groups[0] ?? null, overlap: o.overlap === true, cover: this._cover > 0, ui: this._ui ? this._ui._layer + 1 : 0, order: log.order++ });
+    return serial;
+  }
+
+  // For check: something that shows itself bit by bit, like code that types
+  // itself or a number that counts. `end` is when it is all there, and
+  // `missing(t)` says how much is still missing at t. Each one is noted once.
+  _reveal(key, info) {
+    const log = this.engine.revealLog;
+    if (!log || this._suppress > 0 || log.has(`${this.id}|${key}`)) return;
+    log.set(`${this.id}|${key}`, info);
   }
 
   // The drawn line of an arrow or an annotation for check, as points in the
@@ -605,6 +619,10 @@ export class Stage {
       mark: entry.mark ?? null,
       option: entry.option ?? null,
       owner: entry.owner ?? null,
+      // The shape it belongs to, like a box's own text, its group, and overlap: true.
+      shape: entry.shape ?? null,
+      group: this._groups[0] ?? null,
+      overlap: entry.overlap === true,
       order: drawn ? drawn.order++ : 0,
       scene: this.id,
       t: this.t,
@@ -887,6 +905,16 @@ export class Stage {
     // 'sync' follows the real word times; 'words' is spread over `dur`, which
     // the pace shortens like every other animation.
     if (enter === 'sync' || enter === 'words') times = this._wordTimes(lay, enter, o, enter === 'words' ? dur / this.pace : dur);
+    if ((enter === 'write' || enter === 'type') && plain.trim()) {
+      const start = this.time(o.at ?? 0);
+      const length = (dur ?? DEFAULT_DUR[enter] ?? 0.6) / this.pace;
+      const label = plain.length > 40 ? plain.slice(0, 37) + '...' : plain;
+      this._reveal(`text|${call}`, {
+        what: `"${label}"`, at: start, end: start + length, out: o.out === undefined ? Infinity : this.time(o.out),
+        missing: (t) => `has ${enter === 'type' ? 'typed' : 'written'} ${Math.floor(clamp((t - start) / length) * 100)}% of itself`,
+        advice: enter === 'type' ? `give it an earlier at, or a higher cps than ${o.cps ?? 28}` : 'give it an earlier at, or a shorter dur',
+      });
+    }
     const life = this._life({ ...o, enter }, kind, { dur: enter === 'sync' ? Math.max(0.3, (times[times.length - 1] ?? 0) - this.time(o.at ?? 0) + 0.3) : dur, real: enter === 'sync', label: plain.slice(0, 40) });
     if (!life) return g;
 
@@ -971,7 +999,7 @@ export class Stage {
       });
     }
     const marked = o.bg && lay.lines.some((line) => line.words.some((w) => w.accent));
-    this._logText({ text: plain, x0: ox, y0: oy, x1: -ox, y1: -oy, size, fg: color, bg: o.bg ? colorOf(th, o.bg === true ? 'surface' : o.bg) : null, settled: this._settled(life), mark: marked ? accent : null });
+    this._logText({ text: plain, x0: ox, y0: oy, x1: -ox, y1: -oy, size, fg: color, bg: o.bg ? colorOf(th, o.bg === true ? 'surface' : o.bg) : null, settled: this._settled(life), mark: marked ? accent : null, overlap: o.overlap });
     ctx.restore();
     return g;
   }
@@ -1062,7 +1090,7 @@ export class Stage {
     if (!life) return g;
     this._push(x, y, life, o);
     const settled = this._settled(life);
-    this._logShape('box', { w, h, round: shape === 'ellipse' || shape === 'circle' }, settled, o, plain || o.id);
+    const own = this._logShape('box', { w, h, round: shape === 'ellipse' || shape === 'circle' }, settled, o, plain || o.id);
     const prog = this._drawProgress(life);
     const stroke = colorOf(th, o.stroke ?? o.color, 'ink');
     const fill = o.fill !== undefined ? colorOf(th, o.fill) : o.color ? tintOf(th, o.color) : th.surface;
@@ -1088,7 +1116,7 @@ export class Stage {
           marked ||= Boolean(wd.accent);
         }
       }
-      this._logText({ text: plain, x0: -lay.width / 2, y0: ty, x1: lay.width / 2, y1: ty + lay.height, size, fg: textColor, bg: fill, settled, mark: marked ? accent : null });
+      this._logText({ text: plain, x0: -lay.width / 2, y0: ty, x1: lay.width / 2, y1: ty + lay.height, size, fg: textColor, bg: fill, settled, mark: marked ? accent : null, shape: own });
     }
     ctx.globalAlpha = prevA;
     ctx.restore();
@@ -1234,7 +1262,8 @@ export class Stage {
     if (this.engine.drawLog && L > 1 && prog >= 1) {
       const heads = [...(head === 'end' || head === 'both' ? [headAt(L, 1)] : []), ...(head === 'start' || head === 'both' ? [headAt(0.001, -1)] : [])];
       const end = (v, p) => (typeof v === 'string' ? `"${v}"` : `${Math.round(p.x)},${Math.round(p.y)}`);
-      this._logStroke('arrow', [...samplePath(d), ...heads.flatMap((h) => along(h))], this._settled(life), { serial, name: `the arrow from ${end(from, a)} to ${end(to, b)}` });
+      const body = samplePath(d);
+      this._logStroke('arrow', [...body, ...heads.flatMap((h) => along(h))], this._settled(life), { serial, name: `the arrow from ${end(from, a)} to ${end(to, b)}`, ends: [typeof from === 'string' ? from : null, typeof to === 'string' ? to : null], body: this._designPoints(body), tips: this._designPoints([[a.x, a.y], [b.x, b.y]]) });
     }
     if (o.label) {
       const la = clamp((life.p - 0.55) / 0.35);
@@ -1388,7 +1417,7 @@ export class Stage {
     this._push(x, y, life, o);
     const settled = this._settled(life);
     // check compares what is drawn: the background, or else the lines of the icon.
-    this._logShape('icon', o.bg ? { w: bgSize, h: bgSize, round: o.bg !== 'square' } : this._glyphBox(name, size, o.weight), settled, o, name);
+    const own = this._logShape('icon', o.bg ? { w: bgSize, h: bgSize, round: o.bg !== 'square' } : this._glyphBox(name, size, o.weight), settled, o, name);
     const prog = this._drawProgress(life);
     const color = colorOf(th, o.color, 'ink');
     if (o.bg) {
@@ -1409,7 +1438,7 @@ export class Stage {
       const ly = bgSize / 2 + ls * 0.45;
       ctx.fillText(String(o.label), 0, ly);
       const w = ctx.measureText(String(o.label)).width;
-      this._logText({ text: String(o.label), x0: -w / 2, y0: ly, x1: w / 2, y1: ly + ls, size: ls, fg: ctx.fillStyle, bg: null, settled });
+      this._logText({ text: String(o.label), x0: -w / 2, y0: ly, x1: w / 2, y1: ly + ls, size: ls, fg: ctx.fillStyle, bg: null, settled, shape: own });
       ctx.restore();
     }
     this.ctx.restore();
@@ -1696,6 +1725,11 @@ export class Stage {
       const tau = 1 - Math.cbrt(1 - k / steps);
       this._record('number', at + tau * dur, 0.05, { sfx: o.sfx, sfxGain: 0.8 - (0.4 * k) / steps }, { label: `${value}#${k}` });
     }
+    this._reveal(`number|${++this._revealCalls}`, {
+      what: `the number counting to ${value}`, at, end: at + dur, out: o.out === undefined ? Infinity : this.time(o.out),
+      missing: (t) => `has counted ${Math.floor(ease.out(clamp((t - at) / dur)) * 100)}% of the way`,
+      advice: `give it an earlier at, or a shorter dur than ${o.dur ?? 1.4}`,
+    });
     const cp = ease.out(clamp((this.t - at) / dur));
     const v = lerp(from, value, cp);
     const fmt = (n) => {
@@ -1960,6 +1994,16 @@ export class Stage {
     const lineDelay = (o.lineDelay ?? 0.3) / this.pace;
     const startText = at + 0.35 / this.pace;
     if (reveal === 'type') this._record('code', startText, typeDur, { sfx: o.sfx }, { label: 'typing', sustain: true });
+    if (!steps && (reveal === 'type' || reveal === 'lines')) {
+      const total = lines.length;
+      const out = o.out === undefined ? Infinity : this.time(o.out);
+      this._reveal(`code|${++this._revealCalls}`, {
+        what: `the code "${o.title || 'code'}"`, at, out,
+        end: reveal === 'lines' ? startText + (total - 1) * lineDelay : startText + typeDur,
+        missing: (t) => (reveal === 'lines' ? `shows ${clamp(Math.floor((t - startText) / lineDelay) + 1, 0, total)} of its ${total} lines` : `has typed ${Math.floor(clamp((t - startText) / typeDur) * 100)}% of its text`),
+        advice: reveal === 'lines' ? `give it an earlier at, or a smaller lineDelay than ${o.lineDelay ?? 0.3}` : `give it an earlier at, or a higher cps than ${o.cps ?? 40}`,
+      });
+    }
     if (steps) steps.slice(1).forEach((step, i) => this._record('code', step.at, (o.morphDur ?? 0.8) / this.pace,
       { sfx: o.sfx === false || o.sfx === null ? false : undefined, sfxGain: 0.2 }, { sfx: 'whoosh', label: `morph${i + 2}` }));
     const life = this._life({ ...o, sfx: null }, 'code', { dur: 0.5 });
@@ -2138,6 +2182,12 @@ export class Stage {
         clock = r.start + (o.lineGap ?? 0.25) / this.pace;
       }
       return r;
+    });
+    this._reveal(`terminal|${++this._revealCalls}`, {
+      what: `the terminal "${o.title ?? 'terminal'}"`, at, out: o.out === undefined ? Infinity : this.time(o.out),
+      end: Math.max(at, ...timed.map((r) => r.end)),
+      missing: (t) => `shows ${timed.filter((r) => r.end <= t + 1e-6).length} of its ${timed.length} lines`,
+      advice: `give it an earlier at, or a higher cps than ${o.cps ?? 22}`,
     });
     const life = this._life({ ...o, sfx: null }, 'terminal', { dur: 0.5, enter: o.enter ?? (th.enter.code === 'rise' ? 'rise' : 'fade') });
     if (this.engine.layoutLog) {

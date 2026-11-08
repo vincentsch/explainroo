@@ -80,7 +80,7 @@ test('check warns once for each text with a background but no words, also in gro
 });
 
 test('check treats an arrow label as text: overlap, off the frame, caption band and the TikTok safe area', { skip }, async (t) => {
-  const wide = await check(project(t, { size: '16:9', captions: true }, {
+  const wide = await check(project(t, { size: '16:9', captions: true, defaults: '0.5' }, {
     overlap: `s.text('Resolver', { x: 960, y: 506, size: 40, at: 0 });
     s.arrow([600, 540], [1320, 540], { label: 'asks', at: 0 });`,
     offframe: `s.arrow([30, 300], [30, 700], { label: 'too far', at: 0 });`,
@@ -93,7 +93,7 @@ test('check treats an arrow label as text: overlap, off the frame, caption band 
   assert.ok(off.x0 < -1 && Math.abs(off.x1 - (30 - 44)) <= 1, JSON.stringify(off));
   assert.deepEqual(found('band', '"low"').map((i) => [i.level, i.message]), [['warn', '"low" is in the caption band (y 851 to 990), where captions can cover it; keep content above s.safe.bottom (827)']]);
 
-  const tall = await check(project(t, { size: 'tiktok' }, {
+  const tall = await check(project(t, { size: 'tiktok', defaults: '0.5' }, {
     vault: `s.arrow([700, 700], [1000, 700], { label: 'scrambled vault only', at: 0 });`,
   }));
   assert.deepEqual(tall.filter((i) => i.message.startsWith('"scrambled vault only"')).map((i) => [i.level, i.message]),
@@ -101,7 +101,7 @@ test('check treats an arrow label as text: overlap, off the frame, caption band 
 });
 
 test('labelSide moves the label, the box check measures and the box the camera keeps whole', { skip }, async (t) => {
-  const sides = project(t, {}, {
+  const sides = project(t, { defaults: '0.5' }, {
     left: `s.arrow([80, 300], [80, 780], { label: 'LEFT', labelSide: 'left', at: 0 });`,
     right: `s.arrow([1840, 300], [1840, 780], { label: 'RIGHT', labelSide: 'right', at: 0 });`,
     above: `s.arrow([700, 40], [1220, 40], { label: 'ABOVE', labelSide: 'above', at: 0 });`,
@@ -209,4 +209,66 @@ test('a cue that is not in the narration is one error, without "nothing enters" 
   assert.equal(arc[0].level, 'error');
   // "ombre" finds "l'ombre", so that scene has no error.
   assert.deepEqual(issues.filter((i) => i.scene === 'ombre' && i.level === 'error'), []);
+});
+
+// Code that types itself, a terminal, a number that counts and text that writes
+// itself should be all there before their scene ends, or before they leave.
+test('check warns when a reveal has not finished by the end of its scene or by its out, with how much is missing and the option', { skip }, async (t) => {
+  const issues = await check(project(t, {}, {
+    lines: "s.code('one\\ntwo\\nthree\\nfour\\nfive', { title: 'app.js', reveal: 'lines', lineDelay: 0.6, at: 0.5 });",
+    typed: "s.code('const answer = 42;\\nconsole.log(answer);', { title: 'typed.js', cps: 10, at: 0 });",
+    term: "s.terminal(['$ npm install explainroo', 'added 1 package', '$ npx explainroo doctor'], { cps: 8, at: 0 });",
+    count: "s.number(1240, { at: 1.2, dur: 1.4 });",
+    leaves: "s.text('Writes itself slowly', { enter: 'write', dur: 1.5, at: 0.2, out: 1 });",
+    fine: "s.code('one\\ntwo', { reveal: 'lines', at: 0 }); s.number(12, { at: 0 }); s.text('Quick', { enter: 'write', at: 0 });",
+  }, { dur: 2 }));
+  const reveals = issues.filter((i) => /of its \d+ lines|has typed|has counted|has written/.test(i.message));
+  assert.deepEqual(reveals.map((i) => [i.level, i.scene, i.t]), [['warn', 'lines', 2], ['warn', 'typed', 2], ['warn', 'term', 2], ['warn', 'count', 2], ['warn', 'leaves', 1]]);
+  // The lines start 0.35 s after the window, at 0.85, 1.45, 2.05, 2.65 and 3.25 s.
+  assert.equal(reveals[0].message, 'the code "app.js" shows 2 of its 5 lines by the end of the scene at 2.0s, and needs until 3.3s; give it an earlier at, or a smaller lineDelay than 0.6');
+  assert.match(reveals[1].message, /^the code "typed\.js" has typed \d+% of its text by the end of the scene at 2\.0s, and needs until \d+\.\ds; give it an earlier at, or a higher cps than 10$/);
+  assert.match(reveals[2].message, /^the terminal "terminal" shows 0 of its 3 lines by the end of the scene at 2\.0s, and needs until \d+\.\ds; give it an earlier at, or a higher cps than 8$/);
+  assert.match(reveals[3].message, /^the number counting to 1240 has counted \d+% of the way by the end of the scene at 2\.0s, and needs until 2\.6s; give it an earlier at, or a shorter dur than 1\.4$/);
+  assert.match(reveals[4].message, /^"Writes itself slowly" has written \d+% of itself by its out at 1\.0s, and needs until 1\.7s; give it an earlier at, or a shorter dur$/);
+});
+
+// A note on the edge of a box, as a real project had it under "Your agent".
+test('check warns about text that partly overlaps a shape, and not about a shape\'s own text, text inside a shape, a group or overlap: true', { skip }, async (t) => {
+  const issues = await check(project(t, {}, {
+    edge: "s.box('Your agent', { id: 'agent', x: 960, y: 400, w: 500, h: 200, at: 0 }); s.note('Claude Code, Codex, ChatGPT, Claude', { x: 960, y: 505, size: 32, at: 0 });",
+    inside: "s.box({ x: 960, y: 540, w: 900, h: 500, at: 0 }); s.text('Inside the box', { x: 960, y: 540, at: 0 }); s.box('Own text', { x: 400, y: 200, at: 0 }); s.icon('server', { x: 1500, y: 300, size: 120, label: 'Server', at: 0 });",
+    allowed: "s.box('Card', { x: 960, y: 400, w: 500, h: 200, at: 0 }); s.note('meant to sit on the edge', { x: 960, y: 505, size: 32, at: 0, overlap: true });",
+    grouped: "s.group({ x: 960, y: 540, at: 0 }, () => { s.box('Card', { x: 0, y: 0, w: 500, h: 200 }); s.note('a badge on its edge', { x: 0, y: 105, size: 32 }); });",
+  }));
+  const found = issues.filter((i) => /partly overlap/.test(i.message));
+  assert.deepEqual(found.map((i) => [i.level, i.scene]), [['warn', 'edge']], JSON.stringify(issues));
+  assert.match(found[0].message, /^"Claude Code, Codex, ChatGPT, Claude" and the box "Your agent" partly overlap, by \d+px; move them apart, or give one of them overlap: true if that is meant$/);
+});
+
+// A diagram whose arrows run between points, through a circle on their way, and
+// one that ends a few pixels from the edge of the frame.
+test('check warns about an arrow through a shape that is not one of its ends, and about an arrow line off the frame or near its edge', { skip }, async (t) => {
+  const issues = await check(project(t, {}, {
+    through: "s.circle({ x: 600, y: 540, r: 80, label: 'Cold coils', at: 0 }); s.circle({ x: 960, y: 540, r: 80, label: 'Compressor', at: 0 }); s.circle({ x: 1320, y: 540, r: 80, label: 'Hot coils', at: 0 }); s.arrow([600, 540], [1320, 540], { gap: 100, at: 0.3 });",
+    ends: "s.circle({ id: 'a', x: 600, y: 540, r: 80, label: 'A', at: 0 }); s.circle({ id: 'b', x: 1320, y: 540, r: 80, label: 'B', at: 0 }); s.arrow('a', 'b', { at: 0.3 }); s.arrow([600, 760], [1320, 760], { at: 0.3 }); s.box({ x: 960, y: 650, w: 1200, h: 500, at: 0 });",
+    cross: "s.arrow([600, 540], [1320, 540], { dashed: true, at: 0.3 }); s.icon('x', { x: 960, y: 540, size: 68, color: 'red', at: 0.6 });",
+    edge: "s.arrow([1500, 540], [1905, 540], { at: 0.3 }); s.arrow([300, 900], [300, 1100], { at: 0.3 });",
+  }));
+  const through = issues.filter((i) => /runs through/.test(i.message));
+  assert.deepEqual(through.map((i) => i.scene), ['through'], JSON.stringify(issues));
+  assert.match(through[0].message, /^the arrow from 600,540 to 1320,540 runs through the box "Compressor"; let it go around with bend, or move one of them$/);
+  const edges = issues.filter((i) => i.scene === 'edge' && /^the arrow/.test(i.message)).map((i) => i.message);
+  assert.deepEqual(edges.length, 2, JSON.stringify(issues));
+  assert.match(edges.find((m) => m.includes('1905')), /^the arrow from 1500,540 to 1905,540 comes closer than 38px to the edge \(/);
+  assert.match(edges.find((m) => m.includes('1100')), /^the arrow from 300,900 to 300,1100 runs off the frame \(/);
+});
+
+test('check gives a hint for text below 40 pixels in a tall or square frame, which people watch on a phone, and not in a wide one', { skip }, async (t) => {
+  const scenes = { labels: "s.icon('snowflake', { x: s.cx, y: 700, size: 160, label: 'Cold coils', at: 0 }); s.text('Big enough', { x: s.cx, y: 400, size: 44, at: 0 });" };
+  const tall = await check(project(t, { size: 'tiktok', camera: 'still' }, scenes));
+  const hints = tall.filter((i) => /small on a phone/.test(i.message));
+  assert.deepEqual(hints.map((i) => i.level), ['hint']);
+  assert.match(hints[0].message, /^"Cold coils" shows 36px tall at \d\.\ds, small on a phone, where labels read best at 40 to 56px; make it bigger, or give the picture more of the frame$/);
+  const wide = await check(project(t, { camera: 'still' }, scenes));
+  assert.deepEqual(wide.filter((i) => /small on a phone/.test(i.message)), []);
 });

@@ -69,17 +69,28 @@
 text. It finds text that is:
 
 - off the frame, or closer than 3.5% to the edge
-- too small at the size it is shown, with the camera's zoom
+- too small at the size it is shown, with the camera's zoom. In a tall or
+  square frame, which people watch on a phone, text below 40 pixels at 1080p
+  gets a hint too
 - low in contrast against the page, a background from `s.bg` or
   `s.short.backdrop`, or its own sticker, box or `bg`, the `*starred*` words
   too
 - on top of other text, or under the captions
+- partly over a shape, like a note on the edge of a box. A shape's own text,
+  text in its group and `overlap: true` don't count
 - crossed by the line of an arrow or of a mark from `s.annotate`
 - cut at the edge of the frame by the camera while the shot holds still
 
 It also finds:
 
 - shapes that partly overlap: boxes, cards, panels, images, icons and stickers
+- an arrow whose line runs through a shape or icon that is not one of its
+  ends, and an arrow line off the frame, near its edge, outside the app's
+  safe area or in the caption band
+- code that types itself or shows its lines one by one, a terminal, a number
+  that counts or text that writes itself, when it isn't all there by the end
+  of its scene or by its `out`. It says how much is missing and which option
+  changes that
 - a scene that shows only its background for more than 1.5 seconds at the start
 - a cover with only text on an empty background
 - text with a background but no words
