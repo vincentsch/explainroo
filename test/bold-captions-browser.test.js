@@ -51,7 +51,13 @@ test('a starred word shows in the keyword color, and a star-only edit makes no n
   const dir = bakery(t, '# Bread\n\n## intro\n*Four* loaves of bread.\n');
   const project = cachedVoice(dir, 'intro');
   const voiceFile = path.join(project.paths.voice, 'intro.json');
-  const before = fs.readFileSync(voiceFile, 'utf8');
+  // The narration itself: its key, its length, its words and its sound. A cache
+  // checked with today's speech check is saved once, which changes nothing here.
+  const narration = () => {
+    const { hash, duration, words } = JSON.parse(fs.readFileSync(voiceFile, 'utf8'));
+    return { hash, duration, words, wav: fs.readFileSync(path.join(project.paths.voice, 'intro.wav')).toString('base64') };
+  };
+  const before = narration();
 
   const still = async () => {
     const r = await cli(['still', dir, 'intro@0.7', '--json']);
@@ -66,7 +72,7 @@ test('a starred word shows in the keyword color, and a star-only edit makes no n
   fs.writeFileSync(path.join(dir, 'script.md'), '# Bread\n\n## intro\nFour loaves of bread.\n');
   const plain = await yellowIn(await still());
   assert.equal(plain.band, 0, 'without the star no word is yellow');
-  assert.equal(fs.readFileSync(voiceFile, 'utf8'), before, 'the narration was not made again');
+  assert.deepEqual(narration(), before, 'the narration was not made again');
 
   // Numbers are keywords without stars.
   fs.writeFileSync(path.join(dir, 'script.md'), '# Bread\n\n## intro\n4 loaves of bread.\n');

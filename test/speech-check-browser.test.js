@@ -10,7 +10,7 @@ import path from 'node:path';
 import { findChrome } from '../src/browser.js';
 import { loadProject } from '../src/project.js';
 import { speechChunks } from '../src/script.js';
-import { sceneHash, voicePaths } from '../src/voice.js';
+import { CHECK, sceneHash, voicePaths } from '../src/voice.js';
 import { writeWav } from '../src/wav.js';
 import { runCli } from './helpers/tiny-project.js';
 
@@ -35,8 +35,8 @@ Gravitation pulls.
 // What Whisper heard in each scene, and the words it didn't confirm.
 const SAVED = {
   intro: { transcript: 'Try Soundru and codecs.', unmatched: [] },
-  site: { transcript: 'Visit soundru.com.', unmatched: ['soundroo.com.'], matchRate: 0.8 },
-  both: { transcript: 'Visit soundru.com with the station.', unmatched: ['soundroo.com', 'Gravitation.'], matchRate: 0.67 },
+  site: { transcript: 'Visit soundray.com.', unmatched: ['soundroo.com.'], matchRate: 0.8 },
+  both: { transcript: 'Visit soundray.com with the station.', unmatched: ['soundroo.com', 'Gravitation.'], matchRate: 0.67 },
   plain: { transcript: 'The station pulls.', unmatched: ['Gravitation'], matchRate: 0.5 },
 };
 
@@ -54,7 +54,7 @@ function fixture(t) {
     const words = scene.units.filter((u) => u.type === 'word').map((u, i) => ({ text: u.display, spoken: u.spoken, start: i * 0.2, end: i * 0.2 + 0.15, matched: !saved.unmatched.includes(u.display) }));
     writeWav(files.wav, Float32Array.from({ length: 24000 }, (_, i) => 0.1 * Math.sin(i * Math.PI / 24)), 24000);
     fs.writeFileSync(files.json, JSON.stringify({ hash: sceneHash(scene, speechChunks(scene.units, project.config), project.config), id: scene.id, duration: 1, words, marks: {},
-      chunks: [{ start: 0, end: 1, text: scene.spoken }], transcript: saved.transcript, matchRate: saved.matchRate ?? 1, unmatched: saved.unmatched }));
+      chunks: [{ start: 0, end: 1, text: scene.spoken }], transcript: saved.transcript, matchRate: saved.matchRate ?? 1, unmatched: saved.unmatched, check: CHECK }));
   }
   return { dir, voice: project.paths.voice };
 }
@@ -75,7 +75,7 @@ test('check lists near matches with the rate, and says when an override did not 
   assert.equal(finding('intro', 'hint'), 'understood 100%, 2 words only nearly matched: Soundroo (heard "Soundru"), Codex (heard "codecs")');
   // An override heard as something else: the hint says that it didn't help.
   const site = finding('site', 'warn');
-  assert.match(site, /\{soundroo\.com\|sound roo dot com\} was heard as "soundru\.com", so the override didn't help\. Try a different spoken spelling, like \{soundroo\.com\|another spelling\}, or reword the sentence\.$/);
+  assert.match(site, /\{soundroo\.com\|sound roo dot com\} was heard as "soundray\.com", so the override didn't help\. Try a different spoken spelling, like \{soundroo\.com\|another spelling\}, or reword the sentence\.$/);
   assert.doesNotMatch(site, /write it as \{shown\|spoken\}/);
   // A word without an override keeps the advice it had.
   assert.match(finding('plain', 'warn'), /could not confirm "Gravitation"\. It heard: "The station pulls\."\. If a word is mispronounced, write it as \{shown\|spoken\} in script\.md\.$/);

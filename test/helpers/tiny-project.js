@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { ASR_MODEL, cacheRoot } from '../../src/models.js';
 import { loadProject } from '../../src/project.js';
 import { speechChunks } from '../../src/script.js';
-import { sceneHash, voicePaths } from '../../src/voice.js';
+import { CHECK, sceneHash, voicePaths } from '../../src/voice.js';
 import { writeWav } from '../../src/wav.js';
 
 const bin = fileURLToPath(new URL('../../bin/explainroo.js', import.meta.url));
@@ -38,7 +38,7 @@ export function seedNarration(project) {
   writeWav(files.wav, Float32Array.from({ length: 6000 }, (_, i) => 0.1 * Math.sin(i * Math.PI / 24)), 24000);
   fs.writeFileSync(files.json, JSON.stringify({ hash: sceneHash(scene, speechChunks(scene.units, project.config), project.config), id: scene.id,
     duration: 0.25, words: [{ text: 'Hello.', spoken: 'Hello.', start: 0, end: 0.25, matched: true }],
-    marks: {}, chunks: [{ start: 0, end: 0.25, text: 'Hello.' }], transcript: 'Hello.', matchRate: 1, unmatched: [] }));
+    marks: {}, chunks: [{ start: 0, end: 0.25, text: 'Hello.' }], transcript: 'Hello.', matchRate: 1, unmatched: [], nearly: [], check: CHECK }));
 }
 
 // Runs the real command line and resolves with what it printed.

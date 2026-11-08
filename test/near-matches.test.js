@@ -114,12 +114,18 @@ test('a scene saved before near matches gets them from its transcript, and no vo
   const dir = cachedProject(t, '# Old\n\n## intro\nTry Soundroo and Codex.\n\n## quiet {min=1}\n', { intro: { transcript: 'Try Soundru and codecs.' }, quiet: { transcript: '' } });
   const project = loadProject(dir);
   const files = voicePaths(project, 'intro');
-  const before = [fs.readFileSync(files.json, 'utf8'), fs.readFileSync(files.wav)];
+  const narration = () => {
+    const { hash, duration, words } = JSON.parse(fs.readFileSync(files.json, 'utf8'));
+    return { hash, duration, words };
+  };
+  const before = [narration(), fs.readFileSync(files.wav)];
   const voices = await synthesize(project, { transcribe: () => { throw new Error('no voice should be made'); } });
   assert.deepEqual(voices.intro.nearly, [{ word: 'Soundroo', heard: 'Soundru' }, { word: 'Codex', heard: 'codecs' }]);
   assert.deepEqual(voices.quiet.nearly, []);
-  assert.equal(fs.readFileSync(files.json, 'utf8'), before[0]);
+  // The narration stays. The check of today is saved with it once.
+  assert.deepEqual(narration(), before[0]);
   assert.deepEqual(fs.readFileSync(files.wav), before[1]);
+  assert.deepEqual(JSON.parse(fs.readFileSync(files.json, 'utf8')).nearly, voices.intro.nearly);
   // Only a word the scene confirmed when it was made can have nearly matched.
   const unconfirmed = { ...voices.intro, nearly: undefined, words: voices.intro.words.map((w) => ({ ...w, matched: w.text !== 'Codex.' })) };
   assert.deepEqual(nearMatches(unconfirmed, 'en'), [{ word: 'Soundroo', heard: 'Soundru' }]);
@@ -166,7 +172,8 @@ test('the voice command adds the narration time to its table and JSON, and keeps
   t.mock.method(process.stderr, 'write', () => true);
   assert.equal(await main(['voice', dir, '--json']), 0);
   const [row] = JSON.parse(output).scenes;
-  assert.deepEqual(Object.keys(row), ['scene', 'voice', 'narration', 'confirmed', 'unconfirmed', 'marks']);
+  assert.deepEqual(Object.keys(row), ['scene', 'voice', 'narration', 'confirmed', 'unconfirmed', 'heard', 'marks']);
+  assert.deepEqual(row.heard, []);
   assert.deepEqual([row.voice, row.narration], [1.4, 1.1]);
   output = '';
   assert.equal(await main(['voice', dir]), 0);

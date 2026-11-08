@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 import { loadProject } from '../../src/project.js';
 import { resolveMarks } from '../../src/script.js';
-import { sceneChunks, sceneHash, voicePaths } from '../../src/voice.js';
+import { CHECK, sceneChunks, sceneHash, voicePaths } from '../../src/voice.js';
 import { writeWav } from '../../src/wav.js';
 
 const WORD = 0.3;
@@ -34,6 +34,8 @@ export function cachedVoice(dir, sceneId, lang) {
     transcript: scene.spoken,
     matchRate: 1,
     unmatched: [],
+    nearly: [],
+    check: CHECK,
   }));
   return project;
 }
