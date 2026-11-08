@@ -1,6 +1,5 @@
-// What voice does with narration it made before: an older scene gets today's
-// speech check from its transcript, and a word it couldn't confirm is quoted
-// with the words around it.
+// What voice keeps and what it makes again: a moved marker keeps the narration,
+// and an older scene gets today's speech check from its transcript.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -67,6 +66,56 @@ function olderProject(t, script, saved) {
 }
 
 const noSpeech = () => { throw new Error('no speech should be made'); };
+
+test('moving a marker keeps the narration, makes no new speech and moves only the cue', async (t) => {
+  const { dir, spoken } = await paidProject(t, '# Test\n\n## intro\nOpen a receipt. [#open] See the model.\n\n## outro\nThat is all.\n');
+  await synthesize(loadProject(dir), { transcribe: echo(['Open a receipt.', 'See the model.', 'That is all.']) });
+  assert.equal(spoken(), 3);
+  const file = path.join(dir, 'build/voice/intro.json');
+  const before = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const wav = fs.readFileSync(path.join(dir, 'build/voice/intro.wav'));
+  fs.writeFileSync(path.join(dir, 'script.md'), '# Test\n\n## intro\n[#open] Open a receipt. See the [#model] model.\n\n## outro\nThat is all.\n');
+  const lines = [];
+  const voices = await synthesize(loadProject(dir), { transcribe: noSpeech, log: (line) => lines.push(line) });
+  assert.equal(spoken(), 3, 'no new speech');
+  assert.deepEqual(lines, ['voice intro: kept the narration, updated the cues']);
+  assert.deepEqual(voices.intro.words, before.words);
+  assert.equal(voices.intro.marks.open, 0);
+  assert.equal(voices.intro.marks.model, before.words[5].start);
+  assert.deepEqual(fs.readFileSync(path.join(dir, 'build/voice/intro.wav')), wav);
+  const after = JSON.parse(fs.readFileSync(file, 'utf8'));
+  assert.notEqual(after.hash, before.hash);
+  assert.equal(after.speech, before.speech);
+  // The next run finds the scene up to date and says nothing.
+  lines.length = 0;
+  await synthesize(loadProject(dir), { transcribe: noSpeech, log: (line) => lines.push(line) });
+  assert.deepEqual(lines, []);
+  // A changed spoken word, or a changed shown word, makes that scene again.
+  fs.writeFileSync(path.join(dir, 'script.md'), '# Test\n\n## intro\n[#open] Open a receipt. See the [#model] models.\n\n## outro\nThat is all.\n');
+  await synthesize(loadProject(dir), { transcribe: echo(['Open a receipt.', 'See the models.']) });
+  assert.equal(spoken(), 4, 'only the new sentence is bought');
+  fs.writeFileSync(path.join(dir, 'script.md'), '# Test\n\n## intro\n[#open] Open a receipt. See the [#model] {Models|models}.\n\n## outro\nThat is all.\n');
+  await synthesize(loadProject(dir), { transcribe: echo(['Open a receipt.', 'See the models.']) });
+  assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).words.at(-1).text, 'Models.');
+});
+
+test('a scene made by an older version keeps its narration when a marker moves, on either side of a pause', async (t) => {
+  // The marker moves to the word with this index.
+  for (const [from, to, at] of [
+    ['Open a receipt. [#open] See the model.', '[#open] Open a receipt. See the model.', 0],
+    ['Open a receipt. [pause 0.4] [#open] See the model.', 'Open [#open] a receipt. [pause 0.4] See the model.', 1],
+    ['Open a receipt. [#open] [pause 0.4] See the model.', 'Open a receipt. [pause 0.4] See [#open] the model.', 4],
+  ]) {
+    const { dir, files } = olderProject(t, `# Test\n\n## intro\n${from}\n`, { transcript: 'Open a receipt. See the model.' });
+    const words = JSON.parse(fs.readFileSync(files.json, 'utf8')).words;
+    fs.writeFileSync(path.join(dir, 'script.md'), `# Test\n\n## intro\n${to}\n`);
+    const lines = [];
+    const voices = await synthesize(loadProject(dir), { transcribe: noSpeech, log: (line) => lines.push(line) });
+    assert.deepEqual(lines, ['voice intro: kept the narration, updated the cues'], from);
+    assert.deepEqual(voices.intro.words, words);
+    assert.equal(voices.intro.marks.open, words[at].start, to);
+  }
+});
 
 test('an older scene gets the speech check of today from its transcript, without new speech and without saving', async (t) => {
   const { dir, files } = olderProject(t, '# Test\n\n## intro\nIt contains a harmless piece of the virus, and {tabslip.com|tab slip dot com} sells it.\n', {

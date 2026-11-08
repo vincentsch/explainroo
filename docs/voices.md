@@ -9,6 +9,11 @@ Kokoro runs on this computer and needs no key. Pick a voice with
 
 `{ "provider": "kokoro", "id": "af_heart" }` means the same thing.
 
+`voice` makes a scene again only when its spoken words or the voice settings
+change, and a new `[pause]` makes it again too. Moving a `[#marker]` keeps the
+narration. Then `voice` says "kept the narration, updated the cues", and only
+the cue times move.
+
 ElevenLabs has its own voices and can clone one. It costs money on the user's
 account and receives the script text. If the user wants it and there is no
 key, run `explainroo connect elevenlabs` and show the user what it prints.

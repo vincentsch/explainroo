@@ -1,6 +1,7 @@
 // Turns each scene's narration into a WAV file plus word timings.
 // Results are cached per scene in build/voice/<scene>.json and only
-// regenerated when the words, markers, voice, speed or pacing change.
+// regenerated when the spoken words, the voice, speed or pacing change. When
+// only markers moved, the narration stays and the cue times are worked out again.
 // Paid voices also save each response in the project record, see paid-speech.js.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -19,6 +20,27 @@ const PIPELINE = 7;
 // with older rules is looked at again from its transcript, without new speech.
 const CHECK = 2;
 
+// The key of the narration itself: the spoken words, the gaps between them and
+// the voice settings. Markers and the shown text are not part of it.
+export function speechHash(scene, chunks, config, recording = null) {
+  return crypto
+    .createHash('sha256')
+    .update(JSON.stringify({
+      PIPELINE,
+      TTS_MODEL,
+      ASR_MODEL: asrModel(config.language),
+      dtype: ttsDtype(),
+      voice: config.voice,
+      speed: config.speed * config.pace,
+      chunks: recording ? scene.spoken : chunks.map((c) => [c.gapBefore, c.text]),
+      words: scene.units.filter((u) => u.type === 'word').map((u) => u.spoken),
+      ...(recording ? { recording } : {}),
+      ...(config.language && config.language !== 'en' ? { language: config.language } : {}),
+    }))
+    .digest('hex')
+    .slice(0, 16);
+}
+
 export function sceneHash(scene, chunks, config, recording = null) {
   return crypto
     .createHash('sha256')
@@ -30,8 +52,9 @@ export function sceneHash(scene, chunks, config, recording = null) {
       voice: config.voice,
       speed: config.speed * config.pace,
       chunks: recording ? scene.spoken : chunks.map((c) => [c.gapBefore, c.text]),
-      // Markers and the shown text of each word are saved with the timings,
-      // so moving a [#marker] or changing {shown|spoken} makes the scene again.
+      // Markers and the shown text of each word are saved with the timings, so
+      // moving a [#marker] or changing {shown|spoken} changes the hash. When only
+      // markers moved, the narration is kept, see speechHash.
       layout: (recording ? scene.units.filter((u) => u.type !== 'pause') : scene.units).map((u) => (u.type === 'mark' ? `#${u.name}` : u.type === 'word' ? u.display : '')).join('|'),
       // Added last and only for recordings, so Kokoro scenes keep their cache.
       ...(recording ? { recording } : {}),
@@ -131,6 +154,75 @@ export async function reviewSpeech(info, language) {
     nearly: [...base.nearly, ...nearList(pick(again.words), pick(now))],
   };
 }
+
+// The scene with its markers put back where an older cache had them: each
+// marker before the word that starts at its time, or after the last word. The
+// cache doesn't say on which side of a pause a marker stood, so both are given.
+function oldLayouts(scene, cached) {
+  if (!Array.isArray(cached.words)) return [];
+  const marks = new Map();
+  for (const [name, time] of Object.entries(cached.marks || {})) {
+    const at = cached.words.findIndex((w) => w.start === time);
+    const index = at === -1 ? cached.words.length : at;
+    marks.set(index, [...(marks.get(index) || []), { type: 'mark', name }]);
+  }
+  return ['after', 'before'].map((side) => {
+    const units = [];
+    let word = 0;
+    let pauses = [];
+    for (const u of scene.units) {
+      if (u.type === 'mark') continue;
+      if (u.type === 'pause') { pauses.push(u); continue; }
+      const here = marks.get(word) || [];
+      units.push(...(side === 'after' ? [...pauses, ...here] : [...here, ...pauses]), u);
+      pauses = [];
+      word++;
+    }
+    units.push(...(side === 'after' ? [...pauses, ...(marks.get(word) || [])] : [...(marks.get(word) || []), ...pauses]));
+    return { ...scene, units };
+  });
+}
+
+// Whether a file starts like a WAV file, so narration kept for new cues can be played.
+function wavFile(file) {
+  try {
+    const fd = fs.openSync(file, 'r');
+    const head = Buffer.alloc(12);
+    try { fs.readSync(fd, head, 0, 12, 0); } finally { fs.closeSync(fd); }
+    return head.toString('latin1', 0, 4) === 'RIFF' && head.toString('latin1', 8, 12) === 'WAVE';
+  } catch {
+    return false;
+  }
+}
+
+// Whether a cached scene says the same words as `scene` with the same voice,
+// and only its markers moved. A cache from before the narration key is matched
+// by putting its markers back.
+function onlyMarkersMoved(project, scene, chunks, config, recording, cached) {
+  if (!wavFile(voicePaths(project, scene.id).wav)) return false;
+  const shown = scene.units.filter((u) => u.type === 'word').map((u) => u.display);
+  if (!Array.isArray(cached.words) || cached.words.length !== shown.length || cached.words.some((w, k) => w.text !== shown[k])) return false;
+  if (cached.speech) return cached.speech === speechHash(scene, chunks, config, recording);
+  return oldLayouts(scene, cached).some((old) => sceneHash(old, chunks, config, recording) === cached.hash);
+}
+
+// The cached narration of a scene with the cue times of today's markers.
+function withNewCues(project, scene, chunks, cached, hash, recording) {
+  const wordTimes = [];
+  let k = 0;
+  scene.units.forEach((u, i) => {
+    if (u.type === 'word') wordTimes[i] = cached.words[k++];
+  });
+  const info = {
+    ...cached,
+    hash,
+    speech: speechHash(scene, chunks, project.config, recording),
+    marks: Object.fromEntries(Object.entries(resolveMarks(scene.units, wordTimes)).map(([name, v]) => [name, round(v)])),
+  };
+  fs.writeFileSync(voicePaths(project, scene.id).json, JSON.stringify(info, null, 2));
+  return info;
+}
+
 
 export function readVoice(project, id) {
   const p = voicePaths(project, id);
@@ -259,19 +351,24 @@ export async function synthesize(project, { force = false, fresh = false, log = 
   for (const scene of project.script.scenes) {
     const chunks = sceneChunks(project, scene);
     const recording = recordings?.files[scene.id];
-    const hash = sceneHash(scene, chunks, config, recording ? {
+    const key = recording ? {
       content: recording.hash,
       scenes: recordings.folder ? null : project.script.scenes.map((s) => s.spoken),
-    } : null);
+    } : null;
+    const hash = sceneHash(scene, chunks, config, key);
     const cached = readVoice(project, scene.id);
     const hasAudio = !chunks.length || fs.existsSync(voicePaths(project, scene.id).wav);
     if (speech && chunks.length) addFinishedScene(project, speech, scene, chunks, cached, hash, log, notice);
-    if (!force && cached && cached.hash === hash && hasAudio && !speech?.needsNew(chunks)) {
+    const keep = !force && cached && hasAudio && !speech?.needsNew(chunks);
+    if (keep && cached.hash === hash) {
       result[scene.id] = await reviewSpeech(cached, config.language);
+    } else if (keep && chunks.length && onlyMarkersMoved(project, scene, chunks, config, key, cached)) {
+      result[scene.id] = await reviewSpeech(withNewCues(project, scene, chunks, cached, hash, key), config.language);
+      log(`voice ${scene.id}: kept the narration, updated the cues`);
     } else if (only && !only.includes(scene.id) && cached) {
       result[scene.id] = await reviewSpeech(cached, config.language);
     } else {
-      todo.push({ scene, chunks, hash });
+      todo.push({ scene, chunks, hash, key });
     }
   }
   if (!todo.length) return result;
@@ -289,10 +386,10 @@ export async function synthesize(project, { force = false, fresh = false, log = 
     heardTake = await transcribe(resample(take.samples, take.sampleRate, 16000), { log, language: config.language });
     cuts = recordingCuts(project.script.scenes, heardTake.words, take.samples.length / take.sampleRate, config.language);
   }
-  for (const { scene, chunks, hash } of todo) {
+  for (const { scene, chunks, hash, key } of todo) {
     const t0 = Date.now();
     const info = recordings && chunks.length
-      ? await recordingScene(project, scene, hash, recordings.files[scene.id], take, cuts.find((c) => c.scene.id === scene.id), heardTake, log, transcribe)
+      ? await recordingScene(project, scene, hash, recordings.files[scene.id], take, cuts.find((c) => c.scene.id === scene.id), heardTake, log, transcribe, key)
       : await synthesizeScene(project, scene, chunks, hash, tts, speech, log, transcribe);
     result[scene.id] = info;
     if (chunks.length) {
@@ -309,7 +406,7 @@ async function synthesizeScene(project, scene, chunks, hash, tts, speech, log, t
   const { config } = project;
   const files = voicePaths(project, scene.id);
   if (!chunks.length) {
-    const info = { hash, check: CHECK, id: scene.id, duration: 0, words: [], marks: resolveMarks(scene.units, []), chunks: [], transcript: '', matchRate: 1, unmatched: [], nearly: [] };
+    const info = { hash, speech: speechHash(scene, chunks, config), check: CHECK, id: scene.id, duration: 0, words: [], marks: resolveMarks(scene.units, []), chunks: [], transcript: '', matchRate: 1, unmatched: [], nearly: [] };
     if (fs.existsSync(files.wav)) fs.rmSync(files.wav);
     fs.writeFileSync(files.json, JSON.stringify(info, null, 2));
     return info;
@@ -373,6 +470,7 @@ async function synthesizeScene(project, scene, chunks, hash, tts, speech, log, t
   });
   const info = {
     hash,
+    speech: speechHash(scene, chunks, config),
     check: CHECK,
     id: scene.id,
     duration: round(cursor / sr),
@@ -388,7 +486,7 @@ async function synthesizeScene(project, scene, chunks, hash, tts, speech, log, t
   return info;
 }
 
-async function recordingScene(project, scene, hash, source, take, cut, heardTake, log, transcribe) {
+async function recordingScene(project, scene, hash, source, take, cut, heardTake, log, transcribe, key) {
   const { config } = project;
   const audio = take || await decodeRecording(source.file, project.paths.build, project.config.speed * project.config.pace);
   const sr = audio.sampleRate;
@@ -421,7 +519,7 @@ async function recordingScene(project, scene, hash, source, take, cut, heardTake
   const files = voicePaths(project, scene.id);
   await saveRecording(files.wav, samples, sr);
   const info = {
-    hash, check: CHECK, id: scene.id, duration: round(duration),
+    hash, speech: speechHash(scene, null, config, key), check: CHECK, id: scene.id, duration: round(duration),
     words: units.map((u, i) => ({ text: u.display, spoken: u.spoken, start: round(times[i].start), end: round(times[i].end), matched: aligned.words[i].matched })),
     marks: Object.fromEntries(Object.entries(resolveMarks(scene.units, wordTimes)).map(([k, v]) => [k, round(v)])),
     chunks: [{ start: 0, end: round(duration), text: scene.spoken }],
