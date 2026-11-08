@@ -1418,6 +1418,7 @@ export class Stage {
     const box = this._register(o.id, x, y, bgSize, bgSize, o.bg === 'square' ? 'rect' : o.bg ? 'ellipse' : 'rect');
     // Nor has an icon without a label.
     if (this.engine.layoutLog && !o.label) this._pendingInfo = { bare: true };
+    let labelBox = null;
     if (o.label) {
       const ls = o.labelSize ?? 36;
       this.ctx.save();
@@ -1425,6 +1426,7 @@ export class Stage {
       const lw = this.ctx.measureText(String(o.label)).width;
       this.ctx.restore();
       const ly = y + bgSize / 2 + ls * 0.45 + ls / 2;
+      labelBox = geom(x, ly, lw, ls);
       // The label belongs to the icon for the camera, and for arrows, which
       // leave and arrive outside it, but not for s.get().
       if (o.id !== undefined && o.id !== null) this._ids.set(String(o.id), { ...box, label: this._designBox(x, ly, lw, ls * 1.1) });
@@ -1432,7 +1434,14 @@ export class Stage {
     }
     this._iconPaths(name, size);
     const life = this._life(o, 'icon', { label: name });
+    // bottom stays the icon's own, so older projects place things where they did.
+    // With a label, label is its box and outer holds the icon and its label.
     const g = geom(x, y, bgSize, bgSize);
+    if (labelBox) {
+      const left = Math.min(g.left, labelBox.left);
+      const right = Math.max(g.right, labelBox.right);
+      Object.assign(g, { label: labelBox, outer: geom((left + right) / 2, (g.top + labelBox.bottom) / 2, right - left, labelBox.bottom - g.top) });
+    }
     if (!life) return g;
     this._push(x, y, life, o);
     const settled = this._settled(life);

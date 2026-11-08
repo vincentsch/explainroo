@@ -228,3 +228,23 @@ test('with "defaults": "0.5", gap leaves that many pixels free at a point end, a
   assert.deepEqual(await ends({ defaults: '0.5' }), [[340, 860], [300, 900], [300, 320]]);
   assert.deepEqual(await ends({}), [[300, 900], [300, 900], [300, 320]]);
 });
+
+test('an icon with a label returns the label\'s box and an outer box with both, and bottom stays the icon\'s own', { skip }, async (t) => {
+  const { issues, more } = await check(project(t, {}, {
+    icons: `globalThis.labelled = s.icon('lock', { x: 600, y: 400, size: 120, label: 'Encrypted', at: 0 });
+    globalThis.plain = s.icon('lock', { x: 1300, y: 400, size: 120, at: 0 });
+    s.text('Under the label', { x: 600, y: globalThis.labelled.outer.bottom + 40, size: 40, at: 0 });
+    s.text('Under the icon', { x: 1300, y: globalThis.labelled.bottom + 30, size: 40, at: 0 });`,
+  }), (page) => page.evaluate(() => ({ labelled: globalThis.labelled, plain: globalThis.plain })));
+  const { labelled, plain } = more;
+  assert.equal(labelled.bottom, 460);
+  assert.equal(labelled.label.top, 460 + 36 * 0.45);
+  assert.equal(labelled.label.bottom, labelled.label.top + 36);
+  assert.equal(labelled.label.x, 600);
+  assert.ok(labelled.label.w > 100);
+  assert.deepEqual([labelled.outer.top, labelled.outer.bottom], [340, labelled.label.bottom]);
+  assert.equal(labelled.outer.left, Math.min(540, labelled.label.left));
+  assert.equal('label' in plain || 'outer' in plain, false);
+  // Text below outer clears the label, as check sees it.
+  assert.deepEqual(issues.filter((i) => i.level !== 'hint'), []);
+});

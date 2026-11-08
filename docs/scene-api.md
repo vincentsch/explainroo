@@ -229,7 +229,9 @@ s.image('assets/cables.png', { w: 1000, frame: 'card', at: 'cables', kenburns: t
 The 1,854 icons come from Lucide. Search them with `explainroo icons <word>`.
 Old Lucide names work too. Icon options: `size` (120), `color`, `weight` (2),
 `bg` (`true`, `'circle'`, `'square'` or a color), `bgScale`, `label`,
-`labelSize`, `labelColor`, `labelFont`.
+`labelSize`, `labelColor`, `labelFont`. Its `bottom` is the icon's own, above
+its label. With a label, it also returns `label`, the label's box, and
+`outer`, a box with both, so `y: ic.outer.bottom + 40` goes below the label.
 
 `s.image(src, options)` draws a file from `assets/`. Options: `w` and/or `h`
 (the image keeps its shape), `fit` (`cover` or `contain`), `radius`, `frame`
