@@ -44,6 +44,7 @@ videos/<name>/
 | `boil` | 0 | redraws per second of hand-drawn lines; 0 keeps them still |
 | `watermark` | `"explainroo.com"` | small text in a corner, or `false` |
 | `images` | none | `{ "model": "best" or "cheap", "style": "..." }` |
+| `clipBudget` | none | the most all AI clips of the project may cost together, in US dollars, like `0.40`. `clip` stops before a clip that would go over it; see `explainroo docs clips` |
 | `brand` | none | colors, fonts and logo for `s.ui`; its `accent` also colors the spoken word in captions; see `explainroo docs product-demos` |
 | `fonts` | none | the video's own font files, see `explainroo docs product-demos` |
 

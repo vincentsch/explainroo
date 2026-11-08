@@ -90,8 +90,49 @@ const publicName = (request) => `assets/clips/${request.name}.mp4`;
 // unless it has a volume, so a clip bought with sound gets one.
 const clipLine = (request) => `s.clip('${publicName(request)}', { w: s.safe.w, h: s.safe.h, fit: 'cover', ${request.audio ? 'volume: 1, ' : ''}at: 0 });`;
 
+const cents = (n) => Math.round(n * 10000) / 10000;
+
+// What the clips in the record cost: the known prices, and the estimates of the
+// tries whose cost isn't known and that may have cost money, like a job that is
+// still running. A refused try cost nothing.
+function clipCosts(project) {
+  let known = 0;
+  let estimated = 0;
+  for (const job of listJobs(project.dir)) {
+    if (job.kind !== 'clip') continue;
+    if (typeof job.cost_usd === 'number') known += job.cost_usd;
+    else if (job.status !== 'refused') estimated += job.estimated_usd || 0;
+  }
+  return { known: cents(known), estimated: cents(estimated), total: cents(known + estimated) };
+}
+
 function clipSpend(project) {
-  return Math.round(listJobs(project.dir).filter((job) => job.kind === 'clip').reduce((sum, job) => sum + (job.cost_usd || 0), 0) * 10000) / 10000;
+  return clipCosts(project).known;
+}
+
+// The clip budget against the record, or null without one. `from` says where the
+// budget came from, for the messages. Without a project nothing is spent yet.
+export function budgetState(project, budget, from = '--budget') {
+  if (budget === null || budget === undefined) return null;
+  const costs = project ? clipCosts(project) : { known: 0, estimated: 0, total: 0 };
+  return { budget_usd: budget, budget_from: from, budget_spent_usd: costs.total, budget_estimated_usd: costs.estimated, budget_left_usd: Math.max(0, cents(budget - costs.total)) };
+}
+
+function budgetName(state) {
+  return `the clip budget of ${usd(state.budget_usd)} from ${state.budget_from === 'video.json' ? '"clipBudget" in video.json' : '--budget'}`;
+}
+
+function spentWords(state) {
+  return `The clips in the record come to ${usd(state.budget_spent_usd)}${state.budget_estimated_usd ? `, ${usd(state.budget_estimated_usd)} of it estimated for tries whose cost isn't known yet` : ''}`;
+}
+
+// Stops a purchase that the budget can't take, before anything is sent.
+function checkBudget(state, maxCost) {
+  if (!state) return;
+  if (state.budget_left_usd <= 0) throw new ProjectError(`${spentWords(state)}, so nothing is left of ${budgetName(state)}. Nothing was spent. Ask the user whether to raise the budget.`);
+  if (maxCost !== undefined && maxCost > state.budget_left_usd + 1e-9) {
+    throw new ProjectError(`this clip may cost up to ${usd(maxCost)} with --max-cost. ${spentWords(state)}, so that would go over ${budgetName(state)}, where ${usd(state.budget_left_usd)} is left. Nothing was spent. Use --max-cost ${state.budget_left_usd} or less, or leave out --max-cost, and then the cap is what is left.`);
+  }
 }
 
 function stopped(job, reason) {
@@ -263,13 +304,21 @@ function priced(request, { model, price }, maxCost) {
   };
 }
 
-function dryRun(project, request, quoted, decision, maxCost) {
+// What is left of the budget, and whether the real run would take this clip: the
+// cap must fit in what is left, and without a cap the price must.
+function budgetFields(state, price, maxCost) {
+  if (!state) return {};
+  return { ...state, within_budget: state.budget_left_usd > 0 && (maxCost ?? price.usd) <= state.budget_left_usd + 1e-9 };
+}
+
+function dryRun(project, request, quoted, decision, maxCost, budget) {
   return {
     dry_run: true,
     project: project.dir,
     name: request.name,
     file: path.join(project.dir, publicName(request)),
     ...priced(request, quoted, maxCost),
+    ...budgetFields(budget, quoted.price, maxCost),
     would: decision.action,
     ...(decision.job ? { job: shortId(decision.job) } : {}),
     ...(decision.reason ? { reason: decision.reason } : {}),
@@ -279,11 +328,23 @@ function dryRun(project, request, quoted, decision, maxCost) {
 
 // A dry run outside a project. It reads the price list like any dry run, and it has
 // no record to look in and no folder for the file, so it writes nothing.
-export async function quoteClip(request, { maxCost } = {}) {
-  return { dry_run: true, project: null, ...priced(request, await quote(request), maxCost) };
+export async function quoteClip(request, { maxCost, budget = null } = {}) {
+  const quoted = await quote(request);
+  return { dry_run: true, project: null, ...priced(request, quoted, maxCost), ...budgetFields(budgetState(null, budget), quoted.price, maxCost) };
 }
 
-export async function buyClip(project, request, { fresh = false, maxCost, dryRun: dry = false, noWait = false, log = () => {}, notice = () => {} } = {}) {
+// `budget` is what all clips of the project may cost together, from --budget or
+// "clipBudget" in video.json, and `budgetFrom` says which.
+export async function buyClip(project, request, options = {}) {
+  const state = budgetState(project, options.budget, options.budgetFrom);
+  const r = await buy(project, request, { ...options, budget: state });
+  if (r.dry_run || !options.budget) return r;
+  // What is left once this run is over, with any purchase it made.
+  const after = budgetState(project, options.budget, options.budgetFrom);
+  return { ...r, budget_usd: after.budget_usd, budget_left_usd: after.budget_left_usd };
+}
+
+async function buy(project, request, { fresh = false, maxCost, budget = null, dryRun: dry = false, noWait = false, log = () => {}, notice = () => {} } = {}) {
   const { dir } = project;
   if (!/^[\w-]+$/.test(request.name)) throw new ProjectError('the clip name may only use letters, digits, "-" and "_" (it becomes assets/clips/<name>.mp4)');
   const key = clipKey(request);
@@ -294,7 +355,7 @@ export async function buyClip(project, request, { fresh = false, maxCost, dryRun
   const last = fresh ? listAttempts(dir, key).at(-1) : null;
   if (last?.status === 'running') decision = { action: 'resume', job: last, instead: true };
   else if (beingSent(last)) decision = { action: 'stop', job: last, reason: 'unknown' };
-  if (dry) return dryRun(project, request, await quote(request), decision, maxCost);
+  if (dry) return dryRun(project, request, await quote(request), decision, maxCost, budget);
   if (decision.action === 'use') {
     const placed = placeOutput(dir, decision.job, [publicName(request)]);
     return finished(project, placed.job, { reused: true, moved: placed.moved, newer: decision.newer });
@@ -306,15 +367,21 @@ export async function buyClip(project, request, { fresh = false, maxCost, dryRun
   }
   if (decision.action === 'stop') throw stopped(decision.job, decision.reason);
 
-  // Nothing is written to the record until the request can really go out.
-  if (maxCost === undefined) throw new ProjectError('this costs money, so it needs --max-cost. Ask the user how much they want to spend. --dry-run shows the price and spends nothing.');
+  // Nothing is written to the record until the request can really go out. With a
+  // budget and no --max-cost, the cap is what is left of the budget.
+  if (maxCost === undefined && !budget) throw new ProjectError('this costs money, so it needs --max-cost, or a budget for all clips with --budget or "clipBudget" in video.json. Ask the user how much they want to spend. --dry-run shows the price and spends nothing.');
+  checkBudget(budget, maxCost);
+  const cap = maxCost ?? budget.budget_left_usd;
   const { model, price } = await quote(request);
-  if (price.usd > maxCost) throw new ProjectError(`this clip costs about ${usd(price.usd)}, which is above the cap of ${usd(maxCost)}. Nothing was spent. Ask the user whether to raise --max-cost, or make it shorter or smaller.`);
+  if (price.usd > cap) {
+    if (maxCost === undefined) throw new ProjectError(`this clip costs about ${usd(price.usd)}, and ${usd(cap)} is left of ${budgetName(budget)}. Nothing was spent. Ask the user whether to raise the budget, or make the clip shorter or smaller.`);
+    throw new ProjectError(`this clip costs about ${usd(price.usd)}, which is above the cap of ${usd(maxCost)}. Nothing was spent. Ask the user whether to raise --max-cost, or make it shorter or smaller.`);
+  }
   openrouter.key(dir);
   serviceUrl(openrouter);
   let job;
   try {
-    job = createJob(dir, key, { kind: 'clip', provider: openrouter.id, attempt: decision.attempt, estimated_usd: price.usd, max_cost_usd: maxCost, rate: { name: price.rate_name, usd_per_second: price.usd_per_second }, request });
+    job = createJob(dir, key, { kind: 'clip', provider: openrouter.id, attempt: decision.attempt, estimated_usd: price.usd, max_cost_usd: cap, ...(budget ? { budget_usd: budget.budget_usd } : {}), rate: { name: price.rate_name, usd_per_second: price.usd_per_second }, request });
   } catch (e) {
     if (e.code !== 'EEXIST') throw e;
     throw stopped(listAttempts(dir, key).find((a) => a.attempt === decision.attempt), 'unknown');
@@ -344,6 +411,15 @@ export async function buyClip(project, request, { fresh = false, maxCost, dryRun
   return followJob(project, job, { log });
 }
 
+// The budget in a dry run: what is left, and whether this clip fits in it.
+function budgetLine(r) {
+  const state = `Budget: ${usd(r.budget_usd)} for all clips${r.budget_from === 'video.json' ? ', from "clipBudget" in video.json' : ''}. ${r.project === null ? 'Without a project nothing is spent yet' : spentWords(r)}, so ${usd(r.budget_left_usd)} is left.`;
+  if (r.within_budget) return `${state} This clip fits.`;
+  if (r.budget_left_usd <= 0) return `${state} The real run would refuse.`;
+  if (r.max_cost_usd !== null && r.max_cost_usd > r.budget_left_usd) return `${state} With --max-cost ${r.max_cost_usd} it would go over, so the real run would refuse. Use --max-cost ${r.budget_left_usd} or less.`;
+  return `${state} This clip would go over it, so the real run would refuse.`;
+}
+
 function moveLine(m) {
   return m.to ? `The file that was at ${m.from} moved to ${m.to}.${m.known ? ' Asking for its request again brings it back.' : ''}` : `The link that was at ${m.from} is gone. What it pointed at was not touched.`;
 }
@@ -360,15 +436,19 @@ export function formatClip(r) {
       'That is an estimate. The real cost goes in the record after the job, and a failed try may cost money too.',
     ];
     if (r.within_cap === false) lines.push(`This is above the cap of ${usd(r.max_cost_usd)}, so the real run would refuse.`);
+    if (r.budget_usd !== undefined) lines.push(budgetLine(r));
     if (r.project === null) {
       lines.push("No project was used, so the aspect is 16:9 unless --aspect says otherwise. In a project, it follows the project's frame.");
-      lines.push('Nothing was spent. A clip is bought into a project. To buy it, put the project folder first and use --max-cost instead of --dry-run. Ask the user how much they want to spend.');
+      lines.push(`Nothing was spent. A clip is bought into a project. To buy it, put the project folder first and ${r.budget_usd !== undefined ? 'leave out --dry-run' : 'use --max-cost instead of --dry-run'}. Ask the user how much they want to spend.`);
       return lines.join('\n');
     }
     if (r.would === 'use') lines.push(`This request is already bought (job ${r.job}), so the real run returns its file for free.`);
     if (r.would === 'resume') lines.push(`This request is already running (job ${r.job}), so the real run picks it up and buys nothing.`);
     if (r.would === 'stop') lines.push(r.sending ? `Another run is sending this request (job ${r.job}) right now, so the real run stops and asks you to wait for it.` : `An earlier try of this request (job ${r.job}) has no good result, so the real run stops and asks for --new.`);
-    lines.push(r.would === 'buy' ? 'Nothing was spent. To buy it, run the same command without --dry-run and with --max-cost. Ask the user how much they want to spend.' : 'Nothing was spent.');
+    lines.push(r.would !== 'buy' ? 'Nothing was spent.'
+      : r.within_budget === false ? 'Nothing was spent. Ask the user whether to raise the budget, or make the clip shorter or smaller.'
+        : r.budget_usd !== undefined ? 'Nothing was spent. To buy it, run the same command without --dry-run. With the budget, --max-cost is not needed, and then the cap is what is left.'
+          : 'Nothing was spent. To buy it, run the same command without --dry-run and with --max-cost. Ask the user how much they want to spend.');
     return lines.join('\n');
   }
   const rel = publicName(r);
@@ -377,7 +457,7 @@ export function formatClip(r) {
   }
   const lines = r.reused
     ? [`${rel}  already bought on ${localDay(r.time)} (job ${r.job}), so nothing was spent. To buy it again, add --new.`]
-    : [`${rel}  ${r.model}  ${r.seconds}s ${r.aspect} ${r.resolution}${r.audio ? ' with sound' : ''}  ${r.cost_usd !== null ? usd(r.cost_usd) : `cost unknown, about ${usd(r.estimated_usd)}`}  (clips so far: ${usd(r.total_usd)})`];
+    : [`${rel}  ${r.model}  ${r.seconds}s ${r.aspect} ${r.resolution}${r.audio ? ' with sound' : ''}  ${r.cost_usd !== null ? usd(r.cost_usd) : `cost unknown, about ${usd(r.estimated_usd)}`}  (clips so far: ${usd(r.total_usd)}${r.budget_usd !== undefined ? `, ${usd(r.budget_left_usd)} left of the ${usd(r.budget_usd)} budget` : ''})`];
   if (r.over_cap) lines.push(`It cost ${usd(r.cost_usd)}, which is above the cap of ${usd(r.max_cost_usd)}. The price before the job was an estimate.`);
   if (r.newer_attempt) lines.push(`A newer try, job ${r.newer_attempt}, has no good answer, so this is the earlier one.`);
   for (const m of r.moved) lines.push(moveLine(m));

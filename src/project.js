@@ -75,6 +75,9 @@ export const DEFAULTS = {
   images: null,
   brand: null,
   fonts: [],
+  // The most that all AI clips of the project may cost, in US dollars. It changes
+  // no frame, so it stays out of the resolved settings and the render identity.
+  clipBudget: null,
 };
 
 // Settings for the UI kit (s.ui), for product demos in a brand's own look.
@@ -338,6 +341,12 @@ export function normalizeConfig(input, dir = '.', { language: version, overrides
   return cfg;
 }
 
+// An amount of US dollars for all clips together, like 0.40.
+export function checkClipBudget(value, where) {
+  if (!(typeof value === 'number' && Number.isFinite(value) && value > 0)) fail(`${where} must be an amount in US dollars above 0, like 0.40`);
+  return value;
+}
+
 // A language code that explainroo speaks, like "es".
 export function checkLanguage(language) {
   if (typeof language !== 'string' || !Object.hasOwn(LANGUAGES, language)) fail(`language must be one of ${Object.keys(LANGUAGES).join(', ')}`);
@@ -349,6 +358,8 @@ function settingsOf(raw, input, dir, block = null) {
   const cfg = { ...DEFAULTS, ...raw };
   delete cfg.languages;
   delete cfg.sizes;
+  if (cfg.clipBudget !== null) checkClipBudget(cfg.clipBudget, 'clipBudget in video.json');
+  delete cfg.clipBudget;
   checkLanguage(cfg.language);
   // A language without a Kokoro voice needs a voice of its own, and never falls back to Kokoro.
   const noKokoro = () => fail(noKokoroVoice(cfg.language, cfg.language === (input.language ?? DEFAULTS.language) ? 'main' : 'version'));
@@ -654,6 +665,7 @@ export function loadProject(arg, overrides = {}) {
     sizeOverride: settings.size,
     // The names of the sizes with a block in "sizes", for package and history.
     sizeBlocks: raw.sizes ? Object.keys(raw.sizes) : [],
+    clipBudget: raw.clipBudget ?? null,
     ownPace,
     paths: { build, out, voice: path.join(build, 'voice'), scenes: scenesPath, script: files.script, strings: files.strings, post: files.post, look: config.look ? path.resolve(dir, config.theme) : null },
   };

@@ -1,7 +1,7 @@
 // explainroo command line.
 import fs from 'node:fs';
 import path from 'node:path';
-import { loadProject, ProjectError, THEMES, MUSIC_STYLES, FORMATS, resolveSize, normalizeConfig, scriptName, checkLanguage, noKokoroVoice } from './project.js';
+import { loadProject, ProjectError, THEMES, MUSIC_STYLES, FORMATS, resolveSize, normalizeConfig, scriptName, checkClipBudget, checkLanguage, noKokoroVoice } from './project.js';
 import { layoutAreas } from '../engine/layout.js';
 import { suggest } from '../engine/util.js';
 import { ScriptError } from './script.js';
@@ -86,7 +86,8 @@ Images (optional, costs money, needs an OpenRouter key from "explainroo connect 
 AI video clips (optional, costs money, uses the same OpenRouter key as images)
   clip [project] "<what it shows>" --seconds 6 --max-cost 2   buy a short clip as assets/clips/<name>.mp4
                         (--aspect 16:9, --model cheap|quality, --resolution 720p, --audio, --name <name>,
-                        --no-wait returns right after the request)
+                        --no-wait returns right after the request). --budget 0.40, or "clipBudget" in
+                        video.json, is the most all clips of the project may cost, and then --max-cost is optional
                         --dry-run shows the price and spends nothing. It needs no key and no project, and
                         without a project it prices 16:9 at 720p without sound unless the flags say otherwise
                         The same command never buys twice (--new buys it again, --resume <id> continues a job)
@@ -303,14 +304,19 @@ export async function main(argv) {
         const fromRequest = ['seconds', 'aspect', 'model', 'resolution', 'audio', 'name'].filter((flag) => flags[flag] !== undefined);
         if (!project && resume !== undefined) throw new ProjectError('--resume continues a job from the record of a project, and there is no video.json here. Put the project folder first: explainroo clip videos/<name> --resume <id>');
         if (resume !== undefined && (pos.length || fromRequest.length)) throw new ProjectError(`--resume takes the whole request from the job, so leave out ${pos.length ? 'the prompt' : `--${fromRequest[0]}`}.`);
-        if (resume === undefined && pos.length !== 1) throw new ProjectError('usage: explainroo clip [project] "<what the clip shows>" --seconds 6 --max-cost 2 [--dry-run] [--aspect 16:9] [--model cheap|quality] [--resolution 720p] [--audio] [--name <name>] [--no-wait] [--new] [--resume <id>]. Put the prompt in quotes, and check the project folder.');
+        if (resume === undefined && pos.length !== 1) throw new ProjectError('usage: explainroo clip [project] "<what the clip shows>" --seconds 6 --max-cost 2 [--budget 0.40] [--dry-run] [--aspect 16:9] [--model cheap|quality] [--resolution 720p] [--audio] [--name <name>] [--no-wait] [--new] [--resume <id>]. Put the prompt in quotes, and check the project folder.');
         if (!project && !flags['dry-run']) throw new ProjectError('there is no video.json here, and a clip is bought into a project. Without a project only --dry-run works, and it shows the price. Make a project with "explainroo init videos/<name>", then put its folder first: explainroo clip videos/<name> "<what it shows>" --seconds 6 --max-cost 2');
         const request = resume !== undefined ? clipJobRequest(project, resume) : clipRequest(project, { prompt: pos[0], seconds: num(flags.seconds, 'seconds'), aspect: textFlag(flags, 'aspect'), model: textFlag(flags, 'model'), resolution: textFlag(flags, 'resolution'), audio: !!flags.audio, name: textFlag(flags, 'name') });
         const maxCost = num(flags['max-cost'], 'max-cost');
         if (maxCost !== undefined && !(maxCost > 0)) throw new ProjectError('--max-cost must be an amount in US dollars above 0, like 2 or 0.50');
+        // One budget for all clips of the project. --budget wins over "clipBudget" in video.json.
+        const flagBudget = num(flags.budget, 'budget');
+        if (flagBudget !== undefined) checkClipBudget(flagBudget, '--budget');
+        const budget = flagBudget ?? project?.clipBudget ?? null;
+        const budgetFrom = flagBudget !== undefined ? '--budget' : 'video.json';
         const r = project
-          ? await buyClip(project, request, { fresh: !!flags.new, maxCost, dryRun: !!flags['dry-run'], noWait: !!flags['no-wait'], log, notice })
-          : await quoteClip(request, { maxCost });
+          ? await buyClip(project, request, { fresh: !!flags.new, maxCost, budget, budgetFrom, dryRun: !!flags['dry-run'], noWait: !!flags['no-wait'], log, notice })
+          : await quoteClip(request, { maxCost, budget });
         print(formatClip(r), r);
         return 0;
       }

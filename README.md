@@ -232,8 +232,10 @@ is never sent again by itself. `explainroo history` shows the record, and
 `explainroo clip` buys a short video clip that an AI model makes from a text
 prompt. It goes through OpenRouter on your own key, and the clip plays in a
 scene like any other video file. `--dry-run` shows the price and spends
-nothing, also before you have a project. A paid run needs `--max-cost`, and it
-refuses when the price is higher. Clips work for short shots of the real world,
+nothing, also before you have a project, and it lists the lengths the model
+takes. A paid run needs `--max-cost`, and it refuses when the price is higher.
+`"clipBudget": 0.40` in `video.json` is one budget for all clips of a video, and
+`clip` stops before a clip that would go over it. Clips work for short shots of the real world,
 like a street or food. They get text and diagrams wrong, and a character looks
 different in each clip.
 `explainroo docs clips` has the details.

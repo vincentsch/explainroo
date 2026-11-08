@@ -117,6 +117,10 @@ never call a partner the best. The steps are `voice`, `timing`, `images`,
 `clips`, `music`, `sharing` and `posting`. `publish` and `share` work as
 names for the last two.
 
+When the user gives a budget for AI clips, put it in `video.json` as
+`"clipBudget": 0.40`. `clip` then stops before a clip that would go over it,
+and it says how much is left.
+
 `share` and `publish` are the only commands that upload a video, so run them
 only when the user asks. Run `publish` with `--dry-run` first and show the
 user the plan. Add `--yes` only after the user said yes. When the user wants to

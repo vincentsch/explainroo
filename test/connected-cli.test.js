@@ -691,6 +691,97 @@ test('a dry run in the project folder itself works as it does with the folder fi
   assert.deepEqual([r.project, r.file, r.would, r.price_usd], [dir, path.join(dir, `assets/clips/${r.name}.mp4`), 'buy', 0.18]);
 });
 
+// One budget for all clips of a video, so an agent never splits it by hand. Before a
+// purchase the clip's cap goes on top of what the record already holds, and a sum
+// over the budget stops before anything is sent.
+test('a clip budget from --budget or video.json stops the clip that would go over it, before anything is spent', async (t) => {
+  const { dir, cli, fake } = await setup(t);
+  const posts = () => fake.count('openrouter', CLIP_POST);
+  const dry = JSON.parse((await cli([...clip(dir, STREET, '--dry-run', '--budget', '0.40'), '--json'], noKey(t))).stdout);
+  assert.deepEqual([dry.budget_usd, dry.budget_from, dry.budget_spent_usd, dry.budget_left_usd, dry.within_budget], [0.4, '--budget', 0, 0.4, true]);
+  const dryText = (await cli(clip(dir, STREET, '--dry-run', '--budget', '0.40'), noKey(t))).stdout;
+  assert.match(dryText, /^Budget: \$0\.40 for all clips\. The clips in the record come to \$0\.00, so \$0\.40 is left\. This clip fits\.$/m);
+  assert.match(dryText, /With the budget, --max-cost is not needed, and then the cap is what is left\./);
+
+  // With a budget and no --max-cost, the cap is what is left of it.
+  const first = JSON.parse((await cli([...clip(dir, STREET, '--budget', '0.40'), '--json'])).stdout);
+  assert.equal(first.status, 'done');
+  assert.deepEqual([first.cost_usd, first.max_cost_usd, first.budget_usd, first.budget_left_usd], [0.18, 0.4, 0.4, 0.22]);
+  assert.equal(jobs(dir)[0].budget_usd, 0.4);
+
+  // "clipBudget" in video.json does the same for every clip of the project.
+  fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ clipBudget: 0.4 }));
+  const second = await cli(clip(dir, HARBOR));
+  assert.equal(second.code, 0, second.text);
+  assert.match(second.stdout, /\$0\.18 {2}\(clips so far: \$0\.36, \$0\.04 left of the \$0\.40 budget\)/);
+  assert.equal(posts(), 2);
+
+  // A third clip of $0.12 doesn't fit in the $0.04 that is left.
+  const third = ['clip', dir, 'Rain on a window at night, close up', '--seconds', '4'];
+  const over = JSON.parse((await cli([...third, '--dry-run', '--json'])).stdout);
+  assert.deepEqual([over.budget_from, over.budget_spent_usd, over.budget_left_usd, over.within_budget], ['video.json', 0.36, 0.04, false]);
+  const overText = (await cli([...third, '--dry-run'])).stdout;
+  assert.match(overText, /Budget: \$0\.40 for all clips, from "clipBudget" in video\.json\. The clips in the record come to \$0\.36, so \$0\.04 is left\. This clip would go over it, so the real run would refuse\./);
+  assert.match(overText, /Nothing was spent\. Ask the user whether to raise the budget, or make the clip shorter or smaller\.$/m);
+  const refused = await cli(third);
+  assert.equal(refused.code, 1);
+  assert.match(refused.stderr, /^error: this clip costs about \$0\.12, and \$0\.04 is left of the clip budget of \$0\.40 from "clipBudget" in video\.json\. Nothing was spent\./m);
+  // A cap that fits in the budget still has to be above the price.
+  const lists = fake.count('openrouter', CLIP_MODELS_LIST);
+  const capped = await cli([...third, '--max-cost', '0.10', '--budget', '1']);
+  assert.equal(capped.code, 1);
+  assert.match(capped.stderr, /this clip costs about \$0\.12, which is above the cap of \$0\.10/);
+  // A cap above what is left stops before the price list is even read.
+  const tooHigh = await cli([...third, '--max-cost', '0.05']);
+  assert.match(tooHigh.stderr, /^error: this clip may cost up to \$0\.05 with --max-cost\. The clips in the record come to \$0\.36, so that would go over the clip budget of \$0\.40 from "clipBudget" in video\.json, where \$0\.04 is left\. Nothing was spent\. Use --max-cost 0\.04 or less, or leave out --max-cost, and then the cap is what is left\.$/m);
+  assert.equal(fake.count('openrouter', CLIP_MODELS_LIST), lists + 1);
+  // --budget wins over video.json, and a clip bought before costs nothing again.
+  assert.equal((await cli([...third, '--budget', '1'])).code, 0);
+  const again = JSON.parse((await cli([...clip(dir, STREET), '--json'])).stdout);
+  assert.deepEqual([again.reused, again.budget_left_usd], [true, 0]);
+  assert.equal(posts(), 3);
+  assert.equal(jobs(dir).length, 3);
+});
+
+test('a clip job whose cost is not known yet counts for the budget at its estimate, and a bad budget is an error', async (t) => {
+  const { dir, cli, fake } = await setup(t);
+  fake.plan('openrouter', CLIP_STATUS, running);
+  const started = await cli([...clip(dir, STREET, '--budget', '0.30'), '--no-wait']);
+  assert.equal(started.code, 0, started.text);
+  const dry = JSON.parse((await cli([...clip(dir, HARBOR, '--dry-run', '--budget', '0.30'), '--json'])).stdout);
+  assert.deepEqual([dry.budget_spent_usd, dry.budget_estimated_usd, dry.budget_left_usd, dry.within_budget], [0.18, 0.18, 0.12, false]);
+  assert.match((await cli(clip(dir, HARBOR, '--dry-run', '--budget', '0.30'))).stdout, /The clips in the record come to \$0\.18, \$0\.18 of it estimated for tries whose cost isn't known yet, so \$0\.12 is left\./);
+  for (const value of ['0', '-1', 'lots']) {
+    const r = await cli(clip(dir, HARBOR, '--budget', value));
+    assert.equal(r.code, 1, value);
+    assert.match(r.stderr, value === 'lots' ? /--budget must be a number/ : /--budget must be an amount in US dollars above 0, like 0\.40/);
+  }
+  fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ clipBudget: '40 cents' }));
+  assert.match((await cli(clip(dir, HARBOR, '--dry-run'))).stderr, /clipBudget in video\.json must be an amount in US dollars above 0, like 0\.40/);
+  // Outside a project there is no record, so all of the budget is left.
+  const outside = await cli(['clip', HARBOR, '--seconds', '6', '--dry-run', '--budget', '0.10'], noKey(t), temp(t));
+  assert.match(outside.stdout, /^Budget: \$0\.10 for all clips\. Without a project nothing is spent yet, so \$0\.10 is left\. This clip would go over it, so the real run would refuse\.$/m);
+  // Without a budget a purchase still needs --max-cost, and the message names both.
+  fs.writeFileSync(path.join(dir, 'video.json'), '{}');
+  assert.match((await cli(clip(dir, HARBOR))).stderr, /it needs --max-cost, or a budget for all clips with --budget or "clipBudget" in video\.json/);
+  assert.equal(fake.count('openrouter', CLIP_POST), 1);
+});
+
+// The budget changes no frame, so it stays out of the settings the render uses.
+test('clipBudget stays out of the resolved settings and the render identity', async (t) => {
+  const { dir } = await setup(t);
+  const { loadProject, normalizeConfig } = await import('../src/project.js');
+  const { buildTimeline } = await import('../src/timeline.js');
+  const { renderIdentity } = await import('../src/pipeline.js');
+  const identity = () => { const p = loadProject(dir); return renderIdentity(p, buildTimeline(p, {})); };
+  const before = identity();
+  fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ clipBudget: 0.4 }));
+  assert.equal(loadProject(dir).clipBudget, 0.4);
+  assert.equal('clipBudget' in loadProject(dir).config, false);
+  assert.equal('clipBudget' in normalizeConfig({ clipBudget: 0.4 }), false);
+  assert.equal(identity(), before);
+});
+
 test('a dry run says when the cap is too low, and when the real run would buy nothing', async (t) => {
   const { dir, cli } = await setup(t);
   const low = await cli(clip(dir, STREET, '--dry-run', '--max-cost', '0.10'));

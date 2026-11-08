@@ -65,10 +65,23 @@ amount in US dollars as the cap:
 explainroo clip videos/<name> "A busy street at dusk in the rain" --seconds 6 --max-cost 2
 ```
 
-A run that buys needs `--max-cost`. When the price is above the cap, or can't be
-worked out, the command stops before any request goes out. The price is an
-estimate. The real cost goes in the record after the job, and the command says so
-if it came out above the cap.
+A run that buys needs `--max-cost`, or a budget for all clips. When the price is
+above the cap, or can't be worked out, the command stops before any request goes
+out. The price is an estimate. The real cost goes in the record after the job, and
+the command says so if it came out above the cap.
+
+When the user gives one amount for all the clips of a video, put it in
+`video.json` as `"clipBudget": 0.40`, or pass `--budget 0.40` to `clip`. `--budget`
+wins over `video.json`. Before each purchase, explainroo adds the clip's cap to
+what the clips in the project's record already cost. When the sum is over the
+budget, it stops before anything is sent and says how much is left. With a budget,
+`--max-cost` is optional, and then the cap is what is left. A try whose cost isn't
+known yet, like a job that is still running, counts at its estimate. The dry run
+shows what is left and whether the clip fits:
+
+```bash
+explainroo clip videos/<name> "A busy street at dusk in the rain" --seconds 6 --dry-run --budget 0.40
+```
 
 The file is `assets/clips/<name>.mp4`, and the command prints the line to use:
 
@@ -83,7 +96,8 @@ anything inside a clip.
 | Option | What it does |
 | --- | --- |
 | `--seconds` | The length, one that the model takes. Required. |
-| `--max-cost` | The most it may cost, in US dollars. Required when it buys. |
+| `--max-cost` | The most it may cost, in US dollars. Required when it buys, unless there is a budget. |
+| `--budget` | The most all clips of the project may cost together, in US dollars. It wins over `"clipBudget"` in `video.json`. |
 | `--dry-run` | Shows the price and spends nothing. It works without a project too. |
 | `--aspect` | `16:9` by default for a wide project and without a project, and `9:16` for any other project. `fit: 'cover'` crops either one to a square or 4:5 frame. |
 | `--model` | `cheap` (the default) is `google/veo-3.1-lite`, and `quality` is `google/veo-3.1`. A full OpenRouter id works too. |
