@@ -28,7 +28,7 @@ take the project folder first, and every command accepts `--json`.
 | `voices`, `say "text"` | lists Kokoro voices with their languages (`--language es`, `ja` or `zh` filters voices), or makes a sample in the chosen voice's language |
 | `voices [project] --provider <id>` | lists the names, ids and labels available to the key of `elevenlabs` or `cartesia` (`--language`, `--json`) |
 | `themes`, `formats`, `icons <word>` | lists the looks, lists the sizes with each one's content area with and without the watermark, searches the 1,854 icons |
-| `doctor [project]` | checks Node, ffmpeg, Chrome, the models, and espeak-ng and Python with misaki for other languages, for one project when given (`--fetch` downloads only English models) |
+| `doctor [project]` | checks Node, ffmpeg, Chrome, the models, and espeak-ng and Python with misaki for other languages, for one project when given. Before there is a project, `--language es` checks one language, and `--language es,fr` several (`--fetch` downloads only English models) |
 | `docs [topic]` | prints the start page, or one topic (`--list` lists the topics) |
 | `version` | prints the version (`--version` also works) |
 

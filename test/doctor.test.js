@@ -155,3 +155,37 @@ test('doctor judges each language of a project with the voice it uses, and a fol
   assert.equal(none.status, 1);
   assert.match(none.stderr, /is not a video project \(no video\.json\)/);
 });
+
+// Before init there is no project to read, so --language says which language the
+// video will be in. Without it, doctor judges English, and espeak-ng is "not needed".
+test('doctor --language checks what a language needs before the project exists', (t) => {
+  const plain = doctor(['--json'], { t });
+  assert.equal(row(plain, 'espeak-ng').state, 'not needed');
+  assert.equal(plain.json.languages, null);
+  const r = doctor(['--language', 'es', '--json'], { t });
+  assert.equal(r.status, 1);
+  assert.equal(r.json.project, null);
+  assert.deepEqual(r.json.languages, ['es']);
+  assert.deepEqual(r.json.setup, [{ language: 'es', voice: 'kokoro' }]);
+  assert.equal(row(r, 'espeak-ng').state, 'missing');
+  assert.equal(row(r, 'espeak-ng').detail, `needed for Kokoro voices in Spanish. ${espeakInstall()}`);
+  assert.match(espeakInstall('linux'), /^Install it with "sudo apt install espeak-ng"\. A copy that is not installed for the whole system works too, also without root: set EXPLAINROO_ESPEAK to its espeak-ng program, or to a script that starts it\.$/);
+  assert.equal(row(r, 'language model').state, 'missing');
+  assert.equal(row(r, 'speech check model').state, 'not needed');
+  const ready = doctor(['--language', 'es'], { espeak: true, t });
+  assert.match(ready.stdout, /^For Spanish with a Kokoro voice\. Once the project exists, ".*doctor <project>" checks what it needs\.$/m);
+  assert.match(ready.stdout, /^ready {7}espeak-ng {11}.*, for Kokoro voices in Spanish$/m);
+  // Several languages, and German, which Kokoro has no voice for.
+  const both = doctor(['--language', 'fr,de', '--json'], { espeak: true, t });
+  assert.deepEqual(both.json.setup, [{ language: 'fr', voice: 'kokoro' }, { language: 'de', voice: null }]);
+  assert.equal(row(both, 'espeak-ng').detail.endsWith('for Kokoro voices in French'), true);
+  assert.match(doctor(['--language', 'de'], { t }).stdout, /^For German with a paid voice or a recording, because Kokoro has no voice for it\./);
+  assert.match(doctor([], { t }).stdout, /^For English narration with a Kokoro voice\. ".*doctor --language es" checks what another language needs, and ".*doctor <project>" what a project needs\.$/m);
+  // A code it doesn't know, no code, and a project with --language are errors.
+  const bad = doctor(['--language', 'xx'], { t });
+  assert.equal(bad.status, 1);
+  assert.match(bad.stderr, /^error: language must be one of en, es,/);
+  assert.match(doctor(['--language'], { t }).stderr, /^error: --language needs a value/);
+  const dir = project(t, { language: 'es' }, { 'script.md': '## intro\nHola.\n' });
+  assert.match(doctor([dir, '--language', 'fr'], { t }).stderr, /^error: doctor checks a project or the languages of --language, not both\./);
+});

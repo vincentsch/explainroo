@@ -108,7 +108,8 @@ Reference
                         shows the content area with the watermark and without it
   icons <word…>         search the 1,800+ built-in icons
   doctor [project]      check ffmpeg, Chrome, espeak-ng, misaki and models: each is ready, not needed or missing.
-                        With a project, for its languages and voices (--fetch downloads the English models)
+                        With a project, for its languages and voices. Before there is a project, --language es
+                        checks what that language needs (--fetch downloads the English models)
   docs [topic]          print the start page for coding agents, or one topic (--list shows the topics)
   version               print the version (--version works too)
 
@@ -372,7 +373,8 @@ export async function main(argv) {
       }
       case 'icons': return icons(pos, print);
       case 'doctor': {
-        const r = await doctor({ project: pos[0] === undefined ? null : loadProject(pos[0]), fetch: !!flags.fetch, log });
+        const language = textFlag(flags, 'language');
+        const r = await doctor({ project: pos[0] === undefined ? null : loadProject(pos[0]), language: language ?? null, fetch: !!flags.fetch, log });
         print(formatDoctor(r), r);
         return r.ok ? 0 : 1;
       }

@@ -20,7 +20,7 @@ function binary() {
   return process.env.EXPLAINROO_ESPEAK || 'espeak-ng';
 }
 
-const INSTALL = 'espeak-ng is needed for this language. Linux: sudo apt install espeak-ng. macOS: brew install espeak-ng. Windows: use the installer at https://github.com/espeak-ng/espeak-ng/releases. Or set EXPLAINROO_ESPEAK to its binary.';
+const INSTALL = 'espeak-ng is needed for this language. Linux: sudo apt install espeak-ng. macOS: brew install espeak-ng. Windows: use the installer at https://github.com/espeak-ng/espeak-ng/releases. For a copy that is not installed for the whole system, also without root, set EXPLAINROO_ESPEAK to its espeak-ng program, or to a script that starts it.';
 
 // The program Kokoro needs to read a language: espeak-ng, or Python with misaki for
 // Japanese and Chinese. English needs neither.
@@ -34,7 +34,7 @@ export function espeakInstall(platform = process.platform) {
   const how = platform === 'darwin' ? 'Install it with "brew install espeak-ng"'
     : platform === 'win32' ? 'Install it from https://github.com/espeak-ng/espeak-ng/releases'
       : 'Install it with "sudo apt install espeak-ng"';
-  return `${how}, or set EXPLAINROO_ESPEAK to its binary.`;
+  return `${how}. A copy that is not installed for the whole system works too, also without root: set EXPLAINROO_ESPEAK to its espeak-ng program, or to a script that starts it.`;
 }
 
 export function espeakVersion() {

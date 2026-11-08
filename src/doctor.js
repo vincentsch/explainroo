@@ -11,7 +11,7 @@ import { ffmpegVersion } from './ffmpeg.js';
 import { projectWord, selfCommand } from './history.js';
 import { ASR_MODEL, asrModel, cacheRoot, downloadSize, LANGUAGE_NAMES, LANGUAGES, loadASR, loadTTS, MODEL_NAMES, MULTILINGUAL_ASR_MODEL, TTS_MODEL, ttsDtype } from './models.js';
 import { espeakInstall, espeakVersion, misakiAvailable, misakiInstall, phonemeProgram } from './phonemes.js';
-import { normalizeConfig } from './project.js';
+import { checkLanguage, normalizeConfig, ProjectError } from './project.js';
 import { allOf, voiceProviders } from './services.js';
 
 export const DEFAULT_SETUP = [{ language: 'en', voice: LANGUAGES.en }];
@@ -25,8 +25,19 @@ export function projectSetup(project) {
   }));
 }
 
-// "kokoro" for a Kokoro voice, otherwise the provider of the voice.
+// The setup of `doctor --language es,fr` before a project exists: each language
+// with its Kokoro voice, or with no voice yet when Kokoro has none for it.
+export function languageSetup(value) {
+  const languages = [...new Set(String(value).split(',').map((x) => x.trim()).filter(Boolean))];
+  if (!languages.length) throw new ProjectError(`--language needs a code, like --language es. The codes are ${Object.keys(LANGUAGES).join(', ')}.`);
+  for (const language of languages) checkLanguage(language);
+  return languages.map((language) => ({ language, voice: LANGUAGES[language] }));
+}
+
+// "kokoro" for a Kokoro voice, otherwise the provider of the voice. A language
+// that Kokoro doesn't speak has no voice until a project picks one.
 function voiceRoute(voice) {
+  if (voice === null) return null;
   return typeof voice === 'string' ? 'kokoro' : voice.provider;
 }
 
@@ -50,10 +61,11 @@ export function setupNeeds(setup) {
 
 const names = (languages) => allOf(languages.map((language) => LANGUAGE_NAMES[language]));
 
-// `project` is a loaded project, or null for the default setup. Only `fetch`
-// downloads anything, and it fetches the English models.
-export async function doctor({ project = null, fetch = false, log = () => {} } = {}) {
-  const setup = project ? projectSetup(project) : DEFAULT_SETUP;
+// `project` is a loaded project, `language` the codes of --language, or neither for
+// the default setup. Only `fetch` downloads anything, and it fetches the English models.
+export async function doctor({ project = null, language = null, fetch = false, log = () => {} } = {}) {
+  if (project && language !== null) throw new ProjectError('doctor checks a project or the languages of --language, not both. With a project it checks the languages in its video.json.');
+  const setup = project ? projectSetup(project) : language !== null ? languageSetup(language) : DEFAULT_SETUP;
   const needs = setupNeeds(setup);
   const command = selfCommand();
   const rows = [];
@@ -130,6 +142,7 @@ export async function doctor({ project = null, fetch = false, log = () => {} } =
   return {
     ok: rows.every((r) => r.ok || !r.fails),
     project: project ? project.dir : null,
+    languages: language !== null ? setup.map((s) => s.language) : null,
     setup: setup.map(({ language, voice }) => ({ language, voice: voiceRoute(voice) })),
     checks: rows.map(({ fails, ...row }) => row),
   };
@@ -138,10 +151,12 @@ export async function doctor({ project = null, fetch = false, log = () => {} } =
 const ROUTE_WORDS = { kokoro: 'a Kokoro voice', recording: 'a recording' };
 
 export function formatDoctor(r, command = selfCommand()) {
-  const voices = r.setup.map(({ language, voice }) => `${LANGUAGE_NAMES[language]} with ${ROUTE_WORDS[voice] ?? voiceProviders()[voice].name}`);
+  const voices = r.setup.map(({ language, voice }) => `${LANGUAGE_NAMES[language]} with ${voice === null ? 'a paid voice or a recording, because Kokoro has no voice for it' : ROUTE_WORDS[voice] ?? voiceProviders()[voice].name}`);
   const lines = [r.project
     ? `For ${projectWord(r.project)}: ${allOf(voices)}.`
-    : `For English narration with a Kokoro voice. "${command} doctor <project>" checks what a project needs.`];
+    : r.languages
+      ? `For ${allOf(voices)}. Once the project exists, "${command} doctor <project>" checks what it needs.`
+      : `For English narration with a Kokoro voice. "${command} doctor --language es" checks what another language needs, and "${command} doctor <project>" what a project needs.`];
   for (const row of r.checks.filter((c) => !c.info)) lines.push(`${row.state.padEnd(10)}  ${row.name.padEnd(18)}  ${row.detail}`);
   for (const row of r.checks.filter((c) => c.info)) lines.push(`${row.name}: ${row.detail}`);
   return lines.join('\n');

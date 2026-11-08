@@ -41,6 +41,17 @@ On Windows, use the installer from the
 [espeak-ng releases page](https://github.com/espeak-ng/espeak-ng/releases).
 If the program is in another place, set `EXPLAINROO_ESPEAK` to its binary.
 English, Japanese, Chinese, paid voices and recordings do not need it.
+Before the project exists, `explainroo doctor --language es` checks what
+Spanish needs.
+
+Without root, use a copy that is not installed for the whole system. On
+Debian or Ubuntu, `apt-get download espeak-ng espeak-ng-data libespeak-ng1
+libpcaudio0 libsonic0` gets the packages, and `dpkg -x <file> ~/espeak`
+unpacks each of them. Then write a small script that sets `LD_LIBRARY_PATH`
+to `~/espeak/usr/lib/x86_64-linux-gnu` and `ESPEAK_DATA_PATH` to
+`~/espeak/usr/lib/x86_64-linux-gnu/espeak-ng-data`, and starts
+`~/espeak/usr/bin/espeak-ng` with the same arguments. Set `EXPLAINROO_ESPEAK`
+to that script. Every later command needs it, so tell the user to keep it set.
 
 The first speech check in another language downloads multilingual Whisper
 small. `doctor --fetch` still fetches only the English models. `verify`
