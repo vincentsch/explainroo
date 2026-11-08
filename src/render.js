@@ -10,7 +10,7 @@ import { buildChapters, toChaptersText, toChapterMetadata } from './chapters.js'
 import { resolveTimes } from './qa.js';
 import { outputPath, scriptName, TALL_FORMATS } from './project.js';
 import { newDefaults } from '../engine/util.js';
-import { recordVersion, relativeFile, sha256File } from './history.js';
+import { recordVersion, relativeFile, sha256File, versionLines } from './history.js';
 import { cacheRoot } from './models.js';
 
 export function renderFormat({ format = 'mp4', out, transparent = false } = {}) {
@@ -36,6 +36,17 @@ export async function render(project, opts = {}) {
   // A cover at a scene that isn't there, or a caption word that is too long, stops
   // the render here, before any frame is drawn.
   const plan = planExtras(project, timeline, { range: { from: from / project.config.fps, to: to / project.config.fps }, full: !partial });
+  // The finished video at `out` is this exact video and only the cover changed:
+  // it stays, and only the files next to it are written, as package does.
+  const kept = partial ? null : coverOnly(project, timeline, out, opts);
+  if (kept) {
+    const files = await step('writing the subtitles, chapters and cover', log, () => writeExtras(project, timeline, out.slice(0, -path.extname(out).length), { plan, log }));
+    recordVersion(project.dir, { ...kept, time: new Date().toISOString(), cover: project.config.cover, kept: true });
+    const made = files.coverMade;
+    log(`${path.relative(process.cwd(), out) || out} is still this exact video and only "cover" changed, so the video stays. Cover: ${made.how === 'unchanged' ? `unchanged, from ${made.at}` : `${made.how} from ${made.at}`}`);
+    const secs = (Date.now() - t0) / 1000;
+    return { out, ...files, kept: true, cover_made: made, duration: kept.duration, frames: Math.round(kept.duration * project.config.fps), seconds: secs, width: kept.width, height: kept.height, sha256: kept.sha256, identity: kept.identity };
+  }
   const video = await encodeVideo(project, timeline, { ...opts, out, log });
   const files = await step('writing the subtitles, chapters and cover', log, () => writeExtras(project, timeline, video.out.slice(0, -path.extname(video.out).length), { plan, log }));
   recordVersion(project.dir, versionLine(project, video));
@@ -49,6 +60,21 @@ export async function render(project, opts = {}) {
   const outdated = outdatedRenders(project);
   for (const r of outdated) log(outdatedLine(r));
   return { out: video.out, ...files, duration: video.duration, frames: video.frames, seconds: secs, timing: { before_frames: Math.round((prepared + ready) * 10) / 10, frames: Math.round(frames * 10) / 10, after_frames: Math.round(after * 10) / 10 }, estimated_seconds: video.estimated_seconds, width: video.width, height: video.height, sha256: video.sha256, identity: video.identity, ...(outdated.length ? { outdated } : {}) };
+}
+
+// The newest line of the record for the video at `out`, when that file is still
+// the video this run would draw, with the same kind of render, and the record
+// has another cover setting than now. Older lines without the cover never match.
+function coverOnly(project, timeline, out, opts) {
+  const file = relativeFile(project.dir, out);
+  const line = versionLines(project.dir).filter((l) => l.file === file && !l.event).at(-1);
+  if (!line || !Object.hasOwn(line, 'cover') || JSON.stringify(line.cover) === JSON.stringify(project.config.cover)) return null;
+  const format = renderFormat(opts);
+  const draft = !!opts.draft;
+  const same = line.format === format && line.draft === draft && line.transparent === !!opts.transparent && line.full === true
+    && line.scale === (opts.scale ?? (draft ? 0.5 : 1)) && line.size === project.config.size && line.watermark === (project.config.watermark !== false)
+    && line.identity === renderIdentity(project, timeline);
+  return same && fs.existsSync(out) && sha256File(out) === line.sha256 ? line : null;
 }
 
 // The frames that --from and --to ask for.
@@ -291,6 +317,8 @@ export function versionLine(project, video) {
     watermark: project.config.watermark !== false,
     // Whether the frames have motion blur. A final with --quality fast has none.
     motionBlur: video.motionBlur,
+    // The cover setting it was made with, so a later change of only the cover keeps the video.
+    cover: project.config.cover,
     duration: video.duration,
     sha256: video.sha256,
     version: VERSION,

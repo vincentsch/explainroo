@@ -185,8 +185,10 @@ s.path('M0 0 C 200 -150 400 150 600 0', { x: 660, y: 540, at: 3 });
 `minW`, `minH`, `size`, `font`, `icon`, `iconSize`, `iconColor`, `color`
 (outline and a light fill), `fill`, `stroke`, `width`, `dashed`,
 `border: false`, `radius`, `shape: 'ellipse'`, `textColor`, `fillStyle`
-(hand-drawn looks: `solid`, `hachure`, `cross-hatch`, `zigzag`, `dots`).
-`s.circle({ r, label })` takes the same options.
+(hand-drawn looks: `solid`, `hachure`, `cross-hatch`, `zigzag`, `dots`),
+`maxWidth`. The label wraps at `maxWidth`, 560 pixels, or inside `w`.
+`minW` only widens the box, so to keep a long label on one line, raise
+`maxWidth`. `s.circle({ r, label })` takes the same options.
 
 `s.line(points, options)` and `s.path(d, options)` take `color`, `width`,
 `dashed`, `fill` and `glow`. `s.path` also takes `fillStyle`, and
@@ -196,7 +198,10 @@ s.path('M0 0 C 200 -150 400 150 600 0', { x: 660, y: 540, at: 3 });
 `{ x, y }` or the `id` of an element drawn earlier. With an `id`, the arrow
 stops at the edge of that element. The label of an icon counts as part of the
 icon here, so an arrow leaves or reaches a labelled icon outside its label.
-Options: `bend` (about -1 to 1), `head` (`end`, `start`, `both`, `none`),
+Options: `bend` (about -1 to 1: a positive one curves to the right of the
+way the arrow points, so one from left to right sags down, and a negative
+one to the left; at 1 its middle moves a quarter of its length), `head`
+(`end`, `start`, `both`, `none`),
 `label`, `labelSize` (48, the size of body text), `labelColor`, `labelFont`
 (the handwritten font by default; `'body'` suits `clean`), `labelOffset`,
 `labelSide`, `gap`, `dashed`, `width`, `headSize`. `s.connect` does the same.
@@ -290,10 +295,15 @@ s.annotate({ x: 960, y: 700, w: 400, h: 90 }, { type: 'circle', color: 'red', at
 
 `s.annotate(target, options)` marks an element or a box. `type` is
 `underline`, `circle`, `box`, `highlight`, `strike`, `cross` or `bracket`.
-Options: `color`, `padding`, `width`, `dur`. An icon's `id` covers the icon
+Options: `color`, `padding`, `width`, `dur`, `out`. An icon's `id` covers the icon
 without its label, so a circle around it can run through the label. `check`
 warns about that. Mark a box that holds both instead, like
 `s.annotate({ x, y, w, h })`.
+
+A mark stays until its own `out`. With `"defaults": "0.5"` in `video.json`, a
+mark on an element's `id` that has no `out` of its own leaves with that
+element. Without the line, give it the element's `out`. `check` warns when a
+mark stays on screen more than 0.3 seconds after what it marks has left.
 
 ## Lists, numbers and charts
 
@@ -356,8 +366,12 @@ line count. `check` checks the lines of every step.
 
 `s.terminal(lines, options)` shows a terminal. Lines that start with `$ ` are
 typed as commands. Other lines are output. A line can also be `{ cmd, at }`
-or `{ out, at, color }`. Options: `w`, `size`, `rows`, `title`, `prompt`,
-`cps` (22), `outputDelay`, `lineGap`.
+or `{ out, at, color }`. `{ cmd }` adds the prompt itself, so write
+`{ cmd: 'npm test' }`, not `'$ npm test'`. Options: `w`, `size`, `rows`,
+`title`, `prompt`, `cps` (22), `outputDelay`, `lineGap`. With `"defaults":
+"0.5"`, a terminal without an `at` of its own comes in with its first line,
+like code with steps. `check` warns about a window that is empty for more
+than a second, and about a command that starts with the prompt.
 
 ## Short videos
 

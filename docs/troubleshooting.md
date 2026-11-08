@@ -64,6 +64,16 @@
   circle, draw both with `s.draw`.
 - A render that stops with a closed browser or `EPIPE` on a busy computer.
   Run it again with fewer pages, for example `render --workers 2`.
+- Running explainroo on one project from two computers at once, or from a
+  container and its host, through a network drive, a synced folder or a
+  shared mount. Its locks only work within one computer, so a purchase or a
+  post there isn't protected from a second run.
+- "Another run is busy" when no other explainroo command runs, for example
+  after a crash on Windows, where the process id went to another program.
+  Each lock is a folder: in the project's `history/locks/` for posts, clip
+  purchases and files put in place, and for sign-ins in `locks/` next to the
+  keys file that `explainroo doctor` prints. Move that folder away only while
+  no explainroo command runs.
 
 `check` looks at text and math formulas, and an arrow's label counts as
 text. It finds text that is:
@@ -77,14 +87,22 @@ text. It finds text that is:
   too. It suggests a darker or lighter shade of the same color first, so the
   color keeps its meaning, and the look's `ink` second
 - on top of other text, or under the captions
-- partly over a shape, like a note on the edge of a box. A shape's own text,
-  text in its group and `overlap: true` don't count
+- partly over a shape, like a note on the edge of a box or a word that sits
+  on its border: text that reaches more than 4 pixels into the line drawn
+  around the shape, from outside or from inside. Text fully inside or fully
+  outside is fine. A shape's own text, text in its group and `overlap: true`
+  don't count
 - crossed by the line of an arrow or of a mark from `s.annotate`
 - cut at the edge of the frame by the camera while the shot holds still
 
 It also finds:
 
 - shapes that partly overlap: boxes, cards, panels, images, icons and stickers
+- a mark from `s.annotate` that stays on screen more than 0.3 seconds after
+  the element it marks has left
+- a code window or a terminal that is on screen empty for more than a second
+  before its first line or step, and a terminal command that starts with the
+  prompt, like `{ cmd: '$ npm test' }`, which shows `$ $ npm test`
 - an arrow whose line runs through a shape or icon that is not one of its
   ends, and an arrow line off the frame, near its edge, outside the app's
   safe area or in the caption band
@@ -100,6 +118,12 @@ It also finds:
 - a cue or a `#marker` that isn't in the narration. That is an error, and
   `check` goes on with the rest of the scene as if the cue were at the scene
   start, so one run shows all of its findings
+
+A finding names the element it is about by what it shows, like the box
+"Your phone", with its `id` when it has one. An element with neither is named
+by its call and where it is, like "the 2nd s.draw at 960,735", the second
+`s.draw` of that scene. So give an element an `id` when a scene has several
+of the same kind.
 
 It does not see what a drawing made with `s.draw` or straight on `s.ctx`
 holds. Give `s.draw` a `box`, and `check` treats that box as a shape: for

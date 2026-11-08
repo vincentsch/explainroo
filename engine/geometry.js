@@ -89,6 +89,28 @@ export function overlapDepth(a, b) {
   return depth;
 }
 
+// A shape made `d` pixels larger on every side, or smaller for a negative `d`,
+// like the outer and the inner edge of a border drawn on its outline. A box
+// along the axes stays one, and every other point moves away from the middle.
+export function grow(poly, d) {
+  if (!d) return poly;
+  if (upright(poly)) {
+    const b = bounds(poly);
+    const x0 = Math.min(b.x0 - d, (b.x0 + b.x1) / 2);
+    const x1 = Math.max(b.x1 + d, (b.x0 + b.x1) / 2);
+    const y0 = Math.min(b.y0 - d, (b.y0 + b.y1) / 2);
+    const y1 = Math.max(b.y1 + d, (b.y0 + b.y1) / 2);
+    return [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+  }
+  const cx = poly.reduce((n, p) => n + p[0], 0) / poly.length;
+  const cy = poly.reduce((n, p) => n + p[1], 0) / poly.length;
+  return poly.map(([x, y]) => {
+    const len = Math.hypot(x - cx, y - cy);
+    const k = len ? Math.max(0, len + d) / len : 1;
+    return [cx + (x - cx) * k, cy + (y - cy) * k];
+  });
+}
+
 // Whether `inner` lies inside `outer`, or pokes out by no more than `slack` pixels.
 export function holds(outer, inner, slack = 4) {
   if (upright(outer) && upright(inner)) {

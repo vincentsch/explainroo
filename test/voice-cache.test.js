@@ -162,7 +162,7 @@ test('a word that stays unconfirmed is quoted with four whole words on each side
   assert.match(warn.message, /^the voice check could not confirm "piece"\. It heard: "It contains a harmless pizza of the virus, such…"\. /);
 });
 
-test('a long scene says the step it is on, one line per step, and in a terminal one line that changes', async (t) => {
+test('a long scene says the step it is on, a line per step in the order they run, and in a terminal one line that changes', async (t) => {
   const { dir } = await paidProject(t, '# Test\n\n## intro\nOne sentence here. Two sentences there.\n');
   const slow = (texts) => {
     const say = echo(texts);
@@ -173,9 +173,15 @@ test('a long scene says the step it is on, one line per step, and in a terminal 
   };
   const lines = [];
   await synthesize(loadProject(dir), { transcribe: slow(['One sentence here.', 'Two sentences there.']), log: (line) => lines.push(line) });
-  const steps = lines.filter((line) => /^voice scene 1\/1 intro: (making speech|timing words|checking speech)$/.test(line));
+  const order = ['making speech', 'timing words', 'checking speech'];
+  const steps = lines.flatMap((line) => {
+    const m = /^voice scene 1\/1 intro: (making speech|timing words|checking speech), sentence (\d) of 2$/.exec(line);
+    return m ? [Number(m[2]) * 10 + order.indexOf(m[1])] : [];
+  });
   assert.ok(steps.length >= 2, lines.join('\n'));
-  assert.equal(new Set(steps).size, steps.length, 'each step once');
+  // Each step of each sentence once, in the order they run.
+  assert.deepEqual(steps, [...new Set(steps)].sort((a, b) => a - b), lines.join('\n'));
+  assert.ok(!lines.some((line) => /^voice scene 1\/1 intro: (making speech|timing words|checking speech)$/.test(line)), lines.join('\n'));
   assert.match(lines.at(-1), /^voice scene 1\/1 intro: .* of narration .*made in \d+\.\d s$/);
   // A terminal gets one line that names the sentence too.
   fs.rmSync(path.join(dir, 'build'), { recursive: true });

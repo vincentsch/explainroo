@@ -62,21 +62,21 @@ test('check warns once for each text with a background but no words, also in gro
     code: `s.code('const answer = computeTheAnswerToEverythingWithAVeryLongName(first, second);', { x: 960, y: 540, w: 420, at: 0 });`,
   }));
   const blank = issues.filter((i) => i.message.includes('has a background but no words'));
-  const field = (name) => `text ${name} has a background but no words, so it draws an empty card; for an empty field, use s.box({ w, h }) or another shape with a size`;
+  const field = (name) => `${name} has a background but no words, so it draws an empty card; for an empty field, use s.box({ w, h }) or another shape with a size`;
   // Each field is drawn at every moment check looks at, and gives one warning,
-  // named by its id or by where it sits in the frame.
+  // named by its id, or by its call and where it sits in the frame.
   assert.deepEqual(blank.filter((i) => i.scene === 'form').map((i) => [i.level, i.message]), [
-    ['warn', field('"password"')],
-    ['warn', field('at 960,560')],
+    ['warn', field('the text "password"')],
+    ['warn', field('the 2nd s.text at 960,560')],
   ]);
   const grouped = blank.filter((i) => i.scene === 'grouped');
-  assert.deepEqual(grouped.slice(0, 2).map((i) => [i.level, i.message]), [['warn', field('at 600,400')], ['warn', field('at 1200,400')]]);
+  assert.deepEqual(grouped.slice(0, 2).map((i) => [i.level, i.message]), [['warn', field('the 1st s.text at 600,400')], ['warn', field('the 2nd s.text at 1200,400')]]);
   assert.equal(grouped.length, 3, JSON.stringify(grouped));
-  assert.match(grouped[2].message, /^text at 900,\d+ has a background but no words/);
+  assert.match(grouped[2].message, /^the 3rd s\.text at 900,\d+ has a background but no words/);
   const overflow = issues.filter((i) => i.message.includes('is wider than its window'));
   assert.equal(overflow.length, 1, JSON.stringify(issues));
   assert.equal(overflow[0].level, 'error');
-  assert.match(overflow[0].message, /^code line 1 \("const answer = computeTheAnswerToEvery/);
+  assert.match(overflow[0].message, /^line 1 of the 1st s\.code \("const answer = computeTheAnswerToEvery/);
 });
 
 test('check treats an arrow label as text: overlap, off the frame, caption band and the TikTok safe area', { skip }, async (t) => {
@@ -174,14 +174,98 @@ test('labelSide moves the label, the box check measures and the box the camera k
   }
 });
 
-test('check warns about a lift above 2 with the value and the range, and not about 2', { skip }, async (t) => {
+test('check warns about a lift above 2 with the card, the value and the range, and not about 2', { skip }, async (t) => {
   const issues = await check(project(t, {}, {
-    lifted: `s.ui.panel(200, 200, 700, 500, { at: 0, lift: 3 }, () => {});`,
+    lifted: `s.ui.panel(200, 200, 700, 500, { at: 0, lift: 3 }, () => {});
+    s.ui.card(1000, 200, 400, 300, { lift: 4, name: 'Plan' });`,
     normal: `s.ui.panel(200, 200, 700, 500, { at: 0, lift: 2 }, () => {});
     s.ui.modal(1000, 200, 700, 500, { at: 0 }, () => {});`,
   }));
   assert.deepEqual(issues.filter((i) => i.message.includes('lift')).map((i) => [i.level, i.scene, i.message]), [
-    ['warn', 'lifted', 'lift: 3 makes a shadow 3 times the normal one, which can cover much of the frame; use a lift from 0 (no shadow) to 2 (twice the normal shadow)'],
+    ['warn', 'lifted', 'the 1st s.ui.panel at 550,450 has lift: 3, which makes a shadow 3 times the normal one and can cover much of the frame; use a lift from 0 (no shadow) to 2 (twice the normal shadow)'],
+    ['warn', 'lifted', 'the card "Plan" has lift: 4, which makes a shadow 4 times the normal one and can cover much of the frame; use a lift from 0 (no shadow) to 2 (twice the normal shadow)'],
+  ]);
+});
+
+// A cross on a bug that leaves at 1.0s, in three-second scenes.
+const MARKS = {
+  alone: "s.icon('bug', { id: 'bug', x: 960, y: 540, size: 200, at: 0, out: 1 }); s.annotate('bug', { type: 'cross', at: 0.3 });",
+  together: "s.icon('bug', { id: 'bug', x: 960, y: 540, size: 200, at: 0, out: 1 }); s.annotate('bug', { type: 'cross', at: 0.3, out: 1 });",
+  shortly: "s.icon('bug', { id: 'bug', x: 960, y: 540, size: 200, at: 0, out: 1 }); s.annotate('bug', { type: 'cross', at: 0.3, out: 1.2 });",
+  grouped: "s.group({ at: 0, out: 1 }, () => s.icon('bug', { id: 'bug', x: 960, y: 540, size: 200 })); s.annotate('bug', { type: 'circle', at: 0.3 });",
+  later: "s.icon('bug', { id: 'bug', x: 960, y: 540, size: 200, at: 0, out: '#gone' }); s.annotate('bug', { type: 'cross', at: 0.3, out: 2.5 });",
+};
+
+// How many marks the scene `index` draws at `t`, or with `kind` how many shapes
+// of that kind, drawn on their own.
+const marksAt = (page, index, t, kind = null) => page.evaluate(async ([index, t, kind]) => {
+  const { Engine, fetchState } = await import('/engine/runtime.js');
+  const state = await fetchState();
+  const scenes = (await import(`/project/scenes.js?v=${state.version}`)).default;
+  const engine = new Engine({ canvas: document.createElement('canvas'), state, scenes, icons: await (await fetch('/engine/icons/lucide.json')).json().then((j) => j.icons), images: new Map() });
+  engine.textLog = [];
+  engine.drawLog = { shapes: [], strokes: [], lives: [], shown: 0, order: 0 };
+  engine.drawScene(engine.ctx, index, t);
+  return kind ? engine.drawLog.shapes.filter((s) => s.kind === kind).length : engine.drawLog.strokes.filter((s) => s.kind === 'annotate').length;
+}, [index, t, kind]);
+
+test('check warns about a mark that stays more than 0.3 seconds after what it marks has left, and with "defaults": "0.5" a mark leaves with it', { skip }, async (t) => {
+  const marks = (issues) => issues.filter((i) => /stays on screen/.test(i.message)).map((i) => [i.scene, i.message]);
+  const old = project(t, {}, MARKS, { dur: 3 });
+  old.timeline.scenes[4].marks = { gone: 1 };
+  const { issues, more } = await check(old, (page) => marksAt(page, 0, 2));
+  assert.deepEqual(marks(issues), [
+    ['alone', 'the cross around "bug" stays on screen for 1.6s after "bug" leaves at 1.0s; give the mark the same out as "bug", out: 1. With "defaults": "0.5" in video.json, a mark without an out of its own leaves with what it marks'],
+    ['grouped', 'the circle around "bug" stays on screen for 1.6s after "bug" leaves at 1.0s; give the mark the same out as "bug". With "defaults": "0.5" in video.json, a mark without an out of its own leaves with what it marks'],
+    ['later', 'the cross around "bug" stays on screen for 1.5s after "bug" leaves at 1.0s; give the mark the same out as "bug", out: \'#gone\''],
+  ]);
+  assert.equal(issues.find((i) => i.scene === 'alone' && /stays on screen/.test(i.message)).t, 1.45);
+  // Without the line the frames stay as they were: the cross is still there at 2s.
+  assert.equal(more, 1);
+  const fresh = project(t, { defaults: '0.5' }, MARKS, { dur: 3 });
+  fresh.timeline.scenes[4].marks = { gone: 1 };
+  const now = await check(fresh, (page) => Promise.all([marksAt(page, 0, 1.2), marksAt(page, 0, 2), marksAt(page, 3, 2)]));
+  // A mark of its own out still gets the warning, without the note about the line.
+  assert.deepEqual(marks(now.issues), [['later', 'the cross around "bug" stays on screen for 1.5s after "bug" leaves at 1.0s; give the mark the same out as "bug", out: \'#gone\'']]);
+  // It fades with the bug, is gone at 2s, and leaves with a group too.
+  assert.deepEqual(now.more, [1, 0, 0]);
+});
+
+// Terminals whose first line comes at 1.5s, in three-second scenes, and code.
+const WINDOWS = {
+  bare: "s.terminal([{ cmd: 'npm test', at: 1.5 }, { out: 'PASS' }], { x: 960, y: 540 });",
+  given: "s.terminal([{ cmd: 'npm test', at: 1.5 }, { out: 'PASS' }], { x: 960, y: 540, title: 'shell', at: 0 });",
+  soon: "s.terminal([{ cmd: 'npm test', at: 0.8 }], { x: 960, y: 540 });",
+  plain: "s.terminal(['$ npm test', 'PASS'], { x: 960, y: 540 });",
+  code: "s.code([{ code: 'let a = 1;' }, { code: 'let a = 2;', at: 2 }], { x: 960, y: 540, at: 0.2 }); s.code('let b = 1;', { x: 960, y: 800, reveal: 'lines', at: 0.5 });",
+};
+
+test('check warns about a code window or terminal that is empty for more than a second, and with "defaults": "0.5" a terminal without an at comes in with its first line', { skip }, async (t) => {
+  const empty = (issues) => issues.filter((i) => /on screen empty/.test(i.message)).map((i) => [i.scene, i.t, i.message]);
+  const { issues, more } = await check(project(t, {}, WINDOWS, { dur: 3 }), (page) => marksAt(page, 0, 1, 'terminal'));
+  assert.deepEqual(empty(issues), [
+    ['bare', 0, 'the 1st s.terminal is on screen empty for 1.5s, from 0.0s until its first line at 1.5s; give it the at of its first line, like at: 1.5, or add "defaults": "0.5" to video.json, where a terminal without an at of its own comes in with its first line'],
+    ['given', 0, 'the terminal "shell" is on screen empty for 1.5s, from 0.0s until its first line at 1.5s; give it the at of its first line, like at: 1.5'],
+  ]);
+  // Without the line the frames stay as they were: the empty window is there at 1s.
+  assert.equal(more, 1);
+  const fresh = await check(project(t, { defaults: '0.5' }, WINDOWS, { dur: 3 }), (page) => Promise.all([marksAt(page, 0, 1, 'terminal'), marksAt(page, 0, 1.6, 'terminal')]));
+  assert.deepEqual(empty(fresh.issues).map(([scene]) => scene), ['given']);
+  assert.deepEqual(fresh.more, [0, 1]);
+});
+
+test('check warns about a command written with the prompt in front, which shows the prompt twice', { skip }, async (t) => {
+  const issues = await check(project(t, {}, {
+    object: "s.terminal([{ cmd: '$ npm test' }, { out: 'PASS' }], { x: 960, y: 540, at: 0 });",
+    string: "s.terminal(['$ $ npm test'], { x: 960, y: 540, at: 0 });",
+    variable: "s.terminal([{ cmd: '$HOME/bin/run' }, '$ echo $PATH'], { x: 960, y: 540, at: 0 });",
+    custom: "s.terminal([{ cmd: '> dir' }, { cmd: 'npm test' }], { x: 960, y: 540, prompt: '>', title: 'cmd', at: 0 });",
+  }));
+  const doubled = issues.filter((i) => /starts with the prompt/.test(i.message)).map((i) => [i.level, i.scene, i.message]);
+  assert.deepEqual(doubled, [
+    ['warn', 'object', 'the command "$ npm test" of the 1st s.terminal starts with the prompt "$", which the terminal adds itself, so it shows "$ $ npm test"; write it without the prompt, like { cmd: \'npm test\' }'],
+    ['warn', 'string', 'the command "$ npm test" of the 1st s.terminal starts with the prompt "$", which the terminal adds itself, so it shows "$ $ npm test"; write it without the prompt, like { cmd: \'npm test\' }'],
+    ['warn', 'custom', 'the command "> dir" of the terminal "cmd" starts with the prompt ">", which the terminal adds itself, so it shows "> > dir"; write it without the prompt, like { cmd: \'dir\' }'],
   ]);
 });
 
@@ -238,7 +322,7 @@ test('check warns when a reveal has not finished by the end of its scene or by i
   // The lines start 0.35 s after the window, at 0.85, 1.45, 2.05, 2.65 and 3.25 s.
   assert.equal(reveals[0].message, 'the code "app.js" shows 2 of its 5 lines by the end of the scene at 2.0s, and needs until 3.3s; give it an earlier at, or a smaller lineDelay than 0.6');
   assert.match(reveals[1].message, /^the code "typed\.js" has typed \d+% of its text by the end of the scene at 2\.0s, and needs until \d+\.\ds; give it an earlier at, or a higher cps than 10$/);
-  assert.match(reveals[2].message, /^the terminal "terminal" shows 0 of its 3 lines by the end of the scene at 2\.0s, and needs until \d+\.\ds; give it an earlier at, or a higher cps than 8$/);
+  assert.match(reveals[2].message, /^the 1st s\.terminal shows 0 of its 3 lines by the end of the scene at 2\.0s, and needs until \d+\.\ds; give it an earlier at, or a higher cps than 8$/);
   assert.match(reveals[3].message, /^the number counting to 1240 has counted \d+% of the way by the end of the scene at 2\.0s, and needs until 2\.6s; give it an earlier at, or a shorter dur than 1\.4$/);
   assert.match(reveals[4].message, /^"Writes itself slowly" has written \d+% of itself by its out at 1\.0s, and needs until 1\.7s; give it an earlier at, or a shorter dur$/);
 });
@@ -253,7 +337,38 @@ test('check warns about text that partly overlaps a shape, and not about a shape
   }));
   const found = issues.filter((i) => /partly overlap/.test(i.message));
   assert.deepEqual(found.map((i) => [i.level, i.scene]), [['warn', 'edge']], JSON.stringify(issues));
-  assert.match(found[0].message, /^"Mail, maps, music and photos" and the box "Your phone" partly overlap, by \d+px; move them apart, or give one of them overlap: true if that is meant$/);
+  assert.match(found[0].message, /^"Mail, maps, music and photos" and the box "Your phone" \(id "phone"\) partly overlap, by \d+px; move them apart, or give one of them overlap: true if that is meant$/);
+});
+
+// The clean look draws a box's border 3.5 pixels wide on its outline, so half of
+// it lies outside. The box runs from y 300 to 500.
+test('check warns about text that reaches more than 4 pixels into a box\'s drawn border, from outside or inside, and not about text that only touches it', { skip }, async (t) => {
+  const box = "s.box({ x: 960, y: 400, w: 600, h: 200, at: 0 });";
+  const issues = await check(project(t, {}, {
+    // 3 pixels past the outline is 4.75 into the drawn border.
+    onTop: `${box} s.text('replaces', { x: 960, y: 303, valign: 'bottom', size: 48, at: 0 });`,
+    touching: `${box} s.text('replaces', { x: 960, y: 301, valign: 'bottom', size: 48, at: 0 });`,
+    above: `${box} s.text('replaces', { x: 960, y: 290, valign: 'bottom', size: 48, at: 0 });`,
+    inside: `${box} s.text('replaces', { x: 960, y: 304, valign: 'top', size: 48, at: 0 });`,
+    fromInside: `${box} s.text('replaces', { x: 960, y: 297, valign: 'top', size: 48, at: 0 });`,
+    noBorder: "s.box({ x: 960, y: 400, w: 600, h: 200, border: false, at: 0 }); s.text('replaces', { x: 960, y: 303, valign: 'bottom', size: 48, at: 0 });",
+  }));
+  const found = issues.filter((i) => /partly overlap/.test(i.message));
+  assert.deepEqual(found.map((i) => i.scene).sort(), ['fromInside', 'onTop'], JSON.stringify(issues));
+  assert.match(found.find((i) => i.scene === 'onTop').message, /^"replaces" and the 1st s\.box at 960,400 partly overlap, by 5px; move them apart, or give one of them overlap: true if that is meant$/);
+});
+
+// The last scene of a LinkedIn video, in the layout that put "replaces" on the top
+// border of the box under it: the box's label wraps onto two lines and grows up.
+test('check finds a word on the top border of a box whose label wraps', { skip }, async (t) => {
+  const issues = await check(project(t, { size: 'linkedin', captions: 'auto' }, {
+    guard: `const { top, h, w } = s.safe;
+    const u = Math.min(w, h) / 100;
+    const card = s.box('1 test first', { y: top + h * 0.3, size: u * 9, color: 'green', icon: 'flask-conical', minW: w * 0.8, at: 0 });
+    s.text('replaces', { y: card.bottom + h * 0.1, size: u * 5.5, color: 'muted', at: 0.2 });
+    s.box('many checks by hand', { y: card.bottom + h * 0.27, size: u * 6.5, color: 'red', icon: 'hourglass', minW: w * 0.8, at: 0.4 });`,
+  }, { dur: 3 }));
+  assert.deepEqual(issues.filter((i) => /partly overlap/.test(i.message)).map((i) => i.message.replace(/by \d+px/, 'by Npx')), ['"replaces" and the box "many checks by hand" partly overlap, by Npx; move them apart, or give one of them overlap: true if that is meant'], JSON.stringify(issues));
 });
 
 // A diagram whose arrows run between points, through a circle on their way, and
@@ -267,11 +382,11 @@ test('check warns about an arrow through a shape that is not one of its ends, an
   }));
   const through = issues.filter((i) => /runs through/.test(i.message));
   assert.deepEqual(through.map((i) => i.scene), ['through'], JSON.stringify(issues));
-  assert.match(through[0].message, /^the arrow from 600,540 to 1320,540 runs through the box "Compressor"; let it go around with bend, or move one of them$/);
-  const edges = issues.filter((i) => i.scene === 'edge' && /^the arrow/.test(i.message)).map((i) => i.message);
+  assert.match(through[0].message, /^the 1st s\.arrow from 600,540 to 1320,540 runs through the box "Compressor"; let it go around with bend, or move one of them$/);
+  const edges = issues.filter((i) => i.scene === 'edge' && /arrow from/.test(i.message)).map((i) => i.message);
   assert.deepEqual(edges.length, 2, JSON.stringify(issues));
-  assert.match(edges.find((m) => m.includes('1905')), /^the arrow from 1500,540 to 1905,540 comes closer than 38px to the edge \(/);
-  assert.match(edges.find((m) => m.includes('1100')), /^the arrow from 300,900 to 300,1100 runs off the frame \(/);
+  assert.match(edges.find((m) => m.includes('1905')), /^the 1st s\.arrow from 1500,540 to 1905,540 comes closer than 38px to the edge \(/);
+  assert.match(edges.find((m) => m.includes('1100')), /^the 2nd s\.arrow from 300,900 to 300,1100 runs off the frame \(/);
 });
 
 test('check gives a hint for text below 40 pixels in a tall or square frame, which people watch on a phone, and not in a wide one', { skip }, async (t) => {

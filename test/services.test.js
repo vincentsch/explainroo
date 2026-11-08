@@ -279,11 +279,13 @@ test('services takes publish and share as names for the posting and sharing step
   assert.match(run(['--help']).stdout, /Steps: voice, timing, images, clips, music, sharing, posting\. The command names share and publish also work/);
 });
 
-// Buffer is free, but it can only post a video that is online already.
-test('the Buffer entry under posting says it needs a public link that share cannot make yet', () => {
+// Buffer is free, but it can only post a video that is online already. share
+// makes no link while its service doesn't run, so the entry doesn't suggest it.
+test('the Buffer entry under posting asks for a link on a host of the user\'s own, and does not suggest share', () => {
   const posting = run(['services', 'posting']).stdout;
   const buffer = posting.slice(posting.indexOf('  Buffer (free)'), posting.indexOf('  Blotato'));
-  assert.match(buffer.split('\n')[1], /Buffer needs a public link to the video, and "explainroo share" can't make one yet, so the video has to be on a host of your own first\.$/);
+  assert.match(buffer.split('\n')[1], /Buffer needs a public https link to the package's video\.mp4: put the file on a host you choose and pass the link with --media-url\. The link has to work until the post goes out, and putting the file there makes the video public\.$/);
+  assert.doesNotMatch(buffer, /explainroo share/);
   assert.equal(findService('cloud').status, 'coming');
 });
 

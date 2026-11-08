@@ -105,7 +105,7 @@ test('a Spanish project with a recording needs no espeak-ng, and its language mo
   for (const name of ['espeak-ng', 'voice model', 'speech check model']) assert.equal(row(r, name).state, 'not needed', name);
   assert.equal(row(r, 'language model').state, 'missing');
   assert.equal(row(r, 'language model').ok, false);
-  assert.equal(row(r, 'language model').detail, 'not downloaded yet. The first voice run of this project downloads it, 252 MB.');
+  assert.match(row(r, 'language model').detail, /^not downloaded yet\. ".* doctor --fetch \S+" or the first voice run fetches it, 252 MB\.$/);
   const text = doctor([dir], { t });
   assert.equal(text.stdout.split('\n')[0], `For ${projectWord(dir)}: Spanish with a recording.`);
 });
@@ -314,10 +314,10 @@ test('without apt-get there is no copy, and when apt-get fails nothing is change
 test('doctor --fetch --language es sets up the copy and says so, and without --fetch it says that --fetch can', { skip: process.platform === 'win32' && 'no apt-get on Windows', timeout: 120000 }, async (t) => {
   const apt = fakeApt(t);
   const env = aptEnv(t, apt);
-  // The English models that --fetch loads, from the real cache, read only, or empty folders.
+  // The models that --fetch loads for Spanish, from the real cache, read only.
   const real = path.join(os.homedir(), '.cache', 'explainroo', 'models');
-  const models = [TTS_MODEL, ASR_MODEL].every((m) => fs.existsSync(path.join(real, m)));
-  if (!models) return t.skip('the English models are not downloaded here');
+  const models = [TTS_MODEL, MULTILINGUAL_ASR_MODEL].every((m) => fs.existsSync(path.join(real, m)));
+  if (!models) return t.skip('the voice model and the language model are not downloaded here');
   fs.symlinkSync(real, path.join(env.EXPLAINROO_CACHE, 'models'));
   const run = (args) => spawnSync(process.execPath, [bin, 'doctor', ...args], { encoding: 'utf8', env });
   const before = run(['--language', 'es']);
@@ -330,6 +330,45 @@ test('doctor --fetch --language es sets up the copy and says so, and without --f
   const after = JSON.parse(run(['--language', 'es', '--json']).stdout);
   assert.equal(after.checks.find((c) => c.name === 'espeak-ng').state, 'ready');
   assert.doesNotMatch(fetched.stderr, /test guard: blocked/);
+});
+
+// A cache with only the given models of the real one, linked, read only.
+function linkedModels(t, models) {
+  const real = path.join(os.homedir(), '.cache', 'explainroo', 'models');
+  if (!models.every((m) => fs.existsSync(path.join(real, m)))) return null;
+  const dir = temp(t);
+  for (const m of models) {
+    fs.mkdirSync(path.dirname(path.join(dir, 'models', m)), { recursive: true });
+    fs.symlinkSync(path.join(real, m), path.join(dir, 'models', m));
+  }
+  return dir;
+}
+
+test('doctor --fetch --language fetches what those languages need, and the English speech check model only for English', { timeout: 120000 }, (t) => {
+  // German has no Kokoro voice, so it needs only the language model. Offline, a
+  // model that isn't in the cache can't come, so a run that asked for one fails.
+  const dir = linkedModels(t, [TTS_MODEL, MULTILINGUAL_ASR_MODEL]);
+  if (!dir) return t.skip('the voice model and the language model are not downloaded here');
+  const run = (args) => {
+    const r = spawnSync(process.execPath, [bin, 'doctor', ...args], { encoding: 'utf8', env: { ...process.env, EXPLAINROO_CACHE: dir, EXPLAINROO_OFFLINE: '1', EXPLAINROO_ESPEAK: process.execPath } });
+    assert.doesNotMatch(r.stderr, /test guard: blocked/);
+    return r;
+  };
+  const german = run(['--fetch', '--language', 'de', '--json']);
+  assert.equal(german.status, 0, german.stdout + german.stderr);
+  const checks = JSON.parse(german.stdout).checks;
+  assert.equal(checks.find((c) => c.name === 'language model').state, 'ready');
+  assert.equal(checks.find((c) => c.name === 'speech check model').state, 'not needed');
+  assert.equal(fs.existsSync(path.join(dir, 'models', ASR_MODEL)), false, 'no English model came along');
+  // English, alone or among the languages, asks for the English model.
+  for (const args of [['--fetch'], ['--fetch', '--language', 'en,de']]) {
+    const english = run(args);
+    assert.equal(english.status, 1, english.stdout);
+    assert.match(english.stderr, /whisper-base\.en/);
+  }
+  // Without --fetch, the row says how to get it for this setup.
+  const before = JSON.parse(run(['--language', 'en,it', '--json']).stdout);
+  assert.match(before.checks.find((c) => c.name === 'speech check model').detail, /^not downloaded yet\. ".* doctor --fetch --language en,it" or the first voice run fetches it, 80 MB\.$/);
 });
 
 test('the launcher gives espeak-ng a long data path from inside the folder, because espeak-ng reads only 159 characters of it', { skip: process.platform === 'win32' && 'no apt-get on Windows' }, async (t) => {

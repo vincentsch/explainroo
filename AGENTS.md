@@ -76,8 +76,9 @@ npx --yes explainroo doctor --fetch
 ```
 
 `doctor` checks Node, ffmpeg and Chrome, and the extra programs some
-languages need. With `--fetch` it also downloads the English speech models,
-about 400 MB, the first time only. Each part is `ready`, `missing` with how to get it, or
+languages need. With `--fetch` it also downloads the speech models that
+setup needs, the first time only: about 400 MB for English, and 252 MB for
+another language. Each part is `ready`, `missing` with how to get it, or
 `not needed` for this setup. `doctor videos/<name>` checks what that
 project's languages and voices need, and before the project exists,
 `doctor --language es` checks one language. On Debian and Ubuntu,
@@ -174,7 +175,8 @@ there and publishes nothing.
     are the cheap way to see frames. Check the file with
     `explainroo verify videos/<name>`. It fails when the sound clips above
     0 dBTP, and it warns when the loudness is off, frames are black or the
-    voice is hard to understand over the music.
+    voice is hard to understand over the music. Its last line says whether
+    it passed.
 11. **Tell the user** where the video, its subtitles, chapters and cover are,
     how long it is, what `verify` said and what you could not check. To post
     it, read `explainroo docs publishing`.

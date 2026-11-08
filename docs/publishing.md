@@ -367,12 +367,15 @@ and `video.srt`, for you to add in YouTube Studio.
 ## Buffer
 
 **Buffer** has no upload, so it needs a public https link to this exact
-file. Pass your own with `--media-url`. Once the hosted service runs,
-`explainroo share <project> --platform tiktok` can make one, and `publish`
-takes the link from it. A link to `out/video.mp4` doesn't count for a TikTok
-package, because the package has its own file. Buffer fetches the video from
-the link when it posts it, so the link has to stay up until then. The plan
-warns when the link expires within a day.
+file, `out/package/<platform>/video.mp4`. Put that file on a host you choose,
+like your own site or server, and pass the link with `--media-url`. Putting
+the file there makes the video public. Buffer fetches the video from the link
+when it posts it, so the link has to work until the post goes out. The plan
+warns when the link expires within a day. A link to `out/video.mp4` doesn't
+count for a TikTok package, because the package has its own file. In this
+version `share` makes no link, because its hosted service is coming. Once it
+runs, `explainroo share <project> --platform tiktok` makes one, and `publish`
+takes the link from it.
 
 **Buffer** signs in with a public client that comes with explainroo, so you
 don't make one yourself. A public client has no secret. Run

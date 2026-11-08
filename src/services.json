@@ -292,7 +292,7 @@
       "id": "buffer",
       "step": "posting",
       "name": "Buffer",
-      "about": "A company that posts to social networks for you. \"explainroo publish --via buffer\" sends a package to one of your Buffer channels on YouTube, TikTok, Instagram, LinkedIn or X. Buffer needs a public link to the video, and \"explainroo share\" can't make one yet, so the video has to be on a host of your own first.",
+      "about": "A company that posts to social networks for you. \"explainroo publish --via buffer\" sends a package to one of your Buffer channels on YouTube, TikTok, Instagram, LinkedIn or X. Buffer needs a public https link to the package's video.mp4: put the file on a host you choose and pass the link with --media-url. The link has to work until the post goes out, and putting the file there makes the video public.",
       "free": true,
       "partner": false,
       "status": "available",

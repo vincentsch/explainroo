@@ -366,7 +366,7 @@ test('the sizes, settings, short-video and publishing topics explain settings pe
   const sizes = oneLine(page('sizes'));
   for (const words of ['"sizes": { "tiktok": { "captions": "bold", "pace": 1.2, "cover": "hook@2.5" } }', 'the 16:9 version stays as it is', 'A block follows its exact size name.', 'A package looks for the block of its platform\'s size first', '`build/pace-<pace>/`', 'A paid voice buys the narration at that pace once', 'explainroo voice videos/<name> --size tiktok', 'every size takes the frame of the first scene with the most elements fully arrived, where a frame with a shape, icon, image or clip comes first', 'A project without `"defaults"` takes the end of the first scene', 'The cover leaves out the captions', '`package` keeps the finished video and writes only the new cover image', '`"captions": "auto"` means no captions on a 16:9 video', 'when `s.portrait` is true', 'with the watermark and without it']) assert.ok(sizes.includes(words), words);
   assert.match(page('settings'), /^\| `sizes` \| none \| `captions`, `cover`, `pace`, `watermark` and `targetSeconds` for one size/m);
-  assert.match(page('settings'), /^\| `cover` \| `"auto"` \| .*With `"defaults": "0\.5"`, `"auto"` takes the frame of the first scene with the most elements fully arrived, a frame with a shape, icon, image or clip first\. Without it, `"auto"` is the end of the first scene/m);
+  assert.match(page('settings'), /^\| `cover` \| `"auto"` \| .*With `"defaults": "0\.5"`, `"auto"` takes the frame of the first scene with the most elements fully arrived, a frame with a shape, icon, image or clip first\. Code still typing and a number still counting have not arrived\. Without it, `"auto"` is the end of the first scene/m);
   assert.match(page('settings'), /^\| `defaults` \| none \| `"0\.5"` gives the project the defaults of explainroo 0\.5/m);
   assert.match(page('settings'), /^\| `motionBlur` \| .*`render --quality fast` leaves it out for one run/m);
   const short = oneLine(page('short-video'));
@@ -409,7 +409,7 @@ test('the docs say that verify takes no --size, that German is a language, and t
   assert.ok(oneLine(page('sizes')).includes('Bold captions need a shorter band, so with them it is 745 x 799 and 745 x 863.'));
   assert.match(page('settings'), /^\| `language` \| `en` \| .*and `de` with a paid voice or a recording/m);
   assert.ok(oneLine(read('README.md')).includes('For narration with Kokoro, the free voice, in Spanish, French, Italian, Portuguese or Hindi, also install'));
-  assert.ok(oneLine(read('AGENTS.md')).includes('With `--fetch` it also downloads the English speech models'));
+  assert.ok(oneLine(read('AGENTS.md')).includes('With `--fetch` it also downloads the speech models that setup needs, the first time only: about 400 MB for English, and 252 MB for another language.'));
   const formats = run('formats').stdout;
   assert.match(formats, /--size on init, preview, still, sheet, check, render or export\./);
 });
@@ -544,4 +544,32 @@ test('the README says a budget makes --max-cost optional, and the recipe for esp
   assert.ok(oneLine(languages).includes('`explainroo doctor --fetch --language es` sets it up by itself'));
   assert.ok(!/x86_64-linux-gnu\/espeak-ng-data`/.test(languages), 'no fixed x86_64 data path');
   assert.ok(oneLine(languages).includes('put the line in the settings file, the same `.env` that holds keys'));
+});
+
+test('every topic sizes text with one rule: a hundredth of the short side of s.safe, as the starter scenes.js does', () => {
+  const starter = read('templates/starter/scenes.js');
+  assert.ok(starter.includes('const u = Math.min(w, h) / 100;'));
+  for (const file of ['AGENTS.md', ...fs.readdirSync(path.join(root, 'docs')).filter((f) => f.endsWith('.md')).map((f) => `docs/${f}`)]) {
+    assert.doesNotMatch(read(file), /Math\.max\(s\.W, s\.H\) \/ 100/, file);
+  }
+  const pictures = page('pictures');
+  assert.equal(pictures.match(/const \{ w, h \} = s\.safe;\n {4}const u = Math\.min\(w, h\) \/ 100;/g).length, 4);
+  assert.ok(oneLine(pictures).includes('Text sizes come from `u`, a hundredth of the short side of `s.safe`, the same rule as the `scenes.js` that `init` writes'));
+});
+
+test('the writing topic has a part for other languages: the filler words are English, and each language has its pace and its own fillers', () => {
+  const part = page('writing').split('## Other languages')[1].split('\n## ')[0];
+  assert.ok(oneLine(part).includes('the filler words they name are English'));
+  for (const row of ['| Spanish | 175 | realmente, simplemente, básicamente |', '| French | 160 | vraiment, simplement, juste |', '| Italian | 180 | davvero, semplicemente, praticamente |', '| Brazilian Portuguese | 185 | realmente, simplesmente, basicamente |', '| German | 135 | eigentlich, einfach, wirklich |']) assert.ok(part.includes(row), row);
+  assert.ok(oneLine(part).includes('For Hindi the estimate counts 150 words a minute, for Japanese 300 characters and for Chinese 230.'));
+  assert.ok(oneLine(page('languages')).includes('its part "Other languages" gives the filler words and the pace of each language'));
+});
+
+test('the pace in the writing topic is the one the estimate uses: 13 letters a second, and the figures for Hindi, Japanese and Chinese', async () => {
+  const { estimateLength } = await import('../src/timeline.js');
+  // A thousand words of five letters is about 5,000 letters, at 12.95 a second.
+  const words = Array.from({ length: 1000 }, () => 'abcde').join(' ');
+  const estimate = (language, text) => estimateLength({ config: { language, voice: 'af_heart', speed: 0.9, pace: 1, lead: 0, hold: 0, end: 0, sentenceGap: 0, paragraphGap: 0 }, script: { scenes: [{ attrs: {}, spoken: text, units: [{ type: 'word', display: text, spoken: text }] }] } });
+  assert.equal(estimate('es', words).perMinute, Math.round((12.95 * 60) / 5));
+  assert.equal(estimate('hi', words).perMinute, 150);
 });

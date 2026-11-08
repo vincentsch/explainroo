@@ -7,7 +7,7 @@ import { Pen } from './pen.js';
 import { drawTransition } from './transitions.js';
 import { buildPhrases, drawCaptions, buildChunks, drawBoldCaptions, captionHighlight } from './captions.js';
 import { AUDIO_FILE, clamp, hashStr, mulberry32, suggest, suggestColor, contrast, luminance, opaque, withAlpha, parseColor, mixColor, rgba, cssColor, newDefaults } from './util.js';
-import { overlapDepth, holds, crosses, bounds, inside, toEdge } from './geometry.js';
+import { overlapDepth, holds, crosses, bounds, inside, toEdge, grow } from './geometry.js';
 import { layoutAreas } from './layout.js';
 import { loadClips, soundURL, ClipFrames, FREEZE_SECONDS, FIT_SPEEDS } from './clips.js';
 import { UI } from './ui.js';
@@ -592,11 +592,13 @@ export class Engine {
   // check counts it, without the camera.
   shownAt(index, t) {
     const scratch = (this._framedCanvas ??= Object.assign(document.createElement('canvas'), { width: 16, height: 16 }));
-    const saved = { textLog: this.textLog, drawLog: this.drawLog, recorder: this.recorder, revealLog: this.revealLog };
+    const saved = { textLog: this.textLog, drawLog: this.drawLog, recorder: this.recorder, revealLog: this.revealLog, markLog: this.markLog, windowLog: this.windowLog };
     this.textLog = [];
     this.drawLog = drawLog();
     this.recorder = null;
     this.revealLog = null;
+    this.markLog = null;
+    this.windowLog = null;
     try {
       this.drawScene(scratch.getContext('2d'), index, t);
       return this.drawLog.shown > 0;
@@ -609,6 +611,8 @@ export class Engine {
 
   // What a frame shows as the camera films it: how many elements are fully on
   // screen, and whether those are only text. `t` is seconds into scene `index`.
+  // With "defaults": "0.5", an element that is still typing, showing its lines,
+  // counting or writing itself has not arrived, and `partial` lists those.
   framed(index, t) {
     const scratch = (this._framedCanvas ??= Object.assign(document.createElement('canvas'), { width: 16, height: 16 }));
     const saved = { textLog: this.textLog, drawLog: this.drawLog, recorder: this.recorder };
@@ -622,27 +626,31 @@ export class Engine {
       texts = this.textLog;
       log = this.drawLog;
     } catch {
-      return { count: 0, onlyText: false };
+      return { count: 0, onlyText: false, partial: [] };
     } finally {
       Object.assign(this, saved);
     }
+    const fresh = newDefaults(this.config);
+    const arrived = (x) => !(fresh && x.partial);
     const inside = (b) => b.x0 >= -1 && b.y0 >= -1 && b.x1 <= this.W + 1 && b.y1 <= this.H + 1;
-    const words = texts.filter((x) => !x.problem && x.settled && x.alpha > 0.95 && inside(x)).length;
+    const words = texts.filter((x) => !x.problem && x.settled && x.alpha > 0.95 && inside(x) && arrived(x)).length;
     // A picture is a shape, icon, image, clip, chart or drawing. Lines and
     // arrows count as elements, but no picture. A clip or image that fills the
     // frame counts too, also while the camera crops it.
-    const pictures = log.shapes.filter((s) => s.settled && s.alpha > 0.95 && (inside(s.box) || fillsFrame(s.box, this.W, this.H))).length
+    const pictures = log.shapes.filter((s) => s.settled && s.alpha > 0.95 && arrived(s) && (inside(s.box) || fillsFrame(s.box, this.W, this.H))).length
       + log.lives.filter((l) => l.settled && ['chart', 'custom'].includes(l.kind)).length
       + (log.ink ? 1 : 0);
     const lines = log.strokes.filter((s) => s.settled && s.alpha > 0.95).length
       + log.lives.filter((l) => l.settled && l.kind === 'line').length;
-    return { count: words + pictures + lines, picture: pictures > 0, onlyText: words > 0 && pictures + lines === 0 };
+    const partial = fresh ? [...new Map(log.partial.map((p) => [p.name, p])).values()] : [];
+    return { count: words + pictures + lines, picture: pictures > 0, onlyText: words > 0 && pictures + lines === 0, partial };
   }
 
   // The moment "cover": "auto" takes with "defaults": "0.5": the frame of the
-  // first scene with the most elements fully on screen, entrances finished,
-  // where a frame with a picture comes before any frame without one, and the
-  // earliest of those. Seconds into the video.
+  // first scene with the most elements fully on screen, entrances finished and
+  // nothing still typing or counting, where a frame with a picture comes before
+  // any frame without one, then a frame where nothing shows itself half way, and
+  // the earliest of those. Seconds into the video.
   coverMoment() {
     const sc = this.timeline.scenes[0];
     const last = Math.max(0, Math.floor((sc.dur - 1e-6) * this.fps));
@@ -651,7 +659,8 @@ export class Engine {
     let best = null;
     for (let f = 0; f <= last; f += step) {
       const seen = this.framed(sc.index, f / this.fps);
-      if (!best || (seen.picture && !best.picture) || (seen.picture === best.picture && seen.count > best.count)) best = { T: sc.start + f / this.fps, ...seen };
+      const fuller = seen.count > best?.count || (seen.count === best?.count && seen.partial.length < best.partial.length);
+      if (!best || (seen.picture && !best.picture) || (seen.picture === best.picture && fuller)) best = { T: sc.start + f / this.fps, ...seen };
     }
     return best.T;
   }
@@ -665,8 +674,24 @@ export class Engine {
     const i = this.sceneAt(at);
     const sc = this.timeline.scenes[i];
     const seen = this.framed(i, at - sc.start);
-    if (T === null ? seen.picture || !seen.count : !seen.onlyText) return null;
     const label = `${sc.id}@${(at - sc.start).toFixed(1)}`;
+    // With "defaults": "0.5", a cover that shows something half typed or counted,
+    // and the first moment after it when nothing is.
+    if (seen.partial.length) {
+      let done = null;
+      for (let t = at - sc.start; t < sc.dur - 0.05; t += 0.25) {
+        const f = this.framed(i, t);
+        if (!f.partial.length && f.count > 0) {
+          done = t;
+          break;
+        }
+      }
+      const where = auto ? `"cover": "auto" picks ${label}` : `the cover at ${label}`;
+      const what = seen.partial.map((p) => `${p.name} is ${p.doing}`).join(', and ');
+      const advice = done === null ? 'set "cover" to a moment when it is all there, or let it finish sooner' : `set "cover": "${sc.id}@${(Math.ceil(done * 10) / 10).toFixed(1)}", when it is all there`;
+      return { level: 'hint', scene: sc.id, t: Math.round((at - sc.start) * 100) / 100, message: `${where}, where ${what}; ${advice}` };
+    }
+    if (T === null ? seen.picture || !seen.count : !seen.onlyText) return null;
     if (T === null) return { level: 'hint', scene: sc.id, t: Math.round((at - sc.start) * 100) / 100, message: `"cover": "auto" picks ${label}, the fullest frame of the first scene, and no frame of that scene shows a picture; show a shape, an icon or an image with the text there, or set "cover" to a moment of another scene that has one` };
     // The first moment of that scene that shows the most, with a picture.
     let better = null;
@@ -762,6 +787,10 @@ export class Engine {
       let broke = false;
       // What shows itself bit by bit, like code that types itself.
       this.revealLog = new Map();
+      // Marks from s.annotate on an element with an id, and when that element goes.
+      this.markLog = new Map();
+      // Code windows and terminals, and when their first line shows.
+      this.windowLog = new Map();
       const n = Math.ceil(sc.dur / step);
       for (let k = 0; k <= n; k++) {
         const t = Math.min(sc.dur - 0.001, k * step);
@@ -951,6 +980,30 @@ export class Engine {
         }
       }
       this.revealLog = null;
+      // A mark that stays on screen after what it marks has gone, alone or over
+      // what comes next.
+      if (!broke) {
+        for (const m of this.markLog.values()) {
+          const until = Math.min(m.gone, sc.dur);
+          const from = Math.max(m.targetGone, m.at);
+          if (m.targetGone >= sc.dur || !(until - from > MARK_SLACK)) continue;
+          const out = m.spec === undefined ? '' : `, out: ${typeof m.spec === 'string' ? `'${m.spec}'` : m.spec}`;
+          const fresh = m.given || newDefaults(this.config) ? '' : `. With "defaults": "0.5" in video.json, a mark without an out of its own leaves with what it marks`;
+          once(`mark:${sc.id}:${m.name}`, () => add('warn', sc.id, from, `${m.name} stays on screen for ${(until - from).toFixed(1)}s after "${m.target}" leaves at ${m.targetOut.toFixed(1)}s; give the mark the same out as "${m.target}"${out}${fresh}`));
+        }
+      }
+      this.markLog = null;
+      // A code window or a terminal that is on screen empty for a while before its
+      // first line or step.
+      if (!broke) {
+        for (const w of this.windowLog.values()) {
+          const until = Math.min(w.first, w.out, sc.dur);
+          if (w.at >= sc.dur || !(until - w.at > EMPTY_WINDOW)) continue;
+          const to = until === w.first ? `until its first line at ${w.first.toFixed(1)}s` : until === sc.dur ? 'until the scene ends' : `until it leaves at ${w.out.toFixed(1)}s`;
+          once(`window:${sc.id}:${w.name}`, () => add('warn', sc.id, w.at, `${w.name} is on screen empty for ${(until - w.at).toFixed(1)}s, from ${w.at.toFixed(1)}s ${to}; ${w.advice}`));
+        }
+      }
+      this.windowLog = null;
       const emptyStart = !broke && bare !== null && bare > EMPTY_START;
       if (emptyStart) add('hint', sc.id, 0, `the scene shows only its background for the first ${bare.toFixed(1)}s; put something on screen sooner, for example give the first element an earlier at`);
       // The same later in the scene, once everything has left and before the next
@@ -1051,22 +1104,30 @@ const INK_CALLS = new Set(['fill', 'stroke', 'fillRect', 'strokeRect', 'fillText
 
 // A scene may show only its background this long at the start, in seconds.
 const EMPTY_START = 1.5;
+// A mark may stay this long after what it marks has gone, in seconds.
+const MARK_SLACK = 0.3;
+// A code window or a terminal may be empty this long before its first line.
+const EMPTY_WINDOW = 1;
 // "cover": "auto" looks at this many frames of the first scene at most.
 const COVER_FRAMES = 600;
 
 // What check collects while it draws one moment of a scene: the shapes and
 // lines drawn, in design pixels, and how many elements are on screen.
 function drawLog() {
-  return { shapes: [], strokes: [], lives: [], shown: 0, order: 0 };
+  return { shapes: [], strokes: [], lives: [], partial: [], shown: 0, order: 0 };
 }
 
 const SHAPE_NAMES = { box: 'box', icon: 'icon', image: 'image', code: 'code window', terminal: 'terminal', card: 'card', sticker: 'sticker', drawing: 'drawing' };
 
-// "the box "Rivers bring salt in"", or "the card at 200,300" without a name.
+// "the box "Rivers bring salt in"", with "(id "rivers")" after it when it has an
+// id, "the drawing "moon"" by its id alone, or by its call and where it is
+// without either, like "the 2nd s.draw at 960,735".
 function shapeName(sh) {
   const kind = SHAPE_NAMES[sh.kind] ?? sh.kind;
   const name = sh.name.length > 40 ? sh.name.slice(0, 37) + '...' : sh.name;
-  return name ? `the ${kind} "${name}"` : `the ${kind} at ${Math.round((sh.box.x0 + sh.box.x1) / 2)},${Math.round((sh.box.y0 + sh.box.y1) / 2)}`;
+  if (name) return `the ${kind} "${name}"${sh.id !== null && sh.id !== sh.name ? ` (id "${sh.id}")` : ''}`;
+  if (sh.id !== null) return `the ${kind} "${sh.id}"`;
+  return `the ${sh.call ?? kind} at ${Math.round((sh.box.x0 + sh.box.x1) / 2)},${Math.round((sh.box.y0 + sh.box.y1) / 2)}`;
 }
 
 function shapeKey(sh) {
@@ -1114,10 +1175,13 @@ export function linesOverText(strokes, texts) {
   return found;
 }
 
-// Text that partly covers a shape, like a note on the edge of a box: they reach
-// more than 4 pixels into each other and neither holds the other. A shape's own
-// text, text in the same group, app screens, arrow labels (which have a check of
-// their own) and overlap: true on either don't count.
+// Text that partly covers a shape, like a note on the edge of a box: text that
+// reaches more than 4 pixels into the line drawn on the shape's outline, from
+// outside or from inside. The line counts as wide as it is drawn, so a word
+// sitting on a box's border is found also where the browser measures letters a
+// little smaller. Text fully inside or fully outside, a shape's own text, text in
+// the same group, app screens, arrow labels (which have a check of their own)
+// and overlap: true on either don't count.
 export function textsIntoShapes(texts, shapes) {
   const list = shapes.filter((s) => s.settled && s.alpha > 0.95 && !s.overlap && !s.cover && !s.ui);
   const found = [];
@@ -1126,8 +1190,11 @@ export function textsIntoShapes(texts, shapes) {
     const box = [[tx.x0, tx.y0], [tx.x1, tx.y0], [tx.x1, tx.y1], [tx.x0, tx.y1]];
     for (const sh of list) {
       if ((tx.shape !== null && tx.shape === sh.serial) || (sh.group !== null && sh.group === tx.group)) continue;
-      const depth = overlapDepth(sh.poly, box);
-      if (depth <= 4 || holds(sh.poly, box) || holds(box, sh.poly)) continue;
+      // The outer and the inner edge of the drawn border.
+      const outer = grow(sh.poly, sh.edge ?? 0);
+      const inner = grow(sh.poly, -(sh.edge ?? 0));
+      const depth = overlapDepth(outer, box);
+      if (depth <= 4 || holds(inner, box) || holds(box, outer)) continue;
       const label = tx.text.length > 40 ? tx.text.slice(0, 37) + '...' : tx.text;
       found.push({ key: `${shapeKey(sh)}/${tx.text}`, message: `"${label}" and ${shapeName(sh)} partly overlap, by ${Math.round(depth)}px; move them apart, or give one of them overlap: true if that is meant` });
     }

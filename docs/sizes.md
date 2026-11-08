@@ -56,13 +56,17 @@ frame in the app.
 `render` writes its own cover, `video.cover.jpg`, from the `cover` setting.
 With `"auto"` and `"defaults": "0.5"`, every size takes the frame of the first
 scene with the most elements fully arrived, where a frame with a shape, icon,
-image or clip comes first, and the earliest of those. A project without
+image or clip comes first, and the earliest of those. Code that types itself
+or shows its lines, a terminal with lines still to come, a number that counts
+and text that writes itself have arrived only once they are done. A project without
 `"defaults"` takes the end of the first scene, or 1.0 second into it on
 Shorts, TikTok and Reels. A cover you set yourself, like `"hook@2.5"`, always
 wins. `check` gives a hint when the cover shows only text on an empty
-background. The cover leaves out the
+background, and with `"defaults": "0.5"` when it shows something half typed or
+counted. The cover leaves out the
 captions, also when the video has them. A new `cover` needs no new render:
 `package` keeps the finished video and writes only the new cover image.
+`render` does the same when its video is otherwise the same, and says so.
 
 ## One project, several sizes
 

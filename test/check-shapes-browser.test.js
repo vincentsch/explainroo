@@ -81,7 +81,7 @@ test('check warns about shapes that partly overlap, and not about touching, nest
   for (const scene of ['touching', 'nested', 'grouped', 'allowed', 'circles', 'arriving']) assert.deepEqual(messages(issues, scene, 'overlap'), [], scene);
   assert.match(messages(issues, 'badge', 'overlap')[0] ?? '', /^the box "Card" and the icon "badge-check" partly overlap, by \d+px; move them apart, or give one of them overlap: true if that is meant$/);
   assert.match(messages(issues, 'sticker', 'overlap')[0] ?? '', /^the box "Price list" and the sticker "2 days" partly overlap, by \d+px/);
-  assert.deepEqual(messages(issues, 'app', 'overlap'), ['the card at 550,450 and the card at 1150,500 partly overlap, by 50px; move them apart, or give one of them overlap: true if that is meant']);
+  assert.deepEqual(messages(issues, 'app', 'overlap'), ['the 1st s.ui.panel at 550,450 and the 2nd s.ui.panel at 1150,500 partly overlap, by 50px; move them apart, or give one of them overlap: true if that is meant']);
 });
 
 test('check warns about the line of an arrow or a mark that crosses text, and with "defaults": "0.5" arrows leave an icon outside its label', { skip }, async (t) => {
@@ -103,6 +103,9 @@ test('check warns about the line of an arrow or a mark that crosses text, and wi
     icon: `s.icon('syringe', { id: 'shot', x: 960, y: 300, size: 140, label: 'Vaccine', labelSize: 44, at: 0 });
     s.box('Virus piece', { id: 'piece', x: 960, y: 800, at: 0 });
     s.arrow('shot', 'piece', { at: 0.5 });`,
+    // A circle around a part of the frame, by its call and where it is.
+    around: `s.text('beside it', { x: 900, y: 540, size: 48, at: 0 });
+    s.annotate({ x: 700, y: 540, w: 300, h: 100 }, { type: 'circle', at: 0.5 });`,
   });
   const { issues, more } = await check(p, (page) => page.evaluate(async () => {
     // Where that arrow starts, drawn on its own.
@@ -122,8 +125,9 @@ test('check warns about the line of an arrow or a mark that crosses text, and wi
   assert.deepEqual(messages(issues, 'circled', 'crosses'), ['the circle around "body" crosses the text "Your body"; mark a box that holds both, like s.annotate({ x, y, w, h }), or move the text']);
   assert.equal(issues.find((i) => i.scene === 'circled').level, 'warn');
   assert.deepEqual(messages(issues, 'marked', 'crosses'), []);
-  assert.deepEqual(messages(issues, 'across', 'crosses'), ['the arrow from 500,540 to 1400,540 crosses the text "in the way"; move the text, or let the arrow start or end somewhere else']);
+  assert.deepEqual(messages(issues, 'across', 'crosses'), ['the 1st s.arrow from 500,540 to 1400,540 crosses the text "in the way"; move the text, or let the arrow start or end somewhere else']);
   assert.deepEqual(messages(issues, 'icon', 'crosses'), []);
+  assert.deepEqual(messages(issues, 'around', 'crosses'), ['the 1st s.annotate (a circle) around 700,540 crosses the text "beside it"; mark a box that holds both, like s.annotate({ x, y, w, h }), or move the text']);
   // s.get still gives the icon alone, and the arrow starts below its label:
   // 300 + 70 for the icon, 44 * 1.5 for the space above the label and the
   // label, and the gap of 14.
@@ -274,9 +278,11 @@ test('s.draw with box is a shape for check: overlaps, text over its edge and the
   ]);
   assert.deepEqual(issues.filter((i) => i.scene === 'plain'), []);
   assert.deepEqual(issues.filter((i) => i.scene === 'inside'), []);
-  assert.deepEqual(messages(issues, 'edge', 'drawing'), [
-    'the drawing at 1880,540 runs off the frame (1780,440 to 1980,640 in a 1920x1080 frame)',
-    'the drawing at 960,40 comes closer than 38px to the edge (910,10 to 1010,70)',
+  // Without an id, a drawing is named by its call, the 2nd s.draw of the scene,
+  // and where it is.
+  assert.deepEqual(messages(issues, 'edge', 's.draw'), [
+    'the 1st s.draw at 1880,540 runs off the frame (1780,440 to 1980,640 in a 1920x1080 frame)',
+    'the 2nd s.draw at 960,40 comes closer than 38px to the edge (910,10 to 1010,70)',
   ]);
   // A box that isn't one is an error that says what it takes.
   const bad = await check(project(t, {}, { bad: `s.draw({ box: { w: 100 }, at: 0 }, () => {});` }));
@@ -287,11 +293,11 @@ test('s.draw with box counts in the safe area of a platform size and in the capt
   const issues = await check(project(t, { size: 'tiktok' }, {
     low: `s.draw({ x: 540, y: 1700, box: { x: 0, y: 0, w: 300, h: 200 }, at: 0 }, (ctx) => ctx.fillRect(-150, -100, 300, 200));`,
   }));
-  assert.match(messages(issues, 'low', 'drawing')[0], /^the drawing at 540,1700 reaches outside the tiktok safe area \(/);
+  assert.match(messages(issues, 'low', 's.draw')[0], /^the 1st s\.draw at 540,1700 reaches outside the tiktok safe area \(/);
   const band = await check(project(t, { captions: true }, {
     low: `s.draw({ x: 960, y: 900, box: { x: 0, y: 0, w: 300, h: 160 }, at: 0 }, (ctx) => ctx.fillRect(-150, -80, 300, 160));`,
   }));
-  assert.match(messages(band, 'low', 'drawing')[0], /^the drawing at 960,900 runs into the caption band \(y \d+ to \d+\), where captions can cover it; keep it above s\.safe\.bottom \(\d+\)$/);
+  assert.match(messages(band, 'low', 's.draw')[0], /^the 1st s\.draw at 960,900 runs into the caption band \(y \d+ to \d+\), where captions can cover it; keep it above s\.safe\.bottom \(\d+\)$/);
 });
 
 test('an icon with a label returns the label\'s box and an outer box with both, and bottom stays the icon\'s own', { skip }, async (t) => {

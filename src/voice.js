@@ -236,20 +236,21 @@ function withNewCues(project, scene, chunks, cached, hash, recording) {
 }
 
 // Says which step a scene is on once it has taken 2 seconds: making speech,
-// timing words or checking speech. In a terminal one line changes in place and
-// counts the sentences. Elsewhere each step gets one short line.
+// timing words or checking speech. In a terminal one line changes in place.
+// Elsewhere the step that runs at that moment gets a short line, and so does
+// every step after it when it starts, so the lines come in the order the steps
+// run. With several sentences, each line says which sentence it is.
 function progress(id, log, sentences) {
   const t0 = Date.now();
-  const said = new Set();
   let step = null;
   let sentence = 0;
+  let shown = null;
   const show = () => {
     if (!step) return;
-    if (log.update) log.update(`voice ${id}: ${step}${sentences > 1 ? `, sentence ${sentence} of ${sentences}` : ''}`);
-    else if (!said.has(step)) {
-      said.add(step);
-      log(`voice ${id}: ${step}`);
-    }
+    const line = `voice ${id}: ${step}${sentences > 1 ? `, sentence ${sentence} of ${sentences}` : ''}`;
+    if (log.update) log.update(line);
+    else if (line !== shown) log(line);
+    shown = line;
   };
   const timer = setTimeout(show, 2000);
   timer.unref?.();
@@ -444,7 +445,8 @@ export async function synthesize(project, { force = false, fresh = false, log = 
     const { scene, chunks, hash, key } = item;
     const t0 = Date.now();
     const number = chunks.length ? `scene ${spoken.indexOf(item) + 1}/${spoken.length} ` : '';
-    const steps = progress(`${number}${scene.id}`, log, chunks.length);
+    // A recording is cut and checked as one piece, not sentence by sentence.
+    const steps = progress(`${number}${scene.id}`, log, recordings ? 1 : chunks.length);
     let info;
     try {
       info = recordings && chunks.length
