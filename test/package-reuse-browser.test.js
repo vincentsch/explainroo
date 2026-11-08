@@ -63,14 +63,21 @@ test('a new cover leaves the video as it is: package keeps the file and writes o
   assert.equal(first.source.how, 'rendered');
   const before = fs.readFileSync(path.join(folder, 'video.cover.jpg'));
   const settings = read(path.join(dir, 'video.json'));
-  for (const cover of ['intro@0.2', 'intro@0.8']) {
+  assert.equal(first.cover.how, 'made');
+  for (const [cover, how] of [['intro@0.2', 'made again'], ['intro@0.8', 'made again'], ['intro@0.8', 'unchanged']]) {
     fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ ...settings, cover }));
     const again = await pack(dir, 'youtube');
     assert.equal(again.source.how, 'kept', cover);
     assert.equal(again.post.identity, first.post.identity, cover);
     assert.equal(again.post.sha256, first.post.sha256, cover);
+    assert.deepEqual(again.cover, { how, at: cover }, cover);
   }
   assert.notDeepEqual(fs.readFileSync(path.join(folder, 'video.cover.jpg')), before, 'the cover is new');
+  // The text says what happened to the cover.
+  const { formatPackage } = await import('../src/package.js');
+  const r = await pack(dir, 'youtube');
+  assert.match(formatPackage(r), /^Video: .*the same file as before\nCover: unchanged, from intro@0\.8$/m);
+  assert.match(formatPackage({ ...r, cover: { how: 'made again', at: 'hook@5.2' } }), /^Cover: made again from hook@5\.2$/m);
 });
 
 test('a --from/--to render and a --scale render are never reused, so package renders the whole video', { skip, timeout: 300000 }, async (t) => {

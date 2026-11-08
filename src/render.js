@@ -321,10 +321,24 @@ export async function writeExtras(project, timeline, base, { plan, log = () => {
   if (coverTime) {
     const temp = path.join(project.paths.build, 'cover.jpg');
     try {
-      await withEngine(project, timeline, { scale: 1, log }, (page) => page.evaluate(([T, file]) => window.explainroo.stills([{ T: T ?? window.explainroo.coverMoment(), path: file }], { type: 'image/jpeg', quality: 0.9, captions: false }), [coverTime.T, projectUrl(project, temp)]));
+      const T = await withEngine(project, timeline, { scale: 1, log }, (page) => page.evaluate(async ([set, file]) => {
+        const at = set ?? window.explainroo.coverMoment();
+        await window.explainroo.stills([{ T: at, path: file }], { type: 'image/jpeg', quality: 0.9, captions: false });
+        return at;
+      }, [coverTime.T, projectUrl(project, temp)]));
       files.cover = `${base}.cover.jpg`;
+      // Whether the cover image is new, made again or the same as before, and its moment.
+      const before = fs.existsSync(files.cover) ? fs.readFileSync(files.cover) : null;
+      const how = !before ? 'made' : before.equals(fs.readFileSync(temp)) ? 'unchanged' : 'made again';
       fs.copyFileSync(temp, files.cover);
+      Object.defineProperty(files, 'coverMade', { value: { how, at: momentLabel(timeline, T) }, enumerable: false });
     } finally { fs.rmSync(temp, { force: true }); }
   } else fs.rmSync(`${base}.cover.jpg`, { force: true });
   return files;
+}
+
+// A time of the video as a moment of a scene, like "hook@5.2".
+export function momentLabel(timeline, T) {
+  const sc = [...timeline.scenes].reverse().find((s) => T >= s.start - 1e-6) ?? timeline.scenes[0];
+  return `${sc.id}@${Math.max(0, T - sc.start).toFixed(1)}`;
 }

@@ -223,7 +223,7 @@ export async function packageVideo(arg, { lang, platform, size, title, descripti
   writeAtomic(path.join(folder, 'post.json'), JSON.stringify(post, null, 2) + '\n');
   // Another size that says an older script is named, and never rendered here.
   const outdated = outdatedRenders(project);
-  return { ok: post.verify.ok, platform, folder, setup, source, verified: earlier ? 'earlier' : 'now', post, ...(outdated.length ? { outdated } : {}) };
+  return { ok: post.verify.ok, platform, folder, setup, source, verified: earlier ? 'earlier' : 'now', post, cover: extras.coverMade ?? null, ...(outdated.length ? { outdated } : {}) };
 }
 
 function oneLine(text, length = 100) {
@@ -246,6 +246,7 @@ export function formatPackage(r) {
     `  ${listed.join(', ')}`,
     `Video: ${p.width}x${p.height}, ${p.duration.toFixed(1)}s, ${p.watermark ? 'with' : 'without'} the watermark, ${how}`,
     ...(r.source.command ? [`  No render was this exact video. Next time, "${r.source.command}" makes one that package can copy.`] : []),
+    ...(r.cover ? [r.cover.how === 'unchanged' ? `Cover: unchanged, from ${r.cover.at}` : `Cover: ${r.cover.how} from ${r.cover.at}`] : []),
     `Title: ${oneLine(p.title)}`,
     `Text: ${oneLine(p.text)}`,
     `AI label: ${p.ai_label ? 'yes' : 'no'}${p.ai_reasons.length ? ` (${p.ai_reasons.join(', ')})` : ''}`,
