@@ -133,7 +133,9 @@ user. Read it first.
     the voice is still clear over the music, and it lists the words that only
     nearly matched next to the percentage it understood, each with its time in
     the video. Each word it could not confirm is a warning with its time in
-    the video.
+    the video. Its last line is the verdict: "passed", "passed with 2
+    warnings" or "failed: 1 problem", and `--json` has it as `verdict`, with
+    `passed` true or false.
 
 11. **Tell the user** where the video and its subtitle files, chapters and
     cover are, how long the video is, what verify said, and what you could

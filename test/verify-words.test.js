@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { loadProject } from '../src/project.js';
-import { formatVerify, unconfirmedText, verify } from '../src/qa.js';
+import { formatVerify, unconfirmedText, verdictOf, verify } from '../src/qa.js';
 import { ffmpeg } from '../src/ffmpeg.js';
 
 // Scene texts heard in the final mix, one per call, with words 0.2 s apart.
@@ -63,4 +63,25 @@ test('a long list of unconfirmed words is cut after twelve', () => {
   const list = Array.from({ length: 15 }, (_, i) => ({ word: `w${i}`, time: i }));
   assert.match(unconfirmedText(list), /^the speech check could not confirm 15 words in the final mix: "w0" at 0\.0 s, .*"w11" at 11\.0 s, and 3 more$/);
   assert.equal(unconfirmedText([{ word: 'key', time: 2 }]), 'the speech check could not confirm 1 word in the final mix: "key" at 2.0 s');
+});
+
+test('verify ends with a verdict, in the text and in JSON: passed, passed with warnings, or failed with its problems', async (t) => {
+  const project = await videoProject(t, '# Demo\n\n## key\nNo API key needed.\n', [{ id: 'key', dur: 2 }]);
+  const r = await verify(project, { transcribe: says(['No API can eat it.']) });
+  const warnings = r.issues.filter((i) => i.level === 'warn').length;
+  assert.ok(warnings >= 1, JSON.stringify(r.issues));
+  assert.equal(r.verdict, `passed with ${warnings} warning${warnings === 1 ? '' : 's'}`);
+  assert.equal(r.passed, true);
+  assert.equal(formatVerify(r).split('\n').at(-1), r.verdict);
+  const saved = JSON.parse(fs.readFileSync(path.join(project.paths.out, 'report.json'), 'utf8'));
+  assert.deepEqual([saved.passed, saved.verdict], [true, r.verdict]);
+  // Hints count for neither, and an error fails it.
+  assert.deepEqual(verdictOf([]), { passed: true, verdict: 'passed' });
+  assert.deepEqual(verdictOf([{ level: 'hint' }]), { passed: true, verdict: 'passed' });
+  assert.deepEqual(verdictOf([{ level: 'warn' }, { level: 'hint' }]), { passed: true, verdict: 'passed with 1 warning' });
+  assert.deepEqual(verdictOf([{ level: 'error' }]), { passed: false, verdict: 'failed: 1 problem' });
+  assert.deepEqual(verdictOf([{ level: 'error' }, { level: 'warn' }, { level: 'error' }]), { passed: false, verdict: 'failed: 2 problems' });
+  // A report from before has its verdict worked out when it is printed.
+  const { passed, verdict, ...older } = { ...r, issues: [{ level: 'error', message: 'the file has no audio stream' }] };
+  assert.equal(formatVerify(older).split('\n').at(-1), 'failed: 1 problem');
 });

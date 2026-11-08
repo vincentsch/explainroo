@@ -430,6 +430,7 @@ export async function verify(project, { file = null, report: reportFile = null, 
     silences,
     speech,
     issues,
+    ...verdictOf(issues),
   };
   const target = path.resolve(reportFile || path.join(project.paths.out, 'report.json'));
   fs.mkdirSync(path.dirname(target), { recursive: true });
@@ -456,13 +457,23 @@ export function unconfirmedText(list) {
   return `the speech check could not confirm ${list.length} word${list.length === 1 ? '' : 's'} in the final mix: ${shown.join(', ')}${more}`;
 }
 
+// Whether a video passed verify: "passed", "passed with 2 warnings", or "failed:
+// 1 problem" when it found an error. Hints count for neither.
+export function verdictOf(issues) {
+  const errors = issues.filter((i) => i.level === 'error').length;
+  const warnings = issues.filter((i) => i.level === 'warn').length;
+  const verdict = errors ? `failed: ${errors} problem${errors === 1 ? '' : 's'}` : warnings ? `passed with ${warnings} warning${warnings === 1 ? '' : 's'}` : 'passed';
+  return { passed: !errors, verdict };
+}
+
 // What verify prints: the file, the narration understood with the words that
-// only nearly matched, and each finding.
+// only nearly matched, each finding, and the verdict last.
 export function formatVerify(r) {
   const nearly = r.speech?.nearly?.length ? `, ${nearlyText(r.speech.nearly)}. ${nearlyAdvice(r.speech.nearly)}` : '';
   return [
     `${r.file}: ${r.duration}s, ${r.video ? `${r.video.width}x${r.video.height}` : 'no video'}, loudness ${r.loudness?.integrated ?? '?'} LUFS, true peak ${dbtp(r.loudness?.truePeak)}`,
     r.speech ? `narration understood: ${Math.round(r.speech.matchRate * 100)}%${nearly}` : '',
     ...r.issues.map((i) => `${i.level.toUpperCase().padEnd(5)} ${i.message}`),
+    r.verdict ?? verdictOf(r.issues).verdict,
   ].filter(Boolean).join('\n');
 }

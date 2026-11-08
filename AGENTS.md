@@ -174,7 +174,8 @@ there and publishes nothing.
     are the cheap way to see frames. Check the file with
     `explainroo verify videos/<name>`. It fails when the sound clips above
     0 dBTP, and it warns when the loudness is off, frames are black or the
-    voice is hard to understand over the music.
+    voice is hard to understand over the music. Its last line says whether
+    it passed.
 11. **Tell the user** where the video, its subtitles, chapters and cover are,
     how long it is, what `verify` said and what you could not check. To post
     it, read `explainroo docs publishing`.
