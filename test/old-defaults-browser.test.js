@@ -1,7 +1,7 @@
 // A project without "defaults" in video.json renders the frames and the cover it
 // did before the defaults of 0.5 existed. test/fixtures/old-frames.json holds the
-// frames that version rendered of an example and of a project with every part
-// whose look the line changes. They depend on the browser that drew them, so the
+// frames that version rendered of an example, without the line it has now, and
+// of a project with every part whose look the line changes. They depend on the browser that drew them, so the
 // test runs where that browser is.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -25,7 +25,7 @@ const differ = (a, b) => Object.keys(a.frames).filter((f) => a.frames[f] !== b.f
 for (const [name, make] of [['how-dns-works', (t, settings) => exampleCopy(t, 'how-dns-works', settings)], ['parts', partsProject]]) {
   test(`${name} without "defaults" renders the frames and the cover it did before, and with "defaults": "0.5" it looks new`, { skip, timeout: 240000 }, async (t) => {
     const before = PINNED[name];
-    const now = await frameHashes(mod, make(t));
+    const now = await frameHashes(mod, make(t, { defaults: undefined }));
     assert.deepEqual(differ(before, now), [], 'the same frames');
     assert.deepEqual(now.cover, before.cover, 'the same cover');
     const fresh = await frameHashes(mod, make(t, { defaults: '0.5' }));

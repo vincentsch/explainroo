@@ -4,5 +4,6 @@
   "size": "16:9",
   "voice": "af_heart",
   "music": true,
-  "captions": "auto"
+  "captions": "auto",
+  "defaults": "0.5"
 }

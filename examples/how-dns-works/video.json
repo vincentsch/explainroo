@@ -5,5 +5,6 @@
   "voice": "af_heart",
   "music": true,
   "captions": "auto",
-  "cover": "hook@end"
+  "cover": "hook@end",
+  "defaults": "0.5"
 }
