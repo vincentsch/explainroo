@@ -38,7 +38,7 @@ The folder is `out/package/<platform>/`:
 | `post.json` | everything settled for this platform, see below |
 | `description.txt` | the words for the platform's text box, ready to paste |
 | `video.srt` and `video.vtt` | captions, when the video has narration |
-| `video.cover.jpg` | the cover picture. With `"cover": "auto"`, Shorts, TikTok and Reels take it 1.0 second into the first scene, where a hook title is, and the other platforms at the end of the first scene |
+| `video.cover.jpg` | the cover picture, without captions. With `"cover": "auto"` it is the frame in the first 3 seconds of the first scene with the most elements fully on screen. A new `cover` needs no new render, so the package keeps the video and writes only the cover |
 | `video.chapters.txt` | chapters, on YouTube only, when scenes name them |
 | `credits.txt` | one credit per line |
 | `report.json` | the `verify` report of `video.mp4` |

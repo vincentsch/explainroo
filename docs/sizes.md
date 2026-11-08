@@ -39,7 +39,8 @@ hook title on the first frame.
 
 ## Where the captions sit
 
-Captions are on by default for vertical, 4:5 and square videos. On Shorts,
+Captions are on by default for vertical, 4:5 and square videos.
+`"captions": "auto"` means no captions on a 16:9 video. On Shorts,
 TikTok and Reels they sit right above the app's bottom band. On 4:5, square
 and wide videos they sit at the bottom, above the watermark. On a plain
 `9:16` video they sit about a quarter of the way up. In every case `s.safe`
@@ -53,11 +54,12 @@ elements draw themselves in, frame one is empty. Give the title
 frame in the app.
 
 `render` writes its own cover, `video.cover.jpg`, from the `cover` setting.
-With `"auto"`, `shorts`, `tiktok`, `reels` and `vertical` take it 1.0 second
-into the first scene, while the hook title is still on screen. A first scene
-shorter than that gives its last frame. Every other size, plain `9:16`
-included, takes the end of the first scene. A cover you set yourself always
-wins.
+With `"auto"`, every size takes the frame in the first 3 seconds of the first
+scene with the most elements fully on screen, the earliest of those. A cover
+you set yourself, like `"hook@2.5"`, always wins. `check` gives a hint when the
+cover shows only text on an empty background. The cover leaves out the
+captions, also when the video has them. A new `cover` needs no new render:
+`package` keeps the finished video and writes only the new cover image.
 
 ## One project, several sizes
 
@@ -70,6 +72,26 @@ Place things from `s.safe`, `s.cx`, `s.cy`, `s.row`, `s.col` and `s.grid`
 instead of fixed pixel positions. Use `s.portrait` to stack things in tall
 frames. Keep text sizes relative to the frame, for example `s.W * 0.05`.
 The `compare` layout in `explainroo docs pictures` shows one way.
+
+When a scene needs a picture of its own in tall frames, draw it in the same
+scene function when `s.portrait` is true. The cues and markers stay the same:
+
+```js
+steps(s) {
+  const { top, h } = s.safe;
+  if (s.portrait) {
+    s.box('Ask', { id: 'a', y: top + h * 0.25, at: 'ask' });
+    s.box('Answer', { id: 'b', y: top + h * 0.75, at: 'answer' });
+  } else {
+    s.box('Ask', { id: 'a', x: 600, y: 540, at: 'ask' });
+    s.box('Answer', { id: 'b', x: 1320, y: 540, at: 'answer' });
+  }
+  s.arrow('a', 'b', { at: 'answer' });
+},
+```
+
+`"captions": "auto"` follows the size too, so the 16:9 video has no captions
+and the tall one has them, unless `"captions"` says otherwise.
 [examples/merge-vs-rebase](https://github.com/vincentsch/explainroo/tree/main/examples/merge-vs-rebase)
 works in `9:16` and in `youtube`.
 
@@ -87,15 +109,15 @@ watermark off for one run and adds `-no-watermark` the same way.
 
 `"sizes"` in `video.json` gives one size settings of its own. A block can set
 `captions`, `cover`, `pace` and `watermark`, with the same values as at the top
-of the file. Here TikTok gets bold captions, a quicker pace and a cover on the
-hook title, and the 16:9 version stays as it is:
+of the file. Here TikTok gets bold captions, a quicker pace and a cover of its
+own, and the 16:9 version stays as it is:
 
 ```json
 {
   "size": "16:9",
   "captions": "auto",
   "sizes": {
-    "tiktok": { "captions": "bold", "pace": 1.2, "cover": "hook@0.5" }
+    "tiktok": { "captions": "bold", "pace": 1.2, "cover": "hook@2.5" }
   }
 }
 ```

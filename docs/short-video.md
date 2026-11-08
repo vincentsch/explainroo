@@ -12,13 +12,36 @@ of its own. Then the 16:9 version keeps the settings at the top of `video.json`:
 
 ```json
 "sizes": {
-  "tiktok": { "captions": "bold", "pace": 1.2, "cover": "hook@0.5" }
+  "tiktok": { "captions": "bold", "pace": 1.2 }
 }
 ```
 
 `render --size tiktok` and `package --platform tiktok` use that block.
 `explainroo docs sizes` says how blocks work, and that a size with a pace of its
-own gets narration of its own.
+own gets narration of its own. `"captions": "auto"` means no captions on 16:9
+and captions on tall, 4:5 and square sizes, so set `"captions"` yourself when
+you want them in the 16:9 video too.
+
+## A layout of its own for the tall frame
+
+Most scenes placed from `s.safe` work in both sizes. When a scene needs another
+picture in the tall frame, the same scene function draws it when `s.portrait`
+is true:
+
+```js
+hook(s) {
+  if (s.portrait) {
+    s.short.hook('How vaccines *train* your body');
+    s.icon('syringe', { y: s.safe.top + s.safe.h * 0.6, size: 240, at: '#shot' });
+    return;
+  }
+  s.title('How vaccines train your body', { y: 300, at: 0 });
+  s.icon('syringe', { x: 1400, y: 680, size: 260, at: '#shot' });
+},
+```
+
+Both layouts share the narration and its cues, so the cue words and markers
+work in both.
 
 ## The first frame
 
@@ -29,10 +52,13 @@ frame says what the video is about. Give it a later `at` only when the scene
 starts with something else to look at.
 
 The cover that `render` and `package` write shows the hook too. With
-`"cover": "auto"`, a `shorts`, `tiktok`, `reels` or `vertical` video takes its
-cover 1.0 second into the first scene. A hook that leaves sooner needs a
-`cover` of its own, like `"hook@0.5"`, at the top of `video.json` or in the
-block of the size.
+`"cover": "auto"` it is the frame in the first 3 seconds of the first scene
+with the most elements fully on screen, so it shows the hook with the first
+picture when both are there by then. `check` gives a hint when the cover shows
+only text on an empty background. A cover has no captions. A `cover` of your
+own goes at the top of `video.json` or in the block of the size, like
+`"hook@2.5"`, and needs no new render: `package` keeps the video and writes
+only the new cover.
 
 ## The caption band
 
@@ -102,8 +128,11 @@ A small uppercase label in a pill, like "QUICK TIP". `x`, `y`, `size`, `color`,
 ### `sticker(text, options)`
 
 A tilted box with bold text for one fact, like "*2* days". `x`, `y`,
-`size`, `color` (the box), `textColor`, `keyColor`, `rotate` (degrees, -4 by
-default), `border`, `at`, `out`, `sfx`, `id`.
+`size`, `color` (the box), `textColor`, `keyColor` (a red that reads at 4.5:1
+on the box's color by default), `rotate` (degrees, -4 by default), `border`,
+`at`, `out`, `sfx`, `id`, `overlap`. `check` measures the text and the
+keywords against the box's color, and warns when the sticker partly covers
+another shape. `overlap: true` says that is meant.
 
 ### `step(n, total, options)`
 

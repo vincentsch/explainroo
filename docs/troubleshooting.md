@@ -34,8 +34,13 @@
 - A scene change in the middle of one diagram. The default transition of
   `clean` slides the whole frame. Give scenes that share a diagram
   `{transition=fade}` or `{transition=cut}`.
-- Arrows from an icon that has a label. The `id` of an icon covers the icon
-  only, not its label, so an arrow that leaves downward crosses the label.
+- A mark around an icon that has a label. The `id` of an icon covers the icon
+  without its label, so `s.annotate('id', { type: 'circle' })` can run through
+  the label. Mark a box that holds both, like `s.annotate({ x, y, w, h })`.
+  Arrows leave and reach a labelled icon outside its label.
+- Shapes that partly cover each other, like two cards that grow into each
+  other after you make their text bigger. Move them apart. A badge meant to sit
+  on a card's corner takes `overlap: true`.
 - An arrow label near the edge. A vertical arrow's label sits on its left.
   Move it with `labelSide: 'right'`, or `'above'` or `'below'`.
 - Text with a background but no words, like `s.text('   ', { bg: 'surface' })`
@@ -61,11 +66,21 @@
 text. It finds text that is:
 
 - off the frame, or closer than 3.5% to the edge
-- too small
+- too small at the size it is shown, with the camera's zoom
 - low in contrast against the page, a background from `s.bg` or
-  `s.short.backdrop`, or the text's own `bg`
+  `s.short.backdrop`, or its own sticker, box or `bg`, the `*starred*` words
+  too
 - on top of other text, or under the captions
+- crossed by the line of an arrow or of a mark from `s.annotate`
+- cut at the edge of the frame by the camera while the shot holds still
 
-It also warns about text with a background but no words, and about a `lift`
-above 2 in `s.ui`. It does not see shapes, arrow lines and icons, or drawings
-made with `s.draw`. Look at the stills for those.
+It also finds:
+
+- shapes that partly overlap: boxes, cards, panels, images, icons and stickers
+- a scene that shows only its background for more than 1.5 seconds at the start
+- a cover with only text on an empty background
+- text with a background but no words
+- a `lift` above 2 in `s.ui`
+
+It does not see drawings made with `s.draw` or straight on `s.ctx`. Look at
+the stills for those.
