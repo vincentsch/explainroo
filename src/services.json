@@ -5,8 +5,8 @@
     { "id": "images", "name": "Images", "what": "Where the pictures in a scene come from." },
     { "id": "clips", "name": "Clips", "what": "Where short pieces of video come from." },
     { "id": "music", "name": "Music", "what": "What plays under the voice." },
-    { "id": "sharing", "name": "Sharing", "what": "How other people get to watch the video." },
-    { "id": "posting", "name": "Posting", "what": "How the video gets onto a platform." }
+    { "id": "sharing", "name": "Sharing", "what": "How other people get to watch the video.", "command": "share" },
+    { "id": "posting", "name": "Posting", "what": "How the video gets onto a platform.", "command": "publish" }
   ],
   "services": [
     {
@@ -292,12 +292,12 @@
       "id": "buffer",
       "step": "posting",
       "name": "Buffer",
-      "about": "A company that posts to social networks for you. \"explainroo publish --via buffer\" sends a package to one of your Buffer channels on YouTube, TikTok, Instagram, LinkedIn or X.",
+      "about": "A company that posts to social networks for you. \"explainroo publish --via buffer\" sends a package to one of your Buffer channels on YouTube, TikTok, Instagram, LinkedIn or X. Buffer needs a public link to the video, and \"explainroo share\" can't make one yet, so the video has to be on a host of your own first.",
       "free": true,
       "partner": false,
       "status": "available",
       "cost": "Free on Buffer's free plan, which limits how many channels and posts you have. Bigger plans cost money on your Buffer account.",
-      "data_leaves": "The title, the text and a link to the video go to Buffer, which fetches the video from that link and posts it. The video has to be online first, on your own host, or through \"explainroo share\" once its service runs.",
+      "data_leaves": "The title, the text and a link to the video go to Buffer, which fetches the video from that link and posts it.",
       "setup": {
         "env": ["BUFFER_ACCESS_TOKEN", "BUFFER_REFRESH_TOKEN"],
         "login": "oauth",

@@ -22,7 +22,7 @@ import { CONNECTORS } from './connectors/index.js';
 import { hideSecrets } from './errors.js';
 import { formatHistory, historyReport, selfCommand } from './history.js';
 import { boughtCharacters, speechConnector } from './paid-speech.js';
-import { formatServices, findService, needsKey, SERVICES, STEPS, stepServices } from './services.js';
+import { formatServices, findService, findStep, needsKey, SERVICES, STEPS, stepNames, stepServices } from './services.js';
 import { clipPricesToday, showsClipPrices } from './price-list.js';
 import { narrationTime, speechKeys } from './voice.js';
 import { findEnv } from './env.js';
@@ -94,7 +94,7 @@ AI video clips (optional, costs money, uses the same OpenRouter key as images)
 Outside services (optional)
   services [step]       list the choices for each step, free ones first (--project dir). For clips it
                         shows today's prices from OpenRouter's public list, which it reads at most once a day
-                        Steps: ${STEPS.map((s) => s.id).join(', ')}
+                        Steps: ${STEPS.map((s) => s.id).join(', ')}. The command names ${STEPS.filter((s) => s.command).map((s) => s.command).join(' and ')} also work
   connect <service>     set a service up: test its key and save it (--key-stdin, --project dir), or sign in
                         through the browser and finish with --callback-url '<address>'
   history [project]     open paid jobs and the command that continues each one, then what was spent and rendered
@@ -641,8 +641,9 @@ function docs(topic, flags, print) {
 
 // Each entry is listed under every step it serves, with that step's words. The
 // clips step also shows today's prices, which never make services fail.
-async function services(step, flags, print) {
-  if (step !== undefined && !STEPS.some((s) => s.id === step)) throw new ProjectError(`there is no step "${step}". The steps are: ${STEPS.map((s) => s.id).join(', ')}.`);
+async function services(name, flags, print) {
+  const step = name === undefined ? undefined : findStep(name)?.id;
+  if (name !== undefined && !step) throw new ProjectError(`there is no step "${name}". ${stepNames()}`);
   const steps = STEPS.filter((s) => step === undefined || s.id === step);
   const dir = path.resolve(textFlag(flags, 'project') ?? '.');
   const connected = (id) => {

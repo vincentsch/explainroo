@@ -22,7 +22,7 @@ take the project folder first, and every command accepts `--json`.
 | `image [project] <name> "<prompt>"` | makes an illustration with OpenRouter (`--new` buys it again, `--resume <id>` runs a job from `history` again) |
 | `images [project]` | lists the images and what they cost |
 | `clip [project] "<prompt>"` | buys a short AI video clip with OpenRouter (`--seconds`, `--max-cost`, `--dry-run`, `--aspect`, `--model`, `--resolution`, `--audio`, `--name`, `--no-wait`, `--new`, `--resume <id>`). `--dry-run` shows the price, also without a project |
-| `services [step]` | lists the choices for each step, free ones first, with what each costs and what data leaves (`--json`, `--project`). For clips it shows today's prices from OpenRouter's public list, which it reads at most once a day, or the range with `EXPLAINROO_OFFLINE=1` |
+| `services [step]` | lists the choices for each step, free ones first, with what each costs and what data leaves (`--json`, `--project`). The steps are `voice`, `timing`, `images`, `clips`, `music`, `sharing` and `posting`, and `publish` and `share` work as names for the last two. For clips it shows today's prices from OpenRouter's public list, which it reads at most once a day, or the range with `EXPLAINROO_OFFLINE=1` |
 | `connect <service>` | sets a service up: tests its key or signs in through the browser, and saves it (`--key-stdin`, `--callback-url`, `--project`) |
 | `history [project]` | prints open paid jobs with the command that continues each one, then spend, then rendered versions |
 | `voices`, `say "text"` | lists Kokoro voices with their languages (`--language es`, `ja` or `zh` filters voices), or makes a sample in the chosen voice's language |

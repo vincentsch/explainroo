@@ -107,7 +107,9 @@ Explainroo makes the whole video for free. When the user asks for something
 that can use an outside service, run `explainroo services <step> --json` and
 tell the user the options, free ones first. Say which cost money and which are
 paid partners. Let the user choose. Never pick a paid service for them and
-never call a partner the best.
+never call a partner the best. The steps are `voice`, `timing`, `images`,
+`clips`, `music`, `sharing` and `posting`. `publish` and `share` work as
+names for the last two.
 
 `share` and `publish` are the only commands that upload a video, so run them
 only when the user asks. Run `publish` with `--dry-run` first and show the

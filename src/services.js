@@ -13,6 +13,18 @@ export function findService(id) {
   return SERVICES.find((s) => s.id === id) ?? null;
 }
 
+// A step by its id, or by the command that does it, so "publish" finds posting
+// and "share" finds sharing.
+export function findStep(name) {
+  return STEPS.find((s) => s.id === name) ?? STEPS.find((s) => s.command === name) ?? null;
+}
+
+// What an error says when there is no such step.
+export function stepNames() {
+  const commands = STEPS.filter((s) => s.command);
+  return `The steps are: ${allOf(STEPS.map((s) => s.id))}. ${allOf(commands.map((s) => `"${s.command}"`))} also work, for ${allOf(commands.map((s) => s.id))}.`;
+}
+
 export function needsKey(service) {
   return service.setup.env.length > 0;
 }

@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { SERVICES, STEPS, findService, forStep, formatServices, needsKey, oneOf, serviceLabels, serviceSteps, stepServices, voiceProviders } from '../src/services.js';
+import { SERVICES, STEPS, findService, findStep, forStep, formatServices, needsKey, oneOf, serviceLabels, serviceSteps, stepServices, voiceProviders } from '../src/services.js';
 import { CONNECTORS, findConnector } from '../src/connectors/index.js';
 import { normalizeConfig, ProjectError } from '../src/project.js';
 import { GOOD_KEY, startFakeServices } from './helpers/fake-services.js';
@@ -261,6 +261,29 @@ test('an unknown step is an error that lists the real ones', () => {
   const json = run(['services', 'nope', '--json']);
   assert.equal(json.status, 1);
   assert.match(JSON.parse(json.stdout).error, /there is no step/);
+  assert.ok(r.stderr.includes('"share" and "publish" also work, for sharing and posting.'));
+});
+
+// "explainroo services publish" is what someone types who knows the command.
+test('services takes publish and share as names for the posting and sharing steps', () => {
+  for (const [command, step] of [['publish', 'posting'], ['share', 'sharing']]) {
+    assert.equal(findStep(command).id, step);
+    const text = run(['services', command]);
+    assert.equal(text.status, 0, text.stderr);
+    assert.equal(text.stdout, run(['services', step]).stdout);
+    assert.deepEqual(JSON.parse(run(['services', command, '--json']).stdout).steps.map((s) => s.id), [step]);
+  }
+  assert.equal(findStep('voice').id, 'voice');
+  assert.equal(findStep('render'), null);
+  assert.match(run(['--help']).stdout, /Steps: voice, timing, images, clips, music, sharing, posting\. The command names share and publish also work/);
+});
+
+// Buffer is free, but it can only post a video that is online already.
+test('the Buffer entry under posting says it needs a public link that share cannot make yet', () => {
+  const posting = run(['services', 'posting']).stdout;
+  const buffer = posting.slice(posting.indexOf('  Buffer (free)'), posting.indexOf('  Blotato'));
+  assert.match(buffer.split('\n')[1], /Buffer needs a public link to the video, and "explainroo share" can't make one yet, so the video has to be on a host of your own first\.$/);
+  assert.equal(findService('cloud').status, 'coming');
 });
 
 // The CLI with the fake services, whose server can only answer while this process waits.
