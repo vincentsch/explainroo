@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { main } from '../src/cli.js';
 
 // Run the CLI in-process and collect what it wrote to stderr.
@@ -114,4 +115,28 @@ test('size overrides reject missing values and invalid sizes before building for
       }
     }
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// One icon per line, with the words it is found by after it, so that a tag never
+// reads as another icon. A word with no match gets up to five close names.
+test('icons prints one match per line, and close names when nothing matches', () => {
+  const bin = new URL('../bin/explainroo.js', import.meta.url).pathname;
+  const icons = (...args) => spawnSync(process.execPath, [bin, 'icons', ...args], { encoding: 'utf8' });
+  const one = icons('anchor');
+  assert.equal(one.status, 0);
+  assert.equal(one.stdout, '1 icon matches "anchor":\n  anchor  (also found by: ship)\n');
+  const many = icons('cloud');
+  const [head, ...rows] = many.stdout.trimEnd().split('\n');
+  assert.match(head, /^\d+ icons match "cloud", best first:$/);
+  assert.equal(rows[0], '  cloud  (also found by: weather)');
+  for (const row of rows) assert.match(row, /^ {2}[a-z0-9-]+(?: {2}\(also found by: [^)]+\))?$/);
+  assert.deepEqual(JSON.parse(icons('anchor', '--json').stdout), { icons: ['anchor'] });
+  const none = icons('zzqx');
+  assert.equal(none.status, 0);
+  const close = JSON.parse(icons('zzqx', '--json').stdout);
+  assert.deepEqual(close.icons, []);
+  assert.ok(close.close.length > 0 && close.close.length <= 5);
+  assert.equal(none.stdout, `no icon matches "zzqx". Close names: ${close.close.join(', ')}\n`);
+  // More than 40 matches name how many there are.
+  assert.match(icons('arrow').stdout, /^\d+ icons match "arrow"\. These are the 40 best:\n/);
 });

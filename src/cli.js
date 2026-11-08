@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { loadProject, ProjectError, THEMES, MUSIC_STYLES, FORMATS, resolveSize, normalizeConfig, scriptName, checkLanguage, noKokoroVoice } from './project.js';
 import { layoutAreas } from '../engine/layout.js';
+import { suggest } from '../engine/util.js';
 import { ScriptError } from './script.js';
 import { prepare, makeState, VERSION } from './pipeline.js';
 import { render } from './render.js';
@@ -604,9 +605,21 @@ function icons(words, print) {
       return { name, score, tags };
     })
     .filter((x) => x.score > 0)
-    .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
-    .slice(0, 40);
-  print(scored.map((x) => `${x.name.padEnd(28)} ${x.tags.slice(0, 6).join(', ')}`).join('\n') || `no icons match "${words.join(' ')}"`, { icons: scored.map((x) => x.name) });
+    .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
+  const total = scored.length;
+  scored.splice(40);
+  const asked = words.join(' ');
+  if (!scored.length) {
+    // Close spellings, for a word that no name or tag has in it.
+    const close = suggest(q.join('-'), Object.keys(all), 5);
+    print(`no icon matches "${asked}". Close names: ${close.join(', ')}`, { icons: [], close });
+    return 0;
+  }
+  // One icon per line, and the words it is also found by after it, so the tags
+  // don't read as more icons.
+  const lines = scored.map((x) => `  ${x.name}${x.tags.length ? `  (also found by: ${x.tags.slice(0, 6).join(', ')})` : ''}`);
+  const head = total === 1 ? `1 icon matches "${asked}":` : total > scored.length ? `${total} icons match "${asked}". These are the ${scored.length} best:` : `${total} icons match "${asked}", best first:`;
+  print([head, ...lines].join('\n'), { icons: scored.map((x) => x.name) });
   return 0;
 }
 
