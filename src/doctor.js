@@ -148,7 +148,9 @@ export function setupEspeak({ notice = () => {} } = {}) {
 }
 
 // `project` is a loaded project, `language` the codes of --language, or neither for
-// the default setup. Only `fetch` downloads anything, and it fetches the English models.
+// the default setup. Only `fetch` downloads anything, and it fetches the models
+// that setup needs: the voice model for a Kokoro voice, the English speech check
+// model for English, and the language model for every other language.
 export async function doctor({ project = null, language = null, fetch = false, log = () => {}, notice = log } = {}) {
   if (project && language !== null) throw new ProjectError('doctor checks a project or the languages of --language, not both. With a project it checks the languages in its video.json.');
   const setup = project ? projectSetup(project) : language !== null ? languageSetup(language) : DEFAULT_SETUP;
@@ -211,12 +213,17 @@ export async function doctor({ project = null, language = null, fetch = false, l
   }
 
   if (fetch) {
-    await loadTTS({ log });
-    await loadASR({ log });
+    if (needs.has(MODEL_NAMES[TTS_MODEL])) await loadTTS({ log });
+    for (const model of [ASR_MODEL, MULTILINGUAL_ASR_MODEL]) {
+      const languages = needs.get(MODEL_NAMES[model]);
+      if (languages) await loadASR({ log, language: languages[0] });
+    }
   }
   const models = path.join(cacheRoot(), 'models');
   const has = (model) => fs.existsSync(path.join(models, model));
-  const fetched = (model) => `not downloaded yet. "${command} doctor --fetch" or the first voice run fetches it, ${downloadSize(model)}.`;
+  // The same setup, with --fetch.
+  const again = `${command} doctor --fetch${language !== null ? ` --language ${language}` : project ? ` ${projectWord(project.dir)}` : ''}`;
+  const fetched = (model) => `not downloaded yet. "${again}" or the first voice run fetches it, ${downloadSize(model)}.`;
   some(MODEL_NAMES[TTS_MODEL], {
     found: has(TTS_MODEL),
     ready: () => `Kokoro 82M (${ttsDtype()}) in ${path.dirname(path.join(models, TTS_MODEL))}`,
@@ -232,7 +239,7 @@ export async function doctor({ project = null, language = null, fetch = false, l
   some(MODEL_NAMES[MULTILINGUAL_ASR_MODEL], {
     found: has(MULTILINGUAL_ASR_MODEL),
     ready: (languages) => `Whisper small, for narration in ${names(languages)}`,
-    missing: () => `not downloaded yet. The first voice run of this project downloads it, ${downloadSize(MULTILINGUAL_ASR_MODEL)}.`,
+    missing: () => fetched(MULTILINGUAL_ASR_MODEL),
     notNeeded: 'only needed for narration in other languages than English',
   });
   rows.push({ name: 'keys file', ok: true, info: true, detail: `${settingsEnvFile()}; only needed for services that use your own key, and for settings like EXPLAINROO_ESPEAK that every command reads` });

@@ -409,7 +409,7 @@ test('the docs say that verify takes no --size, that German is a language, and t
   assert.ok(oneLine(page('sizes')).includes('Bold captions need a shorter band, so with them it is 745 x 799 and 745 x 863.'));
   assert.match(page('settings'), /^\| `language` \| `en` \| .*and `de` with a paid voice or a recording/m);
   assert.ok(oneLine(read('README.md')).includes('For narration with Kokoro, the free voice, in Spanish, French, Italian, Portuguese or Hindi, also install'));
-  assert.ok(oneLine(read('AGENTS.md')).includes('With `--fetch` it also downloads the English speech models'));
+  assert.ok(oneLine(read('AGENTS.md')).includes('With `--fetch` it also downloads the speech models that setup needs, the first time only: about 400 MB for English, and 252 MB for another language.'));
   const formats = run('formats').stdout;
   assert.match(formats, /--size on init, preview, still, sheet, check, render or export\./);
 });

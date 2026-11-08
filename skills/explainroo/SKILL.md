@@ -81,8 +81,9 @@ npx --yes explainroo doctor --fetch
 ```
 
 `doctor` checks Node, ffmpeg and Chrome, and the extra programs some
-languages need. With `--fetch` it also downloads the English speech models,
-about 400 MB, the first time only. Each part is `ready`, `missing` with how to get it, or
+languages need. With `--fetch` it also downloads the speech models that
+setup needs, the first time only: about 400 MB for English, and 252 MB for
+another language. Each part is `ready`, `missing` with how to get it, or
 `not needed` for this setup. `doctor videos/<name>` checks what that
 project's languages and voices need, and before the project exists,
 `doctor --language es` checks one language. On Debian and Ubuntu,
