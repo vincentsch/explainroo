@@ -103,16 +103,21 @@ const cents = (n) => Math.round(n * 10000) / 10000;
 
 // What the clips in the record cost: the known prices, and the estimates of the
 // tries whose cost isn't known and that may have cost money, like a job that is
-// still running. A refused try cost nothing.
+// still running. A refused try cost nothing. `over` are the finished clips that
+// cost more than their price before the job.
 function clipCosts(project) {
   let known = 0;
   let estimated = 0;
+  const over = [];
   for (const job of listJobs(project.dir)) {
     if (job.kind !== 'clip') continue;
     if (typeof job.cost_usd === 'number') known += job.cost_usd;
     else if (job.status !== 'refused') estimated += job.estimated_usd || 0;
+    if (job.status === 'done' && typeof job.cost_usd === 'number' && typeof job.estimated_usd === 'number' && cents(job.cost_usd) > cents(job.estimated_usd)) {
+      over.push({ job: shortId(job), name: job.request?.name ?? null, price_usd: job.estimated_usd, cost_usd: job.cost_usd });
+    }
   }
-  return { known: cents(known), estimated: cents(estimated), total: cents(known + estimated) };
+  return { known: cents(known), estimated: cents(estimated), total: cents(known + estimated), over };
 }
 
 function clipSpend(project) {
@@ -123,8 +128,8 @@ function clipSpend(project) {
 // budget came from, for the messages. Without a project nothing is spent yet.
 export function budgetState(project, budget, from = '--budget') {
   if (budget === null || budget === undefined) return null;
-  const costs = project ? clipCosts(project) : { known: 0, estimated: 0, total: 0 };
-  return { budget_usd: budget, budget_from: from, budget_spent_usd: costs.total, budget_estimated_usd: costs.estimated, budget_left_usd: Math.max(0, cents(budget - costs.total)) };
+  const costs = project ? clipCosts(project) : { known: 0, estimated: 0, total: 0, over: [] };
+  return { budget_usd: budget, budget_from: from, budget_spent_usd: costs.total, budget_estimated_usd: costs.estimated, budget_left_usd: Math.max(0, cents(budget - costs.total)), budget_over_price: costs.over };
 }
 
 function budgetName(state) {
@@ -135,12 +140,25 @@ function spentWords(state) {
   return `The clips in the record come to ${usd(state.budget_spent_usd)}${state.budget_estimated_usd ? `, ${usd(state.budget_estimated_usd)} of it estimated for tries whose cost isn't known yet` : ''}`;
 }
 
+// A sentence, with a space before it, for earlier clips that cost more than their
+// price, or nothing. `except` is the job that a purchase just made.
+function overPriceWords(state, except = null) {
+  const over = (state?.budget_over_price ?? []).filter((o) => o.job !== except);
+  if (!over.length) return '';
+  if (over.length === 1) {
+    const [o] = over;
+    return ` The earlier clip ${o.name ?? `of job ${o.job}`} cost ${usd(o.cost_usd)}, more than its price of ${usd(o.price_usd)}, and the budget counts what it cost.`;
+  }
+  const more = cents(over.reduce((sum, o) => sum + o.cost_usd - o.price_usd, 0));
+  return ` ${over.length} earlier clips cost ${usd(more)} more than their prices together, and the budget counts what they cost.`;
+}
+
 // Stops a purchase that the budget can't take, before anything is sent.
 function checkBudget(state, maxCost) {
   if (!state) return;
-  if (state.budget_left_usd <= 0) throw new ProjectError(`${spentWords(state)}, so nothing is left of ${budgetName(state)}. Nothing was spent. Ask the user whether to raise the budget.`);
+  if (state.budget_left_usd <= 0) throw new ProjectError(`${spentWords(state)}, so nothing is left of ${budgetName(state)}.${overPriceWords(state)} Nothing was spent. Ask the user whether to raise the budget.`);
   if (maxCost !== undefined && maxCost > state.budget_left_usd + 1e-9) {
-    throw new ProjectError(`this clip may cost up to ${usd(maxCost)} with --max-cost. ${spentWords(state)}, so that would go over ${budgetName(state)}, where ${usd(state.budget_left_usd)} is left. Nothing was spent. Use --max-cost ${state.budget_left_usd} or less, or leave out --max-cost, and then the cap is what is left.`);
+    throw new ProjectError(`this clip may cost up to ${usd(maxCost)} with --max-cost. ${spentWords(state)}, so that would go over ${budgetName(state)}, where ${usd(state.budget_left_usd)} is left.${overPriceWords(state)} Nothing was spent. Use --max-cost ${state.budget_left_usd} or less, or leave out --max-cost, and then the cap is what is left.`);
   }
 }
 
@@ -355,7 +373,7 @@ export async function buyClip(project, request, options = {}) {
   if (r.dry_run || !options.budget) return r;
   // What is left once this run is over, with any purchase it made.
   const after = budgetState(project, options.budget, options.budgetFrom);
-  return { ...r, budget_usd: after.budget_usd, budget_left_usd: after.budget_left_usd };
+  return { ...r, budget_usd: after.budget_usd, budget_left_usd: after.budget_left_usd, budget_over_price: after.budget_over_price };
 }
 
 async function buy(project, request, { fresh = false, maxCost, budget = null, dryRun: dry = false, noWait = false, log = () => {}, notice = () => {} } = {}) {
@@ -398,7 +416,7 @@ async function buy(project, request, { fresh = false, maxCost, budget = null, dr
     checkBudget(now, maxCost);
     const cap = maxCost ?? now.budget_left_usd;
     if (price.usd > cap) {
-      if (maxCost === undefined) throw new ProjectError(`this clip costs about ${usd(price.usd)}, and ${usd(cap)} is left of ${budgetName(now)}. Nothing was spent. Ask the user whether to raise the budget, or make the clip shorter or smaller.`);
+      if (maxCost === undefined) throw new ProjectError(`this clip costs about ${usd(price.usd)}, and ${usd(cap)} is left of ${budgetName(now)}.${overPriceWords(now)} Nothing was spent. Ask the user whether to raise the budget, or make the clip shorter or smaller.`);
       throw new ProjectError(`this clip costs about ${usd(price.usd)}, which is above the cap of ${usd(maxCost)}. Nothing was spent. Ask the user whether to raise --max-cost, or make it shorter or smaller.`);
     }
     try {
@@ -435,7 +453,7 @@ async function buy(project, request, { fresh = false, maxCost, budget = null, dr
 
 // The budget in a dry run: what is left, and whether this clip fits in it.
 function budgetLine(r) {
-  const state = `Budget: ${usd(r.budget_usd)} for all clips${r.budget_from === 'video.json' ? ', from "clipBudget" in video.json' : ''}. ${r.project === null ? 'Without a project nothing is spent yet' : spentWords(r)}, so ${usd(r.budget_left_usd)} is left.`;
+  const state = `Budget: ${usd(r.budget_usd)} for all clips${r.budget_from === 'video.json' ? ', from "clipBudget" in video.json' : ''}. ${r.project === null ? 'Without a project nothing is spent yet' : spentWords(r)}, so ${usd(r.budget_left_usd)} is left.${overPriceWords(r)}`;
   if (r.within_budget) return `${state} This clip fits.`;
   if (r.budget_left_usd <= 0) return `${state} The real run would refuse.`;
   if (r.max_cost_usd !== null && r.max_cost_usd > r.budget_left_usd) return `${state} With --max-cost ${r.max_cost_usd} it would go over, so the real run would refuse. Use --max-cost ${r.budget_left_usd} or less.`;
@@ -481,6 +499,7 @@ export function formatClip(r) {
     ? [`${rel}  already bought on ${localDay(r.time)} (job ${r.job}), so nothing was spent. To buy it again, add --new.`]
     : [`${rel}  ${r.model}  ${r.seconds}s ${r.aspect} ${r.resolution}${r.audio ? ' with sound' : ''}  ${r.cost_usd !== null ? usd(r.cost_usd) : `cost unknown, about ${usd(r.estimated_usd)}`}  (clips so far: ${usd(r.total_usd)}${r.budget_usd !== undefined ? `, ${usd(r.budget_left_usd)} left of the ${usd(r.budget_usd)} budget` : ''})`];
   if (r.over_cap) lines.push(`It cost ${usd(r.cost_usd)}, which is above the cap of ${usd(r.max_cost_usd)}. The price before the job was an estimate.`);
+  if (r.budget_usd !== undefined && overPriceWords(r, r.job)) lines.push(overPriceWords(r, r.job).trim());
   if (r.newer_attempt) lines.push(`A newer try, job ${r.newer_attempt}, has no good answer, so this is the earlier one.`);
   for (const m of r.moved) lines.push(moveLine(m));
   lines.push(`Use it in a scene, and put the word it should start on in "at". This fills the whole frame:\n  ${r.clip_line}\nThis fills the free area inside the safe margins:\n  ${r.clip_line_safe}`);

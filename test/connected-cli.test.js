@@ -743,6 +743,36 @@ test('a clip budget from --budget or video.json stops the clip that would go ove
   assert.equal(jobs(dir).length, 3);
 });
 
+// A clip counts at its price until its job is done, and then at what it cost. The
+// bill can be higher than the price, so the clips can come out above the budget.
+test('a clip that cost more than its price counts at its cost, and the next dry run and purchase say that it cost more', async (t) => {
+  const { dir, cli, fake } = await setup(t);
+  fake.plan('openrouter', CLIP_STATUS, ended('completed', { usage: { cost: 0.35 } }));
+  const first = JSON.parse((await cli([...clip(dir, STREET, '--budget', '0.30'), '--json'])).stdout);
+  assert.deepEqual([first.estimated_usd, first.cost_usd, first.budget_usd, first.budget_left_usd], [0.18, 0.35, 0.3, 0]);
+  const name = first.name;
+  const over = [{ job: first.job, name, price_usd: 0.18, cost_usd: 0.35 }];
+  assert.deepEqual(first.budget_over_price, over);
+  const note = `The earlier clip ${name} cost $0.35, more than its price of $0.18, and the budget counts what it cost.`;
+
+  const dry = JSON.parse((await cli([...clip(dir, HARBOR, '--dry-run', '--budget', '0.30'), '--json'])).stdout);
+  assert.deepEqual([dry.budget_spent_usd, dry.budget_left_usd, dry.within_budget, dry.budget_over_price], [0.35, 0, false, over]);
+  const dryText = (await cli(clip(dir, HARBOR, '--dry-run', '--budget', '0.30'))).stdout;
+  assert.ok(dryText.includes(`Budget: $0.30 for all clips. The clips in the record come to $0.35, so $0.00 is left. ${note} The real run would refuse.`), dryText);
+  const refused = await cli(clip(dir, HARBOR, '--budget', '0.30'));
+  assert.equal(refused.code, 1);
+  assert.ok(refused.stderr.includes(`error: The clips in the record come to $0.35, so nothing is left of the clip budget of $0.30 from --budget. ${note} Nothing was spent.`), refused.stderr);
+  assert.equal(fake.count('openrouter', CLIP_POST), 1);
+
+  // With more budget the next clip goes out, and its budget line says it again.
+  const next = await cli(clip(dir, HARBOR, '--budget', '1'));
+  assert.equal(next.code, 0, next.text);
+  assert.match(next.stdout, /\$0\.18 {2}\(clips so far: \$0\.53, \$0\.47 left of the \$1\.00 budget\)\n/);
+  assert.ok(next.stdout.includes(`\n${note}\n`), next.stdout);
+  // The clip that went over is the one this purchase made, so it is no earlier clip.
+  assert.ok(!(await cli(clip(dir, STREET, '--budget', '1'))).stdout.includes('The earlier clip'));
+});
+
 test('a clip job whose cost is not known yet counts for the budget at its estimate, and a bad budget is an error', async (t) => {
   const { dir, cli, fake } = await setup(t);
   fake.plan('openrouter', CLIP_STATUS, running);

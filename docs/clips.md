@@ -78,7 +78,11 @@ wins over `video.json`. Before each purchase, explainroo adds the clip's cap to
 what the clips in the project's record already cost. When the sum is over the
 budget, it stops before anything is sent and says how much is left. With a budget,
 `--max-cost` is optional, and then the cap is what is left. A try whose cost isn't
-known yet, like a job that is still running, counts at its estimate. Clips bought
+known yet, like a job that is still running, counts at its estimate. Once the job
+is done, it counts at what it cost. That can be more than the price, so all clips
+together can come out a little above the budget, the same way one clip can come
+out above its cap. The next dry run and purchase count what each clip cost, and
+they say when an earlier clip cost more than its price. Clips bought
 at the same time in one project take turns for this check, so each one sees what
 the others will spend. One that waits more than 30 seconds for another stops
 before it spends anything. The dry run shows what is left and whether the clip
