@@ -163,14 +163,19 @@ function checkLink(value) {
 
 // Where the service gets the video. YouTube takes the file itself, and so does
 // Blotato unless --media-url names a link. Buffer has no upload, so it needs a public
-// link to this exact file: --media-url, or a link that share made for it.
+// link to this exact file: --media-url, or a link that share made for it. share
+// makes links only with a server in EXPLAINROO_CLOUD_URL, so only then is it
+// suggested.
 function mediaFor(project, via, platform, pkg, flag) {
   if (via === 'youtube') return null;
   if (flag !== undefined) return { url: checkLink(flag), from: 'flag', expires_at: null };
   if (via === 'blotato') return { url: null, from: 'upload', expires_at: null };
   const shared = liveShare(project, pkg.sha256);
   if (shared?.media_url) return { url: shared.media_url, from: 'share', expires_at: shared.expires_at };
-  return { url: null, from: null, expires_at: null, missing: `Buffer needs a public link to this exact file, and there is none. Run "${selfCommand()} share ${projectWord(project.dir)}${langArg(project)} --platform ${platform}" first, or pass --media-url with a link to this file.` };
+  const how = process.env.EXPLAINROO_CLOUD_URL
+    ? `Run "${selfCommand()} share ${projectWord(project.dir)}${langArg(project)} --platform ${platform}" first, or pass --media-url with a link to this file.`
+    : `Put ${pkg.name} on a host you choose, like your own site or server, and pass its public https link with --media-url. The link has to work until the post goes out, and putting the file there makes the video public.`;
+  return { url: null, from: null, expires_at: null, missing: `Buffer needs a public link to this exact file, and there is none. ${how}` };
 }
 
 function bytesWords(bytes) {

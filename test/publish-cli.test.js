@@ -821,6 +821,13 @@ test('Buffer gets the video from --media-url or from a share of this exact file,
   const none = await s.json('--via', 'buffer', '--dry-run');
   assert.equal(none.code, 0);
   assert.match(none.out.missing.join(' '), /Buffer needs a public link to this exact file, and there is none\. Run ".* share .* --platform tiktok" first, or pass --media-url with a link to this file\./);
+  // While share has no server, it makes no link, so the message asks for a host of
+  // the user's own instead.
+  const hosted = await s.cli(['publish', s.dir, '--via', 'buffer', '--dry-run', '--json'], { extra: { EXPLAINROO_CLOUD_URL: '' } });
+  assert.equal(hosted.code, 0, hosted.text);
+  const missing = JSON.parse(hosted.stdout).missing.join(' ');
+  assert.equal(missing, 'Buffer needs a public link to this exact file, and there is none. Put out/package/tiktok/video.mp4 on a host you choose, like your own site or server, and pass its public https link with --media-url. The link has to work until the post goes out, and putting the file there makes the video public.');
+  assert.doesNotMatch(missing, /share/);
   const real = await s.publish('--via', 'buffer', '--yes');
   assert.equal(real.code, 1);
   assert.match(real.stderr, /Buffer needs a public link to this exact file/);
