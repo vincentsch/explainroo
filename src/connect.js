@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { ProjectError, rememberSecret } from './errors.js';
-import { findEnv, keyFile, saveKey, saveKeys } from './env.js';
+import { findEnv, keyFile, saveKey, saveKeys, withEnvLock, writeKeys } from './env.js';
 import { forgetSignIn, readCallback, startSignIn, tokenRequest } from './oauth.js';
 import { ensureIgnored, selfCommand, shellWord } from './history.js';
 import { findProjectDir } from './project.js';
@@ -241,6 +241,22 @@ async function finishSignIn(service, connector, { address, again, file, lookIn, 
     if (findEnv(s.env.id, lookIn) !== pending.client_id) throw new ProjectError(`the saved Google client is not the one this sign-in started with. Run "${again}" again.`);
     form.client_secret = rememberSecret(findEnv(s.env.secret, lookIn));
   }
+  // The new login replaces the lines of a login in the same .env file. So this waits
+  // for a renewal of that one before it sends the code, and no other write to the
+  // file comes in between. A run that waits too long has sent nothing, so the same
+  // command works again.
+  const { values, who } = await withEnvLock(file, () => exchangeCode(service, connector, { s, form, pending, again, file }));
+  if (project) ensureIgnored(project, '.env');
+  const refreshName = Object.keys(values).find((name) => /REFRESH_TOKEN$/.test(name));
+  const shadowed = findEnv(refreshName, lookIn) !== values[refreshName];
+  const note = shadowed ? `\nA different ${refreshName} is set in the environment or in a .env file that is read first, so that one is still used.` : '';
+  print(`Signed in to ${connector.name}${who ? ` as ${who}` : ''}. The login is saved in ${file}.\n${useOf(service)}${note}`, { service: service.id, connected: true, file, account: who ?? null, ...(shadowed ? { shadowed: true } : {}) });
+  return 0;
+}
+
+// Trades the code for tokens, checks them and saves them, under the lock of the
+// .env file. Returns the saved lines and who signed in.
+async function exchangeCode(service, connector, { s, form, pending, again, file }) {
   // The code works once, so the waiting sign-in goes as soon as the code is sent.
   forgetSignIn(service.id);
   const r = await tokenRequest(s.tokenUrl(), form, { name: service.id === 'youtube' ? 'Google' : connector.name });
@@ -262,11 +278,6 @@ async function finishSignIn(service, connector, { address, again, file, lookIn, 
     throw e;
   }
   const values = connector.loginLines(tokens, pending);
-  saveKeys(file, values);
-  if (project) ensureIgnored(project, '.env');
-  const refreshName = Object.keys(values).find((name) => /REFRESH_TOKEN$/.test(name));
-  const shadowed = findEnv(refreshName, lookIn) !== values[refreshName];
-  const note = shadowed ? `\nA different ${refreshName} is set in the environment or in a .env file that is read first, so that one is still used.` : '';
-  print(`Signed in to ${connector.name}${who ? ` as ${who}` : ''}. The login is saved in ${file}.\n${useOf(service)}${note}`, { service: service.id, connected: true, file, account: who ?? null, ...(shadowed ? { shadowed: true } : {}) });
-  return 0;
+  writeKeys(file, values);
+  return { values, who };
 }

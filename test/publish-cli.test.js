@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
-import { startFakeServices } from './helpers/fake-services.js';
+import { GOOD_KEY, startFakeServices } from './helpers/fake-services.js';
 import { BLOTATO_KEY, BUFFER_CLIENT, BUFFER_REDIRECT } from './helpers/fake-publishing.js';
 import { DIE_BEFORE, GQL, NONE, PLACEHOLDER, SESSION, UPLOAD, anHourOld, bin, heldBy, jobs, linkChecks, lockWords, mutations, pausedRun, setup, waitsForLock, writePackage } from './helpers/publishing.js';
 import { readEnvFile } from '../src/env.js';
@@ -718,6 +718,56 @@ test('a run that hangs while it renews the Buffer login keeps the lock: the next
   assert.equal(s.fake.count('buffer-auth', 'POST /token'), 1, 'the next run used the saved token');
   assert.ok([...s.fake.publishing.grants.values()].every((grant) => !grant.revoked), 'Buffer still has the login');
   assert.deepEqual(fs.readdirSync(path.join(s.settings, 'locks')), []);
+});
+
+// connect writes the same settings .env as a login renewal. Every write takes the
+// lock of the file, so none of them writes over what another one saved. Without
+// it, the renewal wrote the file as it read it, and the key that connect saved in
+// the meantime was gone, or the other way round the new refresh token was.
+test('connect waits for a login renewal of the same .env file, a sign-in sends its code only after it, and every line is kept', { skip: process.platform === 'win32' && 'needs SIGSTOP' }, async (t) => {
+  const s = await setup(t, { platforms: ['tiktok'], login: ['buffer'] });
+  const media = ['--media-url', 'https://media.example/v.mp4'];
+  const old = readEnvFile(s.envFile, 'BUFFER_REFRESH_TOKEN');
+  expireBufferLogin(s);
+  // The renewal has Buffer's answer and has read the file, and hangs right before it writes it.
+  const renewal = await pausedRun(t, s, ['publish', s.dir, '--via', 'buffer', ...media, '--dry-run'], 'BUFFER_REFRESH_TOKEN=');
+  const locks = path.join(s.settings, 'locks');
+  const [held] = heldBy(locks, renewal.pid);
+  const busy = `another run is renewing a login in ${s.envFile} or saving a key there right now, and this one waited 1.5 seconds for it. Nothing was saved. Run the same command again in a minute. ${lockWords(path.dirname(held))}`;
+  const key = { input: `${GOOD_KEY}\n`, extra: { OPENROUTER_API_KEY: '' } };
+  const connect = ['connect', 'openrouter', '--key-stdin'];
+  const waited = await s.cli(connect, { ...key, extra: { ...key.extra, EXPLAINROO_LOGIN_LOCK_MS: '1500' } });
+  assert.equal(waited.code, 1, waited.text);
+  assert.ok(waited.stderr.includes(`error: ${busy}`), waited.stderr);
+  assert.equal(readEnvFile(s.envFile, 'OPENROUTER_API_KEY'), null);
+
+  // A sign-in that can't get the lock sends no code, so the same command works later.
+  const link = JSON.parse((await s.cli(['connect', 'buffer', '--json'])).stdout).link;
+  const signIn = ['connect', 'buffer', '--callback-url', s.fake.approve(link)];
+  const early = await s.cli(signIn, { extra: { EXPLAINROO_LOGIN_LOCK_MS: '1500' } });
+  assert.equal(early.code, 1, early.text);
+  assert.ok(early.stderr.includes(`error: ${busy}`), early.stderr);
+  assert.equal(s.fake.count('buffer-auth', 'POST /token'), 1, 'only the renewal went out');
+
+  // One that still waits when the renewal goes on saves after it.
+  const late = s.start(connect, key);
+  await waitsForLock(locks, late.child.pid);
+  renewal.resume();
+  const [renewed, saved] = await Promise.all([renewal.result, late.result]);
+  assert.equal(renewed.code, 0, renewed.text);
+  assert.equal(saved.code, 0, saved.text);
+  const rotated = readEnvFile(s.envFile, 'BUFFER_REFRESH_TOKEN');
+  assert.notEqual(rotated, old);
+  assert.equal(readEnvFile(s.envFile, 'OPENROUTER_API_KEY'), GOOD_KEY, 'the key that connect saved stays');
+  const next = await s.json('--via', 'buffer', ...media, '--dry-run');
+  assert.deepEqual(next.out.missing, []);
+  assert.equal(s.fake.count('buffer-auth', 'POST /token'), 1, 'the renewed token was kept, so nothing was renewed again');
+
+  const signedIn = await s.cli(signIn);
+  assert.equal(signedIn.code, 0, signedIn.text);
+  assert.notEqual(readEnvFile(s.envFile, 'BUFFER_REFRESH_TOKEN'), rotated);
+  assert.equal(readEnvFile(s.envFile, 'OPENROUTER_API_KEY'), GOOD_KEY);
+  assert.deepEqual(fs.readdirSync(locks), []);
 });
 
 // A new Buffer login in the .env file, as "connect buffer" leaves it.

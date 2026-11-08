@@ -13,10 +13,10 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { readEnvFile, saveKeys } from './env.js';
+import { envFileId, envLock, envLockMs, readEnvFile, writeKeys } from './env.js';
 import { ProjectError, rememberSecret } from './errors.js';
 import { configRoot } from './models.js';
-import { fileKey, lockWords, secondsWords, withLock } from './lock.js';
+import { lockWords, secondsWords, withLock } from './lock.js';
 
 // Retry-After holds seconds or a date.
 function waitWords(value) {
@@ -29,9 +29,6 @@ function waitWords(value) {
 const SIGN_IN_MS = 60 * 60 * 1000;
 // A saved access token is used while it is good for at least this much longer.
 const MARGIN_MS = 5 * 60 * 1000;
-// How long a run waits for another one that renews the same login. A renewal is one
-// request with a timeout of 30 seconds. Tests set it shorter.
-const loginLockMs = () => Number(process.env.EXPLAINROO_LOGIN_LOCK_MS) || 60 * 1000;
 
 function fail(message) {
   throw new ProjectError(message);
@@ -146,20 +143,10 @@ export function expiresAt(json, now = Date.now()) {
   return new Date(now + (Number.isFinite(seconds) && seconds > 0 ? seconds : 3600) * 1000).toISOString();
 }
 
-// One short name per .env file, for its lock and its renewal mark. It comes from
-// the real path, so a link to the file or another letter case shares them.
-function fileId(file) {
-  return crypto.createHash('sha256').update(fileKey(file)).digest('hex').slice(0, 16);
-}
-
-function lockFile(file) {
-  return path.join(configRoot(), 'locks', fileId(file));
-}
-
 // A renewal that went out and whose answer is not saved yet leaves this mark. It
 // holds a hash of the refresh token that was sent, never the token itself.
 function renewalFile(file) {
-  return path.join(configRoot(), 'renewals', `${fileId(file)}.json`);
+  return path.join(configRoot(), 'renewals', `${envFileId(file)}.json`);
 }
 
 const tokenId = (token) => crypto.createHash('sha256').update(token).digest('hex').slice(0, 16);
@@ -172,14 +159,13 @@ function renewalToken(marker) {
   }
 }
 
-// One run at a time refreshes the tokens of one .env file. While the run that holds
-// the lock is still running, the others wait for it, also when it is paused, and
-// then stop. A lock counts as left behind only once its run is gone (src/lock.js).
+// One run at a time refreshes the tokens of one .env file, under the lock that
+// every write to that file takes (src/env.js). While the run that holds the lock
+// is still running, the others wait for it, also when it is paused, and then stop.
+// A lock counts as left behind only once its run is gone (src/lock.js).
 async function withTokenLock(file, name, fn) {
-  const lock = lockFile(file);
-  fs.mkdirSync(path.dirname(lock), { recursive: true, mode: 0o700 });
-  const waitMs = loginLockMs();
-  return withLock(lock, fn, {
+  const waitMs = envLockMs();
+  return withLock(envLock(file), fn, {
     waitMs,
     pauseMs: 100,
     busy: (held) => new ProjectError(`another run is renewing the ${name} login right now, and this one waited ${secondsWords(waitMs)} for it. Nothing was sent. Run the same command again in a minute. ${lockWords(held)}`),
@@ -214,7 +200,7 @@ export async function rotatingAccessToken({ source, names, refresh, name, comman
     writePrivateFile(marker, { renewing: name, token: tokenId(old), sent: new Date().toISOString() });
     const r = await refresh(old);
     if (r.ok) {
-      saveKeys(file, { [names.refresh]: rememberSecret(r.json.refresh_token) || old, [names.access]: r.json.access_token, [names.expires]: expiresAt(r.json) });
+      writeKeys(file, { [names.refresh]: rememberSecret(r.json.refresh_token) || old, [names.access]: r.json.access_token, [names.expires]: expiresAt(r.json) });
       fs.rmSync(marker, { force: true });
       return r.json.access_token;
     }

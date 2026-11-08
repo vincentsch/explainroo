@@ -1,7 +1,10 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { ROOT } from './server.js';
 import { configRoot } from './models.js';
+import { ProjectError } from './errors.js';
+import { fileKey, lockWords, secondsWords, withLock, withLockSync } from './lock.js';
 
 export function readEnvFile(file, name) {
   if (!fs.existsSync(file)) return null;
@@ -26,16 +29,53 @@ export function keyFile({ project = null, root = ROOT, env = process.env } = {})
   return settingsEnvFile();
 }
 
+// How long a run waits for another one that writes the same .env file. A login
+// renewal holds it for one request with a timeout of 30 seconds. Tests set it
+// shorter.
+export const envLockMs = () => Number(process.env.EXPLAINROO_LOGIN_LOCK_MS) || 60 * 1000;
+
+// One short name per .env file, from its real path, so a link to the file or
+// another letter case gets the same one.
+export function envFileId(file) {
+  return crypto.createHash('sha256').update(fileKey(file)).digest('hex').slice(0, 16);
+}
+
+// The lock of one .env file. A login renewal holds it from reading the old refresh
+// token to saving the new one, and every other write to the file takes it too, so
+// none of them can write over what another one saved.
+export function envLock(file) {
+  const lock = path.join(configRoot(), 'locks', envFileId(file));
+  fs.mkdirSync(path.dirname(lock), { recursive: true, mode: 0o700 });
+  return lock;
+}
+
+function envBusy(file, waitMs) {
+  return (lock) => new ProjectError(`another run is renewing a login in ${file} or saving a key there right now, and this one waited ${secondsWords(waitMs)} for it. Nothing was saved. Run the same command again in a minute. ${lockWords(lock)}`);
+}
+
+// Runs fn while this run holds the lock of the .env file. fn writes with writeKeys.
+export function withEnvLock(file, fn) {
+  const waitMs = envLockMs();
+  return withLock(envLock(file), fn, { waitMs, pauseMs: 100, busy: envBusy(file, waitMs) });
+}
+
 // Writes one line of a .env file. An existing line is replaced, other lines stay,
 // and a new file can only be read by its owner.
 export function saveKey(file, name, value) {
   saveKeys(file, { [name]: value });
 }
 
+// The same for several lines, under the lock of the file.
+export function saveKeys(file, values) {
+  const waitMs = envLockMs();
+  withLockSync(envLock(file), () => writeKeys(file, values), { waitMs, busy: envBusy(file, waitMs) });
+}
+
 // Writes several lines at once, so a run that dies leaves all of them or none. The
 // new file is on the disk before it takes the old one's place, so a computer that
-// loses power right then keeps one of the two whole.
-export function saveKeys(file, values) {
+// loses power right then keeps one of the two whole. Only for a run that holds the
+// lock of the file. Everyone else uses saveKeys.
+export function writeKeys(file, values) {
   const target = fs.existsSync(file) ? fs.realpathSync(file) : file;
   const old = fs.existsSync(target) ? fs.readFileSync(target, 'utf8') : null;
   const mode = old === null ? 0o600 : fs.statSync(target).mode & 0o777;
