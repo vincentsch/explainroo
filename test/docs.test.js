@@ -491,7 +491,7 @@ test('the start page says to print only the section of a topic that you need', (
   for (const words of ['`npx --yes explainroo docs <topic> --sections`', '`npx --yes explainroo docs <topic> <section>`', 'Print only the section you need']) assert.ok(topicsPart.includes(words), words);
 });
 
-// What agents had to find out by themselves, on the start page where they read it.
+// Defaults and choices that are easy to miss, on the page that is read first.
 test('the start page has the watermark, captions on 16:9, a choice already made, drafts, the target length and the clip budget', () => {
   const ask = oneLine(part('When to ask the user'));
   assert.ok(ask.includes('When the user has already picked a service or given a budget, use it and don\'t ask again.'));

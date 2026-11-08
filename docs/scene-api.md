@@ -209,7 +209,7 @@ s.clip('assets/demo.mov', { x: 1400, y: 540, h: 600, from: 12.5, speed: 1.5, at:
 ```
 
 Like an image, a clip has no frame by default (`frame: 'none'`). It gets the
-look's shadow and rounded corners: `clean`, `midnight` and `editorial` draw a
+look's shadow and rounded corners. `clean`, `midnight` and `editorial` draw a
 shadow, and `paper`, `chalk` and `blueprint` have none. It comes in with the
 look's entrance for images, which is `pop` in `paper`, `clean` and `midnight`,
 and `fade` in the other three. `shadow: false`, `radius: 0` and
