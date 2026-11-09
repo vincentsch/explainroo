@@ -102,8 +102,9 @@ Product demos
                         --name pricing saves to assets/capture/<site>/pricing/, so several pages of one site
                         stay side by side
   record <project> <name>  run recordings/<name>.json in a browser of its own and save the video with a log
-                        of every step in assets/recordings/, for s.recording in a scene (--fresh starts the
-                        browser profile empty, without the logins and cookies of earlier runs)
+                        of every step in assets/recordings/, for s.recording in a scene. Every run starts
+                        with an empty browser profile, and --keep-profile keeps cookies and stored data for
+                        the next run, for a site that needs a login
 
 Images (optional, costs money, needs an OpenRouter key from "explainroo connect openrouter")
   image [project] <name> "<what to draw>"   save an illustration as assets/<name>.png
@@ -178,7 +179,7 @@ function parseArgs(argv) {
   }
   return { pos, flags };
 }
-const BOOL = new Set(['json', 'fresh', 'apply', 'avatars', 'draft', 'estimate', 'transparent', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'mobile', 'list', 'sections', 'new', 'key-stdin', 'audio', 'dry-run', 'no-wait', 'no-watermark', 'yes', 'media-url-unchecked', ...LISTS_VOICES.map((c) => c.id)]);
+const BOOL = new Set(['json', 'keep-profile', 'apply', 'avatars', 'draft', 'estimate', 'transparent', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'mobile', 'list', 'sections', 'new', 'key-stdin', 'audio', 'dry-run', 'no-wait', 'no-watermark', 'yes', 'media-url-unchecked', ...LISTS_VOICES.map((c) => c.id)]);
 
 // publish refuses any other flag. A flag it ignored could change what a person
 // thinks is posted, like a time for a post, when it goes out right away.
@@ -250,8 +251,8 @@ export async function main(argv) {
         return 0;
       }
       case 'record': {
-        if (pos.length !== 2) throw new ProjectError('usage: explainroo record <project> <name> [--fresh] [--json]. The script is recordings/<name>.json in the project.');
-        const r = await record(pos[0], pos[1], { log, fresh: !!flags.fresh });
+        if (pos.length !== 2) throw new ProjectError('usage: explainroo record <project> <name> [--keep-profile] [--json]. The script is recordings/<name>.json in the project.');
+        const r = await record(pos[0], pos[1], { log, keepProfile: !!flags['keep-profile'] });
         print(formatRecord(r), r);
         return 0;
       }

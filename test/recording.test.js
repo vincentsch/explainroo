@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { checkRecordingScript, readRecordingScript, scriptHash, stepLabel, videoOffset } from '../src/record.js';
 import { ffmpeg } from '../src/ffmpeg.js';
-import { recordingClock, videoTime, sceneTime, cursorAt, viewAt, focusRect, coverRect, ZOOM_SECONDS, MAX_ZOOM, CATCH_UP } from '../engine/recording.js';
+import { recordingClock, videoTime, sceneTime, cursorAt, viewAt, focusRect, coverRect, zoomScale, ZOOM_SECONDS, ZOOM_RANGE, CATCH_UP } from '../engine/recording.js';
 import { makeState } from '../src/pipeline.js';
 import { loadProject } from '../src/project.js';
 
@@ -32,6 +32,7 @@ test('a recording script gets its defaults and keeps what each step needs', () =
     blur: [{ selector: '.email' }, { text: 'Jane Doe' }],
   });
   assert.deepEqual(s.viewport, { width: 1920, height: 1080 });
+  assert.equal(s.pace, 1);
   assert.equal(s.steps[1].url, 'http://127.0.0.1:4500/#/invoices');
   assert.deepEqual(s.steps[0], { do: 'click', text: 'Accept', before: true });
   assert.deepEqual(s.steps[3], { do: 'type', text: 'Amount', value: '2400', press: 'Enter' });
@@ -39,6 +40,10 @@ test('a recording script gets its defaults and keeps what each step needs', () =
   assert.deepEqual(s.blur, [{ selector: '.email' }, { text: 'Jane Doe' }]);
   assert.deepEqual(checkRecordingScript({ url: URL, viewport: { width: 1280, height: 720 }, steps: [{ do: 'mark', name: 'a' }] }).viewport, { width: 1280, height: 720 });
   assert.equal(stepLabel(s.steps[2], 3), 'step 3 (click "New invoice")');
+  // pace speeds up every pointer move and scroll, and duration sets one step's own.
+  const quick = checkRecordingScript({ url: URL, pace: 1.5, steps: [{ do: 'click', text: 'Save', duration: 0.3 }, { do: 'scroll', y: 400, duration: 2 }, { do: 'zoom', selector: 'form', scale: 3 }] });
+  assert.equal(quick.pace, 1.5);
+  assert.deepEqual(quick.steps, [{ do: 'click', text: 'Save', duration: 0.3 }, { do: 'scroll', y: 400, duration: 2 }, { do: 'zoom', selector: 'form', scale: 3 }]);
   assert.equal(stepLabel(s.steps[11], 12), 'step 12 (mark "saved")');
 });
 
@@ -65,6 +70,12 @@ test('a recording script names the step and what to write for each mistake', () 
   fails({ url: URL, steps: [{ do: 'click', text: 'Accept', before: true, cue: 'now' }, { do: 'mark', name: 'a' }] }, /can have no cue/);
   fails({ url: URL, steps: [{ do: 'click', text: 'Accept', before: true }] }, /nothing is left for the video/);
   fails({ url: URL, steps: [{ do: 'mark', name: 'a' }], blur: ['.email'] }, /blur 1 must be \{ "selector"/);
+  fails({ url: URL, pace: 3, steps: [{ do: 'mark', name: 'a' }] }, /pace must be a number from 0\.5 to 2/);
+  fails({ url: URL, steps: [{ do: 'click', text: 'Save', duration: 0 }] }, /step 1: duration must be the seconds the pointer move takes/);
+  fails({ url: URL, steps: [{ do: 'scroll', y: 300, duration: 20 }] }, /duration must be the seconds the scroll takes/);
+  fails({ url: URL, steps: [{ do: 'wait', seconds: 1, duration: 1 }] }, /a wait step has no "duration"/);
+  fails({ url: URL, steps: [{ do: 'zoom', selector: 'form', scale: 6 }] }, /scale must be how many times closer the zoom goes, from 1 to 4/);
+  fails({ url: URL, steps: [{ do: 'zoom', scale: 2 }] }, /a zoom without an element goes back out, so it takes no scale/);
 });
 
 test('readRecordingScript says where the script goes and lists the ones there', (t) => {
@@ -151,8 +162,8 @@ test('a zoom step eases to its box in the shape of the view and back out', () =>
   assert.ok(during.moving && during.w < 1920 && during.w > 960);
   const close = viewAt(LOG, 3 + ZOOM_SECONDS, 16 / 9);
   assert.equal(close.moving, false);
-  // A small box zooms in no further than MAX_ZOOM.
-  assert.equal(close.w, 1920 / MAX_ZOOM);
+  // A small box zooms in no further than the top of ZOOM_RANGE.
+  assert.equal(close.w, 1920 / ZOOM_RANGE[1]);
   assert.ok(Math.abs(close.w / close.h - 16 / 9) < 1e-9);
   assert.ok(close.x <= 400 - 100 && close.x + close.w >= 400 + 100);
   assert.deepEqual(viewAt(LOG, 9, 16 / 9), { x: 0, y: 0, w: 1920, h: 1080, moving: false });
@@ -161,6 +172,23 @@ test('a zoom step eases to its box in the shape of the view and back out', () =>
   assert.deepEqual(coverRect(1920, 1080, 9 / 16), { x: 960 - 303.75, y: 0, w: 607.5, h: 1080 });
   const edge = focusRect({ x: 1900, y: 1070, w: 600, h: 300 }, coverRect(1920, 1080, 16 / 9), 1920, 1080);
   assert.ok(edge.x + edge.w <= 1920 && edge.y + edge.h <= 1080);
+});
+
+test('a zoom fits its element into about 70% of the view, from 1.4 to 2.5 times closer, unless the step sets scale', () => {
+  const base = { x: 0, y: 0, w: 820, h: 1000 };
+  // The prompt box of a real site: 716 of 820 pixels wide. It used to zoom
+  // in only 1.15 times, which hardly shows, and now goes 1.4 times closer.
+  assert.equal(zoomScale({ x: 410, y: 410, w: 716, h: 184 }, base), 1.4);
+  // A middle-sized box fills 70% of the view's width.
+  const form = focusRect({ x: 600, y: 400, w: 800, h: 300 }, { x: 0, y: 0, w: 1920, h: 1080 }, 1920, 1080);
+  assert.ok(Math.abs(800 / form.w - 0.7) < 1e-9, form.w);
+  // or of its height, when the box is tall.
+  assert.ok(Math.abs(zoomScale({ x: 0, y: 0, w: 100, h: 500 }, { w: 1920, h: 1080 }) - 0.7 * 1080 / 500) < 1e-9);
+  // A tiny one stops at 2.5 times, and scale sets its own.
+  assert.equal(zoomScale({ x: 0, y: 0, w: 20, h: 20 }, base), 2.5);
+  assert.equal(focusRect({ x: 600, y: 400, w: 400, h: 200 }, { x: 0, y: 0, w: 1920, h: 1080 }, 1920, 1080, 3).w, 640);
+  const log = { ...LOG, steps: [{ step: 1, do: 'zoom', start: 0, t: 0, box: { x: 400, y: 300, w: 200, h: 100 }, scale: 1.2 }] };
+  assert.equal(viewAt(log, 2, 16 / 9).w, 1600);
 });
 
 test('the page gets the step log of each recording, and a project without one keeps its state', (t) => {
@@ -177,13 +205,19 @@ test('the page gets the step log of each recording, and a project without one ke
   fs.writeFileSync(path.join(dir, 'recordings/demo.json'), JSON.stringify(script));
   fs.mkdirSync(path.join(dir, 'assets/recordings'), { recursive: true });
   const log = { version: 1, width: 1920, height: 1080, duration: 3, start: 0.5, end: 2, cursor: { x: 960, y: 540 }, script: scriptHash(script), steps: [] };
-  fs.writeFileSync(path.join(dir, 'assets/recordings/demo.json'), JSON.stringify(log));
+  fs.writeFileSync(path.join(dir, 'assets/recordings/demo.log.json'), JSON.stringify(log));
   // A log without its video is not a recording yet.
   assert.equal('recordings' in makeState(loadProject(dir), timeline), false);
   fs.writeFileSync(path.join(dir, 'assets/recordings/demo.webm'), '');
   assert.deepEqual(makeState(loadProject(dir), timeline).recordings, { demo: log });
   fs.writeFileSync(path.join(dir, 'recordings/demo.json'), JSON.stringify({ ...script, steps: [{ do: 'mark', name: 'b' }] }));
   assert.equal(makeState(loadProject(dir), timeline).recordings.demo.changed, true);
+  // A log from before it had its own name, assets/recordings/<name>.json, still plays.
+  fs.renameSync(path.join(dir, 'assets/recordings/demo.log.json'), path.join(dir, 'assets/recordings/demo.json'));
+  assert.equal(makeState(loadProject(dir), timeline).recordings.demo.start, 0.5);
+  // When both are there, the new one counts.
+  fs.writeFileSync(path.join(dir, 'assets/recordings/demo.log.json'), JSON.stringify({ ...log, start: 0.7 }));
+  assert.equal(makeState(loadProject(dir), timeline).recordings.demo.start, 0.7);
 });
 
 // Chrome sends the first frame of a recording a little after the page opens,

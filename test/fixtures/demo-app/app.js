@@ -6,6 +6,9 @@ const invoices = [
   { no: 1043, customer: 'Ridge Cycling', amount: 860, status: 'Open' },
 ];
 const customers = ['Harbor Books', 'Maple Bakery', 'Ridge Cycling', 'Acme Studio'];
+// Sounds the shop plays in its waiting room, on a page with a player bar that
+// stays at the bottom of the window, over the list.
+const tracks = ['Morning Ledger', 'Paid in Full', 'Net Thirty', 'Late Fee Blues', 'Receipt Rain', 'Tax Season', 'Double Entry', 'Round Numbers', 'Balance Due', 'Closing Time'];
 const money = (n) => '$' + n.toLocaleString('en-US');
 const main = document.getElementById('main');
 let fresh = null;
@@ -36,6 +39,11 @@ const pages = {
     </form>`,
   customers: () => `<h1>Customers</h1><p class="sub">${customers.length} customers</p>
     <table><tbody>${customers.map((c) => `<tr><td>${c}</td></tr>`).join('')}</tbody></table><div class="long"></div><p id="bottom">End of the list</p>`,
+  tracks: () => `<h1>Tracks</h1><p class="sub">${tracks.length} tracks for the waiting room</p>
+    <table><tbody>${tracks.map((t, i) => `<tr><td>${t}</td><td><button class="play" data-track="${i}">Play</button></td></tr>`).join('')}</tbody></table><div class="long"></div>
+    <div class="player" id="player">Nothing plays yet</div>`,
+  reports: () => `<h1>Reports</h1><p class="sub">Every invoice of the year in one file.</p><button class="primary" id="download">Download report</button>
+    <div class="locked"><p>Reports come with Little Ledger Pro.</p></div>`,
   settings: () => `<h1>Settings</h1><p class="sub">Invoices go out from <span class="email">jane.doe@example.com</span>.</p>`,
 };
 
@@ -45,6 +53,9 @@ function show() {
   main.innerHTML = pages[name]();
   for (const a of document.querySelectorAll('nav a')) a.classList.toggle('on', a.dataset.page === name || (name === 'new-invoice' && a.dataset.page === 'invoices'));
   document.getElementById('new')?.addEventListener('click', () => { location.hash = '#/new-invoice'; });
+  for (const b of document.querySelectorAll('.play')) {
+    b.addEventListener('click', () => { document.getElementById('player').textContent = `Playing ${tracks[b.dataset.track]}`; });
+  }
   document.getElementById('form')?.addEventListener('submit', (e) => {
     e.preventDefault();
     const amount = Number(document.getElementById('amount').value.replace(/[^0-9]/g, '')) || 0;

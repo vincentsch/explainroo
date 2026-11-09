@@ -1,29 +1,32 @@
 // explainroo record: runs a recording script in a real browser and saves the
 // video with a log of every step. The script is recordings/<name>.json in the
 // project. The video goes to assets/recordings/<name>.webm, and the log, with
-// the time and the box of each step, to assets/recordings/<name>.json, where
-// s.recording reads it. The browser runs with a profile of its own under the
-// cache, never the one a person uses.
+// the time and the box of each step, to assets/recordings/<name>.log.json,
+// where s.recording reads it. The browser starts from an empty profile under
+// the cache on every run, or with --keep-profile from the project's own one,
+// never the one a person uses.
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { launchProfile } from './browser.js';
+import { launchProfile, recordEncoder } from './browser.js';
 import { ProjectError, findProjectDir } from './project.js';
 import { cacheRoot } from './models.js';
 import { ffmpeg, probe } from './ffmpeg.js';
+import { selfCommand } from './history.js';
+import { dropClipFrames } from './clips.js';
 import { ease, suggest } from '../engine/util.js';
-import { ZOOM_SECONDS } from '../engine/recording.js';
+import { ZOOM_SECONDS, ZOOM_SCALES } from '../engine/recording.js';
 
 export const STEP_KINDS = ['open', 'click', 'type', 'hover', 'scroll', 'wait', 'zoom', 'mark'];
 // The keys each kind of step takes, besides do, cue, before and the element.
 const STEP_KEYS = {
   open: ['url'],
-  click: [],
-  type: ['value', 'press'],
-  hover: [],
-  scroll: ['y'],
+  click: ['duration'],
+  type: ['value', 'press', 'duration'],
+  hover: ['duration'],
+  scroll: ['y', 'duration'],
   wait: ['seconds'],
-  zoom: [],
+  zoom: ['scale'],
   mark: ['name'],
 };
 const ELEMENT = { click: 'needs', type: 'needs', hover: 'needs', scroll: 'may', wait: 'may', zoom: 'may', open: 'no', mark: 'no' };
@@ -32,9 +35,16 @@ const COMMON = ['do', 'cue', 'before', 'text', 'selector', 'nth'];
 const FIND_SECONDS = 10;
 // How long the video goes on after the last step, so its end can hold still.
 const TAIL_SECONDS = 1;
+// How long the pointer takes to move to an element, and a scroll of one window
+// height, at pace 1. A script's pace divides them, and a step's duration
+// replaces them for that step.
+export const MOVE_SECONDS = 0.6;
+export const SCROLL_SECONDS = 1;
+const PACES = [0.5, 2];
 
-const where = (n) => `recordings script step ${n}`;
 const quoted = (v) => JSON.stringify(v);
+// A small object as one line of JSON with spaces, like { "do": "scroll", "text": "Pricing" }.
+const jsonLine = (o) => `{ ${Object.entries(o).map(([k, v]) => `${quoted(k)}: ${quoted(v)}`).join(', ')} }`;
 
 export function isRecordingName(name) {
   return typeof name === 'string' && /^[a-z0-9][a-z0-9-]*$/i.test(name);
@@ -42,6 +52,23 @@ export function isRecordingName(name) {
 
 export function scriptPath(dir, name) {
   return path.join(dir, 'recordings', `${name}.json`);
+}
+
+// The step log of a recording, which s.recording reads. Logs made before it
+// had its own name are <name>.json, and they still play.
+export function logPath(dir, name) {
+  return path.join(dir, 'assets', 'recordings', `${name}.log.json`);
+}
+
+export function oldLogPath(dir, name) {
+  return path.join(dir, 'assets', 'recordings', `${name}.json`);
+}
+
+// A step log read from a file, or null when it isn't one.
+export function readLog(file) {
+  let log;
+  try { log = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; }
+  return log?.version === 1 && Array.isArray(log.steps) ? log : null;
 }
 
 // What a step looks for, in words for messages: the text "Save" or the
@@ -75,8 +102,8 @@ export function readRecordingScript(dir, name) {
 export function checkRecordingScript(script, rel = 'the recording script') {
   const fail = (m) => { throw new ProjectError(`${rel}: ${m}`); };
   if (!script || typeof script !== 'object' || Array.isArray(script)) fail('must be an object like { "url": "http://localhost:3000/", "steps": [...] }');
-  const unknown = Object.keys(script).filter((k) => !['url', 'viewport', 'steps', 'blur'].includes(k));
-  if (unknown.length) fail(`unknown key ${quoted(unknown[0])}. The keys are url, viewport, steps and blur`);
+  const unknown = Object.keys(script).filter((k) => !['url', 'viewport', 'pace', 'steps', 'blur'].includes(k));
+  if (unknown.length) fail(`unknown key ${quoted(unknown[0])}. The keys are url, viewport, pace, steps and blur`);
   const url = checkUrl(script.url, fail, 'url');
   const viewport = { width: 1920, height: 1080 };
   if (script.viewport !== undefined) {
@@ -88,6 +115,8 @@ export function checkRecordingScript(script, rel = 'the recording script') {
       viewport[k] = v[k];
     }
   }
+  const pace = script.pace ?? 1;
+  if (typeof pace !== 'number' || !(pace >= PACES[0] && pace <= PACES[1])) fail(`pace must be a number from ${PACES[0]} to ${PACES[1]}: 2 moves the pointer and scrolls twice as fast, 0.5 half as fast`);
   if (!Array.isArray(script.steps) || !script.steps.length) fail('steps must be a list with at least one step, like [{ "do": "click", "text": "New invoice" }]');
   const names = new Set();
   const steps = script.steps.map((raw, i) => {
@@ -147,6 +176,15 @@ export function checkRecordingScript(script, rel = 'the recording script') {
         step.seconds = raw.seconds;
       }
     }
+    if (raw.duration !== undefined) {
+      if (typeof raw.duration !== 'number' || !(raw.duration > 0 && raw.duration <= 10)) bad(`duration must be the seconds the ${raw.do === 'scroll' ? 'scroll' : 'pointer move'} takes, more than 0 and at most 10`);
+      step.duration = raw.duration;
+    }
+    if (raw.scale !== undefined) {
+      if (!has.length) bad('a zoom without an element goes back out, so it takes no scale');
+      if (typeof raw.scale !== 'number' || !(raw.scale >= ZOOM_SCALES[0] && raw.scale <= ZOOM_SCALES[1])) bad(`scale must be how many times closer the zoom goes, from ${ZOOM_SCALES[0]} to ${ZOOM_SCALES[1]}`);
+      step.scale = raw.scale;
+    }
     if (raw.do === 'mark') {
       if (!isRecordingName(raw.name)) bad('a mark step needs a "name" with letters, digits and hyphens, like "saved"');
       if (names.has(raw.name)) bad(`the mark name ${quoted(raw.name)} is used twice`);
@@ -165,7 +203,7 @@ export function checkRecordingScript(script, rel = 'the recording script') {
       blur.push({ [keys[0]]: b[keys[0]] });
     }
   }
-  return { url: url.href, viewport, steps, blur };
+  return { url: url.href, viewport, pace, steps, blur };
 }
 
 function checkUrl(value, fail, key, base) {
@@ -287,10 +325,38 @@ function findInPage({ text, selector, nth = 1, forTyping = false }) {
   }
   // A label types into its field.
   if (forTyping && el.matches('label') && el.control) el = el.control;
+  // Kept for the steps that follow: what covers it, and scrolling to it.
+  window.__explainrooTarget = el;
   const r = el.getBoundingClientRect();
-  const inView = r.top >= 0 && r.left >= 0 && r.bottom <= innerHeight && r.right <= innerWidth;
-  if (!inView) el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' });
-  return { box: { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height }, inView };
+  // Finding never scrolls, so the video shows no jump. The middle of the
+  // element has to be in the window for a step to use it.
+  const x = r.left + r.width / 2;
+  const y = r.top + r.height / 2;
+  const inView = x >= 0 && y >= 0 && x <= innerWidth && y <= innerHeight;
+  return { box: { x, y, w: r.width, h: r.height }, inView };
+}
+
+// What a click at x,y would hit instead of the element findInPage found last:
+// null when the hit is the element, inside it, or a button or link around it,
+// as when a label inside a button lets clicks through.
+function coverInPage({ x, y }) {
+  const el = window.__explainrooTarget;
+  if (!el?.isConnected) return null;
+  const hit = document.elementFromPoint(x, y);
+  if (hit && (hit === el || el.contains(hit) || (hit.contains(el) && hit.matches('button, a, label, summary, [role=button], [role=link], [role=tab], [role=menuitem], [role=option]')) || hit.control === el)) return null;
+  if (!hit) return 'nothing, as the point is outside the window';
+  const words = String(hit.innerText ?? '').replace(/\s+/g, ' ').trim();
+  const classes = [...hit.classList].slice(0, 3).map((c) => `.${c}`).join('');
+  return `<${hit.tagName.toLowerCase()}${hit.id ? `#${hit.id}` : ''}${classes}>${words ? ` with the words "${words.length > 40 ? words.slice(0, 37) + '...' : words}"` : ''}`;
+}
+
+// How far the window has to scroll down, less than 0 for up, to put the
+// element findInPage found last in its middle.
+function scrollToMiddle() {
+  const el = window.__explainrooTarget;
+  if (!el?.isConnected) return 0;
+  const r = el.getBoundingClientRect();
+  return r.top + r.height / 2 - innerHeight / 2;
 }
 
 // --- the run ---------------------------------------------------------------
@@ -372,18 +438,22 @@ function shiftTimes(out, by) {
   }
 }
 
-export async function record(dirArg, name, { log = () => {}, fresh = false, findSeconds = FIND_SECONDS } = {}) {
+export async function record(dirArg, name, { log = () => {}, keepProfile = false, findSeconds = FIND_SECONDS } = {}) {
   const dir = findProjectDir(dirArg);
   const script = readRecordingScript(dir, name);
   const outDir = path.join(dir, 'assets', 'recordings');
-  // One profile per project, so a login or a closed banner stays for the next
-  // run. --fresh starts it empty.
-  const profile = path.join(cacheRoot(), 'record', 'profiles', crypto.createHash('sha256').update(fs.realpathSync(dir)).digest('hex').slice(0, 16));
-  if (fresh) fs.rmSync(profile, { recursive: true, force: true });
+  const fetch = `"${selfCommand()} doctor --fetch"`;
+  if (!(await recordEncoder()).ready) throw new ProjectError(`record needs Playwright's own ffmpeg to save the video, and it isn't there yet. Run ${fetch} once.`);
+  // Every run starts from an empty profile, so nothing a site stored in an
+  // earlier run shows. --keep-profile keeps one profile per project, so a
+  // login or a closed banner stays for the next run.
+  const profiles = path.join(cacheRoot(), 'record', 'profiles');
+  fs.mkdirSync(profiles, { recursive: true });
+  const profile = keepProfile ? path.join(profiles, crypto.createHash('sha256').update(fs.realpathSync(dir)).digest('hex').slice(0, 16)) : fs.mkdtempSync(path.join(profiles, 'run-'));
   fs.mkdirSync(profile, { recursive: true });
   const videos = fs.mkdtempSync(path.join(cacheRoot(), 'record', 'video-'));
   const { width, height } = script.viewport;
-  log(`recording ${script.url} at ${width}x${height}`);
+  log(`recording ${script.url} at ${width}x${height}${keepProfile ? ', with the profile of earlier runs' : ''}`);
   let context;
   try {
     try {
@@ -392,9 +462,10 @@ export async function record(dirArg, name, { log = () => {}, fresh = false, find
         deviceScaleFactor: 1,
         recordVideo: { dir: videos, size: { width, height } },
         acceptDownloads: false,
-      }, ['--deny-permission-prompts', '--disable-notifications', '--no-first-run', '--no-default-browser-check']);
+      }, ['--deny-permission-prompts', '--disable-notifications', '--no-first-run', '--no-default-browser-check', '--disable-smooth-scrolling']);
     } catch (e) {
       if (/ProcessSingleton|profile.*in use|SingletonLock/i.test(e.message)) throw new ProjectError('another recording of this project is running and uses its browser profile. Wait for it to finish.');
+      if (/ffmpeg/i.test(e.message)) throw new ProjectError(`record could not start Playwright's ffmpeg, which saves the video. Run ${fetch} once.`);
       throw e;
     }
     for (const p of context.pages().slice(1)) await p.close();
@@ -420,14 +491,18 @@ export async function record(dirArg, name, { log = () => {}, fresh = false, find
       await page.screenshot({ path: shot }).catch(() => {});
       throw new ProjectError(`recordings/${name}.json ${stepLabel(step, n)}: ${message} The page at that moment is in ${path.relative(process.cwd(), shot) || shot}.`);
     };
-    const find = async (step, n, { forTyping = false, seconds = findSeconds } = {}) => {
+    // Finds the element of a step. With `inView`, it waits until the middle
+    // of the element is in the window, and fails when it stays outside.
+    const find = async (step, n, { forTyping = false, seconds = findSeconds, inView = false } = {}) => {
       const until = Date.now() + seconds * 1000;
       for (;;) {
         const r = await page.evaluate(findInPage, { text: step.text, selector: step.selector, nth: step.nth ?? 1, forTyping }).catch((e) => ({ error: e.message }));
         if (r.error === 'selector') await fail(step, n, `${quoted(step.selector)} is not a valid CSS selector.`);
-        // An element out of view scrolls into it first, and the video shows that.
-        if (r.box && (r.inView || Date.now() > until)) return r.box;
-        if (r.box) { await sleep(700); continue; }
+        if (r.box && (r.inView || !inView)) return r.box;
+        if (r.box && Date.now() > until) {
+          const scroll = { do: 'scroll', ...(step.text !== undefined ? { text: step.text } : { selector: step.selector }), ...(step.nth ? { nth: step.nth } : {}) };
+          await fail(step, n, `the element is outside the window, and finding it never scrolls the page. Put a scroll step to it first, like ${jsonLine(scroll)}.`);
+        }
         if (Date.now() > until) {
           const close = r.words ? suggest(step.text ?? '', r.words, 6) : [];
           const many = r.found ? ` It found ${r.found}, and nth asks for number ${step.nth}.` : '';
@@ -442,14 +517,14 @@ export async function record(dirArg, name, { log = () => {}, fresh = false, find
     // The pointer waits in the middle until the first step moves it.
     let pos = { x: width / 2, y: height / 2 };
     await page.mouse.move(pos.x, pos.y);
-    const moveTo = async (to) => {
+    const moveTo = async (to, seconds) => {
       const t0 = now();
       const from = pos;
       const dist = Math.hypot(to.x - from.x, to.y - from.y);
       if (dist < 1) return null;
       // The same ease as the cursor that s.recording draws, so a hover effect
       // shows when the drawn cursor gets there.
-      const ms = Math.min(900, 300 + dist * 0.45);
+      const ms = seconds * 1000;
       for (;;) {
         const k = Math.min(1, (Date.now() - t0 * 1000 - zero) / ms);
         const e = ease.inOut(k);
@@ -459,6 +534,36 @@ export async function record(dirArg, name, { log = () => {}, fresh = false, find
       }
       pos = to;
       return { t0: round(t0), t1: round(now()), x0: Math.round(from.x), y0: Math.round(from.y), x1: Math.round(to.x), y1: Math.round(to.y) };
+    };
+    // Scrolls the page by dy pixels with the mouse wheel, as a person does,
+    // eased over `seconds`, or over the time its length takes at the pace.
+    const scrollBy = async (dy, seconds = Math.max(0.25, (SCROLL_SECONDS * Math.abs(dy)) / height / script.pace)) => {
+      const t0 = Date.now();
+      let done = 0;
+      for (;;) {
+        const k = Math.min(1, (Date.now() - t0) / (seconds * 1000));
+        const part = Math.round(dy * ease.inOut(k) - done);
+        if (part) {
+          await page.mouse.wheel(0, part);
+          done += part;
+        }
+        if (k >= 1) break;
+        await sleep(16);
+      }
+      await sleep(150);
+    };
+    // A click or hover lands on what is at the middle of its element. When
+    // something else is there, like a bar that stays on top of the page, the
+    // page scrolls the element to the middle of the window, and when it is
+    // still covered there, the step stops.
+    const clear = async (step, n, box, forTyping) => {
+      if (!(await page.evaluate(coverInPage, box))) return box;
+      const dy = await page.evaluate(scrollToMiddle);
+      if (Math.abs(dy) >= 1) await scrollBy(dy);
+      box = await find(step, n, { forTyping });
+      const cover = await page.evaluate(coverInPage, box);
+      if (cover) await fail(step, n, `${cover} covers the middle of the element at ${Math.round(box.x)},${Math.round(box.y)}, also after scrolling it to the middle of the window, so the ${step.do === 'hover' ? 'pointer' : 'click'} would land on that. Close it with a step before, or pick an element that is not covered.`);
+      return box;
     };
     const steps = [];
     const skipped = [];
@@ -471,7 +576,7 @@ export async function record(dirArg, name, { log = () => {}, fresh = false, find
       }
       log(`${stepLabel(step, n)}${step.before ? ', before the video' : ''}`);
       // A step before the video whose element isn't there is done already,
-      // like a banner the profile remembers closing, or a login it still has.
+      // like a banner the kept profile remembers closing, or a login it still has.
       if (step.before && (step.text !== undefined || step.selector !== undefined)) {
         const there = await page.evaluate(findInPage, { text: step.text, selector: step.selector, nth: step.nth ?? 1 }).catch(() => ({}));
         let found = !!there.box;
@@ -480,21 +585,22 @@ export async function record(dirArg, name, { log = () => {}, fresh = false, find
           found = !!(await page.evaluate(findInPage, { text: step.text, selector: step.selector, nth: step.nth ?? 1 }).catch(() => ({}))).box;
         }
         if (!found) {
-          skipped.push(`${stepLabel(step, n)} found nothing and was skipped. That's fine when an earlier run did it already, and "record --fresh" starts without that.`);
+          skipped.push(`${stepLabel(step, n)} found nothing and was skipped. ${keepProfile ? 'That\'s fine when an earlier run did it already, and the kept profile remembers it.' : 'Check the step if the page should show it on every visit.'}`);
           continue;
         }
       }
       const entry = { step: n, do: step.do, start: round(now()) };
-      for (const k of ['text', 'selector', 'nth', 'name', 'cue', 'before']) if (step[k] !== undefined) entry[k] = step[k];
+      for (const k of ['text', 'selector', 'nth', 'name', 'cue', 'before', 'scale']) if (step[k] !== undefined) entry[k] = step[k];
       if (step.do === 'open') {
         entry.t = entry.start;
         await page.goto(step.url, { waitUntil: 'load' }).catch((e) => fail(step, n, `could not open ${step.url}: ${e.message.split('\n')[0]}.`));
         await settle();
         await sleep(600);
       } else if (step.do === 'click' || step.do === 'type' || step.do === 'hover') {
-        const box = await find(step, n, { forTyping: step.do === 'type' });
+        const forTyping = step.do === 'type';
+        const box = await clear(step, n, await find(step, n, { forTyping }), forTyping);
         entry.box = roundBox(box);
-        const move = await moveTo({ x: box.x, y: box.y });
+        const move = await moveTo({ x: box.x, y: box.y }, step.duration ?? MOVE_SECONDS / script.pace);
         if (move) entry.move = move;
         if (step.do === 'hover') {
           entry.t = round(now());
@@ -521,27 +627,23 @@ export async function record(dirArg, name, { log = () => {}, fresh = false, find
         }
       } else if (step.do === 'scroll') {
         entry.t = entry.start;
-        if (step.y !== undefined) {
-          const parts = Math.max(6, Math.round(Math.abs(step.y) / 60));
-          for (let k = 0; k < parts; k++) {
-            await page.mouse.wheel(0, step.y / parts);
-            await sleep(30);
-          }
-          await sleep(500);
-        } else {
-          const box = await find(step, n);
-          entry.box = roundBox(box);
-          await sleep(300);
+        if (step.y !== undefined) await scrollBy(step.y, step.duration);
+        else {
+          await find(step, n);
+          const dy = await page.evaluate(scrollToMiddle);
+          if (Math.abs(dy) >= 1) await scrollBy(dy, step.duration);
+          entry.box = roundBox(await find(step, n, { inView: true, seconds: 2 }));
         }
+        await sleep(300);
       } else if (step.do === 'wait') {
         entry.t = entry.start;
         if (step.seconds !== undefined) await sleep(step.seconds * 1000);
         else {
-          entry.box = roundBox(await find(step, n, { seconds: Math.max(findSeconds, 30) }));
+          entry.box = roundBox(await find(step, n, { seconds: Math.max(findSeconds, 30), inView: true }));
           await sleep(300);
         }
       } else if (step.do === 'zoom') {
-        if (step.text !== undefined || step.selector !== undefined) entry.box = roundBox(await find(step, n));
+        if (step.text !== undefined || step.selector !== undefined) entry.box = roundBox(await find(step, n, { inView: true }));
         entry.t = round(now());
         await sleep(ZOOM_SECONDS * 1000 + 500);
       } else if (step.do === 'mark') {
@@ -577,18 +679,24 @@ export async function record(dirArg, name, { log = () => {}, fresh = false, find
     shiftTimes(out, offset);
     fs.mkdirSync(outDir, { recursive: true });
     const webm = path.join(outDir, `${name}.webm`);
-    const json = path.join(outDir, `${name}.json`);
+    const json = logPath(dir, name);
     const tmpVideo = path.join(outDir, `.${name}-${process.pid}.webm`);
     fs.copyFileSync(raw, tmpVideo);
     fs.renameSync(tmpVideo, webm);
     fs.writeFileSync(json + '.tmp', JSON.stringify(out, null, 2) + '\n');
     fs.renameSync(json + '.tmp', json);
+    // The log of an older run, with the name of the script, goes, and so do
+    // the frames that were taken from the video this one replaces.
+    const old = oldLogPath(dir, name);
+    if (readLog(old)) fs.rmSync(old, { force: true });
+    dropClipFrames(dir, `assets/recordings/${name}.webm`);
     const rel = (p) => path.relative(dir, p).split(path.sep).join('/');
     const notes = [...skipped, ...missed.map((b) => `blur ${b.i + 1} (${b.selector !== undefined ? `selector ${quoted(b.selector)}` : `text ${quoted(b.text)}`}) matched nothing on any page. Check it, or take it out.`)];
     return { name, video: rel(webm), log: rel(json), duration: out.duration, start: out.start, steps: steps.length, width, height, notes };
   } finally {
     if (context) await context.close().catch(() => {});
     fs.rmSync(videos, { recursive: true, force: true });
+    if (!keepProfile) fs.rmSync(profile, { recursive: true, force: true });
   }
 }
 

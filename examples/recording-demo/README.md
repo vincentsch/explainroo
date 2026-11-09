@@ -22,6 +22,5 @@ node bin/explainroo.js render examples/recording-demo
 node bin/explainroo.js verify examples/recording-demo
 ```
 
-The first run clicks away the cookie banner before the video starts. Later
-runs keep the cookie in the browser profile, so that step finds nothing and
-is skipped. `record --fresh` starts with an empty profile.
+Every run starts with an empty browser profile, so the cookie banner shows
+each time, and the first step clicks it away before the video starts.

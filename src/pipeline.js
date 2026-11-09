@@ -10,7 +10,7 @@ import { listAssets, loadProject } from './project.js';
 import { startServer, ROOT } from './server.js';
 import { launch, openEngine } from './browser.js';
 import { readVersions, sha256File } from './history.js';
-import { scriptHash, scriptPath } from './record.js';
+import { logPath, oldLogPath, readLog, scriptHash, scriptPath } from './record.js';
 
 export const VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
 
@@ -51,19 +51,21 @@ export function makeState(project, timeline) {
   return { config: project.config, timeline, assets, version, title: project.config.title, ...(text ? { text } : {}), ...(recordings ? { recordings } : {}) };
 }
 
-// Each recording with a video and a readable log. "changed" says that its
+// Each recording with a video and a readable log, <name>.log.json, or
+// <name>.json from before the log had its own name. "changed" says that its
 // script in recordings/ is no longer the one it was recorded from.
 function recordingState(dir, assets) {
   const out = {};
   for (const rel of assets) {
-    const m = /^assets\/recordings\/([a-z0-9][a-z0-9-]*)\.json$/i.exec(rel);
-    if (!m || !assets.includes(`assets/recordings/${m[1]}.webm`)) continue;
-    let log;
-    try { log = JSON.parse(fs.readFileSync(path.join(dir, rel), 'utf8')); } catch { continue; }
-    if (log?.version !== 1 || !Array.isArray(log.steps)) continue;
+    const m = /^assets\/recordings\/([a-z0-9][a-z0-9-]*)\.webm$/i.exec(rel);
+    if (!m) continue;
+    const name = m[1];
+    const file = [logPath(dir, name), oldLogPath(dir, name)].find((f) => assets.includes(path.relative(dir, f).split(path.sep).join('/')));
+    const log = file && readLog(file);
+    if (!log) continue;
     let changed = false;
-    try { changed = log.script !== scriptHash(JSON.parse(fs.readFileSync(scriptPath(dir, m[1]), 'utf8'))); } catch {}
-    out[m[1]] = { ...log, ...(changed ? { changed: true } : {}) };
+    try { changed = log.script !== scriptHash(JSON.parse(fs.readFileSync(scriptPath(dir, name), 'utf8'))); } catch {}
+    out[name] = { ...log, ...(changed ? { changed: true } : {}) };
   }
   return Object.keys(out).length ? out : null;
 }

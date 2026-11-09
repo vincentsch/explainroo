@@ -111,8 +111,8 @@ export const COMMAND_HELP = {
   },
   record: {
     usage: 'record <project> <name> [options]',
-    about: 'Runs the steps of recordings/<name>.json in a browser of its own and saves the video as assets/recordings/<name>.webm, with the time and the box of every step in assets/recordings/<name>.json. s.recording(\'<name>\') plays it in a scene with a cursor, click rings and zooms. When a step can\'t find its element, it stops with the step number, close words from the page and a picture of the page.',
-    options: [['--fresh', 'start the browser profile empty, without the logins and cookies of earlier runs'], JSON_OUT],
+    about: 'Runs the steps of recordings/<name>.json in a browser of its own and saves the video as assets/recordings/<name>.webm, with the time and the box of every step in assets/recordings/<name>.log.json. s.recording(\'<name>\') plays it in a scene with a cursor, click rings and zooms. When a step can\'t find its element, or something covers it, it stops with the step number and a picture of the page. Every run starts with an empty browser profile.',
+    options: [['--keep-profile', 'keep cookies and stored data for the next run, for a site that needs a login'], JSON_OUT],
     example: 'record videos/my-demo new-invoice',
   },
   image: {
