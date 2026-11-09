@@ -448,8 +448,11 @@ test('inspect --all lists headings, sections and images, and --text what holds t
   assert.deepEqual([held.elements[0].words, held.elements[0].selector], ['Total $2,430', 'p.total']);
   const text = formatInspect(held);
   assert.match(text, /: 1 element holds "total", each with the larger ones around it, from the top\n {2}1\. p "Total \$2,430" {2}at \d+,\d+, \d+x\d+\n {5}text "Total \$2,430", or selector p\.total\n {2}2\. {3}in main /);
+  // Words that come a moment after the page opens, like search results, get a while to show.
+  const later = await inspect(dir, `${app.url}#/search`, { viewport, holding: 'Results:' });
+  assert.deepEqual(later.elements.map((e) => [e.level, e.kind, e.selector]), [[0, 'h2', 'h2'], [1, 'section', 'section.hits'], [2, 'main', '#main']]);
   const none = formatInspect(await inspect(dir, `${app.url}#/invoices`, { viewport, holding: 'Nothing like it' }));
-  assert.match(none, /: no visible element holds "Nothing like it"\./);
+  assert.match(none, /: no visible element holds "Nothing like it", also after 15 s\./);
 });
 
 test('in a short, typing, scrolling, zooming and a click that changes the page count as picture changes', { skip: !chrome }, async (t) => {

@@ -59,8 +59,9 @@ A zoom or a scroll often goes to plain content, like a heading, a section of
 results or a chart. `--all` adds the visible headings, sections and images to
 the list, each with its words and a selector. `--text "Solutions"` lists only
 the elements that hold those words: the smallest one, and then the larger
-ones around it, like the section the heading starts. Pick the one whose box
-holds what the voice talks about.
+ones around it, like the section the heading starts. It waits up to 15
+seconds for the words, for a page that shows its results a moment after it
+opens. Pick the one whose box holds what the voice talks about.
 
 Then run `explainroo record videos/<name> <name>`. It runs the steps in a
 browser of its own and saves `assets/recordings/<name>.webm` and its step

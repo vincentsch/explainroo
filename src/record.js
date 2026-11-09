@@ -1064,6 +1064,8 @@ function inspectInPage({ limit, all = false, holding = null }) {
 // How many elements inspect reads at most, and how many of them it prints.
 const INSPECT_LIMIT = 1000;
 const INSPECT_PRINTED = 200;
+// How long --text waits for its words to show on the page.
+const HOLDING_SECONDS = 15;
 
 // Opens a page in the browser record uses and lists what a step can click or
 // type into, so a script never has to guess a button.
@@ -1094,7 +1096,13 @@ export async function inspect(dirArg, url, { viewport, keepProfile = false, all 
     await page.evaluate(() => document.fonts?.ready.then(() => true)).catch(() => {});
     await sleep(500);
     await page.evaluate(`window.__explainrooFind = ${findInPage.toString()}`);
-    const r = await page.evaluate(inspectInPage, { limit: INSPECT_LIMIT, all, holding });
+    let r = await page.evaluate(inspectInPage, { limit: INSPECT_LIMIT, all, holding });
+    // Words a page shows only once its scripts have worked, like the results
+    // of a search, get a while longer to come.
+    for (const until = Date.now() + HOLDING_SECONDS * 1000; holding !== null && !r.matches && Date.now() < until;) {
+      await sleep(500);
+      r = await page.evaluate(inspectInPage, { limit: INSPECT_LIMIT, all, holding });
+    }
     return { url: page.url(), title: r.title, viewport: size, ...(holding !== null ? { text: holding, matches: r.matches } : all ? { all: true, content: r.content } : {}), total: r.total, elements: r.elements };
   } finally {
     if (context) await context.close().catch(() => {});
@@ -1118,7 +1126,7 @@ export function formatInspect(r) {
   const head = r.text !== undefined
     ? r.matches
       ? `${r.url} at ${size}: ${r.matches} element${r.matches === 1 ? '' : 's'} hold${r.matches === 1 ? 's' : ''} ${quoted(r.text)}, each with the larger ones around it, from the top`
-      : `${r.url} at ${size}: no visible element holds ${quoted(r.text)}. The words are matched without case, also inside longer text.`
+      : `${r.url} at ${size}: no visible element holds ${quoted(r.text)}, also after ${HOLDING_SECONDS} s. The words are matched without case, also inside longer text.`
     : r.all
       ? `${r.url} at ${size}: ${r.total} element${r.total === 1 ? '' : 's'}, ${r.total - r.content} to click or type into, and ${r.content} of the headings, sections and images to zoom or scroll to, from the top`
       : `${r.url} at ${size}: ${r.total} element${r.total === 1 ? '' : 's'} to click or type into, from the top`;

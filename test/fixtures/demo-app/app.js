@@ -48,6 +48,8 @@ const pages = {
   // the way CodeMirror does, and a button with only an icon and its aria-label.
   notes: () => `<div class="bar"><div><h1>Notes</h1><p class="sub">A note goes on the next invoice.</p></div><button class="icon" aria-label="Clear note">&times;</button></div>
     <div class="editor" contenteditable="true" role="textbox" aria-label="Note text"><div class="line"><span class="ed-placeholder" contenteditable="false">Write the note here, or paste one.</span></div></div>`,
+  // A page that shows its results a moment after it opens, like a search.
+  search: () => `<h1>Search</h1><p class="sub">Looking through the invoices.</p><div id="results"></div>`,
   settings: () => `<h1>Settings</h1><p class="sub">Invoices go out from <span class="email">jane.doe@example.com</span>.</p>`,
 };
 
@@ -57,6 +59,12 @@ function show() {
   main.innerHTML = pages[name]();
   for (const a of document.querySelectorAll('nav a')) a.classList.toggle('on', a.dataset.page === name || (name === 'new-invoice' && a.dataset.page === 'invoices'));
   document.getElementById('new')?.addEventListener('click', () => { location.hash = '#/new-invoice'; });
+  if (name === 'search') {
+    setTimeout(() => {
+      const results = document.getElementById('results');
+      if (results) results.innerHTML = '<section class="hits"><h2>Results:</h2><p>#1043 Ridge Cycling, $860</p></section>';
+    }, 2000);
+  }
   for (const b of document.querySelectorAll('.play')) {
     b.addEventListener('click', () => { document.getElementById('player').textContent = `Playing ${tracks[b.dataset.track]}`; });
   }
