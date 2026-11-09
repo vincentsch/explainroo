@@ -84,7 +84,7 @@ test('the cut list has a line a sentence, and reading it back keeps what is left
   assert.deepEqual(parts, [[0.6, 1.3], [1.7, 1.825], [2.775, 3.3], [4, 5.2]]);
   // A word that wasn't there, a word moved up and a word with a new time stop with the line.
   assert.throws(() => readCutList(`${edited}\nAnd five.\n`, items, 'talk.cut.md'), /talk\.cut\.md line \d+: "And" has no time, so it is not a word of the recording\. The cut only takes words out/);
-  assert.throws(() => readCutList(edited.replace('One,@0.80', 'four.@4.00 One,@0.80').replace(' four.@4.00\n', '\n'), items, 'talk.cut.md'), /"One,@0\.80" comes before what the line above has\. The cut keeps the order of the recording, so it can't move words\./);
+  assert.throws(() => readCutList(edited.replace('One,@0.80', 'four.@4.00 One,@0.80').replace(' four.@4.00\n', '\n'), items, 'talk.cut.md'), /"One,@0\.80" comes before a word that stands earlier in the list\. The cut keeps the order of the recording, so it can't move words\./);
   assert.throws(() => readCutList(edited.replace('Three@2.90', 'Three@2.95'), items, 'talk.cut.md'), /"Three@2\.95" is not in the recording\. Leave the words, pauses and sounds as cut wrote them, and only delete them\./);
 });
 

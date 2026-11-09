@@ -177,7 +177,7 @@ export function readCutList(text, items, name = 'the cut list') {
       // Two words with one time: the one with this text, else the first.
       const i = word === undefined ? list[0] : (list.find((k) => items[k].text === word) ?? list[0]);
       if (i === undefined) throw new ProjectError(`${where}: "${whole}" is not in the recording. Leave the words, pauses and sounds as cut wrote them, and only delete them.`);
-      if (i < last) throw new ProjectError(`${where}: "${whole}" comes before what the line above has. The cut keeps the order of the recording, so it can't move words.`);
+      if (i < last) throw new ProjectError(`${where}: "${whole}" comes before a word that stands earlier in the list. The cut keeps the order of the recording, so it can't move words.`);
       used.add(i);
       last = i;
       if (type === 'pause') {
