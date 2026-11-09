@@ -3,6 +3,8 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { spawn } from 'node:child_process';
+import { createRequire } from 'node:module';
 
 // Where "npx playwright install" puts browsers on each system.
 function playwrightBase() {
@@ -94,6 +96,45 @@ export async function launch() {
 export async function launchProfile(profile, options = {}, extraArgs = []) {
   const { chromium } = await import('playwright-core');
   return track(await chromium.launchPersistentContext(profile, { executablePath: findChrome(), headless: true, args: [...ARGS, ...extraArgs], ...options }));
+}
+
+// Playwright's own ffmpeg, which writes the video of record. Playwright keeps it
+// next to its browsers, and record can't use another one.
+async function ffmpegEntry() {
+  const core = await import('playwright-core/lib/coreBundle');
+  const registry = (core.default ?? core).registry.registry;
+  return { registry, executable: registry.findExecutable('ffmpeg') };
+}
+
+// Where Playwright's ffmpeg is, and whether it is there.
+export async function recordEncoder() {
+  const { executable } = await ffmpegEntry();
+  const file = executable.executablePath();
+  return { file, ready: !!file && fs.existsSync(file) };
+}
+
+// Downloads Playwright's ffmpeg with Playwright's own installer. It leaves the
+// other browsers in Playwright's folder alone. The installer runs in a process
+// of its own, so what it prints stays out of the output and --json stays clean.
+// A failed download throws with the installer's last line.
+export async function installRecordEncoder({ log = () => {} } = {}) {
+  const { executable } = await ffmpegEntry();
+  log(`downloading Playwright's ffmpeg for record into ${executable.directory}`);
+  const bundle = createRequire(import.meta.url).resolve('playwright-core/lib/coreBundle');
+  const code = `const { registry } = require(${JSON.stringify(bundle)}).registry; registry.install([registry.findExecutable('ffmpeg')], { gc: false }).catch((e) => { console.error(e.message); process.exit(1); });`;
+  const said = await new Promise((resolve) => {
+    const child = spawn(process.execPath, ['-e', code], { stdio: ['ignore', 'ignore', 'pipe'] });
+    let err = '';
+    child.stderr.on('data', (d) => { err += d; });
+    child.on('error', (e) => resolve(e.message));
+    child.on('close', (status) => resolve(status === 0 ? null : err || `exit code ${status}`));
+  });
+  if (said) {
+    // The cause, like "connect ECONNREFUSED", comes before the installer's summary.
+    const lines = said.split('\n').map((l) => l.trim().replace(/^Error: /, '')).filter((l) => l && !/^at |^[{}]|^\w+: ['\d-]/.test(l));
+    throw new Error(lines.find((l) => !/download failure|failed to download/i.test(l)) ?? lines.at(-1) ?? said.trim());
+  }
+  return recordEncoder();
 }
 
 // Opens the render page and waits until the engine has loaded fonts, icons,
