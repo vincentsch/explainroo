@@ -226,7 +226,7 @@ test('every command prints its own usage, options and one example with --help', 
   assert.match(still.out, /^ {2}--platform <name> {2}the size, its block in "sizes" and the watermark rule that "package --platform <name>" uses$/m);
   assert.match(still.out, /^Example:\n {2}explainroo still videos\/how-dns-works intro@2\.4 resolver@end\n$/m);
   assert.equal((await runAll(['help', 'still'])).out, still.out);
-  assert.match((await runAll(['words', '-h'])).out, /^Usage: explainroo words \[project\] \[scene\] \[options\]/);
+  assert.match((await runAll(['words', '-h'])).out, /^Usage: explainroo words \[project\] \[scene…\] \[options\]/);
   // Without a command, or with an unknown one, the general help.
   assert.match((await runAll(['--help'])).out, /^explainroo .*: narrated explainer videos from code\n/);
   assert.match((await runAll(['help', 'nothing'])).out, /"explainroo <command> --help" prints the options of one command and an example\./);

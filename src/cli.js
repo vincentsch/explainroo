@@ -61,7 +61,7 @@ Make a video
                         --new buys again only the paid sentences with no good saved answer, --size makes
                         the narration of a size whose block in "sizes" sets its own pace). --estimate
                         prints how long the video will be about from the script, and makes nothing
-  words [project] [scene]  each spoken word of a scene with its start time, for choosing cues
+  words [project] [scenes]  each spoken word of the scenes named, or of all, with its start time, for choosing cues
   preview [project]     live preview in your browser, reloads on save (--port, --size, --no-watermark)
   still [project] [t…]  PNG stills: "12.5", "scene", "scene@2.4" (default: end of every scene; --size,
                         --no-watermark, --transparent)
@@ -311,7 +311,7 @@ export async function main(argv) {
       case 'words': {
         const isProject = pos[0] && fs.existsSync(path.join(pos[0], 'video.json'));
         const project = loadProject(isProject ? pos.shift() : undefined, { size: textFlag(flags, 'size'), ...langOverride(flags) });
-        const r = await spokenWords(project, pos[0], { log, notice });
+        const r = await spokenWords(project, pos, { log, notice });
         print(formatWords(r), r);
         return 0;
       }
@@ -658,15 +658,16 @@ function runProject(dir, flags, extra = {}) {
   return { project: loadProject(own.dir, { ...overrides, ...langOverride(flags), ...extra }), platform, watermarkNote };
 }
 
-// The spoken words of the scenes, or of one, with their times in seconds into the
-// scene, the times a cue like at: 'word' gives. A word spoken more than once in a
-// scene has the cue that names its time, like "fills#2".
-async function spokenWords(project, only, { log, notice }) {
+// The spoken words of the scenes, or of the ones named, with their times in
+// seconds into the scene, the times a cue like at: 'word' gives. A word spoken
+// more than once in a scene has the cue that names its time, like "fills#2".
+async function spokenWords(project, only = [], { log, notice }) {
   const ids = project.script.scenes.map((s) => s.id);
-  if (only !== undefined && !ids.includes(only)) throw new ProjectError(`there is no scene "${only}" in ${scriptName(project)}. Its scenes are: ${ids.join(', ')}`);
+  const unknown = [...new Set(only.filter((id) => !ids.includes(id)))];
+  if (unknown.length) throw new ProjectError(`there is no scene ${unknown.map((id) => `"${id}"`).join(' or ')} in ${scriptName(project)}. Its scenes are: ${ids.join(', ')}`);
   const { timeline } = await prepare(project, { log, notice });
   const round = (v) => Math.round(v * 100) / 100;
-  const scenes = timeline.scenes.filter((s) => only === undefined || s.id === only).map((sc) => {
+  const scenes = timeline.scenes.filter((s) => !only.length || only.includes(s.id)).map((sc) => {
     const seen = new Map();
     const total = new Map();
     for (const w of sc.words) total.set(normWord(w.text), (total.get(normWord(w.text)) ?? 0) + 1);
