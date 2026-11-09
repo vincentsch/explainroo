@@ -16,16 +16,23 @@ export const LETTER_HEIGHT = 0.76;
 // ink, on the 0 to 255 scale.
 const CONTRAST = 28;
 
+// How much the background behind a line of text may vary, as the standard
+// deviation of its gray.
+const PLAIN = 15;
+
 // Every line of text in a frame, smallest font first: its box, the font size
 // in pixels of the frame, and how many shapes it is made of.
 export function textLines(gray, width, height) {
   const r = Math.max(8, Math.round(Math.min(width, height) / 30));
   const stack = new Int32Array(width * height);
-  const lines = inkMasks(gray, width, height, r).flatMap((mask, i) => linesOf(components(mask, width, height, gray, stack), width, height, i === 0));
+  const sums = integral(gray, width, height);
+  const lines = inkMasks(gray, width, height, r, sums)
+    .flatMap((mask, i) => linesOf(stacked(components(mask, width, height, gray, stack)), width, height, i === 0));
   // Holes inside the letters of one color look like small letters of the other,
   // and the strokes of big letters can break into pieces. A line that lies mostly
   // inside a line with taller letters is such holes or pieces, so it goes.
-  const kept = lines.filter((a) => !lines.some((b) => b !== a && b.size > a.size * 1.2 && overlap(a, b) > 0.6));
+  const kept = lines.filter((a) => !lines.some((b) => b !== a && b.size > a.size * 1.2 && overlap(a, b) > 0.6))
+    .filter((line) => plainBehind(line, gray, width, height, r, sums));
   return kept.sort((a, b) => a.size - b.size).map(({ dark, ...line }) => line);
 }
 
@@ -43,8 +50,7 @@ function overlap(a, b) {
 // so dark ink counts only in light tiles, and light ink only in dark ones.
 // Without that, the background close to light letters would count as dark ink,
 // being darker than the mean there.
-function inkMasks(gray, width, height, r) {
-  const sums = integral(gray, width, height);
+function inkMasks(gray, width, height, r, sums) {
   const tile = r * 2;
   const { light, cols } = lightTiles(gray, width, height, tile);
   const dark = new Uint8Array(width * height);
@@ -147,6 +153,58 @@ function components(mask, width, height, gray, stack) {
     shapes.push(shape);
   }
   return shapes;
+}
+
+// Shapes stacked on each other with a small gap are one letter: the dot and stem
+// of an "i", or the two loops of an "8" drawn with a thin pen.
+function stacked(shapes) {
+  const list = shapes.filter((s) => s.y1 - s.y0 >= 2).sort((a, b) => a.x0 - b.x0);
+  const gone = new Set();
+  for (let i = 0; i < list.length; i++) {
+    const a = list[i];
+    if (gone.has(a)) continue;
+    for (let j = i + 1; j < list.length && list[j].x0 < a.x1; j++) {
+      const b = list[j];
+      if (gone.has(b)) continue;
+      const across = Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0);
+      const gap = Math.max(a.y0, b.y0) - Math.min(a.y1, b.y1);
+      if (across < Math.min(a.x1 - a.x0, b.x1 - b.x0) * 0.5 || gap < 0 || gap > Math.max(2, Math.max(a.y1 - a.y0, b.y1 - b.y0) * 0.3)) continue;
+      Object.assign(a, { x0: Math.min(a.x0, b.x0), y0: Math.min(a.y0, b.y0), x1: Math.max(a.x1, b.x1), y1: Math.max(a.y1, b.y1), pixels: a.pixels + b.pixels, contrast: a.contrast + b.contrast, gray: a.gray + b.gray });
+      gone.add(b);
+    }
+  }
+  return list.filter((s) => !gone.has(s));
+}
+
+// Whether the background behind a line is plain, as text on a page, a screen or
+// a caption bar has. The pixels of the line's box that aren't ink must be close
+// to one gray. Leaves, grass and stones behind a row of shapes are not. Big
+// letters leave soft edges in their box that this would count, so it only
+// judges lines up to 4.5% of the frame's short side, about 48 pixels at 1080p,
+// which covers every size that check calls small.
+function plainBehind(line, gray, width, height, r, sums) {
+  if (line.size > Math.min(width, height) * 0.045) return true;
+  const W = width + 1;
+  let n = 0;
+  let sum = 0;
+  let squares = 0;
+  for (let y = line.y0; y < line.y1; y++) {
+    const y0 = Math.max(0, y - r);
+    const y1 = Math.min(height, y + r + 1);
+    for (let x = line.x0; x < line.x1; x++) {
+      const x0 = Math.max(0, x - r);
+      const x1 = Math.min(width, x + r + 1);
+      const mean = (sums[y1 * W + x1] - sums[y0 * W + x1] - sums[y1 * W + x0] + sums[y0 * W + x0]) / ((x1 - x0) * (y1 - y0));
+      const v = gray[y * width + x];
+      if (Math.abs(v - mean) > CONTRAST) continue;
+      n++;
+      sum += v;
+      squares += v * v;
+    }
+  }
+  if (!n) return true;
+  const mean = sum / n;
+  return Math.sqrt(Math.max(0, squares / n - mean * mean)) <= PLAIN;
 }
 
 // Shapes that could be a letter, or a few letters run together: at least 5 pixels
