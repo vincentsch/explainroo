@@ -43,7 +43,8 @@ const UNITS = {
 };
 
 // Other ways to write a unit word, as the word above. So "1 kilómetro" and
-// "1 km" agree, and so do "kilometre" and "kilometers".
+// "1 km" agree, and so do "kilometre" and "kilometers". French "égale" is the
+// "égal" of "x = 1" in math-words.js.
 const SAME = {
   en: {
     kilometer: 'kilometers', kilometre: 'kilometers', kilometres: 'kilometers', meter: 'meters', metre: 'meters', metres: 'meters',
@@ -58,6 +59,7 @@ const SAME = {
   fr: {
     kilometre: 'kilometres', metre: 'metres', centimetre: 'centimetres', millimetre: 'millimetres', kilogramme: 'kilogrammes', kilo: 'kilogrammes', kilos: 'kilogrammes',
     gramme: 'grammes', seconde: 'secondes', milliseconde: 'millisecondes', degre: 'degres', euro: 'euros', dollar: 'dollars',
+    egale: 'egal', egaux: 'egal', egales: 'egal',
   },
   it: {
     chilometro: 'chilometri', metro: 'metri', centimetro: 'centimetri', millimetro: 'millimetri', chilogrammo: 'chilogrammi', chilo: 'chilogrammi', chili: 'chilogrammi',
