@@ -213,11 +213,9 @@ is 0 unless you set it. So `gap: 20` between two points leaves 20 pixels free
 at both ends.
 
 A label sits above a straight arrow, left of a vertical one and on the outer
-side of a curve, `labelOffset` away from the arrow's middle: 38 for a label of
-40 pixels with `"defaults": "0.6"`, which `init` writes, and 44 for 48
-with `"0.5"`. A project without the line keeps labels of 34
-pixels, 34 out, arrows that start at an icon's edge, and no `gap` at a point
-end. `explainroo docs settings` lists what the line changes.
+side of a curve, `labelOffset` away from the arrow's middle. Its size and
+offset depend on the `"defaults"` line, which `explainroo docs settings`
+explains.
 `labelSide: 'left'`, `'right'`, `'above'` or `'below'` puts it on that side
 instead. The third arrow above is vertical, and its label goes to the right,
 for example because the left side is near the edge or full. `check` treats
