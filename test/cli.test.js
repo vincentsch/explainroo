@@ -226,7 +226,7 @@ test('every command prints its own usage, options and one example with --help', 
   assert.match(still.out, /^ {2}--platform <name> {2}the size, its block in "sizes" and the watermark rule that "package --platform <name>" uses$/m);
   assert.match(still.out, /^Example:\n {2}explainroo still videos\/how-dns-works intro@2\.4 resolver@end\n$/m);
   assert.equal((await runAll(['help', 'still'])).out, still.out);
-  assert.match((await runAll(['words', '-h'])).out, /^Usage: explainroo words \[project\] \[scene\] \[options\]/);
+  assert.match((await runAll(['words', '-h'])).out, /^Usage: explainroo words \[project\] \[scene…\] \[options\]/);
   // Without a command, or with an unknown one, the general help.
   assert.match((await runAll(['--help'])).out, /^explainroo .*: narrated explainer videos from code\n/);
   assert.match((await runAll(['help', 'nothing'])).out, /"explainroo <command> --help" prints the options of one command and an example\./);
@@ -341,7 +341,7 @@ test('voice --estimate prints the estimate with the target advice and makes noth
   fs.writeFileSync(path.join(dir, 'scenes.js'), 'export default { a() {}, b() {} };');
   const r = await runAll(['voice', dir, '--estimate']);
   assert.equal(r.code, 0, r.err);
-  assert.match(r.out, /^about \d+ s: 21 words of speech at about \d+ a minute take \d+\.\d s\. The 2 scenes add 1\.05 s each for their lead and hold, and the pauses between sentences add 0\.3 s\. The end of the video adds 1\.4 s\. That is about \d+ s over targetSeconds 5, so cut about \d+ words\.\nNothing was made\.\n$/);
+  assert.match(r.out, /^about \d+ s \(\d+ to \d+ s\): 21 words of speech at about \d+ a minute take \d+\.\d s\. The 2 scenes add 1\.05 s each for their lead and hold, and the pauses between sentences add 0\.3 s\. The end of the video adds 1\.4 s\. That is about \d+ s over targetSeconds 5, so cut about \d+ words\.\nNothing was made\.\n$/);
   const json = JSON.parse((await runAll(['voice', dir, '--estimate', '--json'])).out);
   assert.deepEqual([json.estimate.words, json.estimate.scenes, json.estimate.targetSeconds], [21, 2, 5]);
   assert.equal(fs.existsSync(path.join(dir, 'build')), false, 'no voice was made');

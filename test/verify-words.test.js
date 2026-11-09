@@ -85,3 +85,19 @@ test('verify ends with a verdict, in the text and in JSON: passed, passed with w
   const { passed, verdict, ...older } = { ...r, issues: [{ level: 'error', message: 'the file has no audio stream' }] };
   assert.equal(formatVerify(older).split('\n').at(-1), 'failed: 1 problem');
 });
+
+test('a word the narration alone confirmed and the final mix did not names music.volume 3 dB lower', async (t) => {
+  const { cachedVoice } = await import('./helpers/cached-voice.js');
+  const project = await videoProject(t, '# Demo\n\n## intro\nFree and open source.\n', [{ id: 'intro', dur: 2 }]);
+  const settings = (music) => fs.writeFileSync(path.join(project.dir, 'video.json'), JSON.stringify({ size: '320x180', fps: 24, music }));
+  settings({ style: 'tech', volume: 0.5 });
+  cachedVoice(project.dir, 'intro');
+  const r = await verify(loadProject(project.dir), { transcribe: says(['Free open source.']) });
+  assert.deepEqual(r.speech.unconfirmed, [{ scene: 'intro', word: 'and', time: 0.15, mix: true }]);
+  const warning = r.issues.find((i) => i.message.startsWith('the speech check could not confirm'));
+  assert.equal(warning.message, 'the speech check could not confirm 1 word in the final mix: "and" at 0.1 s. The narration alone confirmed it, so the music may cover it: set music.volume in video.json to 0.35, from 0.5, which is 3 dB quieter');
+  // Without music there is nothing to turn down.
+  settings(false);
+  const quiet = await verify(loadProject(project.dir), { transcribe: says(['Free open source.']) });
+  assert.doesNotMatch(quiet.issues.find((i) => i.message.startsWith('the speech check could not confirm')).message, /music/);
+});

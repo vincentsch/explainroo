@@ -102,7 +102,12 @@ function fitTarget(durs, seconds, fps) {
 // percent. A digit counts as LETTERS_A_DIGIT letters, because the voice reads
 // "1972" as "nineteen seventy-two". Faster speech says more, though not in step
 // with the speed: 15% faster says about 9% more.
-const LETTERS_A_SECOND = 12.95;
+const LETTERS_A_SECOND = 12.7;
+// How far the voice's real time strays from the estimate: within 6% either way
+// for the speech of nearly every script made with Kokoro, the letter rate set
+// so short, punchy scripts don't come out longer than it says. The estimate
+// gives the range this makes.
+const SPREAD = 0.06;
 const LETTERS_A_DIGIT = 4;
 // How fast each English voice speaks next to af_heart, measured on the same
 // sentences at speed 0.9. The others count as 1.
@@ -164,6 +169,9 @@ export function estimateLength(project) {
   const end = config.end / pace;
   return {
     seconds: tenth(total),
+    // The range the length will likely fall in, from the spread of the speech.
+    low: tenth(total - speech + speech / (1 + SPREAD)),
+    high: tenth(total - speech + speech / (1 - SPREAD)),
     [cjk ? 'characters' : 'words']: words,
     // For this text: its words, or characters, over the time the voice speaks them.
     perMinute: Math.round((words / speech) * 60),
@@ -179,7 +187,7 @@ export function estimateLength(project) {
   };
 }
 
-// "about 46 s: 105 words of speech at about 180 a minute take 35.0 s. The 6
+// "about 46 s (44 to 48 s): 105 words of speech at about 180 a minute take 35.0 s. The 6
 // scenes add 1.05 s each for their lead and hold, and the pauses between
 // sentences add 2.1 s. The end of the video adds 1.4 s." And what that means for
 // targetSeconds.
@@ -189,7 +197,8 @@ export function estimateLine(e) {
   const scenes = e.scenes === 1 ? `The scene adds ${e.perScene} s for its lead and hold` : `The ${e.scenes} scenes add ${e.perScene} s each for their lead and hold`;
   const pauses = e.pauses ? `, and the pauses between sentences add ${e.pauses.toFixed(1)} s` : '';
   const other = e.other ? ` Scenes with a min, or without narration, add ${e.other.toFixed(1)} s more.` : '';
-  const line = `about ${Math.round(e.seconds)} s: ${count} ${unit} of speech at about ${e.perMinute} a minute take ${e.speechSeconds.toFixed(1)} s. ${scenes}${pauses}. The end of the video adds ${e.end.toFixed(1)} s.${other}`;
+  const range = e.low === undefined ? '' : ` (${Math.min(Math.round(e.seconds), Math.floor(e.low))} to ${Math.max(Math.round(e.seconds), Math.ceil(e.high))} s)`;
+  const line = `about ${Math.round(e.seconds)} s${range}: ${count} ${unit} of speech at about ${e.perMinute} a minute take ${e.speechSeconds.toFixed(1)} s. ${scenes}${pauses}. The end of the video adds ${e.end.toFixed(1)} s.${other}`;
   if (!e.targetSeconds) return line;
   const over = e.seconds - e.targetSeconds;
   if (over > 0.5) return `${line} That is about ${Math.round(over)} s over targetSeconds ${e.targetSeconds}, so cut about ${Math.max(1, Math.round((over / 60) * e.perMinute))} ${unit}.`;
@@ -207,7 +216,8 @@ export function roughTime(seconds) {
 export function targetNotes(timeline, perMinute = null) {
   const t = timeline.target;
   if (!t) return [];
-  if (t.over) {
+  // Half a second over is as close as the voice can be aimed.
+  if (t.over > 0.5) {
     const longest = [...timeline.scenes].sort((a, b) => b.dur - a.dur).slice(0, 3).map((s) => `${s.id} (${s.dur.toFixed(1)} s)`);
     const list = longest.length > 1 ? `${longest.slice(0, -1).join(', ')} and ${longest.at(-1)}` : longest[0];
     const cut = perMinute ? ` Cut about ${Math.max(1, Math.round((t.over / 60) * perMinute))} words, or raise targetSeconds.` : '';

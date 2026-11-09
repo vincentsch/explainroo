@@ -242,7 +242,7 @@ test('before it makes speech, voice says how long the video will be about, and i
   const lines = [];
   const seen = [];
   await synthesize(loadProject(dir), { transcribe: echo([]), log: (line) => lines.push(line), onEstimate: (e) => seen.push(e) });
-  assert.match(lines[0], /^voice: about \d+ s: 6 words of speech at about \d+ a minute take \d+\.\d s\. The scene adds [\d.]+ s for its lead and hold, and the pauses between sentences add 0\.3 s\. The end of the video adds 1\.4 s\. Scenes with a min, or without narration, add 4\.0 s more\.$/);
+  assert.match(lines[0], /^voice: about \d+ s \(\d+ to \d+ s\): 6 words of speech at about \d+ a minute take \d+\.\d s\. The scene adds [\d.]+ s for its lead and hold, and the pauses between sentences add 0\.3 s\. The end of the video adds 1\.4 s\. Scenes with a min, or without narration, add 4\.0 s more\.$/);
   assert.equal(seen.length, 1);
   assert.equal(seen[0].words, 6);
   lines.length = 0;

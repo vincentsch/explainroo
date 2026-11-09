@@ -46,13 +46,14 @@ the file keeps its order.
 | `camera` | `"auto"` | `"auto"` films each scene with a camera that follows the narration; `"still"` keeps every frame as written |
 | `motionBlur` | `true` | motion blur on moving frames in the final render; `render --quality fast` leaves it out for one run |
 | `lead`, `hold`, `end` | 0.35, 0.7, 1.4 | seconds before the voice, after it, and extra at the very end |
-| `targetSeconds` | none | the length the video should have, like `40`, also in a block under `"sizes"`. After `voice`, a shorter video gets the missing time spread over the scene holds, and `voice` and `check` warn when it is longer. See `explainroo docs writing` |
+| `targetSeconds` | none | the length the video should have, like `40`, also in a block under `"sizes"`. After `voice`, a shorter video gets the missing time spread over the scene holds, and `voice` and `check` warn when it is more than 0.5 s longer. See `explainroo docs writing` |
 | `sentenceGap`, `paragraphGap` | 0.3, 0.55 | pauses in generated narration; recordings keep their own pauses |
 | `loudness` | -14 | target loudness in LUFS |
 | `boil` | 0 | redraws per second of hand-drawn lines; 0 keeps them still |
 | `watermark` | `"explainroo.com"` | small text in a corner, on by default, or `false` to turn it off. A TikTok package always leaves it out |
 | `images` | none | `{ "model": "best" or "cheap", "style": "..." }` |
 | `clipBudget` | none | the most all AI clips of the project may cost together, in US dollars, like `0.40`. `clip` stops before a clip that would go over it; see `explainroo docs clips` |
+| `heard` | none | forms the speech check accepts for a word, like `{ "regex101": ["reg x 101"] }`; see `explainroo docs writing` |
 | `brand` | none | colors, fonts and logo for `s.ui`; its `accent` also colors the spoken word in captions. With `"defaults": "0.6"`, `accent` also colors the `*starred*` words of `s.title` and `s.text`, and `background` is the background of every scene; see `explainroo docs product-demos` |
 | `fonts` | none | the video's own font files, see `explainroo docs product-demos` |
 | `defaults` | none | `"0.6"` gives the project the defaults of explainroo 0.6, which include those of 0.5, see below. `init` writes it |

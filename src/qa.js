@@ -9,7 +9,7 @@ import { readWav } from './wav.js';
 import { alignSpeech, bareWord, editDistance, nearList, similar } from './align.js';
 import { hasPhonemizer } from './phonemes.js';
 import { normWord } from './script.js';
-import { heardInstead, heardQuote } from './voice.js';
+import { heardInstead, heardQuote, readVoice, withHeard } from './voice.js';
 import { estimateLength, targetNotes } from './timeline.js';
 import { buildChapters, chapterHints } from './chapters.js';
 import { coverTime } from './render.js';
@@ -60,15 +60,24 @@ export function nearlyText(nearly) {
   ].join('; ');
 }
 
-// Up to this many words that only nearly matched are listed. More are counted,
-// and --verbose lists them.
+// Up to this many words that only nearly matched are listed with their times.
+// More are listed by name, and --verbose adds their times.
 export const NEARLY_LISTED = 2;
 
 // The near matches as check and verify print them: the list with its advice,
-// or, for more than NEARLY_LISTED words without `verbose`, how many there are.
+// or, for more than NEARLY_LISTED words without `verbose`, the words without
+// their times.
 export function nearlyLine(nearly, verbose = false) {
   if (verbose || nearly.length <= NEARLY_LISTED) return `${nearlyText(nearly)}. ${nearlyAdvice(nearly)}`;
-  return `${nearly.length} words only nearly matched. No fix is needed unless one of them sounds wrong when you listen, and --verbose lists them with their times`;
+  return `${nearlyText(untimed(nearly))}. ${NEARLY_SHORT}`;
+}
+
+export const NEARLY_SHORT = 'No fix is needed unless one of them sounds wrong when you listen, and --verbose adds their times';
+
+// The near matches without their times, so the same word heard the same way
+// shows once, with how often.
+export function untimed(nearly) {
+  return nearly.map(({ time, ...n }) => n);
 }
 
 // What to do about words that only nearly matched or sounded the same: nothing,
@@ -92,11 +101,32 @@ function nearTimes(nearly, sc) {
 }
 
 // Each word the speech check could not confirm, with its time in the video.
-// `offset` is where the transcribed piece starts.
-export function missedWords(words, aligned, offset, scene) {
+// `offset` is where the transcribed piece starts. `alone` says for each word
+// whether the check of the narration alone confirmed it, and such a word has
+// `mix: true`: the music or the sounds may cover it.
+export function missedWords(words, aligned, offset, scene, alone = null) {
   return aligned.words.flatMap((a, k) => (a.matched ? [] : [{
-    ...(scene ? { scene } : {}), word: bareWord(words[k].display ?? words[k].spoken), time: Math.round((offset + a.start) * 100) / 100, ...(a.heard ? { heard: a.heard } : {}),
+    ...(scene ? { scene } : {}), word: bareWord(words[k].display ?? words[k].spoken), time: Math.round((offset + a.start) * 100) / 100, ...(a.heard ? { heard: a.heard } : {}), ...(alone?.[k] ? { mix: true } : {}),
   }]));
+}
+
+// Whether the check of the narration alone confirmed each word of a scene, from
+// the scene's voice, or null when it can't say.
+function confirmedAlone(project, id, words) {
+  const info = withHeard(readVoice(project, id), project.config.language, project.heard);
+  if (!Array.isArray(info?.words) || info.words.length !== words.length) return null;
+  return info.words.map((w, k) => !!w.matched && w.text === words[k].display);
+}
+
+// The advice for words that the narration alone confirmed and the final mix
+// didn't: music.volume 3 dB lower, which is 0.71 times the volume.
+export function mixAdvice(list, music) {
+  const covered = list.filter((u) => u.mix);
+  if (!covered.length || !music) return '';
+  const now = music.volume ?? 0.5;
+  const lower = Math.floor(now * Math.pow(10, -3 / 20) * 100) / 100;
+  const which = covered.length === list.length ? (list.length === 1 ? 'it' : 'them') : covered.slice(0, 3).map((u) => `"${u.word}"`).join(', ');
+  return `. The narration alone confirmed ${which}, so the music may cover ${covered.length === 1 ? 'it' : 'them'}: set music.volume in video.json to ${lower}, from ${now}, which is 3 dB quieter`;
 }
 
 // The near matches of a transcribed piece of the video, with their times in it.
@@ -219,7 +249,7 @@ export function speechFindings(project, voices, timeline = null) {
     if (v && v.duration) {
       const nearly = nearTimes(v.nearly ?? [], placed.get(sc.id));
       speech.push({ scene: sc.id, matchRate: v.matchRate, nearly });
-      if (nearly.length) issues.push({ level: 'hint', scene: sc.id, t: null, key: 'nearly', words: nearly.length, message: `understood ${Math.round(v.matchRate * 100)}%, ${nearlyText(nearly)}. ${nearlyAdvice(nearly)}` });
+      if (nearly.length) issues.push({ level: 'hint', scene: sc.id, t: null, key: 'nearly', words: nearly.length, nearly, message: `understood ${Math.round(v.matchRate * 100)}%, ${nearlyText(nearly)}. ${nearlyAdvice(nearly)}` });
     }
   }
   return { issues, speech };
@@ -418,12 +448,12 @@ export async function verify(project, { file = null, report: reportFile = null, 
         const to = Math.min(samples.length, Math.ceil((t.start + t.dur) * 16000));
         const heard = await transcribe(samples.subarray(from, to), { log, language: project.config.language });
         texts.push(heard.text);
-        const aligned = await alignSpeech(words, heard.words, t.dur, project.config.language);
+        const aligned = await alignSpeech(words, heard.words, t.dur, project.config.language, { accept: project.heard });
         const rate = aligned.matchRate;
         const near = timedNear(words, aligned, from / 16000);
         scenes.push({ id: t.id, matchRate: Math.round(rate * 1000) / 1000, nearly: near });
         nearly.push(...near.map((n) => ({ scene: t.id, ...n })));
-        unconfirmed.push(...missedWords(words, aligned, from / 16000, t.id));
+        unconfirmed.push(...missedWords(words, aligned, from / 16000, t.id, confirmedAlone(project, t.id, words)));
         total += words.length;
         matched += rate * words.length;
         if (rate < 0.8) issues.push({ level: 'warn', message: `scene "${t.id}": only ${Math.round(rate * 100)}% of the narration was understood in the final mix; it heard "${heard.text.slice(0, 120)}"` });
@@ -434,10 +464,10 @@ export async function verify(project, { file = null, report: reportFile = null, 
       // The whole file at once, so a word that only nearly matched has no scene.
       const heard = await transcribe(samples, { log, language: project.config.language });
       const script = project.script.scenes.flatMap(spokenWords);
-      const aligned = await alignSpeech(script, heard.words, duration, project.config.language);
+      const aligned = await alignSpeech(script, heard.words, duration, project.config.language, { accept: project.heard });
       speech = { matchRate: Math.round(aligned.matchRate * 1000) / 1000, transcript: heard.text, nearly: timedNear(script, aligned, 0), unconfirmed: missedWords(script, aligned, 0, null) };
     }
-    if (speech.unconfirmed.length) issues.push({ level: 'warn', message: unconfirmedText(speech.unconfirmed) });
+    if (speech.unconfirmed.length) issues.push({ level: 'warn', message: unconfirmedText(speech.unconfirmed) + mixAdvice(speech.unconfirmed, project.config.music) });
     if (speech.matchRate < 0.85) issues.push({ level: 'warn', message: `only ${Math.round(speech.matchRate * 100)}% of the script was understood in the final mix; lower music.volume or check pronunciation` });
     fs.rmSync(wav, { force: true });
   }

@@ -134,6 +134,9 @@ It also finds:
   the thumbnail, and a blank one looks like a broken video. The hint names an
   element of the scene's fullest frame, a picture first. Give it `at: -1`, and
   it is there from the first frame, without an entrance or a sound
+- a text placed `at: 0`, like the product's name, that is still coming in on
+  the first frame, so the thumbnail misses it. `at: -1` puts it there from the
+  start
 - text with a background but no words
 - a `lift` above 2 in `s.ui`
 - a cue or a `#marker` that isn't in the narration. That is an error, and

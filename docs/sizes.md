@@ -213,5 +213,19 @@ Shorts, TikTok and Reels it sits in the top right corner, because the app
 covers the bottom one. The user can turn it off with `"watermark": false` in
 `video.json`, or change it to their own text. If the user asks about it, tell
 them it is their choice, and that keeping it helps more people find this free
-project. A TikTok package has no watermark, because TikTok forbids one on posts
-from apps.
+project.
+
+Each platform has its rule, the same for `package --platform <name>` and for
+`render --platform <name>`:
+
+| Platform | Watermark |
+| --- | --- |
+| `youtube`, `shorts`, `reels`, `linkedin`, `x` | as set in `video.json`, on unless `"watermark": false` |
+| `tiktok` | always off |
+
+A TikTok package has no watermark, because TikTok forbids one on posts from
+apps, and `render --platform tiktok` leaves it out the same way.
+
+`render` prints one line about it every time: "watermark: on", "watermark:
+off" because of `video.json` or `--no-watermark`, or "watermark: off" because
+of the platform's rule.

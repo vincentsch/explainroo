@@ -38,9 +38,17 @@ gets, which is the video without the watermark.
   frame. The first spoken line names the stakes or the question. No greeting
   and no setup.
 - **Bold captions** sit in the safe area, two to four words at a time.
-- **The picture changes at least every 2 seconds.** A new element, a camera
-  move and a new scene count. A background that drifts doesn't. A second hook
-  halfway, like "Here's the good part", keeps people watching.
+- **The picture changes at least every 2 seconds.** A second hook halfway,
+  like "Here's the good part", keeps people watching. These count as a
+  change:
+  - an element that enters, like a sticker, a kicker or an icon;
+  - a camera key from `s.camera`, `s.short.punch` or the start of
+    `s.short.drift`;
+  - `s.short.jolt`, `s.short.flash` and `s.short.interrupt`;
+  - a clip while it plays;
+  - a new scene.
+
+  A background that drifts, like the turning rays of a backdrop, doesn't.
 - Short sentences of 6 to 14 words, spoken to one person, with one promise
   that is paid off before the end. The payoff is the clearest frame.
 
@@ -181,10 +189,18 @@ boxes with dark text, the default), `'stroke'` (white text with a dark outline)
 or `'plain'` (the look's ink). Other options: `x`, `y` (the middle of the
 block), `size`, `width`, `maxLines`, `upper: false`, `color`, `keyColor`,
 `keyBg`, `slab`, `kicker` (a small label above), `kickerColor`, `kickerIcon`,
-`at`, `out`, `sfx`, `id`, and `screen: true`, which keeps the title still while
-the camera moves. It returns the block's box.
+`kickerSize`, `kickerY`, `at`, `out`, `sfx`, `id`, and `screen: true`, which
+keeps the title still while the camera moves. It returns the block's box.
 
-Keywords are yellow by default. With `"defaults": "0.5"`, a `'plain'` hook
+With `"defaults": "0.6"`, the kicker is 44 pixels in a tall frame and stays
+inside `s.safe`, below the watermark. When `y` would put it above `s.safe`,
+the kicker and the title move down together. `area` sets another box to stay
+in, like the part of `s.safe` that a zoom keeps on screen.
+
+Keywords are yellow by default, and with `"defaults": "0.6"` they take
+`brand.accent` from `video.json` when it reads: as the box behind the white
+keywords of a slab, or as their color on what is behind them. With
+`"defaults": "0.5"`, a `'plain'` hook
 picks colors that read on what is behind it. On a light look the keywords take
 the look's accent, made darker if it needs that. When the look's ink is too
 dark for a backdrop, the words are white. `check` measures a plain hook against
@@ -192,7 +208,8 @@ the backdrop or `s.bg` behind it.
 
 ### `kicker(text, options)`
 
-A small uppercase label in a pill, like "QUICK TIP". `x`, `y`, `size`, `color`,
+A small uppercase label in a pill, like "QUICK TIP". `x`, `y`, `size` (44 in a
+tall frame and 40 in others with `"defaults": "0.6"`, and 34 before), `color`,
 `icon` (an icon name), `at`, `out`, `sfx`.
 
 ### `sticker(text, options)`

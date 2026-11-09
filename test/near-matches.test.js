@@ -268,25 +268,25 @@ test('the list of near matches counts a word heard the same way once, with how o
   assert.match(nearlyText(many), /^10 words only nearly matched: .*Word7 \(heard "Wort7"\), and 2 more$/);
 });
 
-test('more than two near matches are counted, --verbose lists them, and JSON has them all', async () => {
+test('more than two near matches are named without their times, --verbose adds the times, and JSON has them all', async () => {
   const { shownIssues } = await import('../src/cli.js');
   const { formatVideoCheck } = await import('../src/video-check.js');
   const nearly = [{ scene: 'intro', word: 'purr', heard: 'pur', time: 0.2 }, { scene: 'how', word: 'soothe', heard: 'sooth', time: 3.1 }, { scene: 'how', word: 'past', heard: 'pass', time: 4.4 }];
   const r = { file: '/v/video.mp4', duration: 9, video: { width: 1080, height: 1920 }, loudness: { integrated: -14, truePeak: -1.5 }, speech: { matchRate: 1, nearly }, issues: [], verdict: 'passed' };
-  assert.match(formatVerify(r), /^narration understood: 100%, 3 words only nearly matched\. No fix is needed unless one of them sounds wrong when you listen, and --verbose lists them with their times$/m);
+  assert.match(formatVerify(r), /^narration understood: 100%, 3 words only nearly matched: purr \(heard "pur"\), soothe \(heard "sooth"\), past \(heard "pass"\)\. No fix is needed unless one of them sounds wrong when you listen, and --verbose adds their times$/m);
   assert.match(formatVerify(r, { verbose: true }), /^narration understood: 100%, 3 words only nearly matched: purr at 0\.2 s \(heard "pur"\), soothe at 3\.1 s \(heard "sooth"\), past at 4\.4 s \(heard "pass"\)\./m);
-  assert.match(formatVideoCheck(r), /^speech understood: 100% of the script, 3 words only nearly matched\. No fix is needed/m);
+  assert.match(formatVideoCheck(r), /^speech understood: 100% of the script, 3 words only nearly matched: purr \(heard "pur"\), soothe .*\. No fix is needed/m);
   // Two are still listed.
   assert.match(formatVerify({ ...r, speech: { matchRate: 1, nearly: nearly.slice(0, 2) } }), /2 words only nearly matched: purr at 0\.2 s \(heard "pur"\), soothe at 3\.1 s/);
 
   // check: the hints of the scenes become one line in what it prints.
   const issues = [
     { level: 'warn', scene: 'intro', t: 1, message: 'a warning' },
-    { level: 'hint', scene: 'intro', t: null, key: 'nearly', words: 1, message: 'understood 100%, 1 word only nearly matched: purr' },
-    { level: 'hint', scene: 'how', t: null, key: 'nearly', words: 2, message: 'understood 100%, 2 words only nearly matched: soothe, past' },
+    { level: 'hint', scene: 'intro', t: null, key: 'nearly', words: 1, nearly: nearly.slice(0, 1), message: 'understood 100%, 1 word only nearly matched: purr' },
+    { level: 'hint', scene: 'how', t: null, key: 'nearly', words: 2, nearly: nearly.slice(1), message: 'understood 100%, 2 words only nearly matched: soothe, past' },
     { level: 'hint', scene: 'how', t: 2, message: 'another hint' },
   ];
-  assert.deepEqual(shownIssues(issues, false).map((i) => i.message), ['a warning', '3 words only nearly matched in the speech check of 2 scenes. No fix is needed unless one of them sounds wrong when you listen, and --verbose lists them with their times', 'another hint']);
+  assert.deepEqual(shownIssues(issues, false).map((i) => i.message), ['a warning', '3 words only nearly matched: purr (heard "pur"), soothe (heard "sooth"), past (heard "pass"), in the speech check of 2 scenes. No fix is needed unless one of them sounds wrong when you listen, and --verbose adds their times', 'another hint']);
   assert.equal(shownIssues(issues, true), issues);
   assert.equal(shownIssues(issues.slice(0, 2), false).length, 2);
 });

@@ -70,6 +70,17 @@ test('a video longer than targetSeconds stays as it is, and the note names its t
   assert.match(note.message, /^the video runs \d+\.\d s, \d+\.\d s over targetSeconds 30\. The longest scenes are b \(13\.0 s\), d \(\d+\.\d s\) and a \(\d+\.\d s\)\. Cut about \d+ words, or raise targetSeconds\.$/);
 });
 
+test('targetSeconds warns only when the video runs more than half a second over', () => {
+  const src = '## a\nHi.\n\n## b\nHi.\n';
+  const voices = narration({ a: 8, b: 10 });
+  const plain = buildTimeline(project(src), voices);
+  const close = buildTimeline(project(src, { targetSeconds: Math.round((plain.duration - 0.4) * 10) / 10 }), voices);
+  assert.ok(close.target.over > 0.3 && close.target.over <= 0.5, `${close.target.over}`);
+  assert.deepEqual(targetNotes(close, 180), []);
+  const far = buildTimeline(project(src, { targetSeconds: Math.round((plain.duration - 0.7) * 10) / 10 }), voices);
+  assert.equal(targetNotes(far, 180).length, 1);
+});
+
 test('without targetSeconds the timeline and the settings are as they were, and a size block can set it', () => {
   const voices = narration({ a: 5 });
   const tl = buildTimeline(project('## a\nHi.\n'), voices);
@@ -86,8 +97,8 @@ test('the estimate counts the speech by its letters, and for each scene its lead
   const p = project(src, { voice: 'af_heart' });
   const e = estimateLength(p);
   assert.equal(e.words, 13);
-  // 50 letters at 12.95 a second, the rate of af_heart at its default speed.
-  const speech = 50 / 12.95;
+  // 50 letters at 12.7 a second, the rate of af_heart at its default speed.
+  const speech = 50 / 12.7;
   assert.equal(e.speechSeconds, Math.round(speech * 10) / 10);
   assert.equal(e.perMinute, Math.round((13 / speech) * 60));
   // a: lead + hold + one sentence gap, b: lead + its hold, c: its min + the end.
@@ -95,7 +106,10 @@ test('the estimate counts the speech by its letters, and for each scene its lead
   assert.equal(e.seconds, Math.round((speech + rest) * 10) / 10);
   // The two narrated scenes, each with its lead and hold as the settings give them.
   assert.deepEqual([e.scenes, e.perScene, e.pauses, e.end, e.other], [2, (0.35 + 0.7 + 0.35 + 2) / 2, 0.3, 1.4, 4]);
-  assert.equal(estimateLine(e), `about ${Math.round(e.seconds)} s: 13 words of speech at about ${e.perMinute} a minute take ${e.speechSeconds.toFixed(1)} s. The 2 scenes add 1.7 s each for their lead and hold, and the pauses between sentences add 0.3 s. The end of the video adds 1.4 s. Scenes with a min, or without narration, add 4.0 s more.`);
+  // The speech may take 6% more or less, and the range says so.
+  assert.equal(e.low, Math.round((speech / 1.06 + rest) * 10) / 10);
+  assert.equal(e.high, Math.round((speech / 0.94 + rest) * 10) / 10);
+  assert.equal(estimateLine(e), `about ${Math.round(e.seconds)} s (${Math.floor(e.low)} to ${Math.ceil(e.high)} s): 13 words of speech at about ${e.perMinute} a minute take ${e.speechSeconds.toFixed(1)} s. The 2 scenes add 1.7 s each for their lead and hold, and the pauses between sentences add 0.3 s. The end of the video adds 1.4 s. Scenes with a min, or without narration, add 4.0 s more.`);
   // With the defaults it is the figure the writing docs give.
   const plain = estimateLength(project('## a\nHello there.\n\n## b\nHello again.\n', { voice: 'af_heart' }));
   assert.equal(plain.perScene, 1.05);
@@ -109,7 +123,18 @@ test('the estimate counts the speech by its letters, and for each scene its lead
   assert.match(estimateLine({ ...e, targetSeconds: 60 }), /\. The holds get longer to reach targetSeconds 60\.$/);
   // Japanese and Chinese count characters, and a recording has no estimate.
   const ja = { config: normalizeConfig({ language: 'ja' }), script: parseScript('## a\nうるう年は、なぜあるの？\n', { language: 'ja' }) };
-  assert.match(estimateLine(estimateLength(ja)), /^about \d+ s: 10 characters of speech at about 300 a minute take 2\.0 s\./);
+  assert.match(estimateLine(estimateLength(ja)), /^about \d+ s \(\d+ to \d+ s\): 10 characters of speech at about 300 a minute take 2\.0 s\./);
   assert.equal(estimateLength({ config: normalizeConfig({ voice: { provider: 'recording', src: 'assets/n.wav' } }), script: parseScript(src) }), null);
   assert.equal(estimateLength(project('## c {min=4}\n')), null);
+});
+
+test('the estimate of the last test round\'s two videos holds their real length', () => {
+  // Each with the length its narration came out at, before targetSeconds.
+  const tabslip = project('## hook {lead=0}\n[#hook] Which *model* answered your AI call? [#cost] And what did it *cost*?\n\n## why\n[#gate] Tabslip runs a *local gateway* [#between] between your app [#providers] and providers like OpenAI.\n\n## turn\n[#turn] Every call gets a *signed receipt*: [#model] the model, [#price] the cost, [#time] the time.\n\n## tip\n[#free] Free and *open source*. [#try] Try it at {tabslip.com|tab slip dot com}.\n', { voice: 'af_heart', pace: 1.15, size: 'reels' });
+  const regex = project('## intro\nRegular expressions are hard to read. {regex101|redge ex one oh one} explains them.\n\n## demo {hold=1.2}\nType a pattern for a [#type] date. Add some text to [#test] test it, and every date lights up. [#explain] The Explanation panel reads the pattern for you. [#group] Each group gets its own line, [#digit] and each token says what it matches, like a digit, repeated exactly four times.\n\n## outro {hold=1.5}\nNow you see what every part of a pattern does, in [#plain] plain words.\n', { voice: 'af_heart', size: 'linkedin' });
+  for (const [p, real] of [[tabslip, 19.33], [regex, 30]]) {
+    const e = estimateLength(p);
+    assert.ok(Math.abs(e.seconds - real) < 0.75, `${e.seconds} vs ${real}`);
+    assert.ok(e.low <= real && real <= e.high, `${e.low} to ${e.high} vs ${real}`);
+  }
 });

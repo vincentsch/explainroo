@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { speechChunks, resolveMarks, normWord, spokenWords } from './script.js';
-import { alignSpeech, alignWords, nearList } from './align.js';
+import { alignSpeech, alignWords, bareWord, nearList } from './align.js';
 import { loadTTS, transcribeWords, TTS_MODEL, TTS_SAMPLE_RATE, ttsDtype, asrModel } from './models.js';
 import { phonemize, generateSpeech } from './phonemes.js';
 import { writeWav, readWav, resample, trimSilence } from './wav.js';
@@ -120,11 +120,11 @@ export function heardQuote(info, language, indexes, around = 4) {
 // A scene's words aligned again with its saved transcript. Its times count
 // heard words, so they say where in the transcript a word is, and are never
 // used as times.
-function realign(info, language) {
+function realign(info, language, accept = null) {
   if (['ja', 'zh'].includes(language) || !info.duration || !info.transcript || !Array.isArray(info.words)) return null;
   const words = info.words.map((w) => ({ spoken: w.spoken ?? w.text, display: w.text }));
   const heard = info.transcript.split(/\s+/).filter(Boolean).map((text, i) => ({ text, start: i, end: i + 1 }));
-  return { words, heard, aligned: alignWords(words, heard, heard.length, language).words };
+  return { words, heard, aligned: alignWords(words, heard, heard.length, language, { accept }).words };
 }
 
 // A scene from the cache, with its near matches, looked at again with today's
@@ -155,6 +155,68 @@ export async function reviewSpeech(info, language) {
     // In the order of the script, from the words confirmed then and now.
     nearly: nearList(again.words, now.map((a, k) => (info.words[k].matched || newly[k] ? a : { ...a, nearly: false }))),
   };
+}
+
+// A scene with the forms of "heard" in video.json: a word heard as one of its
+// forms, in the saved transcript, counts as confirmed, and as no near match.
+// Its time stays. Nothing is saved, so the scene follows video.json.
+export function withHeard(info, language, accept) {
+  if (!accept || !Object.keys(accept).length || !Array.isArray(info?.words)) return info;
+  const again = realign(info, language, accept);
+  if (!again) return info;
+  const keys = new Set(Object.keys(accept).map(normWord));
+  const own = (w) => keys.has(normWord(w.text)) || keys.has(normWord(w.spoken ?? w.text));
+  const taken = info.words.map((w, k) => own(w) && again.aligned[k].matched && !again.aligned[k].nearly);
+  if (!taken.some(Boolean)) return info;
+  const newly = info.words.map((w, k) => taken[k] && !w.matched);
+  const tokens = (w) => Math.max(1, spokenWords(w.spoken ?? w.text).length);
+  const total = info.words.reduce((n, w) => n + tokens(w), 0);
+  const gained = info.words.reduce((n, w, k) => n + (newly[k] ? tokens(w) : 0), 0);
+  const unmatched = [...(info.unmatched ?? [])];
+  info.words.forEach((w, k) => {
+    const at = newly[k] ? unmatched.indexOf(w.text) : -1;
+    if (at !== -1) unmatched.splice(at, 1);
+  });
+  const names = new Set(info.words.filter((w, k) => taken[k]).map((w) => w.text));
+  return {
+    ...info,
+    words: info.words.map((w, k) => (newly[k] ? { ...w, matched: true } : w)),
+    matchRate: Math.min(1, round((info.matchRate ?? 0) + gained / total)),
+    unmatched,
+    nearly: (info.nearly ?? []).filter((n) => !names.has(n.word)),
+  };
+}
+
+// What each word with a {shown|spoken} override was heard as when the check
+// didn't confirm it, or only nearly: { [shown word]: heard }.
+function overridesHeard(info, language) {
+  if (!Array.isArray(info?.words)) return {};
+  const instead = heardInstead(info, language);
+  const near = new Map((info.nearly ?? []).map((n) => [n.word, n.heard]));
+  const out = {};
+  info.words.forEach((w, k) => {
+    if (w.spoken === undefined || w.spoken === w.text || w.text in out) return;
+    const heard = w.matched ? near.get(w.text) : instead[k];
+    if (heard) out[w.text] = heard;
+  });
+  return out;
+}
+
+// The words with a {shown|spoken} override that the scene before and the
+// scene made now both heard the same way, as [{ word, heard }]. That is likely
+// how the word is said, so "heard" in video.json can accept it.
+export function heardTwice(before, after, language) {
+  const then = overridesHeard(before, language);
+  const now = overridesHeard(after, language);
+  const same = (a, b) => a.split(/\s+/).map(normWord).join(' ') === b.split(/\s+/).map(normWord).join(' ');
+  return Object.entries(now).filter(([word, heard]) => then[word] && same(then[word], heard)).map(([word, heard]) => ({ word, heard }));
+}
+
+// The line voice prints for words heard the same way twice in a row.
+export function heardLine(list) {
+  const map = Object.fromEntries(list.map(({ word, heard }) => [bareWord(word), [heard]]));
+  const names = list.map(({ word, heard }) => `"${bareWord(word)}" as "${heard}"`).join(', ');
+  return `the speech check heard ${names} twice in a row. If that is how ${list.length > 1 ? 'they are' : 'it is'} said, add this to video.json, and the check accepts it: "heard": ${JSON.stringify(map).replace(/":/g, '": ').replace(/,"/g, ', "')}`;
 }
 
 // A cached scene with today's speech check. A scene checked with older rules is
@@ -409,10 +471,15 @@ export async function synthesize(project, { force = false, fresh = false, log = 
     } else if (only && !only.includes(scene.id) && cached) {
       result[scene.id] = await reviewSpeech(cached, config.language);
     } else {
-      todo.push({ scene, chunks, hash, key });
+      todo.push({ scene, chunks, hash, key, before: cached });
     }
   }
-  if (!todo.length) return result;
+  // Every scene takes the forms of "heard" in video.json.
+  const finish = () => {
+    for (const id of Object.keys(result)) result[id] = withHeard(result[id], config.language, project.heard);
+    return result;
+  };
+  if (!todo.length) return finish();
   if (!recordings && todo.some((t) => t.chunks.length)) {
     const estimate = estimateLength(project);
     if (estimate) {
@@ -456,6 +523,8 @@ export async function synthesize(project, { force = false, fresh = false, log = 
       steps.done();
     }
     result[scene.id] = info;
+    const twice = item.before ? heardTwice(withHeard(item.before, config.language, project.heard), withHeard(info, config.language, project.heard), config.language) : [];
+    if (twice.length) notice(`voice ${scene.id}: ${heardLine(twice)}`);
     if (chunks.length) {
       const warn = info.matchRate < 0.85 ? (recordings
         ? `, recording does not match ${scriptName(project)} here (${Math.round(info.matchRate * 100)}% of words confirmed). Make ${scriptName(project)} say what was actually said.`
@@ -465,7 +534,7 @@ export async function synthesize(project, { force = false, fresh = false, log = 
       log(`voice ${number}${voiceLine(scene.id, info, (Date.now() - t0) / 1000, !!recordings)}${warn}${left}`);
     }
   }
-  return result;
+  return finish();
 }
 
 async function synthesizeScene(project, scene, chunks, hash, tts, speech, log, transcribe, steps) {
@@ -511,7 +580,7 @@ async function synthesizeScene(project, scene, chunks, hash, tts, speech, log, t
     const heard = await transcribe(resample(samples, sr, 16000), { log, language: config.language });
     transcripts.push(heard.text);
     steps.step('checking speech', ci);
-    const aligned = await alignSpeech(chunk.words, heard.words, dur, config.language);
+    const aligned = await alignSpeech(chunk.words, heard.words, dur, config.language, { accept: project.heard });
     chunk.words.forEach((w, k) => {
       const a = aligned.words[k];
       wordTimes[w.unitIndex] = { start: start + a.start, end: start + a.end, matched: a.matched };
@@ -582,7 +651,7 @@ async function recordingScene(project, scene, hash, source, take, cut, heardTake
   } : await transcribe(resample(samples, sr, 16000), { log, language: config.language });
   const units = scene.units.filter((u) => u.type === 'word');
   steps.step('checking speech');
-  const aligned = await alignSpeech(units, heard.words, duration, config.language);
+  const aligned = await alignSpeech(units, heard.words, duration, config.language, { accept: project.heard });
   const times = cut ? cut.words.map(local) : aligned.words;
   const wordTimes = [];
   let wi = 0;

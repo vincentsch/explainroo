@@ -8,7 +8,7 @@ import { normWord, ScriptError } from './script.js';
 import { prepare, makeState, outdatedLine, outdatedRenders, VERSION } from './pipeline.js';
 import { render } from './render.js';
 import { exportPlayer } from './export.js';
-import { check, formatVerify, NEARLY_LISTED, stills, sheet, unconfirmedLine, unconfirmedWords, verify } from './qa.js';
+import { check, formatVerify, NEARLY_LISTED, NEARLY_SHORT, nearlyText, untimed, stills, sheet, unconfirmedLine, unconfirmedWords, verify } from './qa.js';
 import { startServer, ROOT } from './server.js';
 import { VOICES, LANGUAGES, voiceLanguage, loadTTS, TTS_SAMPLE_RATE } from './models.js';
 import { phonemize, generateSpeech } from './phonemes.js';
@@ -61,7 +61,7 @@ Make a video
                         --new buys again only the paid sentences with no good saved answer, --size makes
                         the narration of a size whose block in "sizes" sets its own pace). --estimate
                         prints how long the video will be about from the script, and makes nothing
-  words [project] [scene]  each spoken word of a scene with its start time, for choosing cues
+  words [project] [scenes]  each spoken word of the scenes named, or of all, with its start time, for choosing cues
   preview [project]     live preview in your browser, reloads on save (--port, --size, --no-watermark)
   still [project] [t…]  PNG stills: "12.5", "scene", "scene@2.4" (default: end of every scene; --size,
                         --no-watermark, --transparent)
@@ -343,7 +343,7 @@ export async function main(argv) {
       case 'words': {
         const isProject = pos[0] && fs.existsSync(path.join(pos[0], 'video.json'));
         const project = loadProject(isProject ? pos.shift() : undefined, { size: textFlag(flags, 'size'), ...langOverride(flags) });
-        const r = await spokenWords(project, pos[0], { log, notice });
+        const r = await spokenWords(project, pos, { log, notice });
         print(formatWords(r), r);
         return 0;
       }
@@ -376,10 +376,11 @@ export async function main(argv) {
         return errors ? 1 : 0;
       }
       case 'render': {
-        const { project, watermarkNote } = runProject(pos[0], flags, qualityOverride(flags));
-        if (watermarkNote) notice(watermarkNote);
+        const { project, platform, watermarkNote } = runProject(pos[0], flags, qualityOverride(flags));
+        const watermark = watermarkLine(project, flags, platform, watermarkNote);
+        notice(watermark);
         const r = await render(project, { log, draft: !!flags.draft, transparent: !!flags.transparent, from: num(flags.from, 'from'), to: num(flags.to, 'to'), workers: num(flags.workers, 'workers'), scale: num(flags.scale, 'scale'), out: textFlag(flags, 'out'), format: textFlag(flags, 'format') });
-        print([r.out, r.subtitles?.srt, r.subtitles?.vtt, r.chapters, r.cover].filter(Boolean).map((f) => path.relative(process.cwd(), f) || f).join('\n'), r);
+        print([r.out, r.subtitles?.srt, r.subtitles?.vtt, r.chapters, r.cover].filter(Boolean).map((f) => path.relative(process.cwd(), f) || f).join('\n'), { ...r, watermark });
         return 0;
       }
       case 'package': {
@@ -643,15 +644,18 @@ function videoArg(arg) {
 const VIDEO_FLAGS = new Set(['script', 'language', 'view-width', 'step', 'verbose', 'json', 'quiet']);
 
 // What check prints of its findings: the hints about words that only nearly
-// matched, one per scene, become one line when there are more than
-// NEARLY_LISTED words, unless --verbose. Its JSON has them all.
+// matched, one per scene, become one line that names the words without their
+// times when there are more than NEARLY_LISTED words, unless --verbose. Its
+// JSON has them all.
 export function shownIssues(issues, verbose) {
   const near = issues.filter((i) => i.key === 'nearly');
   const words = near.reduce((n, i) => n + i.words, 0);
   if (verbose || words <= NEARLY_LISTED) return issues;
   const at = issues.indexOf(near[0]);
   const rest = issues.filter((i) => i.key !== 'nearly');
-  rest.splice(at, 0, { level: 'hint', scene: null, t: null, message: `${words} words only nearly matched in the speech check of ${near.length === 1 ? `scene ${near[0].scene}` : `${near.length} scenes`}. No fix is needed unless one of them sounds wrong when you listen, and --verbose lists them with their times` });
+  const where = near.length === 1 ? `scene ${near[0].scene}` : `${near.length} scenes`;
+  const listed = near.every((i) => i.nearly) ? `${nearlyText(untimed(near.flatMap((i) => i.nearly)))}, in the speech check of ${where}` : `${words} words only nearly matched in the speech check of ${where}`;
+  rest.splice(at, 0, { level: 'hint', scene: null, t: null, message: `${listed}. ${NEARLY_SHORT}` });
   return rest;
 }
 
@@ -694,19 +698,33 @@ function runProject(dir, flags, extra = {}) {
   const own = loadProject(dir, langOverride(flags));
   const overrides = packageOverrides(own, platform, textFlag(flags, 'size'));
   // The platform's rule takes away a watermark the project has, so say why.
-  const watermarkNote = overrides.watermark === false && own.config.watermark !== false ? `no watermark: ${PLATFORMS[platform].name} asks apps not to add one` : null;
+  const watermarkNote = overrides.watermark === false && own.config.watermark !== false ? `watermark: off, because ${PLATFORMS[platform].name} asks apps that post to it not to add one` : null;
   return { project: loadProject(own.dir, { ...overrides, ...langOverride(flags), ...extra }), platform, watermarkNote };
 }
 
-// The spoken words of the scenes, or of one, with their times in seconds into the
-// scene, the times a cue like at: 'word' gives. A word spoken more than once in a
-// scene has the cue that names its time, like "fills#2".
-async function spokenWords(project, only, { log, notice }) {
+// The one line render prints about the watermark: on, off by a setting or
+// --no-watermark, or off because of the platform's rule.
+export function watermarkLine(project, flags, platform, platformNote) {
+  if (platformNote) return platformNote;
+  const mark = project.config.watermark;
+  if (mark !== false) {
+    const same = platform ? `, as the ${PLATFORMS[platform].name} package has it` : '';
+    return `watermark: on, "${mark}"${same}. "watermark": false in video.json turns it off`;
+  }
+  if (flags['no-watermark']) return 'watermark: off, because of --no-watermark';
+  return 'watermark: off, because "watermark" is false in video.json';
+}
+
+// The spoken words of the scenes, or of the ones named, with their times in
+// seconds into the scene, the times a cue like at: 'word' gives. A word spoken
+// more than once in a scene has the cue that names its time, like "fills#2".
+async function spokenWords(project, only = [], { log, notice }) {
   const ids = project.script.scenes.map((s) => s.id);
-  if (only !== undefined && !ids.includes(only)) throw new ProjectError(`there is no scene "${only}" in ${scriptName(project)}. Its scenes are: ${ids.join(', ')}`);
+  const unknown = [...new Set(only.filter((id) => !ids.includes(id)))];
+  if (unknown.length) throw new ProjectError(`there is no scene ${unknown.map((id) => `"${id}"`).join(' or ')} in ${scriptName(project)}. Its scenes are: ${ids.join(', ')}`);
   const { timeline } = await prepare(project, { log, notice });
   const round = (v) => Math.round(v * 100) / 100;
-  const scenes = timeline.scenes.filter((s) => only === undefined || s.id === only).map((sc) => {
+  const scenes = timeline.scenes.filter((s) => !only.length || only.includes(s.id)).map((sc) => {
     const seen = new Map();
     const total = new Map();
     for (const w of sc.words) total.set(normWord(w.text), (total.get(normWord(w.text)) ?? 0) + 1);

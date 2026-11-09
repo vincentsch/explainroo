@@ -34,10 +34,10 @@ export const COMMAND_HELP = {
     example: 'voice videos/how-dns-works',
   },
   words: {
-    usage: 'words [project] [scene] [options]',
-    about: 'Prints each spoken word of a scene with its start time, in seconds into the scene, as a cue like at: \'word\' uses it. Without a scene it prints every scene.',
+    usage: 'words [project] [scene…] [options]',
+    about: 'Prints each spoken word of the scenes you name with its start time, in seconds into the scene, as a cue like at: \'word\' uses it. Without a scene it prints every scene.',
     options: [['--size <size>', 'the timings of a size whose block in "sizes" sets its own pace'], LANG, JSON_OUT],
-    example: 'words videos/how-dns-works intro',
+    example: 'words videos/how-dns-works intro resolver',
   },
   preview: {
     usage: 'preview [project] [options]',

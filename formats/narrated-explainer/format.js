@@ -6,6 +6,12 @@ export function unit(s) {
   return Math.min(s.safe.w, s.safe.h) / 100;
 }
 
+// The accent color: brand.accent from video.json when it is set, and the
+// look's accent otherwise.
+export function accent(s) {
+  return s.ui.colors.accent;
+}
+
 // A heading at the top of the content area. Returns its box.
 export function heading(s, text, { at = 0, out } = {}) {
   const u = unit(s);
@@ -20,7 +26,7 @@ export function body(s) {
 
 // The question of the video, big, with an icon under it. With at: -1 it is
 // there on the first frame, which feeds and posting tools show as the cover.
-export function question(s, text, { icon, at = -1, iconAt = at, color = 'accent' } = {}) {
+export function question(s, text, { icon, at = -1, iconAt = at, color = accent(s) } = {}) {
   const u = unit(s);
   const t = s.title(text, { y: s.safe.top + s.safe.h * (icon ? 0.3 : 0.45), size: u * 12, maxWidth: s.safe.w * 0.9, at });
   if (icon) s.icon(icon, { y: t.bottom + s.safe.h * 0.22, size: u * 26, color, at: iconAt });
@@ -43,7 +49,7 @@ export function bigNumber(s, value, { prefix = '', suffix = '', caption, at = 0,
   const u = unit(s);
   const { w } = s.safe;
   const size = Math.min(u * 26, w / Math.max(3, String(value).length + suffix.length + prefix.length) * 1.6);
-  const n = s.number(value, { y: s.cy - u * 6, size, prefix, suffix, decimals, color: 'accent', font: 'display', at });
+  const n = s.number(value, { y: s.cy - u * 6, size, prefix, suffix, decimals, color: accent(s), font: 'display', at });
   if (caption) s.text(caption, { y: n.bottom + u * 8, size: u * 7, color: 'muted', maxWidth: w * 0.85, at: captionAt });
 }
 

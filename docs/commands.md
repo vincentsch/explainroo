@@ -14,13 +14,13 @@ project.
 | `formats [format]` | lists the formats, built in and installed, or prints the guide of one. `formats add <git address>` prints the git commands it will run and installs nothing until you add `--yes` (`--commit <id>` takes that commit) |
 | `set <project> <key> <value>` | writes one setting into `video.json` after the same check every command runs. A dotted key like `sizes.shorts.pace` sets a setting of one size, the value is JSON when it reads as JSON, and `null` takes the key out |
 | `voice [project]` | makes the narration and the word times, saved per scene so only changed scenes are made again (`--estimate` prints how long the video will be about and makes nothing, `--force` makes every scene again, `--new` buys again only paid sentences with no good answer, `--size` makes the narration of a size whose block in `"sizes"` sets its own pace, `--lang`) |
-| `words [project] [scene]` | prints each spoken word of a scene, or of every scene, with its start time in seconds into the scene, and the markers. A word spoken more than once shows its cue, like `fills#2` (`--size`, `--lang`, `--json`) |
+| `words [project] [scenes]` | prints each spoken word of the scenes you name, like `words videos/x hook tip`, or of every scene, with its start time in seconds into the scene, and the markers. A word spoken more than once shows its cue, like `fills#2` (`--size`, `--lang`, `--json`) |
 | `preview [project]` | a live preview in the browser that reloads when you save (`--size`, `--no-watermark`) |
 | `still [project] [times]` | PNG pictures at `12.5`, `scene`, `scene@2.4` or `scene@end` (`--size`, `--platform`, `--no-watermark`, `--transparent` keeps alpha). A still caught while the camera moves, or while something draws itself in, says so next to its file |
 | `sheet [project]` | one image with many frames of the video or of one scene (`--scene`, `--every`, `--size`, `--platform`, `--no-watermark`). A frame caught while the camera moves, or while something draws itself in, has "camera moving" or "drawing in" under it. `--times 3,12.5,intro@2` makes `out/sheet-times.jpg` of just those moments, in that order. It takes every time that `still` takes. With `--size tiktok` the file is `out/sheet-times-tiktok.jpg` |
-| `check [project]` | finds layout, timing and pronunciation problems (`--size`, `--platform`, `--no-watermark`). More than two words that only nearly matched are counted, and `--verbose` lists them with their times. `--json` always has them all. `check <video.mp4>` checks any video file instead, see below |
+| `check [project]` | finds layout, timing and pronunciation problems (`--size`, `--platform`, `--no-watermark`). With more than two words that only nearly matched, it names them without their times, and `--verbose` adds the times. `--json` always has them all. `check <video.mp4>` checks any video file instead, see below |
 | `render [project]` | the video plus subtitle files, chapters and a cover (`--format mp4`, `gif`, `webm` or `mov`, `--transparent`, `--size`, `--platform`, `--no-watermark`, `--draft`, `--quality final` or `fast`, `--from`, `--to`, `--workers`, `--out`). Its last line says how long it took before the first frame, for the frames and after them, and a step that takes longer than 2 seconds says what it is |
-| `verify [project]` | checks the finished MP4, WebM or MOV: loudness, true peak, black frames, silence, clear voice (`--file` picks another file). With `--platform`, `--size` or `--no-watermark` it checks the file that `render` wrote with the same flags. `--verbose` lists every word that only nearly matched. The last line says "passed", "passed with N warnings" or "failed: N problems". `verify <video.mp4>` checks any video file, like `check <video.mp4>` |
+| `verify [project]` | checks the finished MP4, WebM or MOV: loudness, true peak, black frames, silence, clear voice (`--file` picks another file). With `--platform`, `--size` or `--no-watermark` it checks the file that `render` wrote with the same flags. With more than two words that only nearly matched, it names them, and `--verbose` adds their times. The last line says "passed", "passed with N warnings" or "failed: N problems". `verify <video.mp4>` checks any video file, like `check <video.mp4>` |
 | `cut <video>` | writes `<name>.cut.md`, the words of your own recording with their times, to cut it by deleting words and pauses (`--language`, `--force`, `--min-gap` for shorter pauses and sounds). `cut <video> --apply` writes `<name>.cut.mp4` (`--out`), and `--apply --dry-run` tries the list without writing a file. See `explainroo docs cut` |
 | `clean [project]` | lists and takes out what `build/` holds that the next run makes again by itself, like the frames of clips and recordings, and says how much room that frees (`--dry-run`, `--json`). The narration in `build/voice/` stays |
 | `export [project]` | writes a web player folder (`--out dir`, `--size`, `--no-watermark`, `--json`), by default `out/player/`, or `out/player-tiktok/` with `--size tiktok` |
@@ -46,9 +46,10 @@ project.
 `--platform <name>` on `check`, `still`, `sheet`, `render` and `verify` sets the size,
 its block in `"sizes"` and the watermark rule that `package --platform <name>`
 uses, so you look at exactly what the package will show. TikTok has no
-watermark, and the other platforms keep the one in `video.json`. When the
-platform takes the watermark away, `render` says so, like "no watermark:
-TikTok asks apps not to add one".
+watermark, and the other platforms, Reels too, keep the one in `video.json`.
+`render` prints one line about the watermark: on, off by `video.json` or
+`--no-watermark`, or off by the platform's rule, like "watermark: off, because
+TikTok asks apps that post to it not to add one".
 
 The extra files share the video's name, also with `--out`: `video.srt`,
 `video.vtt`, `video.cover.jpg` and `video.chapters.txt`. A GIF has no sound,

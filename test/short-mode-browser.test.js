@@ -88,3 +88,13 @@ test('a wide video and a tall one over 3 minutes keep the hint about 6 seconds i
   assert.deepEqual(still(found), []);
   assert.ok(found.some((i) => /no new element for 7\.0s/.test(i.message)), JSON.stringify(found));
 });
+
+test('s.short.jolt, flash and interrupt each count as a change of the picture', { skip }, async (t) => {
+  for (const call of ["s.short.jolt(1.8);", "s.short.flash(1.8);", "s.short.interrupt(1.8);"]) {
+    const p = project(t, { size: '9:16' }, { one: [`${call} ${ICON(0)} ${ICON(3.5)}`, 4.5] });
+    assert.deepEqual(still(await check(p)), [], call);
+  }
+  // Without one, the stretch from 0 to 3.5 seconds is too long.
+  const bare = project(t, { size: '9:16' }, { one: [`${ICON(0)} ${ICON(3.5)}`, 4.5] });
+  assert.equal(still(await check(bare)).length, 1);
+});

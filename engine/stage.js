@@ -732,6 +732,8 @@ export class Stage {
       page: entry.bg ? null : this._page ?? null,
       block: !!entry.block,
       ui: entry.ui || 0,
+      // A badge of the UI kit, whose words check measures like any text.
+      badge: !!entry.badge,
       zoomed: !!entry.zoomed,
     });
   }

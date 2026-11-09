@@ -30,10 +30,20 @@ here serves that second and keeps the picture moving after it.
   stay in `s.safe`. The picture below the captions comes from `s.full`.
 - The payoff is the clearest frame of the video.
 
+## Colors
+
+The background and the glow come from `"brand"` in `video.json`:
+`brand.background` and `brand.accent` when they are set, and the look's
+background and accent otherwise. The hook's keywords take `brand.accent` too,
+when white words read on it. So set the brand's colors in `video.json`, not in
+`format.js`. The format starts in the `midnight` look, a dark look that suits a
+feed, and keeps it for a product too.
+
 ## The helpers in format.js
 
 - `hookFrame(s, title, { icon, color, kicker })` draws the background, the
-  hook title and the subject, all at 0 seconds.
+  hook title and the subject, all at 0 seconds. The title and the kicker stay
+  in the content area at the zoom of the scene's `punch()`.
 - `beats(s, [{ at, icon, label, color }])` shows one big picture per cue, each
   one replacing the one before. Give each beat its own `[#marker]`, at most 2
   seconds apart.
