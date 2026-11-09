@@ -386,6 +386,7 @@ export async function record(dirArg, name, { log = () => {}, fresh = false, find
       return { t0: round(t0), t1: round(now()), x0: Math.round(from.x), y0: Math.round(from.y), x1: Math.round(to.x), y1: Math.round(to.y) };
     };
     const steps = [];
+    const skipped = [];
     let start = null;
     for (const [i, step] of script.steps.entries()) {
       const n = i + 1;
@@ -394,6 +395,20 @@ export async function record(dirArg, name, { log = () => {}, fresh = false, find
         start = round(now());
       }
       log(`${stepLabel(step, n)}${step.before ? ', before the video' : ''}`);
+      // A step before the video whose element isn't there is done already,
+      // like a banner the profile remembers closing, or a login it still has.
+      if (step.before && (step.text !== undefined || step.selector !== undefined)) {
+        const there = await page.evaluate(findInPage, { text: step.text, selector: step.selector, nth: step.nth ?? 1 }).catch(() => ({}));
+        let found = !!there.box;
+        for (let k = 0; !found && k < 12; k++) {
+          await sleep(250);
+          found = !!(await page.evaluate(findInPage, { text: step.text, selector: step.selector, nth: step.nth ?? 1 }).catch(() => ({}))).box;
+        }
+        if (!found) {
+          skipped.push(`${stepLabel(step, n)} found nothing and was skipped. That's fine when an earlier run did it already, and "record --fresh" starts without that.`);
+          continue;
+        }
+      }
       const entry = { step: n, do: step.do, start: round(now()) };
       for (const k of ['text', 'selector', 'nth', 'name', 'cue', 'before']) if (step[k] !== undefined) entry[k] = step[k];
       if (step.do === 'open') {
@@ -492,7 +507,7 @@ export async function record(dirArg, name, { log = () => {}, fresh = false, find
     fs.writeFileSync(json + '.tmp', JSON.stringify(out, null, 2) + '\n');
     fs.renameSync(json + '.tmp', json);
     const rel = (p) => path.relative(dir, p).split(path.sep).join('/');
-    const notes = missed.map((b) => `blur ${b.i + 1} (${b.selector !== undefined ? `selector ${quoted(b.selector)}` : `text ${quoted(b.text)}`}) matched nothing on any page. Check it, or take it out.`);
+    const notes = [...skipped, ...missed.map((b) => `blur ${b.i + 1} (${b.selector !== undefined ? `selector ${quoted(b.selector)}` : `text ${quoted(b.text)}`}) matched nothing on any page. Check it, or take it out.`)];
     return { name, video: rel(webm), log: rel(json), duration: out.duration, start, steps: steps.length, width, height, notes };
   } finally {
     if (context) await context.close().catch(() => {});

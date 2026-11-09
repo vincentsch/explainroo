@@ -46,7 +46,7 @@ function pixel(dir, jpeg, x, y, w, h) {
 test('record runs the steps in a clean window, logs each one and blurs what it names', { skip: !chrome }, async (t) => {
   const app = await serveDemoApp();
   t.after(app.close);
-  const dir = project(t, {
+  const script = {
     url: `${app.url}#/invoices`,
     viewport: { width: 1280, height: 720 },
     steps: [
@@ -58,7 +58,8 @@ test('record runs the steps in a clean window, logs each one and blurs what it n
       { do: 'mark', name: 'saved' },
     ],
     blur: [{ selector: '.email' }, { text: 'Jane Doe' }, { text: 'Nobody here' }],
-  });
+  };
+  const dir = project(t, script);
   const r = await record(dir, 'invoice');
   assert.equal(r.video, 'assets/recordings/invoice.webm');
   assert.deepEqual([r.width, r.height, r.steps], [1280, 720, 6]);
@@ -88,8 +89,16 @@ test('record runs the steps in a clean window, logs each one and blurs what it n
   await ffmpeg(['-loglevel', 'error', '-ss', String(log.start + 0.2), '-i', path.join(dir, r.video), '-frames:v', '1', frame]);
   const page = rgbAt(frame, 640, 680);
   assert.ok(page.every((c) => c > 236 && c < 250), `page where the banner was: ${page}`);
-  // The run reuses its profile: the banner remembers it was closed, and a step
-  // that isn't there stops with its number, close words and a picture.
+  // The run reuses its profile, where the banner was closed already, so the
+  // step before the video finds nothing and is skipped with a note.
+  fs.writeFileSync(path.join(dir, 'recordings/invoice.json'), JSON.stringify({ url: `${app.url}#/invoices`, viewport: { width: 1280, height: 720 }, steps: [{ do: 'click', text: 'Accept', before: true }, { do: 'mark', name: 'a' }] }));
+  const again = await record(dir, 'invoice');
+  assert.deepEqual([again.steps, again.notes], [1, ['step 1 (click "Accept") found nothing and was skipped. That\'s fine when an earlier run did it already, and "record --fresh" starts without that.']]);
+  fs.writeFileSync(path.join(dir, 'recordings/invoice.json'), JSON.stringify(script));
+  const good = await record(dir, 'invoice', { fresh: true });
+  assert.deepEqual([good.steps, good.notes.length], [6, 1]);
+  const kept = JSON.parse(fs.readFileSync(path.join(dir, 'assets/recordings/invoice.json'), 'utf8'));
+  // A step that isn't there stops with its number, close words and a picture.
   fs.writeFileSync(path.join(dir, 'recordings/invoice.json'), JSON.stringify({ url: `${app.url}#/invoices`, viewport: { width: 1280, height: 720 }, steps: [{ do: 'mark', name: 'a' }, { do: 'click', text: 'New invoices' }] }));
   await assert.rejects(record(dir, 'invoice', { findSeconds: 1 }), (e) => {
     assert.match(e.message, /^recordings\/invoice\.json step 2 \(click "New invoices"\): no visible element with the text "New invoices" after 1 s\. Close words on the page: "New invoice"/);
@@ -98,7 +107,7 @@ test('record runs the steps in a clean window, logs each one and blurs what it n
   });
   assert.ok(fs.statSync(path.join(dir, 'build/record/invoice-step-2.png')).size > 1000);
   // The failed run left the last good recording in place.
-  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dir, 'assets/recordings/invoice.json'), 'utf8')), log);
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dir, 'assets/recordings/invoice.json'), 'utf8')), kept);
 });
 
 test('s.recording holds the frame before a cued step until the cue, and draws the cursor', { skip: !chrome }, async (t) => {
