@@ -16,7 +16,7 @@ export default {
 
   outro(s) {
     const { top, h } = s.safe;
-    s.title('One list, one button', { y: top + h * 0.42, size: 96, at: 0 });
-    s.text('and the invoice is on its way.', { y: top + h * 0.6, size: 52, at: 0.6 });
+    s.title('Invoice saved', { y: top + h * 0.42, size: 110, at: 0 });
+    s.text('#1044 for Acme Studio, $2,400', { y: top + h * 0.6, size: 52, color: 'muted', at: 'Acme' });
   },
 };
