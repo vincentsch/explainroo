@@ -409,7 +409,10 @@ export async function stills(project, specs, { log = () => {}, scale = 1, transp
 
 // `times` takes what still takes, like ["3", "intro@2"], and shows just those
 // moments, in that order, in a sheet of its own.
-export async function sheet(project, { scene = null, every = null, times: moments = null, cols = null, log = () => {} } = {}) {
+const LARGE_FRAME = 640;
+
+// `large` makes frames 640 pixels wide, 3 to a row, big enough to read labels.
+export async function sheet(project, { scene = null, every = null, times: moments = null, cols = null, large = false, log = () => {} } = {}) {
   if (moments && (scene || (every !== null && every !== undefined))) throw new ProjectError(`--times picks the moments itself, so it can't go with --${scene ? 'scene' : 'every'}. Leave out one of them.`);
   const { timeline } = await prepare(project, { log });
   let times = [];
@@ -437,9 +440,11 @@ export async function sheet(project, { scene = null, every = null, times: moment
       labels.push(`${sc.id} ${(T - sc.start).toFixed(1)}s`);
     }
   }
-  const c = cols ?? Math.min(times.length, times.length > 20 ? 6 : times.length > 9 ? 5 : 4);
-  const thumb = timeline.width >= timeline.height ? 320 : 200;
-  const { notes } = await withEngine(project, timeline, { scale: 0.5, log }, (page) => page.evaluate((o) => window.explainroo.sheet(o), { times, labels, cols: c, thumb, path: file }));
+  const c = cols ?? Math.min(times.length, large ? 3 : times.length > 20 ? 6 : times.length > 9 ? 5 : 4);
+  const thumb = large ? LARGE_FRAME : timeline.width >= timeline.height ? 320 : 200;
+  // The page draws at half size, or larger when a large frame needs it.
+  const scale = large ? Math.min(1, Math.max(0.5, LARGE_FRAME / timeline.width)) : 0.5;
+  const { notes } = await withEngine(project, timeline, { scale, log }, (page) => page.evaluate((o) => window.explainroo.sheet(o), { times, labels, cols: c, thumb, path: file }));
   // The frames caught in a camera move, or while something draws itself in.
   const marked = notes.flatMap((note, i) => (note ? [{ time: Math.round(times[i] * 100) / 100, label: labels[i], note }] : []));
   return { file: path.join(project.dir, file), frames: times.length, ...(moments ? { times: times.map((T, i) => ({ time: Math.round(T * 100) / 100, label: labels[i] })) } : {}), marked };

@@ -54,7 +54,7 @@ export const COMMAND_HELP = {
   sheet: {
     usage: 'sheet [project] [options]',
     about: 'Writes a contact sheet of the whole video, or of one scene, as a JPEG.',
-    options: [['--scene <id>', 'one scene'], ['--every <s>', 'seconds between frames'], ['--times <list>', 'only these moments, like 3,12.5,intro@2'], ['--cols <n>', 'frames in a row'], SIZE, PLATFORM, WATERMARK, LANG, JSON_OUT],
+    options: [['--scene <id>', 'one scene'], ['--every <s>', 'seconds between frames'], ['--times <list>', 'only these moments, like 3,12.5,intro@2'], ['--cols <n>', 'frames in a row'], ['--large', 'frames 640 pixels wide, 3 to a row, to read labels'], SIZE, PLATFORM, WATERMARK, LANG, JSON_OUT],
     example: 'sheet videos/how-dns-works --scene intro',
   },
   check: {

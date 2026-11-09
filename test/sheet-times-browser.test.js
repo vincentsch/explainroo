@@ -75,3 +75,22 @@ test('sheet --times shows exactly the chosen moments, in order, with the labels 
     assert.match(bad.stderr, message);
   }
 });
+
+test('sheet --large makes frames 640 pixels wide, 3 to a row, also for a tall video', { skip, timeout: 240000 }, async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-sheet-large-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const settings = { size: '1920x1080', theme: 'clean', captions: false, music: false, sfx: false, lead: 0, hold: 0, end: 0, transition: 'cut', watermark: false };
+  fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify(settings));
+  fs.writeFileSync(path.join(dir, 'script.md'), '# Colors\n\n## intro {min=2}\n\n## outro {min=2}\n');
+  fs.writeFileSync(path.join(dir, 'scenes.js'), "export default { intro(s) { s.bg('#ff0000'); }, outro(s) { s.bg('#0000ff'); } };");
+  const r = await cli(['sheet', dir, '--times', 'intro@0.5,outro@0.5,intro@1,outro@1', '--large', '--json']);
+  assert.equal(r.code, 0, r.text);
+  // Two rows of three, 640x360 each.
+  assert.deepEqual(dimensions(JSON.parse(r.stdout).file), [3 * (640 + 8) + 8, 2 * (360 + 30 + 8) + 8]);
+  assert.deepEqual(tileColors(JSON.parse(r.stdout).file, 3, { tw: 640, th: 360 }), ['red', 'blue', 'red']);
+  // --cols still wins, and a tall video gets frames 640 wide too.
+  fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ ...settings, size: '1080x1920' }));
+  const tall = await cli(['sheet', dir, '--times', 'intro@0.5,outro@0.5', '--large', '--cols', '2', '--json']);
+  assert.equal(tall.code, 0, tall.text);
+  assert.deepEqual(dimensions(JSON.parse(tall.stdout).file), [2 * (640 + 8) + 8, 1138 + 30 + 8 + 8]);
+});
