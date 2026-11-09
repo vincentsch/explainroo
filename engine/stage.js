@@ -1638,7 +1638,7 @@ export class Stage {
       speed = 1;
       for (let i = 0; i < 8; i++) {
         const c = recordingClock(cued, { at, from, speed });
-        const room = out - at - c.holds.reduce((n, h) => n + h.until - h.at, 0);
+        const room = out - at - c.held;
         speed = room > 0 ? clamp((end - from) / room, FIT_SPEEDS[0], FIT_SPEEDS[1]) : FIT_SPEEDS[1];
       }
     }
@@ -1657,6 +1657,11 @@ export class Stage {
       rec.push({ kind: 'recording', key: `recording|${at}|${o.id ?? n}|${name}`, at, out, end: sceneTime(clock, end), name, changed: !!log.changed,
         late: clock.late.map((l) => ({ ...l, label: label(l.step), cue: cued.find((c) => c.step === l.step).cue })),
         cut: after.length ? { first: label(after[0].step), count: after.length, at: sceneTime(clock, after[0].t) } : null, fit: o.speed === 'fit', speed });
+      // Each step shows something new, for check's look at quiet stretches.
+      for (const st of steps) {
+        const T = st.t >= from ? sceneTime(clock, st.t) : -1;
+        if (T >= at && T < out) rec.push({ kind: 'recording-step', at: T, key: `recording-step|${n}|${st.step}` });
+      }
       if (o.sound !== false) {
         for (const c of clicks) if (c.at >= at && c.at < out) rec.push({ kind: 'sfx', at: c.at, dur: 0, sfx: 'click', gain: 0.5, key: `recording-click|${n}|${c.st.step}` });
       }

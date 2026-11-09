@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { checkRecordingScript, readRecordingScript, scriptHash, stepLabel } from '../src/record.js';
-import { recordingClock, videoTime, sceneTime, cursorAt, viewAt, focusRect, coverRect, ZOOM_SECONDS, MAX_ZOOM } from '../engine/recording.js';
+import { recordingClock, videoTime, sceneTime, cursorAt, viewAt, focusRect, coverRect, ZOOM_SECONDS, MAX_ZOOM, CATCH_UP } from '../engine/recording.js';
 import { makeState } from '../src/pipeline.js';
 import { loadProject } from '../src/project.js';
 
@@ -81,7 +81,8 @@ test('a cued step holds the frame before it until its action lands on the cue', 
   // Step 2 starts at 4 s of video and clicks at 5 s; its cue is at 8 s of the scene.
   const cued = [{ step: 2, start: 4, t: 5, cueAt: 8 }];
   const clock = recordingClock(cued, { at: 0, from: 1 });
-  assert.deepEqual(clock.holds, [{ at: 3, until: 7, v: 4 }]);
+  assert.deepEqual(clock.parts, [{ at: 0, until: 3, v: 1, speed: 1 }, { at: 3, until: 7, v: 4, speed: 0 }]);
+  assert.equal(clock.held, 4);
   assert.equal(videoTime(clock, -0.5), null);
   assert.equal(videoTime(clock, 2), 3);
   assert.equal(videoTime(clock, 5), 4);
@@ -92,18 +93,25 @@ test('a cued step holds the frame before it until its action lands on the cue', 
   const fast = recordingClock(cued, { at: 1, from: 1, speed: 2 });
   assert.equal(sceneTime(fast, 5), 8);
   assert.equal(videoTime(fast, 8), 5);
-  // A cue the video reaches too late keeps it playing, and goes in late.
+  // A cue the video reaches too late plays the part before the step faster
+  // to catch up, here at 1.5 times, and the step at its own speed.
+  const quick = recordingClock([{ step: 3, start: 4, t: 5, cueAt: 3.5 }], { from: 1 });
+  assert.deepEqual(quick.parts, [{ at: 0, until: 2.5, v: 1, speed: 3 / 2.5 }]);
+  assert.deepEqual(quick.late, []);
+  assert.equal(sceneTime(quick, 5), 3.5);
+  assert.equal(videoTime(quick, 3), 4.5);
+  // Faster than CATCH_UP times it doesn't go, and the step is late.
   const late = recordingClock([{ step: 3, start: 4, t: 5, cueAt: 2 }], { from: 1 });
-  assert.deepEqual(late.holds, []);
+  assert.deepEqual(late.parts, [{ at: 0, until: 3 / CATCH_UP, v: 1, speed: CATCH_UP }]);
   assert.equal(late.late[0].step, 3);
-  assert.ok(Math.abs(late.late[0].by - 2) < 1e-9);
+  assert.ok(Math.abs(late.late[0].by - 0.5) < 1e-9);
   // Steps before from are not played, so their cues don't count.
-  assert.deepEqual(recordingClock([{ step: 1, start: 0.2, t: 0.5, cueAt: 5 }], { from: 1 }).holds, []);
+  assert.deepEqual(recordingClock([{ step: 1, start: 0.2, t: 0.5, cueAt: 5 }], { from: 1 }).parts, []);
 });
 
 test('two cued steps hold one after the other, and video times map back to the scene', () => {
   const clock = recordingClock([{ step: 4, start: 6, t: 6.5, cueAt: 10 }, { step: 2, start: 2, t: 3, cueAt: 4 }], { at: 0.5, from: 0 });
-  assert.equal(clock.holds.length, 2);
+  assert.equal(clock.parts.filter((p) => p.speed === 0).length, 2);
   for (const [v, want] of [[3, 4], [6.5, 10]]) assert.ok(Math.abs(sceneTime(clock, v) - want) < 1e-9);
   for (let t = 0.5; t < 14; t += 0.37) {
     const v = videoTime(clock, t);

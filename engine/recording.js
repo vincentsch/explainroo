@@ -14,13 +14,20 @@ export const RING_SECONDS = 0.6;
 // A step that lands later than this after its cue gets a warning from check.
 export const LATE_SECONDS = 0.15;
 
-// When the video plays. The video starts at `from` when the scene reaches
-// `at`, and plays at `speed`. A step with a cue holds the frame before the step
-// until the step's action, like a click, lands on its cue. A step that the
-// video reaches too late for that keeps playing, and goes in `late`.
+// How much faster than its speed a recording plays to catch up with a cue.
+export const CATCH_UP = 2;
+
+// When the video plays: a list of parts, each from scene time `at` until
+// `until`, starting at second `v` of the video and playing at `speed`, 0 for a
+// hold. The video starts at `from` when the scene reaches `at`. A step with a
+// cue holds the frame before the step until the step's action, like a click,
+// lands on its cue. When the video gets to a step too late for that, the part
+// before the step plays faster, up to CATCH_UP times, and a step that is late
+// even then goes in `late`. The step itself always plays at `speed`, so a
+// pointer moves and types at the pace it was recorded at.
 // cued: [{ step, start, t, cueAt }], with cueAt the scene time of the cue.
 export function recordingClock(cued, { at = 0, from = 0, speed = 1 } = {}) {
-  const holds = [];
+  const parts = [];
   const late = [];
   let scene = at;
   let video = from;
@@ -29,39 +36,45 @@ export function recordingClock(cued, { at = 0, from = 0, speed = 1 } = {}) {
     const hold = Math.max(c.start, from, video);
     const reach = scene + (hold - video) / speed;
     const want = c.cueAt - (c.t - hold) / speed;
-    if (want > reach) {
-      holds.push({ at: reach, until: want, v: hold });
+    if (want >= reach) {
+      if (hold > video) parts.push({ at: scene, until: reach, v: video, speed });
+      if (want > reach) parts.push({ at: reach, until: want, v: hold, speed: 0 });
       scene = want;
       video = hold;
-    } else if (reach - want > LATE_SECONDS) late.push({ step: c.step, by: reach - want, cueAt: c.cueAt });
+      continue;
+    }
+    if (hold > video) {
+      const until = Math.max(want, scene + (hold - video) / (speed * CATCH_UP));
+      parts.push({ at: scene, until, v: video, speed: (hold - video) / (until - scene) });
+      scene = until;
+      video = hold;
+    }
+    if (scene - want > LATE_SECONDS) late.push({ step: c.step, by: scene - want, cueAt: c.cueAt });
   }
-  return { at, from, speed, holds, late };
+  return { at, from, speed, parts, late, held: parts.reduce((n, p) => n + (p.speed ? 0 : p.until - p.at), 0) };
+}
+
+// Where the parts end: the scene time and the second of the video.
+function partsEnd(clock) {
+  const last = clock.parts.at(-1);
+  return last ? { scene: last.until, video: last.v + (last.until - last.at) * last.speed } : { scene: clock.at, video: clock.from };
 }
 
 // The second of the video shown at scene time t, or null before it starts.
 export function videoTime(clock, t) {
   if (t < clock.at) return null;
-  let scene = clock.at;
-  let video = clock.from;
-  for (const h of clock.holds) {
-    if (t < h.at) break;
-    if (t < h.until) return h.v;
-    scene = h.until;
-    video = h.v;
-  }
-  return video + (t - scene) * clock.speed;
+  for (const p of clock.parts) if (t < p.until) return p.v + (t - p.at) * p.speed;
+  const end = partsEnd(clock);
+  return end.video + (t - end.scene) * clock.speed;
 }
 
 // The scene time when the video first reaches second v.
 export function sceneTime(clock, v) {
-  let scene = clock.at;
-  let video = clock.from;
-  for (const h of clock.holds) {
-    if (v <= h.v) break;
-    scene = h.until;
-    video = h.v;
+  for (const p of clock.parts) {
+    if (p.speed && v <= p.v + (p.until - p.at) * p.speed) return p.at + Math.max(0, v - p.v) / p.speed;
   }
-  return scene + (v - video) / clock.speed;
+  const end = partsEnd(clock);
+  return end.scene + (v - end.video) / clock.speed;
 }
 
 // Where the pointer is at second v: where it started, or on its way between
