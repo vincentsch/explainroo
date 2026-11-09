@@ -1,0 +1,12 @@
+{
+  "title": "Acme Invoices",
+  "theme": "clean",
+  "size": "square",
+  "voice": "af_heart",
+  "pace": 1.1,
+  "music": true,
+  "captions": "bold",
+  "targetSeconds": 20,
+  "cover": "hook@0.6",
+  "defaults": "0.5"
+}

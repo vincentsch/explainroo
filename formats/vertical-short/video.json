@@ -1,0 +1,11 @@
+{
+  "title": "Why your phone dies in the cold",
+  "theme": "midnight",
+  "size": "vertical",
+  "voice": "af_heart",
+  "pace": 1.15,
+  "music": true,
+  "captions": "bold",
+  "cover": "hook@0.6",
+  "defaults": "0.5"
+}

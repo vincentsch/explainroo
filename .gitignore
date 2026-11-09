@@ -8,6 +8,7 @@ build/
 out/
 # a render of an example adds to its record
 examples/*/history/
+formats/*/history/
 .cache/
 .scratch/
 .env
