@@ -9,7 +9,8 @@ form, save it. `explainroo record` ran them in a browser and saved the video
 and the step log in `assets/recordings/`. The scene plays it with
 `s.recording('new-invoice')`, and each step with a cue happens on its
 `[#marker]` in `script.md`. The email address in the app is blurred by the
-script's `blur` list.
+script's `blur` list. The npm package leaves the recording out to stay
+small, so render this example from a copy of the repository.
 
 To record it again, start the app and run `record`:
 
