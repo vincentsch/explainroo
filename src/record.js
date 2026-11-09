@@ -723,8 +723,10 @@ export async function record(dirArg, name, { log = () => {}, keepProfile = false
         if (step.do === 'hover') {
           entry.t = round(now());
           await sleep(700);
+          entry.changed = before === null || before !== await state();
         } else {
           await sleep(220);
+          const before = step.do === 'click' ? await state() : null;
           entry.click = round(now());
           if (step.do === 'click') entry.t = entry.click;
           await page.mouse.down();
@@ -739,10 +741,12 @@ export async function record(dirArg, name, { log = () => {}, keepProfile = false
               await sleep(250);
               await page.keyboard.press(step.press).catch((e) => fail(step, n, `can't press ${quoted(step.press)}: ${e.message.split('\n')[0]}. Key names are like Enter, Tab, Escape or ArrowDown.`));
             }
+            entry.until = round(now());
           }
           await sleep(300);
           await settle();
           await sleep(400);
+          if (step.do === 'click') entry.changed = before === null || before !== await state();
         }
       } else if (step.do === 'scroll') {
         entry.t = entry.start;
@@ -801,6 +805,9 @@ export async function record(dirArg, name, { log = () => {}, keepProfile = false
       end,
       cursor: { x: width / 2, y: height / 2 },
       script: scriptHash(JSON.parse(fs.readFileSync(scriptPath(dir, name), 'utf8'))),
+      // Its steps say which of them change the page, for check's look at
+      // still stretches in a short.
+      changes: true,
       steps,
       blur: script.blur.map((b, i) => ({ ...b, found: blurSeen.has(i) })),
     };

@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { checkRecordingScript, readRecordingScript, scriptHash, stepLabel, stepLine, videoOffset, wholeHash } from '../src/record.js';
 import { ffmpeg } from '../src/ffmpeg.js';
-import { cuedSteps, recordingClock, videoTime, sceneTime, cursorAt, viewAt, focusRect, coverRect, zoomScale, fitViewport, smallPageText, ZOOM_SECONDS, ZOOM_RANGE, CATCH_UP } from '../engine/recording.js';
+import { cuedSteps, recordingClock, videoTime, sceneTime, cursorAt, viewAt, focusRect, coverRect, zoomScale, fitViewport, smallPageText, movingSteps, ZOOM_SECONDS, ZOOM_RANGE, CATCH_UP } from '../engine/recording.js';
 import { makeState } from '../src/pipeline.js';
 import { loadProject } from '../src/project.js';
 
@@ -290,12 +290,6 @@ test('a new cue plays from the script without a new recording, and any other cha
   assert.equal(state().changed, true);
 });
 
-test('record says in one line what each step found', () => {
-  assert.equal(stepLine('step 2 (click "Save")', { match: { tag: 'button', text: 'Save invoice', selector: '#save' } }), 'step 2 (click "Save"): <button> "Save invoice"');
-  assert.equal(stepLine('step 3 (zoom "section")', { match: { tag: 'section', text: '', selector: 'section.a', hidden: 3 } }), 'step 3 (zoom "section"): <section> with no words, skipping 3 hidden matches of the selector');
-  assert.equal(stepLine('step 4 (mark "a")', {}), 'step 4 (mark "a")');
-});
-
 test('a zoom holds the side of its element that align names', () => {
   const base = coverRect(1280, 720, 16 / 9);
   // A wide row whose words start at its left, like a result in a list.
@@ -336,6 +330,39 @@ test('a viewport fits the area a recording plays in, so 16 px page text plays at
   assert.equal(smallPageText(log, { w: 1920, h: 1080 }), null);
   const small = smallPageText({ width: 1920, height: 1080 }, { w: 1697, h: 955 });
   assert.equal(Math.round(small.px), 14);
+});
+
+test('the steps that move the picture are typing, scrolls, zooms and what changes the page', () => {
+  const steps = [
+    { step: 1, do: 'open', start: 0, t: 0, end: 1 },
+    { step: 2, do: 'type', start: 1, t: 1.4, until: 3.2, end: 4 },
+    { step: 3, do: 'scroll', start: 4, t: 4, until: 5, end: 5.3 },
+    { step: 4, do: 'zoom', start: 5.3, t: 5.3, end: 6.6 },
+    { step: 5, do: 'click', start: 6.6, t: 7, end: 8, changed: false },
+    { step: 6, do: 'click', start: 8, t: 8.5, end: 9, changed: true },
+    { step: 7, do: 'hover', start: 9, t: 9.4, end: 10, changed: false },
+    { step: 8, do: 'wait', start: 10, t: 10, end: 12, changed: true },
+    { step: 9, do: 'wait', start: 12, t: 12, end: 13, changed: false },
+    { step: 10, do: 'mark', start: 13, t: 13, end: 13 },
+  ];
+  assert.deepEqual(movingSteps(steps), [
+    { step: 1, from: 0, to: 0 },
+    { step: 2, from: 1.4, to: 3.2 },
+    { step: 3, from: 4, to: 5 },
+    { step: 4, from: 5.3, to: 5.3 + ZOOM_SECONDS },
+    { step: 6, from: 8.5, to: 8.5 },
+    { step: 8, from: 12, to: 12 },
+  ]);
+  // zoom: false keeps the zooms out of the picture.
+  assert.equal(movingSteps(steps, { zoom: false }).some((m) => m.step === 4), false);
+  // A log from before counts every step at its own time, as it did.
+  assert.deepEqual(movingSteps(steps, { noted: false }).map((m) => [m.step, m.from, m.to]), steps.map((st) => [st.step, st.t, st.t]));
+});
+
+test('record says in one line what each step found', () => {
+  assert.equal(stepLine('step 2 (click "Save")', { match: { tag: 'button', text: 'Save invoice', selector: '#save' } }), 'step 2 (click "Save"): <button> "Save invoice"');
+  assert.equal(stepLine('step 3 (zoom "section")', { match: { tag: 'section', text: '', selector: 'section.a', hidden: 3 } }), 'step 3 (zoom "section"): <section> with no words, skipping 3 hidden matches of the selector');
+  assert.equal(stepLine('step 4 (mark "a")', {}), 'step 4 (mark "a")');
 });
 
 // Chrome sends the first frame of a recording a little after the page opens,

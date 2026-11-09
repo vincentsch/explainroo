@@ -1105,10 +1105,16 @@ export class Engine {
       if (broke) anyBroke = true;
       if (shortVideo && !broke) {
         changes.push(sc.start);
-        for (const x of [...times, ...this.cameraKeys]) if (x >= 0 && x <= sc.dur) changes.push(sc.start + x);
+        // A recording changes it where its steps type, scroll, zoom or change
+        // the page, and not at a step that only marks a moment.
+        const shown = entrances.filter((e) => e.kind !== 'recording-step').map((e) => e.at);
+        for (const x of [...shown, ...this.cameraKeys]) if (x >= 0 && x <= sc.dur) changes.push(sc.start + x);
         for (const e of entrances) {
-          if (e.kind !== 'clip') continue;
-          for (let x = Math.max(0, e.at); x < Math.min(sc.dur, e.end ?? e.at); x += 0.5) changes.push(sc.start + x);
+          const spans = e.kind === 'clip' ? [{ from: e.at, to: e.end ?? e.at }] : e.kind === 'recording' ? e.moving : [];
+          for (const m of spans) {
+            for (let x = Math.max(0, m.from); x < Math.min(sc.dur, m.to); x += 0.5) changes.push(sc.start + x);
+            if (e.kind === 'recording' && m.to >= 0 && m.to <= sc.dur) changes.push(sc.start + m.to);
+          }
         }
       }
       this.cameraKeys = null;

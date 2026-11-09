@@ -390,12 +390,17 @@ test('record says what each step found, with a picture of it, and nth leaves out
   const lines = [];
   const r = await record(dir, 'invoice', { log: (l) => lines.push(l) });
   const log = JSON.parse(fs.readFileSync(path.join(dir, r.log), 'utf8'));
-  const [, zoom, , click, type, mark] = log.steps;
+  const [, zoom, heading, click, type, mark] = log.steps;
+  assert.equal(log.changes, true);
   assert.deepEqual(zoom.match, { tag: 'p', text: 'Total $2,430', selector: 'p.total', hidden: 1 });
   assert.equal(zoom.align, 'left');
   assert.deepEqual(click.match, { tag: 'button', text: 'New invoice', selector: '#new' });
   assert.deepEqual([type.match.tag, type.match.selector], ['input', '#amount']);
   assert.equal(mark.match, undefined);
+  // A click on a heading changes nothing, and one that opens the form does.
+  assert.deepEqual([heading.changed, click.changed], [false, true]);
+  // Typing moves the picture until its last key.
+  assert.ok(type.until > type.t + 0.05 && type.until <= type.end, JSON.stringify(type));
   // One line per step, with what it found.
   assert.deepEqual(lines.filter((l) => /^step/.test(l)), [
     'step 1 (click "Accept"), before the video: <button> "Accept"',
@@ -445,4 +450,34 @@ test('inspect --all lists headings, sections and images, and --text what holds t
   assert.match(text, /: 1 element holds "total", each with the larger ones around it, from the top\n {2}1\. p "Total \$2,430" {2}at \d+,\d+, \d+x\d+\n {5}text "Total \$2,430", or selector p\.total\n {2}2\. {3}in main /);
   const none = formatInspect(await inspect(dir, `${app.url}#/invoices`, { viewport, holding: 'Nothing like it' }));
   assert.match(none, /: no visible element holds "Nothing like it"\./);
+});
+
+test('in a short, typing, scrolling, zooming and a click that changes the page count as picture changes', { skip: !chrome }, async (t) => {
+  const dir = project(t, { url: 'http://127.0.0.1:4500/', viewport: { width: 540, height: 960 }, steps: [{ do: 'mark', name: 'a' }] });
+  fs.mkdirSync(path.join(dir, 'assets/recordings'), { recursive: true });
+  await ffmpeg(['-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=white:s=540x960:r=25:d=9', '-c:v', 'libvpx', '-b:v', '200k', path.join(dir, 'assets/recordings/invoice.webm')]);
+  const box = { x: 270, y: 300, w: 400, h: 44 };
+  const writeLog = (steps, more = {}) => fs.writeFileSync(path.join(dir, 'assets/recordings/invoice.log.json'), JSON.stringify({ version: 1, url: 'http://127.0.0.1:4500/', width: 540, height: 960, duration: 9, start: 0, end: 8.5, cursor: { x: 270, y: 480 }, steps, blur: [], ...more }));
+  const timeline = { pace: 1, duration: 9, frames: 270, fps: 30, width: 1080, height: 1920, transitionSeconds: 0,
+    scenes: [{ id: 'demo', index: 0, start: 0, dur: 9, words: [], marks: {}, voice: null, lead: 0, transition: 'none' }] };
+  fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ size: 'shorts', theme: 'clean', captions: false, watermark: false, music: false, sfx: false }));
+  fs.writeFileSync(path.join(dir, 'scenes.js'), "export default { demo(s) { s.recording('invoice', { full: true }); } };");
+  const still = () => withEngine(loadProject(dir), timeline, { scale: 0.25 }, async (page) => (await page.evaluate(() => window.explainroo.check(0.25))).filter((i) => i.message.startsWith("the picture doesn't change")).map((i) => i.message.split(', and')[0]));
+  const steps = [
+    { step: 1, do: 'type', selector: '#q', start: 0.5, t: 1, click: 0.8, until: 4, end: 4.5, box },
+    { step: 2, do: 'click', text: 'Solve', start: 4.5, t: 5, click: 5, end: 5.5, box, changed: false },
+    { step: 3, do: 'scroll', y: 600, start: 5.5, t: 5.5, until: 6.5, end: 6.8 },
+    { step: 4, do: 'mark', name: 'end', start: 6.8, t: 6.8, end: 6.8 },
+  ];
+  writeLog(steps, { changes: true });
+  // The typing fills 1 to 4 s, the click changes nothing, and the scroll moves it from 5.5 to 6.5 s.
+  assert.deepEqual(await still(), ["the picture doesn't change for 2.5s, from 6.5s"]);
+  // A click that changes the page counts, and so does a zoom while it moves.
+  writeLog([...steps.slice(0, 3), { step: 4, do: 'zoom', selector: '#q', start: 7.5, t: 7.5, end: 8.8, box }], { changes: true });
+  assert.deepEqual(await still(), []);
+  writeLog([steps[0], { ...steps[1], changed: true }, { ...steps[1], step: 3, t: 6.5, start: 6.5, end: 7, changed: true }], { changes: true });
+  assert.deepEqual(await still(), ["the picture doesn't change for 2.5s, from 6.5s"]);
+  // A log from before counts each step at its time, as it did.
+  writeLog(steps.map(({ until, changed, ...st }) => st));
+  assert.deepEqual(await still(), ["the picture doesn't change for 4.0s, from 1.0s", "the picture doesn't change for 2.2s, from 6.8s"]);
 });
