@@ -35,6 +35,7 @@ import { formatShare, share } from './share.js';
 import { formatPublish, publish } from './publish.js';
 import { COMMAND_HELP, commandHelp } from './help.js';
 import { checkVideo, formatVideoCheck, isVideoFile, VIDEO_FILE } from './video-check.js';
+import { applyCut, formatCut, writeCut } from './cut.js';
 
 // Paid voices that can list what a key may use, each with its own flag.
 const LISTS_VOICES = CONNECTORS.filter((c) => c.voices);
@@ -70,6 +71,10 @@ Make a video
   verify [project]      check the video: loudness, black frames, narration (--file). verify <video.mp4> checks
                         any video file, like check <video.mp4>
   export [project]      write a web player folder (--out dir, default: out/player/; --size, --no-watermark)
+
+Edit your own recording
+  cut <video>           write <name>.cut.md, the words of the recording with their times (--language, --force).
+                        Delete words and pauses in it, then cut <video> --apply writes <name>.cut.mp4 (--out)
 
 Post a video
   package [project]     write a folder for one platform: the sized video, its words, captions, cover, AI label
@@ -158,7 +163,7 @@ function parseArgs(argv) {
   }
   return { pos, flags };
 }
-const BOOL = new Set(['json', 'draft', 'estimate', 'transparent', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'mobile', 'list', 'sections', 'new', 'key-stdin', 'audio', 'dry-run', 'no-wait', 'no-watermark', 'yes', 'media-url-unchecked', ...LISTS_VOICES.map((c) => c.id)]);
+const BOOL = new Set(['json', 'apply', 'draft', 'estimate', 'transparent', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'mobile', 'list', 'sections', 'new', 'key-stdin', 'audio', 'dry-run', 'no-wait', 'no-watermark', 'yes', 'media-url-unchecked', ...LISTS_VOICES.map((c) => c.id)]);
 
 // publish refuses any other flag. A flag it ignored could change what a person
 // thinks is posted, like a time for a post, when it goes out right away.
@@ -323,6 +328,14 @@ export async function main(argv) {
         }
         print(formatPublish(r), r);
         return r.stage === 'failed' ? 1 : 0;
+      }
+      case 'cut': {
+        if (pos.length !== 1) throw new ProjectError('usage: explainroo cut <video> [--language en] [--force], then edit <name>.cut.md and run: explainroo cut <video> --apply [--out file]');
+        const r = flags.apply
+          ? await applyCut(pos[0], { out: textFlag(flags, 'out') ?? null, log })
+          : await writeCut(pos[0], { language: textFlag(flags, 'language') ?? 'en', force: !!flags.force, log });
+        print(formatCut(r), r);
+        return 0;
       }
       case 'export': {
         const project = loadProject(pos[0], runOverrides(flags));

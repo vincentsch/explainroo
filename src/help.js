@@ -73,6 +73,12 @@ export const COMMAND_HELP = {
     options: [['--file <file>', 'another video file than out/video.mp4'], ['--script <file>', 'for a video file, compare the speech with this text'], ['--language <code>', 'for a video file, the language of the speech, en by default'], ['--view-width <px>', 'for a video file, also judge text at this player width'], LANG, JSON_OUT],
     example: 'verify videos/how-dns-works',
   },
+  cut: {
+    usage: 'cut <video> [options], then cut <video> --apply',
+    about: 'Edits your own recording by its words. The speech model listens to it and writes <name>.cut.md next to it: one sentence a line, each word with its time, with [pause] for quiet stretches and [sound] for sound without words. Delete words, pauses and sounds in it. Then --apply writes <name>.cut.mp4, with the sound crossfaded at every join. See "explainroo docs cut".',
+    options: [['--apply', 'cut the video as the list says'], ['--out <file>', 'with --apply, where to write it'], ['--language <code>', 'the language of the speech, en by default'], ['--force', 'write the list again from the recording, over your edits'], JSON_OUT],
+    example: 'cut talk.mp4',
+  },
   export: {
     usage: 'export [project] [options]',
     about: 'Writes a folder with a web player of the video, out/player/ by default.',
