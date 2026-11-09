@@ -26,6 +26,50 @@ export const SMALL_SHOWN = 0.6;
 // How much faster than its speed a recording plays to catch up with a cue.
 export const CATCH_UP = 2;
 
+// Most pages set their body text at PAGE_TEXT pixels. Played at under
+// PLAYED_TEXT pixels in the frame it is hard to read on a phone, and check
+// warns. A viewport of the area the recording plays in, divided by
+// VIEWPORT_SHRINK, plays it at about 29 pixels.
+export const PAGE_TEXT = 16;
+export const PLAYED_TEXT = 24;
+export const VIEWPORT_SHRINK = 1.8;
+
+// The viewport that fits an area of w x h pixels of the frame: the area's
+// shape, VIEWPORT_SHRINK times smaller, in even pixels from 320 to 3840.
+export function fitViewport(w, h) {
+  const k = Math.max(1, 320 / (w / VIEWPORT_SHRINK), 320 / (h / VIEWPORT_SHRINK));
+  const even = (v) => Math.min(3840, Math.max(320, 2 * Math.round((v * k) / VIEWPORT_SHRINK / 2)));
+  return { width: even(w), height: even(h) };
+}
+
+// How tall a page's PAGE_TEXT pixel text plays when a recording shows w x h,
+// without a zoom: { px, shown }, or null when it plays at PLAYED_TEXT or more.
+export function smallPageText(log, { w, h }) {
+  const shown = Math.max(w / log.width, h / log.height);
+  const px = PAGE_TEXT * shown;
+  return px < PLAYED_TEXT - 1e-6 ? { px, shown } : null;
+}
+
+// The stretches of the video, in its seconds, where a step moves the picture:
+// typing, a scroll, a zoom, a page that opens, and a click, hover or wait that
+// changes the page. [{ step, from, to }], with from === to for a moment. In a
+// log from before record noted what changes (`noted` false), every step counts
+// at its own time, as it did then.
+export function movingSteps(steps, { zoom = true, noted = true } = {}) {
+  const out = [];
+  for (const st of steps) {
+    let span = null;
+    if (!noted) span = [st.t, st.t];
+    else if (st.do === 'type' || st.do === 'scroll') span = [st.t, st.until ?? st.t];
+    else if (st.do === 'zoom') span = zoom ? [st.t, st.t + ZOOM_SECONDS] : null;
+    else if (st.do === 'open') span = [st.t, st.t];
+    else if (st.do === 'click' || st.do === 'hover') span = st.changed ? [st.t, st.t] : null;
+    else if (st.do === 'wait') span = st.changed ? [st.end, st.end] : null;
+    if (span) out.push({ step: st.step, from: span[0], to: Math.max(span[0], span[1]) });
+  }
+  return out;
+}
+
 // Whether a recording shown w x h plays at under SMALL_SHOWN of its size with
 // no zoom on its played steps: then { shown, before, step }, with a zoom step
 // to add before the first step that has an element, or on the whole page when

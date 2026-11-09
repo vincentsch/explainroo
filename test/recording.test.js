@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { checkRecordingScript, readRecordingScript, scriptHash, stepLabel, stepLine, videoOffset, wholeHash } from '../src/record.js';
 import { ffmpeg } from '../src/ffmpeg.js';
-import { cuedSteps, recordingClock, videoTime, sceneTime, cursorAt, viewAt, focusRect, coverRect, zoomScale, ZOOM_SECONDS, ZOOM_RANGE, CATCH_UP } from '../engine/recording.js';
+import { cuedSteps, recordingClock, videoTime, sceneTime, cursorAt, viewAt, focusRect, coverRect, zoomScale, fitViewport, smallPageText, ZOOM_SECONDS, ZOOM_RANGE, CATCH_UP } from '../engine/recording.js';
 import { makeState } from '../src/pipeline.js';
 import { loadProject } from '../src/project.js';
 
@@ -320,6 +320,22 @@ test('a zoom holds the side of its element that align names', () => {
   fails({ url: URL, steps: [{ do: 'zoom', text: 'Total', align: 'middle' }] }, /step 1: align must be one of center, left, right, top, bottom: the side of the element the zoom holds in view/);
   fails({ url: URL, steps: [{ do: 'zoom', align: 'left' }] }, /step 1: a zoom without an element goes back out, so it takes no align/);
   fails({ url: URL, steps: [{ do: 'click', text: 'Save', align: 'left' }] }, /step 1: a click step has no "align"/);
+});
+
+test('a viewport fits the area a recording plays in, so 16 px page text plays at about 29 px', () => {
+  // The content areas of the docs' table.
+  assert.deepEqual(fitViewport(1768, 928), { width: 982, height: 516 });
+  assert.deepEqual(fitViewport(928, 977), { width: 516, height: 542 });
+  assert.deepEqual(fitViewport(885, 732), { width: 492, height: 406 });
+  assert.deepEqual(fitViewport(745, 863), { width: 414, height: 480 });
+  assert.deepEqual(fitViewport(896, 751), { width: 498, height: 418 });
+  // A small area keeps its shape at 320 pixels or more.
+  assert.deepEqual(fitViewport(400, 200), { width: 640, height: 320 });
+  const log = { width: 1280, height: 720 };
+  // Shown at 1.5 times, 16 px plays at 24, which is enough.
+  assert.equal(smallPageText(log, { w: 1920, h: 1080 }), null);
+  const small = smallPageText({ width: 1920, height: 1080 }, { w: 1697, h: 955 });
+  assert.equal(Math.round(small.px), 14);
 });
 
 // Chrome sends the first frame of a recording a little after the page opens,

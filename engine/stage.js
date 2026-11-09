@@ -7,7 +7,7 @@ import { colorOf, tintOf, fontString } from './themes.js';
 import { scalePath, quadD, polyD, pathLength, pointAt, parsePath, absolutize, samplePath } from './pathdata.js';
 import { layoutText, lineStartX } from './text.js';
 import { clipFrame, clipURL, soundURL, FIT_SPEEDS } from './clips.js';
-import { cuedSteps, smallRecording, recordingClock, videoTime, sceneTime, cursorAt, viewAt, drawCursor, RING_SECONDS } from './recording.js';
+import { cuedSteps, smallRecording, smallPageText, movingSteps, recordingClock, videoTime, sceneTime, cursorAt, viewAt, drawCursor, RING_SECONDS } from './recording.js';
 import { highlightLine, codeTokens, matchTokens, resolveCodeSteps, codeMorphState } from './code.js';
 import { ring, bounds, along, rayThrough } from './geometry.js';
 
@@ -1639,11 +1639,14 @@ export class Stage {
     const { log, clip } = this.engine.recording(name);
     // Its zoom steps are the camera of the scene, so the automatic one keeps out.
     if (this.engine.planning) this.engine.manualCamera = true;
+    const ratio = log.width / log.height;
+    const bar = o.frame === 'browser' || o.frame === 'window' ? 1.075 : o.frame === 'phone' ? 1.03 : 1;
+    // The area it plays in, for the viewport check names: the size it was
+    // given, or the safe area without the bar of a frame.
+    const area = o.w === undefined && o.h === undefined ? { w: this.safe.w, h: this.safe.h / bar, fill: 0.96 } : { w: o.w ?? o.h * ratio, h: o.h ?? o.w / ratio, fill: 1 };
     // Without a size it fills what the safe area holds, with the bar of a
     // browser or window frame, which _picture puts on top.
     if (o.w === undefined && o.h === undefined) {
-      const ratio = log.width / log.height;
-      const bar = o.frame === 'browser' || o.frame === 'window' ? 1.075 : o.frame === 'phone' ? 1.03 : 1;
       const h = Math.min(this.safe.h / bar, this.safe.w / ratio) * 0.96;
       o = { ...o, w: h * ratio, h, ...(o.x === undefined ? { x: this.safe.x + this.safe.w / 2 } : {}), ...(o.y === undefined ? { y: this.safe.y + this.safe.h / 2 } : {}) };
     }
@@ -1688,7 +1691,10 @@ export class Stage {
       rec.push({ kind: 'recording', key: `recording|${at}|${o.id ?? n}|${name}`, at, out, end: sceneTime(clock, end), name, changed: !!log.changed,
         late: clock.late.map((l) => ({ ...l, label: label(l.step), cue: cued.find((c) => c.step === l.step).cue })),
         cut: after.length ? { first: label(after[0].step), count: after.length, at: sceneTime(clock, after[0].t) } : null, fit: o.speed === 'fit', speed,
-        small: smallRecording(log, { w: o.w ?? o.h * (log.width / log.height), h: o.h ?? o.w / (log.width / log.height), from, zoom: o.zoom !== false }), width: log.width });
+        small: smallRecording(log, { w: o.w ?? o.h * (log.width / log.height), h: o.h ?? o.w / (log.width / log.height), from, zoom: o.zoom !== false }), width: log.width, height: log.height,
+        text: smallPageText(log, { w: o.w ?? o.h * (log.width / log.height), h: o.h ?? o.w / (log.width / log.height) }), area,
+        // What moves the picture, for the look a short takes at still stretches.
+        moving: movingSteps(steps.filter((st) => st.t >= from), { zoom: o.zoom !== false, noted: !!log.changes }).map((m) => ({ from: sceneTime(clock, m.from), to: sceneTime(clock, m.to) })).filter((m) => m.to >= at && m.from < out) });
       // Each step shows something new, for check's look at quiet stretches.
       for (const st of steps) {
         const T = st.t >= from ? sceneTime(clock, st.t) : -1;

@@ -120,12 +120,25 @@ records.
   login, `--keep-profile` keeps the profile for the next run.
 - `blur` blurs elements by CSS selector or exact text on every page, before
   anything is recorded. Use it for real email addresses and keys.
-- `viewport` is 1920 x 1080 by default. Pick it for the size of the video:
-  1280 x 720 for 16:9, which makes the app's text larger than the default,
-  1000 x 1250 for 4:5, and 1080 x 1920 for 9:16. A recording that plays at
-  under 60% of its size gets a warning from `check` unless a step zooms in,
-  because its text is then too small to read. The warning names the zoom
-  step to add.
+- `viewport` is 1920 x 1080 by default, which is too large for most
+  videos. Pick it from the content area the recording plays in: the same
+  shape, about 1.8 times smaller. Then the page's 16 px text plays at about
+  29 px. These are the numbers for a recording that fills the content area:
+
+  | Size | Content area | Viewport |
+  | --- | --- | --- |
+  | 16:9 (`youtube`) | 1768 x 928 | 982 x 516 |
+  | 4:5 (`instagram`, `linkedin`) | 928 x 977 | 516 x 542 |
+  | `shorts` with bold captions | 885 x 732 | 492 x 406 |
+  | `tiktok`, its package with bold captions | 745 x 863 | 414 x 480 |
+  | `reels` with bold captions | 896 x 751 | 498 x 418 |
+
+  A page this narrow may lay itself out as on a phone, which often reads
+  best in a tall video. `check` warns when a recording's 16 px text would
+  play under 24 px, and names a viewport that fits where it plays. A zoom
+  makes the text larger only while it holds. A recording that plays at
+  under 60% of its size with no zoom step gets its own warning, which names
+  the zoom step to add.
 
 The step log has the time of each step in seconds of the video, and the
 `box` of its element in pixels of the video: `x` and `y` are its middle,

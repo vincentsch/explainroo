@@ -349,6 +349,19 @@ test('check warns about a recording that plays small with no zoom, and names the
     return withEngine(loadProject(dir), timeline, { scale: 0.25 }, async (page) => (await page.evaluate(() => window.explainroo.check(0.25))).filter((i) => /plays at/.test(i.message)).map((i) => i.message));
   };
   writeLog();
+  // Shown 768 pixels wide, its 16 px text plays under 24 px, and check names a
+  // viewport of the shape it plays in. 1.5 times its size is enough.
+  const text = async (o) => withEngine(loadProject(dir), timeline, { scale: 0.25 }, async (page) => (await page.evaluate(() => window.explainroo.check(0.25))).filter((i) => /16px text/.test(i.message)).map((i) => i.message));
+  writeLog();
+  fs.writeFileSync(path.join(dir, 'scenes.js'), "export default { demo(s) { s.recording('invoice', { w: 1200 }); } };");
+  assert.deepEqual(await text(), ['recording "invoice" plays 1280 pixels of page in 1200, so the page\'s 16px text shows 15px tall, under 24px and hard to read on a phone. A zoom helps only while it holds. Record it with "viewport": { "width": 666, "height": 376 } in recordings/invoice.json: that shape fits the 1200x675 it plays in, and its 16px text shows about 29px tall']);
+  // Where even the smallest viewport plays small, it has to show larger.
+  fs.writeFileSync(path.join(dir, 'scenes.js'), "export default { demo(s) { s.recording('invoice', { w: 768 }); } };");
+  assert.deepEqual(await text(), ['recording "invoice" plays 1280 pixels of page in 768, so the page\'s 16px text shows 10px tall, under 24px and hard to read on a phone. A zoom helps only while it holds. Show it larger: in 768x432, even the smallest viewport, { "width": 568, "height": 320 }, plays its 16px text at about 22px']);
+  fs.writeFileSync(path.join(dir, 'scenes.js'), "export default { demo(s) { s.recording('invoice'); } };");
+  assert.deepEqual(await text(), ['recording "invoice" plays 1280 pixels of page in 1584, so the page\'s 16px text shows 20px tall, under 24px and hard to read on a phone. A zoom helps only while it holds. Record it with "viewport": { "width": 982, "height": 516 } in recordings/invoice.json: that shape fits the 1768x928 it plays in, and its 16px text shows about 28px tall']);
+  fs.writeFileSync(path.join(dir, 'scenes.js'), "export default { demo(s) { s.recording('invoice', { w: 1920 }); } };");
+  assert.deepEqual(await text(), []);
   // 700 pixels wide is 55% of the 1280 of the video.
   assert.deepEqual(await findings({ w: 700 }), ['recording "invoice" plays at 55% of its size, 1280 pixels wide in 700, and none of its steps zooms in, so its text is small to read. Add a zoom step to recordings/invoice.json before step 2, like { "do": "zoom", "text": "New invoice", "cue": "#new" }, and record it again']);
   // From 60% on it's fine, and so is a zoom step.
