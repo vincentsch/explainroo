@@ -53,7 +53,7 @@ the file keeps its order.
 | `watermark` | `"explainroo.com"` | small text in a corner, on by default, or `false` to turn it off. A TikTok package always leaves it out |
 | `images` | none | `{ "model": "best" or "cheap", "style": "..." }` |
 | `clipBudget` | none | the most all AI clips of the project may cost together, in US dollars, like `0.40`. `clip` stops before a clip that would go over it; see `explainroo docs clips` |
-| `brand` | none | colors, fonts and logo for `s.ui`; its `accent` also colors the spoken word in captions; see `explainroo docs product-demos` |
+| `brand` | none | colors, fonts and logo for `s.ui`; its `accent` also colors the spoken word in captions. With `"defaults": "0.6"`, `accent` also colors the `*starred*` words of `s.title` and `s.text`, and `background` is the background of every scene; see `explainroo docs product-demos` |
 | `fonts` | none | the video's own font files, see `explainroo docs product-demos` |
 | `defaults` | none | `"0.6"` gives the project the defaults of explainroo 0.6, which include those of 0.5, see below. `init` writes it |
 

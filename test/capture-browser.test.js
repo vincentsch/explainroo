@@ -89,6 +89,8 @@ test('capture saves a local site, its loaded fonts and desktop and phone screens
     assert.deepEqual(dimensions(path.join(root, 'mobile-full.png')), [780, 16000]);
     assert.ok(result.files.every((file) => fs.existsSync(path.join(dir, file))));
     assert.deepEqual(normalizeConfig(result.suggestion).brand, result.brand);
+    // The block to paste names the fonts of the body and the headings.
+    assert.deepEqual([result.brand.font, result.brand.headline], ['Fixture Sans', 'Fixture Sans']);
     assert.equal(fs.readFileSync(path.join(dir, 'video.json'), 'utf8'), config);
     assert.equal(fs.readFileSync(path.join(dir, 'assets', 'keep.txt'), 'utf8'), 'Keep this file');
     await assert.rejects(capture(dir, `${site.url}/missing`), /page did not load/);

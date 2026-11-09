@@ -98,10 +98,17 @@ export class Engine {
     this.transparent = transparent;
     this.theme = getTheme(config.theme, config.look);
     // Without a look file, getTheme gives the built-in look that every engine in
-    // this page shares, so a brand color goes on this engine's own copy.
+    // this page shares, so a brand color goes on this engine's own copy. With
+    // "defaults": "0.6", brand.background is the background of every scene.
+    const brand = newDefaults(config, '0.6') ? config.brand ?? {} : {};
+    if (brand.background) this.theme = { ...this.theme, bg: brand.background };
     const highlight = captionHighlight(config, this.theme);
     if (highlight.color) this.theme = { ...this.theme, caption: { ...this.theme.caption, active: highlight.color } };
     this.captionNote = highlight.note ?? null;
+    // and brand.accent colors the *starred* words of s.title and s.text. On a
+    // background where it is hard to read, below 3:1, it keeps its hue and
+    // gets lighter or darker until it reads, as in captions.
+    this.brandAccent = brand.accent ? (contrast(brand.accent, this.theme.bg) >= 3 ? brand.accent : suggestColor(brand.accent, this.theme.bg, 0)?.color ?? null) : null;
     this.pen = new Pen({ rough, theme: this.theme });
     this.icons = icons;
     this.iconCache = new Map();
