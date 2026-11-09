@@ -221,7 +221,10 @@ Each platform has its rule, the same for `package --platform <name>` and for
 | Platform | Watermark |
 | --- | --- |
 | `youtube`, `shorts`, `reels`, `linkedin`, `x` | as set in `video.json`, on unless `"watermark": false` |
-| `tiktok` | always off, because TikTok forbids one on posts from apps |
+| `tiktok` | always off |
+
+A TikTok package has no watermark, because TikTok forbids one on posts from
+apps, and `render --platform tiktok` leaves it out the same way.
 
 `render` prints one line about it every time: "watermark: on", "watermark:
 off" because of `video.json` or `--no-watermark`, or "watermark: off" because

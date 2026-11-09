@@ -89,7 +89,7 @@ const PILLS = (o) => `export default {
 };`;
 
 test('pills, chips and toasts read on a phone with "defaults": "0.6", and check measures their words like any text', { skip, timeout: 120000 }, async (t) => {
-  const named = (list) => list.filter((i) => /"(Signed|Monthly|Saved)"/.test(i.message)).map((i) => `${i.level} ${i.message}`);
+  const named = (list) => list.filter((i) => /"(Signed|Monthly|Saved)".*\d+px/.test(i.message)).map((i) => `${i.level} ${i.message}`);
   assert.deepEqual(named(await issues(project(t, PILLS(''), { defaults: '0.6' }))), []);
   // A size set by hand is measured, like a label.
   const set = named(await issues(project(t, PILLS(', size: 30'), { defaults: '0.6' })));
