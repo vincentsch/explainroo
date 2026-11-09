@@ -75,10 +75,18 @@ test('check reads small text from the frames of any video, wide or tall, and wit
   assert.ok(small[0].size >= 8 && small[0].size <= 13, `smallest ${small[0].size}`);
   assert.equal(small[0].limit, 16);
   assert.ok(!wide.text.small.some((s) => s.kind === 'phone'), 'a wide video has no phone rule');
+  // A video from elsewhere may have come with its small text, so that is a hint.
   const issue = wide.issues.find((i) => i.message.startsWith('small text'));
-  assert.equal(issue.level, 'warn');
+  assert.equal(issue.level, 'hint');
   assert.equal(small[0].lines, 2);
-  assert.match(issue.message, /^small text from 0\.0s to 3\.0s: 2 lines, and the smallest at \d+,\d+ to \d+,\d+ is about \d+px tall at \d\.0s, hard to read \(use at least 16px\)$/);
+  assert.match(issue.message, /^small text in the video from 0\.0s to 3\.0s: 2 lines, and the smallest at \d+,\d+ to \d+,\d+ is about \d+px tall at \d\.0s, under the 16px that reads well\. If it came with the recording, it may be fine\.$/);
+  // In an explainroo project, explainroo drew the text, so it is a warning.
+  fs.mkdirSync(path.join(dir, 'project', 'out'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'project', 'video.json'), '{}');
+  fs.copyFileSync(path.join(dir, 'wide.mp4'), path.join(dir, 'project', 'out', 'video.mp4'));
+  const drawn = (await checkVideo(path.join(dir, 'project', 'out', 'video.mp4'))).issues.find((i) => i.message.startsWith('small text'));
+  assert.equal(drawn.level, 'warn');
+  assert.match(drawn.message, /^small text from 0\.0s to 3\.0s: 2 lines, and the smallest at \d+,\d+ to \d+,\d+ is about \d+px tall at \d\.0s, hard to read \(use at least 16px\)$/);
   // The picture holds still the whole time, which is a hint, and the tone isn't silence.
   assert.ok(wide.issues.some((i) => i.level === 'hint' && /^the picture stands still from 0\.0s/.test(i.message)));
   assert.deepEqual(wide.silences, []);
@@ -167,11 +175,12 @@ test('check and verify take a video file on the command line', { timeout: 120000
   const json = await runCli(['check', file, '--json']);
   assert.equal(json.code, 0, json.text);
   const r = JSON.parse(json.stdout);
-  assert.equal(r.verdict, 'passed with 2 warnings');
+  // Small text in a video from elsewhere is a hint.
+  assert.equal(r.verdict, 'passed with 1 warning');
   assert.equal(r.text.small[0].kind, 'small');
   const human = await runCli(['verify', file, '--quiet']);
   assert.equal(human.code, 0, human.text);
-  assert.match(human.stdout, /clip\.mp4: 2s, 1280x720, loudness -[\d.]+ LUFS, true peak -[\d.]+ dBTP\nread 2 frames, 1 s apart, for blank frames and small text\nWARN  loudness is .*\nWARN  small text from 0\.0s to 1\.0s: 2 lines, and the smallest .*\npassed with 2 warnings\n$/);
+  assert.match(human.stdout, /clip\.mp4: 2s, 1280x720, loudness -[\d.]+ LUFS, true peak -[\d.]+ dBTP\nread 2 frames, 1 s apart, for blank frames and small text\nWARN  loudness is .*\nHINT  small text in the video from 0\.0s to 1\.0s: 2 lines, and the smallest .*\npassed with 1 warning\n$/);
   const flag = await runCli(['check', file, '--size', 'tiktok']);
   assert.equal(flag.code, 1);
   assert.match(flag.stderr, /--size works with a project\. For a video file, check takes --script, --language, --view-width, --step, --json\./);

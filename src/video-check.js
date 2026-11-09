@@ -25,6 +25,20 @@ export function isVideoFile(arg) {
   return typeof arg === 'string' && VIDEO_FILE.test(arg) && fs.existsSync(arg) && fs.statSync(arg).isFile();
 }
 
+// Whether a video file belongs to an explainroo project, so explainroo drew its
+// text: render and package write into a project, up to three folders below its
+// video.json, like out/package/tiktok/.
+export function inProject(file) {
+  let dir = path.dirname(path.resolve(file));
+  for (let k = 0; k < 4; k++) {
+    if (fs.existsSync(path.join(dir, 'video.json'))) return true;
+    const up = path.dirname(dir);
+    if (up === dir) break;
+    dir = up;
+  }
+  return false;
+}
+
 // The words of a script to compare the speech with. A script.md of explainroo is
 // read with its scenes and its {shown|spoken} words, any other file as plain text.
 export function scriptWords(file, language = 'en') {
@@ -102,8 +116,12 @@ export async function checkVideo(file, { script = null, language = 'en', viewWid
     for (const [s, e] of blanks) issues.push({ level: 'warn', t: round1(s), message: `blank frames, all one color, from ${s.toFixed(1)}s to ${e.toFixed(1)}s` });
     frozen = (await frozenStretches(video, duration)).filter(([s, e]) => ![...blacks, ...blanks].some(([bs, be]) => bs < e && be > s));
     for (const [s, e] of frozen) issues.push({ level: 'hint', t: round1(s), message: `the picture stands still from ${s.toFixed(1)}s to ${e.toFixed(1)}s` });
+    const drawn = inProject(video);
     const small = smallText(frames, { width: v.width, height: v.height, viewWidth });
     for (const s of small) {
+      // Text in a recording from elsewhere may be part of it, like a clock in a
+      // screen recording, so it is only a hint there.
+      if (!drawn && s.kind !== 'player') Object.assign(s, { level: 'hint', recording: true });
       const issue = textIssue(s);
       s.message = issue.message;
       issues.push(issue);
@@ -281,6 +299,7 @@ function textIssue(s) {
   const rule = s.kind === 'small' ? `${where} is about ${px}px tall ${at}, hard to read (use at least ${s.limit}px)`
     : s.kind === 'phone' ? `${where} is about ${px}px tall ${at}, small on a phone, where text reads best at ${s.limit}px and more`
       : `${where} shows about ${s.shown.toFixed(1)}px tall ${at} in a ${s.viewWidth}px wide player, too small there (aim for at least ${s.limit}px)`;
+  if (s.recording) return { level: s.level, t: s.at, message: `small text in the video ${when}: ${rule.replace(/, hard to read \(use at least (\d+)px\)$/, ', under the $1px that reads well')}. If it came with the recording, it may be fine.` };
   return { level: s.level, t: s.at, message: `small text ${when}: ${rule}` };
 }
 
