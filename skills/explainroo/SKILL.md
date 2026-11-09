@@ -12,8 +12,9 @@ the full form when you run them. Running through `npx` does not install a
 permanent `explainroo` command on `PATH`.
 
 This page tells you, the coding agent, how to make a video with explainroo.
-The user usually gives you a topic, and maybe a length or a style. You write
-the words and the pictures. explainroo makes the video.
+The user gives you a topic, maybe with a length or a style. You write the words
+and the pictures, and explainroo makes the video. When the user wants their own
+recording edited instead, read `explainroo docs cut`.
 
 ## What explainroo does
 
@@ -135,8 +136,6 @@ post in Buffer before it goes out, add `--draft`: it saves a draft there and
 publishes nothing.
 
 ## From a brief to a finished video
-
-`explainroo docs making-a-video` has each step in full.
 
 1. **Learn the subject.** Read what the user points to, and write down the
    facts you will use. Never make up numbers, quotes or claims.
