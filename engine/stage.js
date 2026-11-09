@@ -795,6 +795,8 @@ export class Stage {
     // A scene that moves its own camera gets no automatic camera.
     if (this.engine.planning) this.engine.manualCamera = true;
     const list = [{ at: 0, x: this.cx, y: this.cy, zoom: 1, dur: 0 }, ...keys.map((k) => ({ x: this.cx, y: this.cy, zoom: 1, dur: 1.1, ...k, at: this.time(k.at ?? 0) }))].sort((a, b) => a.at - b.at);
+    // check counts a camera move as a change of the picture in a short video.
+    for (const k of list.slice(1)) this.engine.cameraKeys?.add(Math.round(k.at * 100) / 100);
     let cur = { ...list[0] };
     const motion = this.engine.motion;
     if (o.shake) {
