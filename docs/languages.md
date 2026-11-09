@@ -136,6 +136,24 @@ like "kilómetro" and "kilómetros".
 "m", "mm", "g", "s" and "ms" count as units only right after a number, so a
 letter on its own stays a letter.
 
+Maths works the same way. Whisper writes "two x squared plus three x minus five
+equals zero" as "2x² + 3x-5 = 0", and "minus five halves" as "−5/2". The check
+reads ², ³, ^, −, +, =, / and × between numbers or letters as the words of the
+language, and simple fractions like 5/2 as "five halves", "five over two" or
+"five divided by two".
+
+| Language | ², −, = and 5/2 read as |
+| --- | --- |
+| English | squared, minus, equals, five halves |
+| German | hoch zwei or Quadrat, minus, gleich, fünf Halbe |
+| Spanish | al cuadrado, menos, igual a, cinco medios |
+| French | au carré, moins, égal, cinq demis |
+| Italian | al quadrato, meno, uguale a, cinque mezzi |
+| Portuguese | ao quadrado, menos, igual a, cinco meios |
+
+A "2x" next to a formula reads as "two x". On its own it stays one word,
+because "2x faster" is no formula.
+
 Numbers count by their value, with thousands written the way the language
 writes them:
 
