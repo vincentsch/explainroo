@@ -91,7 +91,7 @@ Narration for this scene. [#marker] A marker names a moment you can animate on.
   and the markers between them, so you can pick a word as a cue. Add a scene's
   name to list only that scene.
 - Use `{shown|spoken}` for anything the voice may misread: acronyms
-  (`{CLI|C L I}`), versions (`{v2.1|version two point one}`), symbols and
+  spelled out letter by letter, with commas (`{CLI|C, L, I}`), versions (`{v2.1|version two point one}`), symbols and
   domains (`{example.com|example dot com}`, otherwise the voice says "example
   comm"). The speech check counts the word when it hears either form, so
   "example.com" confirms `{example.com|example dot com}`. It also counts what

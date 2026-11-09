@@ -193,7 +193,13 @@ function unconfirmedAdvice(overridden, others, script) {
     return `{${shown}|${spoken}} was ${heard ? `heard as "${heard}"` : 'not heard as written'}`;
   });
   const one = overridden.length === 1;
-  const ask = `${said.join(', and ')}, so ${one ? 'the override' : 'the overrides'} didn't help. Try a different spoken spelling, like {${override(overridden[0].word).shown}|another spelling}, or reword the sentence.`;
+  // Letters with spaces, like {AES|A E S}, are often read as a word. With commas
+  // the voice says each letter.
+  const spaced = overridden.map(({ word }) => override(word)).find(({ spoken }) => /^\p{L}(?: \p{L})+$/u.test(spoken.trim()));
+  const instead = spaced
+    ? `Write the letters with commas, like {${spaced.shown}|${spaced.spoken.trim().split(' ').join(', ')}}, or reword the sentence.`
+    : `Try a different spoken spelling, like {${override(overridden[0].word).shown}|another spelling}, or reword the sentence.`;
+  const ask = `${said.join(', and ')}, so ${one ? 'the override' : 'the overrides'} didn't help. ${instead}`;
   return others ? `${ask} If the voice says another word wrong, write it as {shown|spoken} in ${script}.` : ask;
 }
 
