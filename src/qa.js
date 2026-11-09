@@ -60,15 +60,24 @@ export function nearlyText(nearly) {
   ].join('; ');
 }
 
-// Up to this many words that only nearly matched are listed. More are counted,
-// and --verbose lists them.
+// Up to this many words that only nearly matched are listed with their times.
+// More are listed by name, and --verbose adds their times.
 export const NEARLY_LISTED = 2;
 
 // The near matches as check and verify print them: the list with its advice,
-// or, for more than NEARLY_LISTED words without `verbose`, how many there are.
+// or, for more than NEARLY_LISTED words without `verbose`, the words without
+// their times.
 export function nearlyLine(nearly, verbose = false) {
   if (verbose || nearly.length <= NEARLY_LISTED) return `${nearlyText(nearly)}. ${nearlyAdvice(nearly)}`;
-  return `${nearly.length} words only nearly matched. No fix is needed unless one of them sounds wrong when you listen, and --verbose lists them with their times`;
+  return `${nearlyText(untimed(nearly))}. ${NEARLY_SHORT}`;
+}
+
+export const NEARLY_SHORT = 'No fix is needed unless one of them sounds wrong when you listen, and --verbose adds their times';
+
+// The near matches without their times, so the same word heard the same way
+// shows once, with how often.
+export function untimed(nearly) {
+  return nearly.map(({ time, ...n }) => n);
 }
 
 // What to do about words that only nearly matched or sounded the same: nothing,
@@ -219,7 +228,7 @@ export function speechFindings(project, voices, timeline = null) {
     if (v && v.duration) {
       const nearly = nearTimes(v.nearly ?? [], placed.get(sc.id));
       speech.push({ scene: sc.id, matchRate: v.matchRate, nearly });
-      if (nearly.length) issues.push({ level: 'hint', scene: sc.id, t: null, key: 'nearly', words: nearly.length, message: `understood ${Math.round(v.matchRate * 100)}%, ${nearlyText(nearly)}. ${nearlyAdvice(nearly)}` });
+      if (nearly.length) issues.push({ level: 'hint', scene: sc.id, t: null, key: 'nearly', words: nearly.length, nearly, message: `understood ${Math.round(v.matchRate * 100)}%, ${nearlyText(nearly)}. ${nearlyAdvice(nearly)}` });
     }
   }
   return { issues, speech };

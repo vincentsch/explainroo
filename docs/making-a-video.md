@@ -134,7 +134,8 @@ user. Read it first.
     clips. It also runs the speech check on the finished sound to make sure
     the voice is still clear over the music, and it lists the words that only
     nearly matched next to the percentage it understood, each with its time in
-    the video. Each word it could not confirm is a warning with its time in
+    the video. More than two are listed by name, and `--verbose` adds their
+    times. Each word it could not confirm is a warning with its time in
     the video. Its last line is the verdict: "passed", "passed with 2
     warnings" or "failed: 1 problem", and `--json` has it as `verdict`, with
     `passed` true or false.

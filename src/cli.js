@@ -8,7 +8,7 @@ import { normWord, ScriptError } from './script.js';
 import { prepare, makeState, outdatedLine, outdatedRenders, VERSION } from './pipeline.js';
 import { render } from './render.js';
 import { exportPlayer } from './export.js';
-import { check, formatVerify, NEARLY_LISTED, stills, sheet, unconfirmedLine, unconfirmedWords, verify } from './qa.js';
+import { check, formatVerify, NEARLY_LISTED, NEARLY_SHORT, nearlyText, untimed, stills, sheet, unconfirmedLine, unconfirmedWords, verify } from './qa.js';
 import { startServer, ROOT } from './server.js';
 import { VOICES, LANGUAGES, voiceLanguage, loadTTS, TTS_SAMPLE_RATE } from './models.js';
 import { phonemize, generateSpeech } from './phonemes.js';
@@ -611,15 +611,18 @@ function videoArg(arg) {
 const VIDEO_FLAGS = new Set(['script', 'language', 'view-width', 'step', 'verbose', 'json', 'quiet']);
 
 // What check prints of its findings: the hints about words that only nearly
-// matched, one per scene, become one line when there are more than
-// NEARLY_LISTED words, unless --verbose. Its JSON has them all.
+// matched, one per scene, become one line that names the words without their
+// times when there are more than NEARLY_LISTED words, unless --verbose. Its
+// JSON has them all.
 export function shownIssues(issues, verbose) {
   const near = issues.filter((i) => i.key === 'nearly');
   const words = near.reduce((n, i) => n + i.words, 0);
   if (verbose || words <= NEARLY_LISTED) return issues;
   const at = issues.indexOf(near[0]);
   const rest = issues.filter((i) => i.key !== 'nearly');
-  rest.splice(at, 0, { level: 'hint', scene: null, t: null, message: `${words} words only nearly matched in the speech check of ${near.length === 1 ? `scene ${near[0].scene}` : `${near.length} scenes`}. No fix is needed unless one of them sounds wrong when you listen, and --verbose lists them with their times` });
+  const where = near.length === 1 ? `scene ${near[0].scene}` : `${near.length} scenes`;
+  const listed = near.every((i) => i.nearly) ? `${nearlyText(untimed(near.flatMap((i) => i.nearly)))}, in the speech check of ${where}` : `${words} words only nearly matched in the speech check of ${where}`;
+  rest.splice(at, 0, { level: 'hint', scene: null, t: null, message: `${listed}. ${NEARLY_SHORT}` });
   return rest;
 }
 
