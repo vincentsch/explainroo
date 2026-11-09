@@ -55,11 +55,28 @@ your script, because the page may lay itself out differently in another
 size. `--json` gives the same list as JSON, and `--keep-profile` opens the
 page with the kept profile, for a page behind a login.
 
+A zoom or a scroll often goes to plain content, like a heading, a section of
+results or a chart. `--all` adds the visible headings, sections and images to
+the list, each with its words and a selector. `--text "Solutions"` lists only
+the elements that hold those words: the smallest one, and then the larger
+ones around it, like the section the heading starts. It waits up to 15
+seconds for the words, for a page that shows its results a moment after it
+opens. Pick the one whose box holds what the voice talks about.
+
 Then run `explainroo record videos/<name> <name>`. It runs the steps in a
 browser of its own and saves `assets/recordings/<name>.webm` and its step
 log, `assets/recordings/<name>.log.json`. The video shows only the page,
-with no browser bars or pop-ups. `record` needs Playwright's own ffmpeg,
-which `explainroo doctor --fetch` downloads once.
+with no browser bars or pop-ups. `record` needs Playwright's own ffmpeg, and
+the first recording downloads it and says so. `explainroo doctor --fetch
+--record` gets it ahead of time.
+
+`record` prints one line per step with what it found, like
+`step 7 (zoom "section.results", nth 2): <section> "Solutions: x = 1 ..."`,
+and saves a small picture of each step's element in
+`build/record/<name>/step-<n>.png`. The step log keeps the element's words
+and a selector that matches only it, under `match`. Open the pictures before
+you write the scene, because a step that found the wrong element still
+records.
 
 - A step finds its element by `text` or by a CSS `selector`. `text` is the
   words the element shows, and its `aria-label`, label or placeholder count
@@ -67,7 +84,8 @@ which `explainroo doctor --fetch` downloads once.
   full stop. An editor like CodeMirror shows its placeholder as an element
   inside the field, and that counts as the field's placeholder: the step
   clicks or types into the field. `nth: 2` takes the second match from the
-  top.
+  top. `nth` counts visible elements only. When a selector also matches
+  hidden ones, `record` says how many it skipped.
 - `open` goes to `url`, an address or a path. `click`, `hover` and `type`
   move the pointer to the element. `type` clicks the field and types
   `value` at 14 characters a second, or at `cps`, and `press` presses a key
@@ -81,7 +99,10 @@ which `explainroo doctor --fetch` downloads once.
   at the bottom of the window, scrolls it to the middle first. When it is
   still covered there, `record` stops and names what covers it.
 - A zoom fits its element into about 70% of the frame, from 1.4 to 2.5
-  times closer. `"scale": 2` on a zoom step sets how close it goes.
+  times closer. `"scale": 2` on a zoom step sets how close it goes. It
+  holds the middle of the element in view. `"align": "left"` holds its left
+  edge instead, for a wide row whose words start at the left, and `right`,
+  `top` and `bottom` work the same way.
 - A pointer move takes about 0.6 seconds, and a scroll of one window height
   about 1 second. `"pace": 1.5` in the script makes moves, scrolls and
   typing faster, from 0.5 to 2. `"duration": 1.2` on a step sets the seconds
@@ -89,7 +110,9 @@ which `explainroo doctor --fetch` downloads once.
   it types a second, which the pace speeds up too.
 - `cue` is a spoken word or a `[#marker]` of the scene that plays it.
   Several steps may share one cue, like a `zoom` and the `type` after it.
-  They run in order, and the first lands on the cue.
+  They run in order, and the first lands on the cue. A cue only changes
+  playback, so a new cue needs no new recording. Any other change to the
+  script does, and `check` says so.
 - Steps with `"before": true` run before the video starts, like closing a
   cookie banner or logging in. A step before the video that finds nothing
   is skipped, in every run, with or without `--keep-profile`, so it can
@@ -99,12 +122,25 @@ which `explainroo doctor --fetch` downloads once.
   login, `--keep-profile` keeps the profile for the next run.
 - `blur` blurs elements by CSS selector or exact text on every page, before
   anything is recorded. Use it for real email addresses and keys.
-- `viewport` is 1920 x 1080 by default. Pick it for the size of the video:
-  1280 x 720 for 16:9, which makes the app's text larger than the default,
-  1000 x 1250 for 4:5, and 1080 x 1920 for 9:16. A recording that plays at
-  under 60% of its size gets a warning from `check` unless a step zooms in,
-  because its text is then too small to read. The warning names the zoom
-  step to add.
+- `viewport` is 1920 x 1080 by default, which is too large for most
+  videos. Pick it from the content area the recording plays in: the same
+  shape, about 1.8 times smaller. Then the page's 16 px text plays at about
+  29 px. These are the numbers for a recording that fills the content area:
+
+  | Size | Content area | Viewport |
+  | --- | --- | --- |
+  | 16:9 (`youtube`) | 1768 x 928 | 982 x 516 |
+  | 4:5 (`instagram`, `linkedin`) | 928 x 977 | 516 x 542 |
+  | `shorts` with bold captions | 885 x 732 | 492 x 406 |
+  | `tiktok`, its package with bold captions | 745 x 863 | 414 x 480 |
+  | `reels` with bold captions | 896 x 751 | 498 x 418 |
+
+  A page this narrow may lay itself out as on a phone, which often reads
+  best in a tall video. `check` warns when a recording's 16 px text would
+  play under 24 px, and names a viewport that fits where it plays. A zoom
+  makes the text larger only while it holds. A recording that plays at
+  under 60% of its size with no zoom step gets its own warning, which names
+  the zoom step to add.
 
 The step log has the time of each step in seconds of the video, and the
 `box` of its element in pixels of the video: `x` and `y` are its middle,

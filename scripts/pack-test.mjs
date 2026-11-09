@@ -124,8 +124,9 @@ const steps = [
       for (const name of ['voice model', 'speech check model']) {
         expect(r.checks.find((c) => c.name === name)?.state === 'ready', `the ${name} is missing. Run "node bin/explainroo.js doctor --fetch" once, so this test can reuse it.`);
       }
-      // English with Kokoro needs no other program and no language model, installed or not.
-      for (const name of ['espeak-ng', 'misaki ja', 'misaki zh', 'language model']) {
+      // English with Kokoro needs no other program and no language model, installed or not,
+      // and Playwright's ffmpeg only counts for a project with recordings.
+      for (const name of ['espeak-ng', 'misaki ja', 'misaki zh', 'language model', 'playwright ffmpeg']) {
         expect(r.checks.find((c) => c.name === name)?.state === 'not needed', `doctor says English needs the ${name}`);
       }
     },

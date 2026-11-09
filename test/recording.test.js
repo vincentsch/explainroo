@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { checkRecordingScript, readRecordingScript, scriptHash, stepLabel, videoOffset } from '../src/record.js';
+import { checkRecordingScript, readRecordingScript, scriptHash, stepLabel, stepLine, videoOffset, wholeHash } from '../src/record.js';
 import { ffmpeg } from '../src/ffmpeg.js';
-import { cuedSteps, recordingClock, videoTime, sceneTime, cursorAt, viewAt, focusRect, coverRect, zoomScale, ZOOM_SECONDS, ZOOM_RANGE, CATCH_UP } from '../engine/recording.js';
+import { cuedSteps, recordingClock, videoTime, sceneTime, cursorAt, viewAt, focusRect, coverRect, zoomScale, fitViewport, smallPageText, movingSteps, ZOOM_SECONDS, ZOOM_RANGE, CATCH_UP } from '../engine/recording.js';
 import { makeState } from '../src/pipeline.js';
 import { loadProject } from '../src/project.js';
 
@@ -241,6 +241,128 @@ test('the page gets the step log of each recording, and a project without one ke
   // When both are there, the new one counts.
   fs.writeFileSync(path.join(dir, 'assets/recordings/demo.log.json'), JSON.stringify({ ...log, start: 0.7 }));
   assert.equal(makeState(loadProject(dir), timeline).recordings.demo.start, 0.7);
+});
+
+test('a new cue plays from the script without a new recording, and any other change asks for one', (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-record-cue-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ title: 'T' }));
+  fs.writeFileSync(path.join(dir, 'script.md'), '## a\nHello.\n');
+  fs.writeFileSync(path.join(dir, 'scenes.js'), 'export default { a(s) {} };');
+  const script = { url: URL, steps: [{ do: 'click', text: 'Accept', before: true }, { do: 'click', text: 'Save', cue: '#plot' }, { do: 'mark', name: 'done' }] };
+  const write = (s) => fs.writeFileSync(path.join(dir, 'recordings/demo.json'), JSON.stringify(s));
+  fs.mkdirSync(path.join(dir, 'recordings'));
+  fs.mkdirSync(path.join(dir, 'assets/recordings'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'assets/recordings/demo.webm'), '');
+  const steps = [
+    { step: 1, do: 'click', text: 'Accept', before: true, start: 0.1, t: 0.2, end: 0.3 },
+    { step: 2, do: 'click', text: 'Save', cue: '#plot', start: 1, t: 1.5, end: 2 },
+    { step: 3, do: 'mark', name: 'done', start: 2, t: 2, end: 2 },
+  ];
+  const log = { version: 1, width: 1920, height: 1080, duration: 3, start: 0.5, end: 2, cursor: { x: 960, y: 540 }, script: scriptHash(script), steps };
+  fs.writeFileSync(path.join(dir, 'assets/recordings/demo.log.json'), JSON.stringify(log));
+  const state = () => makeState(loadProject(dir), { scenes: [] }).recordings.demo;
+  // The cue is left out of what the recording is made from.
+  const moved = { ...script, steps: [script.steps[0], { do: 'click', text: 'Save', cue: 'plot' }, { do: 'mark', name: 'done', cue: 'end' }] };
+  assert.equal(scriptHash(moved), scriptHash(script));
+  assert.notEqual(wholeHash(moved), wholeHash(script));
+  write(moved);
+  const now = state();
+  assert.equal(now.changed, undefined);
+  assert.deepEqual(now.steps.map((st) => st.cue), [undefined, 'plot', 'end']);
+  // The steps keep the order of their keys, so the state stays the same for the same cues.
+  assert.deepEqual(Object.keys(now.steps[1]), Object.keys(steps[1]));
+  // A cue taken out goes from playback too.
+  write({ ...script, steps: [script.steps[0], { do: 'click', text: 'Save' }, script.steps[2]] });
+  assert.deepEqual(state().steps.map((st) => st.cue), [undefined, undefined, undefined]);
+  // Anything else is a new recording.
+  write({ ...script, steps: [script.steps[0], { do: 'click', text: 'Save it', cue: '#plot' }, script.steps[2]] });
+  assert.equal(state().changed, true);
+  assert.equal(state().steps[1].cue, '#plot');
+  // A cue that isn't valid asks to record again, which then names the mistake.
+  write({ ...script, steps: [script.steps[0], { do: 'click', text: 'Save', cue: '' }, script.steps[2]] });
+  assert.equal(state().changed, true);
+  // A log from before kept the hash of the whole script, cues too, and still plays.
+  fs.writeFileSync(path.join(dir, 'assets/recordings/demo.log.json'), JSON.stringify({ ...log, script: wholeHash(script) }));
+  write(script);
+  assert.equal(state().changed, undefined);
+  write(moved);
+  assert.equal(state().changed, true);
+});
+
+test('a zoom holds the side of its element that align names', () => {
+  const base = coverRect(1280, 720, 16 / 9);
+  // A wide row whose words start at its left, like a result in a list.
+  const box = { x: 640, y: 300, w: 1200, h: 80 };
+  const middle = focusRect(box, base, 1280, 720, 2);
+  const left = focusRect(box, base, 1280, 720, 2, 'left');
+  const right = focusRect(box, base, 1280, 720, 2, 'right');
+  assert.equal(middle.x, 320);
+  assert.equal(left.x, 40 - 640 * 0.04);
+  assert.equal(right.x + right.w, 1240 + 640 * 0.04);
+  assert.equal(left.y, middle.y);
+  // top and bottom hold its edge, and the view stays inside the video.
+  const tall = { x: 640, y: 400, w: 200, h: 500 };
+  assert.equal(focusRect(tall, base, 1280, 720, 2, 'top').y, 150 - 360 * 0.04);
+  assert.equal(focusRect(tall, base, 1280, 720, 2, 'bottom').y, 650 + 360 * 0.04 - 360);
+  assert.equal(focusRect({ x: 20, y: 300, w: 30, h: 30 }, base, 1280, 720, 2, 'left').x, 0);
+  // The log carries align to playback.
+  const log = { width: 1280, height: 720, steps: [{ do: 'zoom', t: 1, box, scale: 2, align: 'left' }] };
+  assert.equal(viewAt(log, 1 + ZOOM_SECONDS, 16 / 9).x, left.x);
+  const s = checkRecordingScript({ url: URL, steps: [{ do: 'zoom', selector: '.results', align: 'left' }, { do: 'zoom', text: 'Total', align: 'center' }] });
+  assert.deepEqual(s.steps, [{ do: 'zoom', selector: '.results', align: 'left' }, { do: 'zoom', text: 'Total' }]);
+  fails({ url: URL, steps: [{ do: 'zoom', text: 'Total', align: 'middle' }] }, /step 1: align must be one of center, left, right, top, bottom: the side of the element the zoom holds in view/);
+  fails({ url: URL, steps: [{ do: 'zoom', align: 'left' }] }, /step 1: a zoom without an element goes back out, so it takes no align/);
+  fails({ url: URL, steps: [{ do: 'click', text: 'Save', align: 'left' }] }, /step 1: a click step has no "align"/);
+});
+
+test('a viewport fits the area a recording plays in, so 16 px page text plays at about 29 px', () => {
+  // The content areas of the docs' table.
+  assert.deepEqual(fitViewport(1768, 928), { width: 982, height: 516 });
+  assert.deepEqual(fitViewport(928, 977), { width: 516, height: 542 });
+  assert.deepEqual(fitViewport(885, 732), { width: 492, height: 406 });
+  assert.deepEqual(fitViewport(745, 863), { width: 414, height: 480 });
+  assert.deepEqual(fitViewport(896, 751), { width: 498, height: 418 });
+  // A small area keeps its shape at 320 pixels or more.
+  assert.deepEqual(fitViewport(400, 200), { width: 640, height: 320 });
+  const log = { width: 1280, height: 720 };
+  // Shown at 1.5 times, 16 px plays at 24, which is enough.
+  assert.equal(smallPageText(log, { w: 1920, h: 1080 }), null);
+  const small = smallPageText({ width: 1920, height: 1080 }, { w: 1697, h: 955 });
+  assert.equal(Math.round(small.px), 14);
+});
+
+test('the steps that move the picture are typing, scrolls, zooms and what changes the page', () => {
+  const steps = [
+    { step: 1, do: 'open', start: 0, t: 0, end: 1 },
+    { step: 2, do: 'type', start: 1, t: 1.4, until: 3.2, end: 4 },
+    { step: 3, do: 'scroll', start: 4, t: 4, until: 5, end: 5.3 },
+    { step: 4, do: 'zoom', start: 5.3, t: 5.3, end: 6.6 },
+    { step: 5, do: 'click', start: 6.6, t: 7, end: 8, changed: false },
+    { step: 6, do: 'click', start: 8, t: 8.5, end: 9, changed: true },
+    { step: 7, do: 'hover', start: 9, t: 9.4, end: 10, changed: false },
+    { step: 8, do: 'wait', start: 10, t: 10, end: 12, changed: true },
+    { step: 9, do: 'wait', start: 12, t: 12, end: 13, changed: false },
+    { step: 10, do: 'mark', start: 13, t: 13, end: 13 },
+  ];
+  assert.deepEqual(movingSteps(steps), [
+    { step: 1, from: 0, to: 0 },
+    { step: 2, from: 1.4, to: 3.2 },
+    { step: 3, from: 4, to: 5 },
+    { step: 4, from: 5.3, to: 5.3 + ZOOM_SECONDS },
+    { step: 6, from: 8.5, to: 8.5 },
+    { step: 8, from: 12, to: 12 },
+  ]);
+  // zoom: false keeps the zooms out of the picture.
+  assert.equal(movingSteps(steps, { zoom: false }).some((m) => m.step === 4), false);
+  // A log from before counts every step at its own time, as it did.
+  assert.deepEqual(movingSteps(steps, { noted: false }).map((m) => [m.step, m.from, m.to]), steps.map((st) => [st.step, st.t, st.t]));
+});
+
+test('record says in one line what each step found', () => {
+  assert.equal(stepLine('step 2 (click "Save")', { match: { tag: 'button', text: 'Save invoice', selector: '#save' } }), 'step 2 (click "Save"): <button> "Save invoice"');
+  assert.equal(stepLine('step 3 (zoom "section")', { match: { tag: 'section', text: '', selector: 'section.a', hidden: 3 } }), 'step 3 (zoom "section"): <section> with no words, skipping 3 hidden matches of the selector');
+  assert.equal(stepLine('step 4 (mark "a")', {}), 'step 4 (mark "a")');
 });
 
 // Chrome sends the first frame of a recording a little after the page opens,

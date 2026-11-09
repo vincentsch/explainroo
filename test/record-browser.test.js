@@ -4,11 +4,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { findChrome, launch } from '../src/browser.js';
-import { formatInspect, inspect, record } from '../src/record.js';
+import { formatInspect, formatRecord, inspect, record } from '../src/record.js';
 import { loadProject } from '../src/project.js';
 import { withEngine } from '../src/pipeline.js';
 import { execFileSync } from 'node:child_process';
-import { ffmpeg, ffmpegPath } from '../src/ffmpeg.js';
+import { ffmpeg, ffmpegPath, probe } from '../src/ffmpeg.js';
 import { serveDemoApp } from './fixtures/demo-app/serve.js';
 
 let chrome;
@@ -349,6 +349,19 @@ test('check warns about a recording that plays small with no zoom, and names the
     return withEngine(loadProject(dir), timeline, { scale: 0.25 }, async (page) => (await page.evaluate(() => window.explainroo.check(0.25))).filter((i) => /plays at/.test(i.message)).map((i) => i.message));
   };
   writeLog();
+  // Shown 768 pixels wide, its 16 px text plays under 24 px, and check names a
+  // viewport of the shape it plays in. 1.5 times its size is enough.
+  const text = async (o) => withEngine(loadProject(dir), timeline, { scale: 0.25 }, async (page) => (await page.evaluate(() => window.explainroo.check(0.25))).filter((i) => /16px text/.test(i.message)).map((i) => i.message));
+  writeLog();
+  fs.writeFileSync(path.join(dir, 'scenes.js'), "export default { demo(s) { s.recording('invoice', { w: 1200 }); } };");
+  assert.deepEqual(await text(), ['recording "invoice" plays 1280 pixels of page in 1200, so the page\'s 16px text shows 15px tall, under 24px and hard to read on a phone. A zoom helps only while it holds. Record it with "viewport": { "width": 666, "height": 376 } in recordings/invoice.json: that shape fits the 1200x675 it plays in, and its 16px text shows about 29px tall']);
+  // Where even the smallest viewport plays small, it has to show larger.
+  fs.writeFileSync(path.join(dir, 'scenes.js'), "export default { demo(s) { s.recording('invoice', { w: 768 }); } };");
+  assert.deepEqual(await text(), ['recording "invoice" plays 1280 pixels of page in 768, so the page\'s 16px text shows 10px tall, under 24px and hard to read on a phone. A zoom helps only while it holds. Show it larger: in 768x432, even the smallest viewport, { "width": 568, "height": 320 }, plays its 16px text at about 22px']);
+  fs.writeFileSync(path.join(dir, 'scenes.js'), "export default { demo(s) { s.recording('invoice'); } };");
+  assert.deepEqual(await text(), ['recording "invoice" plays 1280 pixels of page in 1584, so the page\'s 16px text shows 20px tall, under 24px and hard to read on a phone. A zoom helps only while it holds. Record it with "viewport": { "width": 982, "height": 516 } in recordings/invoice.json: that shape fits the 1768x928 it plays in, and its 16px text shows about 28px tall']);
+  fs.writeFileSync(path.join(dir, 'scenes.js'), "export default { demo(s) { s.recording('invoice', { w: 1920 }); } };");
+  assert.deepEqual(await text(), []);
   // 700 pixels wide is 55% of the 1280 of the video.
   assert.deepEqual(await findings({ w: 700 }), ['recording "invoice" plays at 55% of its size, 1280 pixels wide in 700, and none of its steps zooms in, so its text is small to read. Add a zoom step to recordings/invoice.json before step 2, like { "do": "zoom", "text": "New invoice", "cue": "#new" }, and record it again']);
   // From 60% on it's fine, and so is a zoom step.
@@ -356,4 +369,118 @@ test('check warns about a recording that plays small with no zoom, and names the
   writeLog([{ step: 4, do: 'zoom', selector: 'form', start: 3, t: 3, end: 3.4, box: { x: 600, y: 300, w: 600, h: 300 } }]);
   assert.deepEqual(await findings({ w: 700 }), []);
   assert.deepEqual(await findings({ h: 300, zoom: false }), ['recording "invoice" plays at 42% of its size, 1280 pixels wide in 533, and zoom: false keeps its zooms out, so its text is small to read. Take out zoom: false, or show it larger']);
+});
+
+test('record says what each step found, with a picture of it, and nth leaves out hidden matches', { skip: !chrome }, async (t) => {
+  const app = await serveDemoApp();
+  t.after(app.close);
+  const dir = project(t, {
+    url: `${app.url}#/invoices`,
+    viewport: { width: 1280, height: 720 },
+    steps: [
+      { do: 'click', text: 'Accept', before: true },
+      // The closed cookie banner keeps its <p>, hidden, so "p" number 2 is the total.
+      { do: 'zoom', selector: 'p', nth: 2, align: 'left' },
+      { do: 'click', selector: 'h1' },
+      { do: 'click', text: 'New invoice' },
+      { do: 'type', text: 'Amount', value: '75' },
+      { do: 'mark', name: 'typed' },
+    ],
+  });
+  const lines = [];
+  const r = await record(dir, 'invoice', { log: (l) => lines.push(l) });
+  const log = JSON.parse(fs.readFileSync(path.join(dir, r.log), 'utf8'));
+  const [, zoom, heading, click, type, mark] = log.steps;
+  assert.equal(log.changes, true);
+  assert.deepEqual(zoom.match, { tag: 'p', text: 'Total $2,430', selector: 'p.total', hidden: 1 });
+  assert.equal(zoom.align, 'left');
+  assert.deepEqual(click.match, { tag: 'button', text: 'New invoice', selector: '#new' });
+  assert.deepEqual([type.match.tag, type.match.selector], ['input', '#amount']);
+  assert.equal(mark.match, undefined);
+  // A click on a heading changes nothing, and one that opens the form does.
+  assert.deepEqual([heading.changed, click.changed], [false, true]);
+  // Typing moves the picture until its last key.
+  assert.ok(type.until > type.t + 0.05 && type.until <= type.end, JSON.stringify(type));
+  // One line per step, with what it found.
+  assert.deepEqual(lines.filter((l) => /^step/.test(l)), [
+    'step 1 (click "Accept"), before the video: <button> "Accept"',
+    'step 2 (zoom "p"): <p> "Total $2,430", skipping 1 hidden match of the selector',
+    'step 3 (click "h1"): <h1> "Invoices"',
+    'step 4 (click "New invoice"): <button> "New invoice"',
+    'step 5 (type "Amount"): <input> "Amount"',
+    'step 6 (mark "typed")',
+  ]);
+  // A small picture of each element the video shows, from the video.
+  assert.equal(r.pictures, 'build/record/invoice');
+  // A step before the video is not in it, so it has no picture.
+  assert.deepEqual(r.matched.map((m) => [m.step, m.picture]), [[1, undefined], ...[2, 3, 4, 5].map((n) => [n, `build/record/invoice/step-${n}.png`])]);
+  assert.deepEqual(fs.readdirSync(path.join(dir, 'build/record/invoice')).sort(), ['step-2.png', 'step-3.png', 'step-4.png', 'step-5.png']);
+  const size = async (file) => (await probe(file)).streams.map((st) => [st.width, st.height])[0];
+  // The button with 12 pixels around it, and the wide field scaled to 480 at most.
+  assert.deepEqual(await size(path.join(dir, 'build/record/invoice/step-4.png')), [click.box.w + 24, click.box.h + 24]);
+  const [w] = await size(path.join(dir, 'build/record/invoice/step-5.png'));
+  assert.ok(w <= 480, w);
+  // The button is blue in its picture.
+  const mid = rgbAt(path.join(dir, 'build/record/invoice/step-4.png'), Math.round(click.box.w / 2) + 12, 14);
+  assert.ok(mid[2] > 200 && mid[0] < 90, `the button: ${mid}`);
+  assert.match(formatRecord(r), /\nwhat each step found: build\/record\/invoice\/step-<n>\.png\. Open them/);
+  // A selector with only hidden matches says so when it stops.
+  fs.writeFileSync(path.join(dir, 'recordings/invoice.json'), JSON.stringify({ url: `${app.url}#/invoices`, viewport: { width: 1280, height: 720 }, steps: [{ do: 'zoom', selector: '#toast' }] }));
+  await assert.rejects(record(dir, 'invoice', { findSeconds: 1 }), /no visible element with the selector "#toast" after 1 s\. The selector matches 1 hidden element, which a step leaves out\./);
+});
+
+test('inspect --all lists headings, sections and images, and --text what holds the words', { skip: !chrome }, async (t) => {
+  const app = await serveDemoApp();
+  t.after(app.close);
+  const dir = project(t, { url: app.url, steps: [{ do: 'mark', name: 'a' }] });
+  const viewport = { width: 1280, height: 720 };
+  const plain = await inspect(dir, `${app.url}#/invoices`, { viewport });
+  const all = await inspect(dir, `${app.url}#/invoices`, { viewport, all: true });
+  const content = all.elements.filter((e) => e.group === 'content');
+  assert.equal(all.content, content.length);
+  assert.equal(all.total, plain.total + content.length);
+  assert.deepEqual(content.map((e) => e.kind), ['h1', 'table']);
+  assert.deepEqual([content[0].words, content[0].text, content[0].selector], ['Invoices', 'Invoices', 'h1']);
+  assert.match(formatInspect(all), /^http:\/\/127\.0\.0\.1:\d+\/#\/invoices at 1280x720: \d+ elements, \d+ to click or type into, and 2 of the headings, sections and images to zoom or scroll to, from the top\n/);
+  const held = await inspect(dir, `${app.url}#/invoices`, { viewport, holding: 'total' });
+  assert.equal(held.matches, 1);
+  assert.deepEqual(held.elements.map((e) => [e.level, e.kind]), [[0, 'p'], [1, 'main']]);
+  assert.deepEqual([held.elements[0].words, held.elements[0].selector], ['Total $2,430', 'p.total']);
+  const text = formatInspect(held);
+  assert.match(text, /: 1 element holds "total", each with the larger ones around it, from the top\n {2}1\. p "Total \$2,430" {2}at \d+,\d+, \d+x\d+\n {5}text "Total \$2,430", or selector p\.total\n {2}2\. {3}in main /);
+  // Words that come a moment after the page opens, like search results, get a while to show.
+  const later = await inspect(dir, `${app.url}#/search`, { viewport, holding: 'Results:' });
+  assert.deepEqual(later.elements.map((e) => [e.level, e.kind, e.selector]), [[0, 'h2', 'h2'], [1, 'section', 'section.hits'], [2, 'main', '#main']]);
+  const none = formatInspect(await inspect(dir, `${app.url}#/invoices`, { viewport, holding: 'Nothing like it' }));
+  assert.match(none, /: no visible element holds "Nothing like it", also after 15 s\./);
+});
+
+test('in a short, typing, scrolling, zooming and a click that changes the page count as picture changes', { skip: !chrome }, async (t) => {
+  const dir = project(t, { url: 'http://127.0.0.1:4500/', viewport: { width: 540, height: 960 }, steps: [{ do: 'mark', name: 'a' }] });
+  fs.mkdirSync(path.join(dir, 'assets/recordings'), { recursive: true });
+  await ffmpeg(['-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=white:s=540x960:r=25:d=9', '-c:v', 'libvpx', '-b:v', '200k', path.join(dir, 'assets/recordings/invoice.webm')]);
+  const box = { x: 270, y: 300, w: 400, h: 44 };
+  const writeLog = (steps, more = {}) => fs.writeFileSync(path.join(dir, 'assets/recordings/invoice.log.json'), JSON.stringify({ version: 1, url: 'http://127.0.0.1:4500/', width: 540, height: 960, duration: 9, start: 0, end: 8.5, cursor: { x: 270, y: 480 }, steps, blur: [], ...more }));
+  const timeline = { pace: 1, duration: 9, frames: 270, fps: 30, width: 1080, height: 1920, transitionSeconds: 0,
+    scenes: [{ id: 'demo', index: 0, start: 0, dur: 9, words: [], marks: {}, voice: null, lead: 0, transition: 'none' }] };
+  fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ size: 'shorts', theme: 'clean', captions: false, watermark: false, music: false, sfx: false }));
+  fs.writeFileSync(path.join(dir, 'scenes.js'), "export default { demo(s) { s.recording('invoice', { full: true }); } };");
+  const still = () => withEngine(loadProject(dir), timeline, { scale: 0.25 }, async (page) => (await page.evaluate(() => window.explainroo.check(0.25))).filter((i) => i.message.startsWith("the picture doesn't change")).map((i) => i.message.split(', and')[0]));
+  const steps = [
+    { step: 1, do: 'type', selector: '#q', start: 0.5, t: 1, click: 0.8, until: 4, end: 4.5, box },
+    { step: 2, do: 'click', text: 'Solve', start: 4.5, t: 5, click: 5, end: 5.5, box, changed: false },
+    { step: 3, do: 'scroll', y: 600, start: 5.5, t: 5.5, until: 6.5, end: 6.8 },
+    { step: 4, do: 'mark', name: 'end', start: 6.8, t: 6.8, end: 6.8 },
+  ];
+  writeLog(steps, { changes: true });
+  // The typing fills 1 to 4 s, the click changes nothing, and the scroll moves it from 5.5 to 6.5 s.
+  assert.deepEqual(await still(), ["the picture doesn't change for 2.5s, from 6.5s"]);
+  // A click that changes the page counts, and so does a zoom while it moves.
+  writeLog([...steps.slice(0, 3), { step: 4, do: 'zoom', selector: '#q', start: 7.5, t: 7.5, end: 8.8, box }], { changes: true });
+  assert.deepEqual(await still(), []);
+  writeLog([steps[0], { ...steps[1], changed: true }, { ...steps[1], step: 3, t: 6.5, start: 6.5, end: 7, changed: true }], { changes: true });
+  assert.deepEqual(await still(), ["the picture doesn't change for 2.5s, from 6.5s"]);
+  // A log from before counts each step at its time, as it did.
+  writeLog(steps.map(({ until, changed, ...st }) => st));
+  assert.deepEqual(await still(), ["the picture doesn't change for 4.0s, from 1.0s", "the picture doesn't change for 2.2s, from 6.8s"]);
 });

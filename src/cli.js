@@ -109,7 +109,8 @@ Product demos
                         of every step in assets/recordings/, for s.recording in a scene. Every run starts
                         with an empty browser profile, and --keep-profile keeps cookies and stored data for
                         the next run, for a site that needs a login. "record <project> --inspect <url>" lists
-                        what a step can click or type into, with a text and a selector for each (--viewport)
+                        what a step can click or type into, with a text and a selector for each (--viewport).
+                        --all adds headings, sections and images, and --text "<words>" lists what holds them
 
 Images (optional, costs money, needs an OpenRouter key from "explainroo connect openrouter")
   image [project] <name> "<what to draw>"   save an illustration as assets/<name>.png
@@ -152,8 +153,8 @@ Reference
   doctor [project]      check ffmpeg, Chrome, Playwright's ffmpeg for record, espeak-ng, misaki and models: each is
                         ready, not needed or missing. With a project, for its languages and voices. Before there
                         is a project, --language es checks what that language needs (--fetch downloads the models
-                        it needs and Playwright's ffmpeg, and on Debian and Ubuntu it sets up espeak-ng without
-                        root when a language needs it)
+                        it needs, and on Debian and Ubuntu it sets up espeak-ng without root when a language needs
+                        it. It gets Playwright's ffmpeg for a project with recordings, or with --record)
   docs [topic] [section]  print the start page for coding agents, one topic, or one section of a topic by its
                         heading (--list shows the topics, --sections the sections of a topic with their size)
   version               print the version (--version works too)
@@ -185,7 +186,7 @@ function parseArgs(argv) {
   }
   return { pos, flags };
 }
-const BOOL = new Set(['json', 'keep-profile', 'apply', 'avatars', 'draft', 'estimate', 'transparent', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'mobile', 'list', 'sections', 'new', 'key-stdin', 'audio', 'dry-run', 'no-wait', 'no-watermark', 'yes', 'media-url-unchecked', ...LISTS_VOICES.map((c) => c.id), 'verbose']);
+const BOOL = new Set(['json', 'keep-profile', 'all', 'record', 'apply', 'avatars', 'draft', 'estimate', 'transparent', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'mobile', 'list', 'sections', 'new', 'key-stdin', 'audio', 'dry-run', 'no-wait', 'no-watermark', 'yes', 'media-url-unchecked', ...LISTS_VOICES.map((c) => c.id), 'verbose']);
 
 // What a command adds when it refuses a flag. A flag publish ignored could
 // change what a person thinks is posted, like a time for a post, when it goes
@@ -282,12 +283,14 @@ export async function main(argv) {
       case 'record': {
         if (flags.inspect !== undefined) {
           const url = textFlag(flags, 'inspect');
-          if (pos.length !== 1) throw new ProjectError('usage: explainroo record <project> --inspect <url> [--viewport 1280x720] [--keep-profile] [--json]. It lists what a step can click or type into, and records nothing.');
-          const r = await inspect(pos[0], url, { viewport: viewportFlag(flags), keepProfile: !!flags['keep-profile'], log });
+          if (pos.length !== 1) throw new ProjectError('usage: explainroo record <project> --inspect <url> [--all] [--text "<words>"] [--viewport 1280x720] [--keep-profile] [--json]. It lists what a step can click or type into, and records nothing.');
+          if (flags.all && flags.text !== undefined) throw new ProjectError('--text lists only the elements that hold its words, so leave out --all');
+          const r = await inspect(pos[0], url, { viewport: viewportFlag(flags), keepProfile: !!flags['keep-profile'], all: !!flags.all, holding: flags.text === undefined ? null : textFlag(flags, 'text'), log });
           print(formatInspect(r), r);
           return 0;
         }
         if (flags.viewport !== undefined) throw new ProjectError('--viewport goes with --inspect. A recording takes its viewport from recordings/<name>.json.');
+        if (flags.all || flags.text !== undefined) throw new ProjectError(`--${flags.all ? 'all' : 'text'} goes with --inspect <url>, which lists what is on a page.`);
         if (pos.length !== 2) throw new ProjectError('usage: explainroo record <project> <name> [--keep-profile] [--json], or explainroo record <project> --inspect <url>. The script is recordings/<name>.json in the project.');
         const r = await record(pos[0], pos[1], { log, keepProfile: !!flags['keep-profile'] });
         print(formatRecord(r), r);
@@ -545,7 +548,7 @@ export async function main(argv) {
       case 'icons': return icons(pos, print);
       case 'doctor': {
         const language = textFlag(flags, 'language');
-        const r = await doctor({ project: pos[0] === undefined ? null : loadProject(pos[0]), language: language ?? null, fetch: !!flags.fetch, log, notice });
+        const r = await doctor({ project: pos[0] === undefined ? null : loadProject(pos[0]), language: language ?? null, fetch: !!flags.fetch, record: !!flags.record, log, notice });
         print(formatDoctor(r), r);
         return r.ok ? 0 : 1;
       }

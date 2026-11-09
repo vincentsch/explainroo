@@ -590,7 +590,7 @@ test('product-demos puts recording the real app first and rebuilding screens wit
   const intro = oneLine(demos.slice(0, demos.indexOf('## ')));
   assert.ok(intro.indexOf('record it') < intro.indexOf('rebuild its screens with `s.ui`'), intro);
   const text = oneLine(demos);
-  for (const words of ['the `box` of its element in pixels of the video: `x` and `y` are its middle, and `w` and `h` its width and height.', 'A zoom fits its element into about 70% of the frame, from 1.4 to 2.5 times closer.', 'Every run starts with an empty browser profile', '`--keep-profile` keeps the profile', 'Only `scroll` steps move the page.', '`explainroo doctor --fetch` downloads once', '`assets/recordings/<name>.log.json`']) assert.ok(text.includes(words), words);
+  for (const words of ['the `box` of its element in pixels of the video: `x` and `y` are its middle, and `w` and `h` its width and height.', 'A zoom fits its element into about 70% of the frame, from 1.4 to 2.5 times closer.', 'Every run starts with an empty browser profile', '`--keep-profile` keeps the profile', 'Only `scroll` steps move the page.', 'the first recording downloads it and says so', '`assets/recordings/<name>.log.json`']) assert.ok(text.includes(words), words);
 });
 
 test('product-demos says how to find elements, type, share cues, pick a viewport and skip a step before the video', () => {
@@ -601,10 +601,11 @@ test('product-demos says how to find elements, type, share cues, pick a viewport
     'An editor like CodeMirror shows its placeholder as an element inside the field',
     '`"cps": 20` on a `type` step',
     'Several steps may share one cue',
-    '1280 x 720 for 16:9',
-    '1000 x 1250 for 4:5',
-    '1080 x 1920 for 9:16',
-    'under 60% of its size gets a warning from `check`',
+    '| 16:9 (`youtube`) | 1768 x 928 | 982 x 516 |',
+    '| 4:5 (`instagram`, `linkedin`) | 928 x 977 | 516 x 542 |',
+    '| `shorts` with bold captions | 885 x 732 | 492 x 406 |',
+    '`check` warns when a recording\'s 16 px text would play under 24 px, and names a viewport that fits where it plays',
+    'under 60% of its size with no zoom step gets its own warning',
     'A step before the video that finds nothing is skipped, in every run, with or without `--keep-profile`',
     'when they show none, the page\'s `theme-color` tag',
   ]) assert.ok(text.includes(words), words);

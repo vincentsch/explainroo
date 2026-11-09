@@ -46,6 +46,8 @@ gets, which is the video without the watermark.
     `s.short.drift`;
   - `s.short.jolt`, `s.short.flash` and `s.short.interrupt`;
   - a clip while it plays;
+  - a recording while it types, scrolls or zooms, and a click, hover or
+    wait in it that changes the page;
   - a new scene.
 
   A background that drifts, like the turning rays of a backdrop, doesn't.

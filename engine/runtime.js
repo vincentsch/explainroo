@@ -11,7 +11,7 @@ import { overlapDepth, holds, crosses, bounds, inside, toEdge, grow } from './ge
 import { layoutAreas } from './layout.js';
 import { loadClips, soundURL, ClipFrames, FREEZE_SECONDS, FIT_SPEEDS } from './clips.js';
 import { UI } from './ui.js';
-import { CATCH_UP } from './recording.js';
+import { CATCH_UP, fitViewport, PAGE_TEXT, PLAYED_TEXT } from './recording.js';
 import { Short } from './short.js';
 import { playbackTextIssue } from './readability.js';
 import { planCamera, cameraAt, cameraMoving, heldShot, continues, frameRect, backgroundShot } from './director.js';
@@ -1105,10 +1105,16 @@ export class Engine {
       if (broke) anyBroke = true;
       if (shortVideo && !broke) {
         changes.push(sc.start);
-        for (const x of [...times, ...this.cameraKeys]) if (x >= 0 && x <= sc.dur) changes.push(sc.start + x);
+        // A recording changes it where its steps type, scroll, zoom or change
+        // the page, and not at a step that only marks a moment.
+        const shown = entrances.filter((e) => e.kind !== 'recording-step').map((e) => e.at);
+        for (const x of [...shown, ...this.cameraKeys]) if (x >= 0 && x <= sc.dur) changes.push(sc.start + x);
         for (const e of entrances) {
-          if (e.kind !== 'clip') continue;
-          for (let x = Math.max(0, e.at); x < Math.min(sc.dur, e.end ?? e.at); x += 0.5) changes.push(sc.start + x);
+          const spans = e.kind === 'clip' ? [{ from: e.at, to: e.end ?? e.at }] : e.kind === 'recording' ? e.moving : [];
+          for (const m of spans) {
+            for (let x = Math.max(0, m.from); x < Math.min(sc.dur, m.to); x += 0.5) changes.push(sc.start + x);
+            if (e.kind === 'recording' && m.to >= 0 && m.to <= sc.dur) changes.push(sc.start + m.to);
+          }
         }
       }
       this.cameraKeys = null;
@@ -1129,6 +1135,13 @@ export class Engine {
             once(`recording-small:${sc.id}:${e.key}`, () => add('warn', sc.id, e.at, e.small.off
               ? `${size}, and zoom: false keeps its zooms out, so its text is small to read. Take out zoom: false, or show it larger`
               : `${size}, and none of its steps zooms in, so its text is small to read. Add a zoom step to recordings/${e.name}.json${e.small.before ? ` before step ${e.small.before}` : ''}, like ${zoom}, and record it again`));
+          }
+          else if (e.text) {
+            const fit = fitViewport(e.area.w, e.area.h);
+            const then = Math.round(PAGE_TEXT * Math.min(e.area.w / fit.width, e.area.h / fit.height) * e.area.fill);
+            once(`recording-text:${sc.id}:${e.key}`, () => add('warn', sc.id, e.at, `recording "${e.name}" plays ${e.width} pixels of page in ${Math.round(e.width * e.text.shown)}, so the page's ${PAGE_TEXT}px text shows ${Math.round(e.text.px)}px tall, under ${PLAYED_TEXT}px and hard to read on a phone. A zoom helps only while it holds. ${then < PLAYED_TEXT
+              ? `Show it larger: in ${Math.round(e.area.w)}x${Math.round(e.area.h)}, even the smallest viewport, { "width": ${fit.width}, "height": ${fit.height} }, plays its ${PAGE_TEXT}px text at about ${then}px`
+              : `Record it with "viewport": { "width": ${fit.width}, "height": ${fit.height} } in recordings/${e.name}.json: that shape fits the ${Math.round(e.area.w)}x${Math.round(e.area.h)} it plays in, and its ${PAGE_TEXT}px text shows about ${then}px tall`}`));
           }
           if (e.cut) once(`recording-cut:${sc.id}:${e.key}`, () => add('warn', sc.id, e.out, `recording "${e.name}" is cut off at ${e.out.toFixed(1)}s: ${e.cut.first}${e.cut.count > 1 ? ` and ${e.cut.count - 1} more step${e.cut.count > 2 ? 's' : ''}` : ''} would come at ${e.cut.at.toFixed(1)}s. ${e.fit ? `speed: 'fit' goes no faster than ${FIT_SPEEDS[1]} times; make the narration longer or record fewer steps` : "speed: 'fit' plays it faster, so it ends with the scene, or the narration can be longer"}`));
         }
