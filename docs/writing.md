@@ -128,4 +128,6 @@ Narration for this scene. [#marker] A marker names a moment you can animate on.
   the video title. YouTube shows chapters only when there are at least 3
   and each lasts 10 seconds or more. `check` gives hints about that for a
   16:9 landscape frame, like `16:9`, `youtube` or `1280x720`, and for a
-  YouTube package.
+  YouTube package. `voice --estimate`, and `voice` or `check` before they
+  make the narration, say from the length estimate which chapters will likely
+  be under 10 seconds.

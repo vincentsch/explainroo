@@ -12,7 +12,7 @@ import { hasPhonemizer } from './phonemes.js';
 import { normWord } from './script.js';
 import { heardEntry, heardInstead, heardQuote, readVoice, sameHeard, withHeard } from './voice.js';
 import { estimateLength, targetNotes } from './timeline.js';
-import { buildChapters, chapterHints } from './chapters.js';
+import { buildChapters, chapterHints, youtubeFrame } from './chapters.js';
 import { coverTime } from './render.js';
 import { languageIssues, outputPath, ProjectError, scriptName } from './project.js';
 import { recordVersion, relativeFile, sha256File } from './history.js';
@@ -331,10 +331,6 @@ export function speechFindings(project, voices, timeline = null) {
   }
   return { issues, speech };
 }
-
-// A frame for YouTube's wide player, where chapters show: any 16:9 landscape
-// frame, like "youtube", "16:9" or "1280x720".
-const youtubeFrame = ({ width, height }) => width > height && width * 9 === height * 16;
 
 // `platform` is the platform of a package being made. Chapter hints are about
 // YouTube, so they show for a YouTube package, or without a package for a

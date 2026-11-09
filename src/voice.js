@@ -15,6 +15,7 @@ import { openSpeech, speechConnector, speechKey } from './paid-speech.js';
 import { recordingFiles, decodeRecording, saveRecording, recordingCuts } from './recordings.js';
 import { scriptName } from './project.js';
 import { estimateLength, estimateLine, roughTime } from './timeline.js';
+import { estimatedChapterHints } from './chapters.js';
 
 const PIPELINE = 7;
 // The rules of the speech check that a scene was checked with. A scene checked
@@ -494,6 +495,8 @@ export async function synthesize(project, { force = false, fresh = false, log = 
     const estimate = estimateLength(project);
     if (estimate) {
       log(`voice: ${estimateLine(estimate)}`);
+      // Chapters that will likely be too short for YouTube, before the voice takes its time.
+      for (const h of estimatedChapterHints(project, estimate)) log(`voice: ${h.message}`);
       onEstimate(estimate);
     }
   }

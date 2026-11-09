@@ -144,6 +144,8 @@ export function estimateLength(project) {
   let narrated = 0;
   let pauses = 0;
   let total = 0;
+  // Each scene's length, for chapters that will likely be short.
+  const lengths = {};
   script.scenes.forEach((scene, index) => {
     const a = scene.attrs;
     const isLast = index === script.scenes.length - 1;
@@ -163,6 +165,7 @@ export function estimateLength(project) {
     } else dur = ((a.min ?? 3) + (isLast ? config.end : 0)) / pace;
     if (a.min) dur = Math.max(dur, a.min / pace);
     total += Math.max(dur, 1);
+    lengths[scene.id] = Math.round(Math.max(dur, 1) * 10) / 10;
   });
   if (!words) return null;
   const tenth = (v) => Math.round(v * 10) / 10;
@@ -184,6 +187,7 @@ export function estimateLength(project) {
     // What a min on a scene, or a scene without narration, adds.
     other: tenth(Math.max(0, total - speech - leads - pauses - end)),
     ...(config.targetSeconds ? { targetSeconds: config.targetSeconds } : {}),
+    sceneSeconds: lengths,
   };
 }
 

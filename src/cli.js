@@ -28,6 +28,7 @@ import { allOf, formatServices, findService, findStep, needsKey, SERVICES, STEPS
 import { clipPricesToday, showsClipPrices } from './price-list.js';
 import { narrationTime, speechKeys } from './voice.js';
 import { estimateLength, estimateLine, targetNotes } from './timeline.js';
+import { estimatedChapterHints } from './chapters.js';
 import { formatSet, setSetting } from './set.js';
 import { findEnv } from './env.js';
 import { formatPackage, packageOverrides, packageVideo } from './package.js';
@@ -300,7 +301,9 @@ export async function main(argv) {
         if (flags.estimate) {
           const e = estimateLength(project);
           const none = project.config.voice.provider === 'recording' ? 'A recording has its own length, so there is no estimate.' : `${scriptName(project)} has no narration yet, so there is no estimate.`;
-          print(e ? `${estimateLine(e)}\nNothing was made.` : none, { estimate: e });
+          const hints = estimatedChapterHints(project, e);
+          const lines = hints.map((h) => `\n${h.level.toUpperCase().padEnd(5)} ${h.message}`).join('');
+          print(e ? `${estimateLine(e)}${lines}\nNothing was made.` : none, { estimate: e, ...(hints.length ? { notes: hints } : {}) });
           return 0;
         }
         const paid = speechConnector(project.config);

@@ -349,6 +349,25 @@ test('voice --estimate prints the estimate with the target advice and makes noth
   assert.equal(r.err, '', 'no model was loaded');
 });
 
+test('voice --estimate gives a hint for chapters that will likely be under 10 seconds in a video for YouTube', async (t) => {
+  const dir = tempDir();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const long = 'The resolver asks the root servers where the name lives, and then it asks the servers of the top level domain, and then the servers of the domain itself. '.repeat(2);
+  fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ size: '16:9' }));
+  fs.writeFileSync(path.join(dir, 'script.md'), `# DNS\n\n## a {chapter="The question"}\nYou type a name.\n\n## b {chapter="The answer"}\n${long}\n\n## c {chapter="The cache"}\n${long}\n`);
+  fs.writeFileSync(path.join(dir, 'scenes.js'), 'export default { a() {}, b() {}, c() {} };');
+  const r = await runAll(['voice', dir, '--estimate']);
+  assert.equal(r.code, 0, r.err);
+  assert.match(r.out, /\nHINT  chapter "The question" will likely last about \d+s, and YouTube shows chapters only when each lasts at least 10 seconds\. Start it at another scene or join it with the next one\.\nNothing was made\.\n$/);
+  assert.doesNotMatch(r.out, /"The answer"|"The cache"/);
+  const json = JSON.parse((await runAll(['voice', dir, '--estimate', '--json'])).out);
+  assert.deepEqual(json.notes.map((n) => [n.level, n.scene]), [['hint', 'a']]);
+  assert.deepEqual(Object.keys(json.estimate.sceneSeconds), ['a', 'b', 'c']);
+  // A tall video has no YouTube chapters, so it gets no hint.
+  fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ size: 'shorts' }));
+  assert.doesNotMatch((await runAll(['voice', dir, '--estimate'])).out, /HINT/);
+});
+
 test('set writes one setting into video.json, dotted keys reach into blocks, null takes a key out, and the rest of the file stays as it was', async (t) => {
   const dir = tempDir();
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
