@@ -147,10 +147,11 @@ Reference
   sizes                 list sizes for YouTube, Shorts, TikTok, Reels, Instagram and LinkedIn. For each it
                         shows the content area with the watermark and without it, also with bold captions
   icons <word…>         search the 1,800+ built-in icons
-  doctor [project]      check ffmpeg, Chrome, espeak-ng, misaki and models: each is ready, not needed or missing.
-                        With a project, for its languages and voices. Before there is a project, --language es
-                        checks what that language needs (--fetch downloads the models it needs, and on Debian
-                        and Ubuntu it sets up espeak-ng without root when a language needs it)
+  doctor [project]      check ffmpeg, Chrome, Playwright's ffmpeg for record, espeak-ng, misaki and models: each is
+                        ready, not needed or missing. With a project, for its languages and voices. Before there
+                        is a project, --language es checks what that language needs (--fetch downloads the models
+                        it needs and Playwright's ffmpeg, and on Debian and Ubuntu it sets up espeak-ng without
+                        root when a language needs it)
   docs [topic] [section]  print the start page for coding agents, one topic, or one section of a topic by its
                         heading (--list shows the topics, --sections the sections of a topic with their size)
   version               print the version (--version works too)

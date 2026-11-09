@@ -186,8 +186,8 @@ export const COMMAND_HELP = {
   icons: { usage: 'icons <word…> [options]', about: 'Searches the built-in icons, one match per line.', options: [JSON_OUT], example: 'icons database' },
   doctor: {
     usage: 'doctor [project] [options]',
-    about: 'Checks ffmpeg, Chrome, espeak-ng, misaki and the models: each is ready, not needed or missing. It also prints the settings file and the folder explainroo runs from.',
-    options: [['--language <codes>', 'before there is a project, what these languages need, like es or es,fr'], ['--fetch', 'download the models that setup needs, and on Debian and Ubuntu set up espeak-ng without root when a language needs it'], JSON_OUT],
+    about: 'Checks ffmpeg, Chrome, Playwright\'s ffmpeg for record, espeak-ng, misaki and the models: each is ready, not needed or missing. It also prints the settings file and the folder explainroo runs from.',
+    options: [['--language <codes>', 'before there is a project, what these languages need, like es or es,fr'], ['--fetch', 'download the models that setup needs and Playwright\'s ffmpeg, and on Debian and Ubuntu set up espeak-ng without root when a language needs it'], JSON_OUT],
     example: 'doctor --fetch --language es',
   },
   docs: {
