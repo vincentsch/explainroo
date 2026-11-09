@@ -34,6 +34,10 @@ test('player copies only used assets, font families and local modules, with publ
   copyPlayer(project, timeline, { assets: ['assets/used.svg', 'assets/own.woff2'], fonts: ['Inter', 'Own'], math }, out);
   const names = files(out);
   for (const name of ['index.html', 'engine/player.js', 'engine/runtime.js', 'vendor/rough.js', 'engine/icons/lucide.json', 'project/scenes.js', 'project/lib/draw.mjs', 'project/helper.js', 'project/assets/used.svg', 'project/assets/own.woff2', 'state.json', 'math.json', 'subtitles.vtt']) assert.ok(names.includes(name), name);
+  // Every module the copied engine imports came along, like engine/recording.js.
+  const missing = names.filter(n => /^engine\/[^/]+\.js$/.test(n)).flatMap(n => [...fs.readFileSync(path.join(out, n), 'utf8').matchAll(/^import [^;]* from '(\.{1,2}\/[^']+)';/gm)]
+    .map(m => path.posix.normalize(path.posix.join(path.posix.dirname(n), m[1])))).filter(rel => !names.includes(rel));
+  assert.deepEqual(missing, []);
   assert.deepEqual(names.filter(n => n.startsWith('project/assets/')), ['project/assets/own.woff2', 'project/assets/used.svg']);
   assert.ok(!names.some(n => /build|\.env|secret|notes|unused|soundtrack|upload/.test(n)));
   const manifest = JSON.parse(fs.readFileSync(path.join(out, 'fonts/fonts.json'), 'utf8'));
