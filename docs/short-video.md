@@ -81,7 +81,9 @@ Feeds often show the first frame before anyone presses play, and many apps use
 it as the cover. A title that draws itself in leaves that frame empty.
 `s.short.hook` is there on the first frame by default, with no entrance, so the
 frame says what the video is about. Give it a later `at` only when the scene
-starts with something else to look at.
+starts with something else to look at. `check` gives a hint when the first frame of
+the video shows only the background, or only elements still on their way in,
+and names one to give `at: -1`.
 
 The cover that `render` and `package` write shows the hook too. With
 `"cover": "auto"` and `"defaults": "0.5"` it is the frame of the first scene

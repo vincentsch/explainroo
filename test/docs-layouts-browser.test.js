@@ -41,8 +41,9 @@ test('the layouts in the pictures topic pass check in a wide and in a tall frame
   for (const scene of ['number', 'compare', 'steps', 'hub']) cachedVoice(dir, scene);
   for (const size of ['youtube', 'shorts']) {
     const { issues } = await check(loadProject(dir, { size }));
-    // The first scene is a number alone, so the cover hint is all there is.
-    assert.deepEqual(issues.filter((i) => !/"cover"/.test(i.message)), [], `${size}: ${JSON.stringify(issues)}`);
+    // The first scene is a number alone that comes in on a marker, so the
+    // hints about the cover and the first frame are all there is.
+    assert.deepEqual(issues.filter((i) => !/"cover"|^the first frame/.test(i.message)), [], `${size}: ${JSON.stringify(issues)}`);
   }
 });
 

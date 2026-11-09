@@ -418,3 +418,17 @@ test('with "defaults": "0.6" pictures in a tall frame may fill s.full, past the 
   const before = await check(project(t, { size: 'tiktok', captions: 'bold', defaults: '0.5' }, scenes));
   assert.ok(outside(before, 'picture') >= 2, 'with "0.5" the pictures get warnings');
 });
+
+test('check gives a hint when the first frame shows only the background or elements still coming in, and names one to show from the start', { skip }, async (t) => {
+  const first = (scenes) => check(project(t, {}, scenes), (page) => page.evaluate(() => window.explainroo.firstFrameIssue())).then((r) => r.more);
+  const empty = await first({
+    intro: `s.text('example.com', { y: 300, at: 1 });
+    s.icon('laptop', { id: 'a', x: 620, y: 660, size: 170, at: 1.5 });`,
+    next: `s.circle({ at: 0, enter: 'none' });`,
+  });
+  assert.deepEqual(empty, { level: 'hint', scene: 'intro', t: 0, message: 'the first frame of the video shows only the background, and Buffer, LinkedIn and other services use it as the thumbnail; give the icon "laptop" (id "a") at: -1, so it is there from the first frame' });
+  const coming = await first({ intro: `s.title('How a cache works', { at: 0 });` });
+  assert.equal(coming.message, 'the first frame of the video shows only elements that are still on their way in, and Buffer, LinkedIn and other services use it as the thumbnail; give the text "How a cache works" at: -1, so it is there from the first frame');
+  assert.equal(await first({ intro: `s.title('How a cache works', { at: 0, enter: 'none' }); s.icon('laptop', { y: 800, at: 1 });` }), null);
+  assert.equal(await first({ intro: `s.title('How a cache works', { at: -1 });` }), null);
+});

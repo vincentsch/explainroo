@@ -165,6 +165,10 @@ window.explainrooReady = (async () => {
     coverIssue(T, auto) {
       return engine.coverIssue(T, auto);
     },
+    // check's hint about a first frame that shows nothing yet.
+    firstFrameIssue() {
+      return engine.firstFrameIssue();
+    },
     // After check: the files its scenes play with s.sound that can't be read.
     soundFileIssues() {
       return engine.soundFileIssues();

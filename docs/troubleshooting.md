@@ -107,7 +107,8 @@ It also finds:
 - shapes that partly overlap: boxes, cards, panels, images, icons and stickers
 - shapes in the caption band, and on Shorts, TikTok and Reels shapes outside
   the content area. A shape that fills the whole frame is a background and
-  doesn't count
+  doesn't count. With `"defaults": "0.6"` a tall video's pictures may fill
+  `s.full`, and only text outside `s.safe` counts
 - a mark from `s.annotate` that stays on screen more than 0.3 seconds after
   the element it marks has left
 - a code window or a terminal that is on screen empty for more than a second
@@ -123,6 +124,11 @@ It also finds:
 - a scene that shows only its background for more than 1.5 seconds, at the
   start or later, when everything has left and nothing new has come yet
 - a cover with only text on an empty background
+- a first frame that shows only the background, or only elements still on
+  their way in. Buffer, LinkedIn and other services use the first frame as
+  the thumbnail, and a blank one looks like a broken video. The hint names an
+  element of the scene's fullest frame, a picture first. Give it `at: -1`, and
+  it is there from the first frame, without an entrance or a sound
 - text with a background but no words
 - a `lift` above 2 in `s.ui`
 - a cue or a `#marker` that isn't in the narration. That is an error, and
