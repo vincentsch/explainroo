@@ -44,9 +44,10 @@ an example.
 `--platform <name>` on `check`, `still`, `sheet`, `render` and `verify` sets the size,
 its block in `"sizes"` and the watermark rule that `package --platform <name>`
 uses, so you look at exactly what the package will show. TikTok has no
-watermark, and the other platforms keep the one in `video.json`. When the
-platform takes the watermark away, `render` says so, like "no watermark:
-TikTok asks apps not to add one".
+watermark, and the other platforms, Reels too, keep the one in `video.json`.
+`render` prints one line about the watermark: on, off by `video.json` or
+`--no-watermark`, or off by the platform's rule, like "watermark: off, because
+TikTok asks apps that post to it not to add one".
 
 The extra files share the video's name, also with `--out`: `video.srt`,
 `video.vtt`, `video.cover.jpg` and `video.chapters.txt`. A GIF has no sound,

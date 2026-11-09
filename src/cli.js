@@ -343,10 +343,11 @@ export async function main(argv) {
         return errors ? 1 : 0;
       }
       case 'render': {
-        const { project, watermarkNote } = runProject(pos[0], flags, qualityOverride(flags));
-        if (watermarkNote) notice(watermarkNote);
+        const { project, platform, watermarkNote } = runProject(pos[0], flags, qualityOverride(flags));
+        const watermark = watermarkLine(project, flags, platform, watermarkNote);
+        notice(watermark);
         const r = await render(project, { log, draft: !!flags.draft, transparent: !!flags.transparent, from: num(flags.from, 'from'), to: num(flags.to, 'to'), workers: num(flags.workers, 'workers'), scale: num(flags.scale, 'scale'), out: textFlag(flags, 'out'), format: textFlag(flags, 'format') });
-        print([r.out, r.subtitles?.srt, r.subtitles?.vtt, r.chapters, r.cover].filter(Boolean).map((f) => path.relative(process.cwd(), f) || f).join('\n'), r);
+        print([r.out, r.subtitles?.srt, r.subtitles?.vtt, r.chapters, r.cover].filter(Boolean).map((f) => path.relative(process.cwd(), f) || f).join('\n'), { ...r, watermark });
         return 0;
       }
       case 'package': {
@@ -657,8 +658,21 @@ function runProject(dir, flags, extra = {}) {
   const own = loadProject(dir, langOverride(flags));
   const overrides = packageOverrides(own, platform, textFlag(flags, 'size'));
   // The platform's rule takes away a watermark the project has, so say why.
-  const watermarkNote = overrides.watermark === false && own.config.watermark !== false ? `no watermark: ${PLATFORMS[platform].name} asks apps not to add one` : null;
+  const watermarkNote = overrides.watermark === false && own.config.watermark !== false ? `watermark: off, because ${PLATFORMS[platform].name} asks apps that post to it not to add one` : null;
   return { project: loadProject(own.dir, { ...overrides, ...langOverride(flags), ...extra }), platform, watermarkNote };
+}
+
+// The one line render prints about the watermark: on, off by a setting or
+// --no-watermark, or off because of the platform's rule.
+export function watermarkLine(project, flags, platform, platformNote) {
+  if (platformNote) return platformNote;
+  const mark = project.config.watermark;
+  if (mark !== false) {
+    const same = platform ? `, as the ${PLATFORMS[platform].name} package has it` : '';
+    return `watermark: on, "${mark}"${same}. "watermark": false in video.json turns it off`;
+  }
+  if (flags['no-watermark']) return 'watermark: off, because of --no-watermark';
+  return 'watermark: off, because "watermark" is false in video.json';
 }
 
 // The spoken words of the scenes, or of the ones named, with their times in

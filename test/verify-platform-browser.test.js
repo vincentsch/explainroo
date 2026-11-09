@@ -15,7 +15,7 @@ test('verify --platform checks the file render --platform wrote, and a missing f
   const dir = tiny(t, {}, { narrated: false });
   const rendered = await cli(['render', dir, '--platform', 'tiktok', '--workers', '1']);
   assert.equal(rendered.code, 0, rendered.text);
-  assert.equal(rendered.stderr.split('\n').filter((l) => l === 'no watermark: TikTok asks apps not to add one').length, 1, rendered.stderr);
+  assert.equal(rendered.stderr.split('\n').filter((l) => l === 'watermark: off, because TikTok asks apps that post to it not to add one').length, 1, rendered.stderr);
   assert.ok(fs.existsSync(path.join(dir, 'out', 'video-tiktok-no-watermark.mp4')));
 
   const checked = await cli(['verify', dir, '--platform', 'tiktok', '--json']);
