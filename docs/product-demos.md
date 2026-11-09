@@ -97,8 +97,12 @@ which `explainroo doctor --fetch` downloads once.
   next run, and a step before the video that finds nothing is skipped.
 - `blur` blurs elements by CSS selector or exact text on every page, before
   anything is recorded. Use it for real email addresses and keys.
-- `viewport` is 1920 x 1080 by default. 1280 x 720 makes the app's text
-  larger in the video.
+- `viewport` is 1920 x 1080 by default. Pick it for the size of the video:
+  1280 x 720 for 16:9, which makes the app's text larger than the default,
+  1000 x 1250 for 4:5, and 1080 x 1920 for 9:16. A recording that plays at
+  under 60% of its size gets a warning from `check` unless a step zooms in,
+  because its text is then too small to read. The warning names the zoom
+  step to add.
 
 The step log has the time of each step in seconds of the video, and the
 `box` of its element in pixels of the video: `x` and `y` are its middle,

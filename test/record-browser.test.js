@@ -325,3 +325,29 @@ test('a type step types at 14 characters a second, at its cps, and faster at a h
   assert.ok(plain - quick > 0.6 && plain - quick < 2, `${plain} and ${quick}`);
   assert.ok(quick - paced > 0.2 && quick - paced < 1.2, `${quick} and ${paced}`);
 });
+
+test('check warns about a recording that plays small with no zoom, and names the zoom step to add', { skip: !chrome }, async (t) => {
+  const dir = project(t, { url: 'http://127.0.0.1:4500/', viewport: { width: 1280, height: 720 }, steps: [{ do: 'mark', name: 'a' }] });
+  fs.mkdirSync(path.join(dir, 'assets/recordings'), { recursive: true });
+  await ffmpeg(['-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=white:s=1280x720:r=25:d=4', '-c:v', 'libvpx', '-b:v', '200k', path.join(dir, 'assets/recordings/invoice.webm')]);
+  const steps = [
+    { step: 1, do: 'click', text: 'Accept', before: true, start: 0.1, t: 0.2, end: 0.3 },
+    { step: 2, do: 'click', text: 'New invoice', cue: '#new', start: 1, t: 1.5, click: 1.5, end: 2, box: { x: 1100, y: 80, w: 140, h: 44 } },
+    { step: 3, do: 'type', selector: '#amount', start: 2, t: 2.6, click: 2.4, end: 3, box: { x: 600, y: 300, w: 400, h: 44 } },
+  ];
+  const writeLog = (more = []) => fs.writeFileSync(path.join(dir, 'assets/recordings/invoice.log.json'), JSON.stringify({ version: 1, url: 'http://127.0.0.1:4500/', width: 1280, height: 720, duration: 4, start: 0.5, end: 3.5, cursor: { x: 640, y: 360 }, steps: [...steps, ...more], blur: [] }));
+  const timeline = { pace: 1, duration: 4, frames: 120, fps: 30, width: 1920, height: 1080, transitionSeconds: 0,
+    scenes: [{ id: 'demo', index: 0, start: 0, dur: 4, words: [], marks: { new: 1 }, voice: null, lead: 0, transition: 'none' }] };
+  const findings = async (o) => {
+    fs.writeFileSync(path.join(dir, 'scenes.js'), `export default { demo(s) { s.recording('invoice', ${JSON.stringify(o)}); } };`);
+    return withEngine(loadProject(dir), timeline, { scale: 0.25 }, async (page) => (await page.evaluate(() => window.explainroo.check(0.25))).filter((i) => /plays at/.test(i.message)).map((i) => i.message));
+  };
+  writeLog();
+  // 700 pixels wide is 55% of the 1280 of the video.
+  assert.deepEqual(await findings({ w: 700 }), ['recording "invoice" plays at 55% of its size, 1280 pixels wide in 700, and none of its steps zooms in, so its text is small to read. Add a zoom step to recordings/invoice.json before step 2, like { "do": "zoom", "text": "New invoice", "cue": "#new" }, and record it again']);
+  // From 60% on it's fine, and so is a zoom step.
+  assert.deepEqual(await findings({ w: 768 }), []);
+  writeLog([{ step: 4, do: 'zoom', selector: 'form', start: 3, t: 3, end: 3.4, box: { x: 600, y: 300, w: 600, h: 300 } }]);
+  assert.deepEqual(await findings({ w: 700 }), []);
+  assert.deepEqual(await findings({ h: 300, zoom: false }), ['recording "invoice" plays at 42% of its size, 1280 pixels wide in 533, and zoom: false keeps its zooms out, so its text is small to read. Take out zoom: false, or show it larger']);
+});

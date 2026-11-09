@@ -19,8 +19,29 @@ export const RING_SECONDS = 0.6;
 // A step that lands later than this after its cue gets a warning from check.
 export const LATE_SECONDS = 0.15;
 
+// A recording shown at less than this part of its size, and with no zoom,
+// gets a warning from check, as its text gets hard to read.
+export const SMALL_SHOWN = 0.6;
+
 // How much faster than its speed a recording plays to catch up with a cue.
 export const CATCH_UP = 2;
+
+// Whether a recording shown w x h plays at under SMALL_SHOWN of its size with
+// no zoom on its played steps: then { shown, before, step }, with a zoom step
+// to add before the first step that has an element, or on the whole page when
+// none has one. { shown, off: true } when zoom: false keeps its zooms out.
+export function smallRecording(log, { w, h, from = 0, zoom = true }) {
+  const shown = Math.max(w / log.width, h / log.height);
+  const played = log.steps.filter((st) => !st.before && st.t >= from);
+  const zooms = played.some((st) => st.do === 'zoom' && st.box);
+  if (shown >= SMALL_SHOWN || (zoom && zooms)) return null;
+  if (zooms) return { shown, off: true };
+  const first = played.find((st) => st.text !== undefined || st.selector !== undefined);
+  const step = first
+    ? { do: 'zoom', ...(first.text !== undefined ? { text: first.text } : { selector: first.selector }), ...(first.nth ? { nth: first.nth } : {}), ...(first.cue !== undefined ? { cue: first.cue } : {}) }
+    : { do: 'zoom', selector: 'body' };
+  return { shown, before: first?.step ?? null, step };
+}
 
 // The steps that land on a cue, with the scene time of the cue: [{ step,
 // start, t, cueAt, cue }]. `cues` sets cues by mark name or step number, over

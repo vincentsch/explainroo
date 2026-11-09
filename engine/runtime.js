@@ -1111,6 +1111,13 @@ export class Engine {
         if (e.kind === 'recording') {
           if (e.changed) once(`recording-changed:${e.name}`, () => add('warn', sc.id, e.at, `recordings/${e.name}.json changed after recording "${e.name}" was made; run "explainroo record <project> ${e.name}" again`));
           for (const l of e.late) once(`recording-late:${sc.id}:${e.key}:${l.step}`, () => add('warn', sc.id, l.cueAt, `recording "${e.name}" ${l.label} comes ${l.by.toFixed(1)}s after its cue "${l.cue}", because the steps before it take longer, also at ${CATCH_UP} times the speed; cue a later word, start the recording earlier with at, or record fewer or quicker steps with the script's pace, a step's duration or a type step's cps`));
+          if (e.small) {
+            const size = `recording "${e.name}" plays at ${Math.round(e.small.shown * 100)}% of its size, ${e.width} pixels wide in ${Math.round(e.width * e.small.shown)}`;
+            const zoom = e.small.step && `{ ${Object.entries(e.small.step).map(([k, v]) => `${JSON.stringify(k)}: ${JSON.stringify(v)}`).join(', ')} }`;
+            once(`recording-small:${sc.id}:${e.key}`, () => add('warn', sc.id, e.at, e.small.off
+              ? `${size}, and zoom: false keeps its zooms out, so its text is small to read. Take out zoom: false, or show it larger`
+              : `${size}, and none of its steps zooms in, so its text is small to read. Add a zoom step to recordings/${e.name}.json${e.small.before ? ` before step ${e.small.before}` : ''}, like ${zoom}, and record it again`));
+          }
           if (e.cut) once(`recording-cut:${sc.id}:${e.key}`, () => add('warn', sc.id, e.out, `recording "${e.name}" is cut off at ${e.out.toFixed(1)}s: ${e.cut.first}${e.cut.count > 1 ? ` and ${e.cut.count - 1} more step${e.cut.count > 2 ? 's' : ''}` : ''} would come at ${e.cut.at.toFixed(1)}s. ${e.fit ? `speed: 'fit' goes no faster than ${FIT_SPEEDS[1]} times; make the narration longer or record fewer steps` : "speed: 'fit' plays it faster, so it ends with the scene, or the narration can be longer"}`));
         }
         if (e.kind === 'sound' && !this.soundsPlayed.has(e.src)) this.soundsPlayed.set(e.src, { scene: sc.id, t: e.at });
