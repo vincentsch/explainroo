@@ -7,7 +7,7 @@ import { colorOf, tintOf, fontString } from './themes.js';
 import { scalePath, quadD, polyD, pathLength, pointAt, parsePath, absolutize, samplePath } from './pathdata.js';
 import { layoutText, lineStartX } from './text.js';
 import { clipFrame, clipURL, soundURL, FIT_SPEEDS } from './clips.js';
-import { recordingClock, videoTime, sceneTime, cursorAt, viewAt, drawCursor, RING_SECONDS } from './recording.js';
+import { cuedSteps, smallRecording, recordingClock, videoTime, sceneTime, cursorAt, viewAt, drawCursor, RING_SECONDS } from './recording.js';
 import { highlightLine, codeTokens, matchTokens, resolveCodeSteps, codeMorphState } from './code.js';
 import { ring, bounds, along, rayThrough } from './geometry.js';
 
@@ -1658,12 +1658,7 @@ export class Stage {
         throw new SceneError(`recording "${name}" has no mark or step "${key}" for cues. ${names.length ? `Marks: ${names.join(', ')}. ` : ''}Steps go from ${steps[0].step} to ${steps.at(-1).step}`);
       }
     }
-    const cued = [];
-    for (const st of steps) {
-      const cue = o.cues?.[st.name] ?? o.cues?.[st.step] ?? st.cue;
-      if (cue === undefined || st.t < from) continue;
-      cued.push({ step: st.step, start: st.start, t: st.t, cueAt: this.time(cue), cue });
-    }
+    const cued = cuedSteps(steps, { cues: o.cues, from, time: (cue) => this.time(cue) });
     // 'fit' plays the recording at the speed that ends its last step with the
     // scene, or at out, with the holds for its cues, from half to twice its speed.
     const end = log.end ?? log.duration;
@@ -1690,7 +1685,8 @@ export class Stage {
       const after = steps.filter((st) => st.t >= from && sceneTime(clock, st.t) > out + 0.05);
       rec.push({ kind: 'recording', key: `recording|${at}|${o.id ?? n}|${name}`, at, out, end: sceneTime(clock, end), name, changed: !!log.changed,
         late: clock.late.map((l) => ({ ...l, label: label(l.step), cue: cued.find((c) => c.step === l.step).cue })),
-        cut: after.length ? { first: label(after[0].step), count: after.length, at: sceneTime(clock, after[0].t) } : null, fit: o.speed === 'fit', speed });
+        cut: after.length ? { first: label(after[0].step), count: after.length, at: sceneTime(clock, after[0].t) } : null, fit: o.speed === 'fit', speed,
+        small: smallRecording(log, { w: o.w ?? o.h * (log.width / log.height), h: o.h ?? o.w / (log.width / log.height), from, zoom: o.zoom !== false }), width: log.width });
       // Each step shows something new, for check's look at quiet stretches.
       for (const st of steps) {
         const T = st.t >= from ? sceneTime(clock, st.t) : -1;

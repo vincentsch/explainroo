@@ -44,6 +44,10 @@ const pages = {
     <div class="player" id="player">Nothing plays yet</div>`,
   reports: () => `<h1>Reports</h1><p class="sub">Every invoice of the year in one file.</p><button class="primary" id="download">Download report</button>
     <div class="locked"><p>Reports come with Little Ledger Pro.</p></div>`,
+  // A note editor that shows its placeholder as an element inside the field,
+  // the way CodeMirror does, and a button with only an icon and its aria-label.
+  notes: () => `<div class="bar"><div><h1>Notes</h1><p class="sub">A note goes on the next invoice.</p></div><button class="icon" aria-label="Clear note">&times;</button></div>
+    <div class="editor" contenteditable="true" role="textbox" aria-label="Note text"><div class="line"><span class="ed-placeholder" contenteditable="false">Write the note here, or paste one.</span></div></div>`,
   settings: () => `<h1>Settings</h1><p class="sub">Invoices go out from <span class="email">jane.doe@example.com</span>.</p>`,
 };
 
@@ -56,6 +60,12 @@ function show() {
   for (const b of document.querySelectorAll('.play')) {
     b.addEventListener('click', () => { document.getElementById('player').textContent = `Playing ${tracks[b.dataset.track]}`; });
   }
+  const editor = document.querySelector('.editor');
+  editor?.addEventListener('input', () => {
+    const empty = !editor.textContent.replace('Write the note here, or paste one.', '').trim();
+    editor.querySelector('.ed-placeholder')?.toggleAttribute('hidden', !empty);
+  });
+  document.querySelector('.icon')?.addEventListener('click', () => { editor.innerHTML = '<div class="line"><span class="ed-placeholder" contenteditable="false">Write the note here, or paste one.</span></div>'; });
   document.getElementById('form')?.addEventListener('submit', (e) => {
     e.preventDefault();
     const amount = Number(document.getElementById('amount').value.replace(/[^0-9]/g, '')) || 0;

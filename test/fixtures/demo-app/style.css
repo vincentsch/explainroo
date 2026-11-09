@@ -37,3 +37,6 @@ input, select { font: inherit; padding: 10px 12px; border: 1px solid #d5d9e0; bo
 .long { height: 900px; }
 .player { position: fixed; left: 0; right: 0; bottom: 0; height: 170px; background: #1d2433; color: #fff; display: grid; place-items: center; font-weight: 600; }
 .locked { position: fixed; inset: 0; background: rgba(245, 246, 248, 0.92); display: grid; place-items: center; font-size: 24px; }
+.editor { background: #fff; border: 1px solid #d5d9e0; border-radius: 12px; padding: 18px 20px; min-height: 220px; max-width: 720px; font-family: ui-monospace, monospace; outline: none; }
+.ed-placeholder { color: #8a92a3; pointer-events: none; }
+button.icon { font-size: 22px; line-height: 1; padding: 8px 14px; }

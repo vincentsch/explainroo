@@ -173,3 +173,19 @@ test('named captures of one site stay side by side, and a capture without a name
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('a page whose buttons show no color gets the accent from its theme-color tag, and capture says so', { skip: !chrome, timeout: 120000 }, async () => {
+  const site = await captureFixture();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-capture-theme-'));
+  try {
+    fs.writeFileSync(path.join(dir, 'video.json'), '{}');
+    const human = await run(process.execPath, [bin, 'capture', dir, `${site.url}/plain`], { timeout: 60000 });
+    assert.match(human.stdout, /^accent: #2c5c97 \(from the theme-color tag\)$/m);
+    assert.match(human.stdout, /^The buttons show no clear color, so the accent #2c5c97 comes from the page's theme-color tag\. Check it against the screenshots\.$/m);
+    const r = JSON.parse(fs.readFileSync(path.join(dir, 'assets/capture/127.0.0.1/capture.json'), 'utf8'));
+    assert.deepEqual([r.colors.accent, r.colors.accentFrom, r.brand.accent, r.suggestion.brand.accent], ['#2c5c97', 'theme-color', '#2c5c97', '#2c5c97']);
+  } finally {
+    await site.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

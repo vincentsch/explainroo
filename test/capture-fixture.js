@@ -31,10 +31,12 @@ export async function captureFixture() {
   await new Promise((resolve) => styles.listen(0, '127.0.0.1', resolve));
   const html = fs.readFileSync(fileURLToPath(new URL('./fixtures/capture.html', import.meta.url)), 'utf8');
   fs.writeFileSync(path.join(dir, 'index.html'), html.replace('__FONT_CSS__', `http://127.0.0.1:${styles.address().port}/font.css`));
+  // A page whose buttons are gray, with its color only in the theme-color tag.
+  fs.writeFileSync(path.join(dir, 'plain.html'), '<!doctype html><html><head><meta charset="utf-8"><title>Plain</title><meta name="theme-color" content="#2c5c97"><style>body { font-family: sans-serif; background: #fafafa; } button { background: #e4e4e4; color: #222; border: 1px solid #ccc; padding: 12px 20px; }</style></head><body><h1>Plain tools</h1><button>Run it</button><button>Share</button></body></html>');
   const server = http.createServer((req, res) => {
     requests.push(req.url);
     if (req.url === '/redirect') { res.writeHead(302, { Location: '/' }); return res.end(); }
-    const name = req.url === '/' ? 'index.html' : ['/fixture.woff2', '/icon.svg', '/touch.png', '/social.png', '/photo.png'].includes(req.url) ? req.url.slice(1) : null;
+    const name = req.url === '/' ? 'index.html' : req.url === '/plain' ? 'plain.html' : ['/fixture.woff2', '/icon.svg', '/touch.png', '/social.png', '/photo.png'].includes(req.url) ? req.url.slice(1) : null;
     if (!name) { res.writeHead(404); return res.end('Not found'); }
     const type = { '.html': 'text/html', '.woff2': 'font/woff2', '.png': 'image/png', '.svg': 'image/svg+xml' }[path.extname(name)];
     res.writeHead(200, { 'Content-Type': type });

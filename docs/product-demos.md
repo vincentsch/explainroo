@@ -15,7 +15,9 @@ about. See "Rebuilding the screens with s.ui".
 and
 [examples/unspar-demo](https://github.com/vincentsch/explainroo/tree/main/examples/unspar-demo)
 are complete ones. The examples also come with the package, and
-`explainroo doctor` prints their folder.
+`explainroo doctor` prints their folder. recording-demo comes with its step
+file, `recordings/new-invoice.json`, but not with its video, and its README
+says how to record it.
 
 ## Recording the real app
 
@@ -39,6 +41,20 @@ Write the steps of a recording in `recordings/<name>.json`:
 }
 ```
 
+To see what a step can use, run this before you write the steps:
+
+```bash
+explainroo record videos/<name> --inspect https://example.com --viewport 1280x720
+```
+
+It opens the page in the browser `record` uses, records nothing, and lists
+every visible element you can click or type into: its words, `aria-label`
+and placeholder, a `text` and a `selector` that find only it, and its box.
+Copy the text or the selector into the step as it is. Use the viewport of
+your script, because the page may lay itself out differently in another
+size. `--json` gives the same list as JSON, and `--keep-profile` opens the
+page with the kept profile, for a page behind a login.
+
 Then run `explainroo record videos/<name> <name>`. It runs the steps in a
 browser of its own and saves `assets/recordings/<name>.webm` and its step
 log, `assets/recordings/<name>.log.json`. The video shows only the page,
@@ -46,11 +62,16 @@ with no browser bars or pop-ups. `record` needs Playwright's own ffmpeg,
 which `explainroo doctor --fetch` downloads once.
 
 - A step finds its element by `text` or by a CSS `selector`. `text` is the
-  words the element shows, and its label or placeholder count too. `nth: 2`
-  takes the second match from the top.
+  words the element shows, and its `aria-label`, label or placeholder count
+  too. A long placeholder also matches its first part, up to a comma or a
+  full stop. An editor like CodeMirror shows its placeholder as an element
+  inside the field, and that counts as the field's placeholder: the step
+  clicks or types into the field. `nth: 2` takes the second match from the
+  top.
 - `open` goes to `url`, an address or a path. `click`, `hover` and `type`
   move the pointer to the element. `type` clicks the field and types
-  `value`, and `press` presses a key after it. `scroll` takes `y` in pixels
+  `value` at 14 characters a second, or at `cps`, and `press` presses a key
+  after it. `scroll` takes `y` in pixels
   or the element to scroll to the middle of the window. `wait` takes
   `seconds` or the element to wait for. `zoom` moves in on the element, and
   without one back out. `mark` names a moment with `name`.
@@ -62,19 +83,28 @@ which `explainroo doctor --fetch` downloads once.
 - A zoom fits its element into about 70% of the frame, from 1.4 to 2.5
   times closer. `"scale": 2` on a zoom step sets how close it goes.
 - A pointer move takes about 0.6 seconds, and a scroll of one window height
-  about 1 second. `"pace": 1.5` in the script makes both faster, from 0.5 to
-  2, and `"duration": 1.2` on a step sets the seconds of its own move or
-  scroll.
+  about 1 second. `"pace": 1.5` in the script makes moves, scrolls and
+  typing faster, from 0.5 to 2. `"duration": 1.2` on a step sets the seconds
+  of its own move or scroll, and `"cps": 20` on a `type` step the characters
+  it types a second, which the pace speeds up too.
 - `cue` is a spoken word or a `[#marker]` of the scene that plays it.
+  Several steps may share one cue, like a `zoom` and the `type` after it.
+  They run in order, and the first lands on the cue.
 - Steps with `"before": true` run before the video starts, like closing a
-  cookie banner or logging in. Every run starts with an empty browser
-  profile, so the site has no cookies or stored data from an earlier run.
-  For a site that needs a login, `--keep-profile` keeps the profile for the
-  next run, and a step before the video that finds nothing is skipped.
+  cookie banner or logging in. A step before the video that finds nothing
+  is skipped, in every run, with or without `--keep-profile`, so it can
+  close a pop-up that shows only sometimes. `record` names each step it
+  skipped. Every run starts with an empty browser profile, so the site has
+  no cookies or stored data from an earlier run. For a site that needs a
+  login, `--keep-profile` keeps the profile for the next run.
 - `blur` blurs elements by CSS selector or exact text on every page, before
   anything is recorded. Use it for real email addresses and keys.
-- `viewport` is 1920 x 1080 by default. 1280 x 720 makes the app's text
-  larger in the video.
+- `viewport` is 1920 x 1080 by default. Pick it for the size of the video:
+  1280 x 720 for 16:9, which makes the app's text larger than the default,
+  1000 x 1250 for 4:5, and 1080 x 1920 for 9:16. A recording that plays at
+  under 60% of its size gets a warning from `check` unless a step zooms in,
+  because its text is then too small to read. The warning names the zoom
+  step to add.
 
 The step log has the time of each step in seconds of the video, and the
 `box` of its element in pixels of the video: `x` and `y` are its middle,
@@ -82,8 +112,8 @@ and `w` and `h` its width and height.
 
 When a step can't find its element, `record` stops and names the step. It
 lists close words from the page and saves a picture of the page in
-`build/record/`. Fix the script from what the page shows, and never guess a
-button. Then play it with `s.recording`, which
+`build/record/`. Fix the script from what the page shows or what
+`--inspect` lists, and never guess a button. Then play it with `s.recording`, which
 `explainroo docs scene-api recordings` explains. `from` skips the first
 seconds of the video. Write the narration around what the video shows, and
 look at stills. You can also show any screen recording with `s.clip` in a
@@ -113,7 +143,9 @@ saves what a demo needs in `assets/capture/<hostname>/`:
   came from. Fonts that come with explainroo are not copied.
 
 It prints a `brand` and `fonts` block to paste into `video.json`, and one line
-for each font it saved. Check the block against the screenshots. A font on a
+for each font it saved. The accent is the color of the page's buttons, or,
+when they show none, the page's `theme-color` tag, and then `capture` says
+so. Check the block against the screenshots. A font on a
 website isn't always free to use in a video, so check the license of each
 saved font before you publish, and copy the license file next to it. For a
 font it could not save, get the files yourself. Cookie banners and chat

@@ -4,7 +4,9 @@ In these commands, `explainroo` is short for `npx --yes explainroo`, or for
 `node bin/explainroo.js` in a source checkout. Commands that work on a video
 take the project folder first, and every command accepts `--json`.
 `explainroo <command> --help` prints the usage of one command, its options and
-an example.
+an example. A flag the command doesn't take is an error that lists the flags
+it takes, so `still --at intro@2` stops and says the time goes after the
+project.
 
 | Command | What it does |
 |---|---|
@@ -26,7 +28,7 @@ an example.
 | `share [project]` | uploads a video to explainroo.com for a page link, once that service runs. Until then it sends nothing and says so (`--platform`, `--file`, `--title`, `--new`) |
 | `publish [project]` | posts a package after a typed yes or `--yes` (`--via`, `--platform`, `--privacy`, `--media-url`, `--media-url-unchecked`, `--channel`, `--account`, `--draft` for Buffer, `--dry-run`, `--new`) |
 | `capture [project] <url>` | saves screenshots, wording, colors, the font files the page loaded and logos from a live site, with the page's text and a list of its images in `capture.json` (`--mobile`, `--json`). `--name pricing` saves to `assets/capture/<site>/pricing/`, so several pages of one site stay side by side |
-| `record <project> <name>` | runs the steps of `recordings/<name>.json` in a browser of its own and saves `assets/recordings/<name>.webm` with a log of every step in `<name>.log.json`, for `s.recording` (`--keep-profile`, `--json`). Every run starts with an empty browser profile, and `--keep-profile` keeps cookies and stored data for a site that needs a login. A step that can't find its element, or finds it covered, stops with its number and a picture of the page |
+| `record <project> <name>` | runs the steps of `recordings/<name>.json` in a browser of its own and saves `assets/recordings/<name>.webm` with a log of every step in `<name>.log.json`, for `s.recording` (`--keep-profile`, `--json`). Every run starts with an empty browser profile, and `--keep-profile` keeps cookies and stored data for a site that needs a login. A step that can't find its element, or finds it covered, stops with its number and a picture of the page. `record <project> --inspect <url>` lists every element of the page a step can click or type into, with a text and a selector that find it and its box, and records nothing (`--viewport 1280x720`) |
 | `image [project] <name> "<prompt>"` | makes an illustration with OpenRouter (`--new` buys it again, `--resume <id>` runs a job from `history` again) |
 | `images [project]` | lists the images and what they cost |
 | `clip [project] "<prompt>"` | buys a short AI video clip with OpenRouter (`--seconds`, `--max-cost`, `--budget`, `--dry-run`, `--aspect`, `--model`, `--resolution`, `--audio`, `--name`, `--no-wait`, `--new`, `--resume <id>`). `--dry-run` shows the price, what the model takes and what is left of the budget, also without a project. `--budget 0.40`, or `"clipBudget"` in `video.json`, is the most all clips of the project may cost |

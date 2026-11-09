@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { findChrome } from '../src/browser.js';
-import { record } from '../src/record.js';
+import { findChrome, launch } from '../src/browser.js';
+import { formatInspect, inspect, record } from '../src/record.js';
 import { loadProject } from '../src/project.js';
 import { withEngine } from '../src/pipeline.js';
 import { execFileSync } from 'node:child_process';
@@ -96,6 +96,12 @@ test('record runs the steps in a clean window, logs each one and blurs what it n
   fs.writeFileSync(path.join(dir, 'recordings/invoice.json'), JSON.stringify({ url: `${app.url}#/invoices`, viewport: { width: 1280, height: 720 }, steps: [{ do: 'click', text: 'Accept', before: true }, { do: 'mark', name: 'a' }] }));
   const again = await record(dir, 'invoice');
   assert.deepEqual([again.steps, again.notes], [2, []]);
+  // A step before the video that finds nothing is skipped in every run, also
+  // without keepProfile, like a pop-up that shows only sometimes.
+  fs.writeFileSync(path.join(dir, 'recordings/invoice.json'), JSON.stringify({ url: `${app.url}#/invoices`, viewport: { width: 1280, height: 720 }, steps: [{ do: 'click', text: 'Accept', before: true }, { do: 'click', text: 'No thanks', before: true }, { do: 'mark', name: 'a' }] }));
+  const sometimes = await record(dir, 'invoice');
+  assert.deepEqual([sometimes.steps, sometimes.notes], [2, ['step 2 (click "No thanks") found nothing and was skipped. Check the step if the page should show it on every visit.']]);
+  fs.writeFileSync(path.join(dir, 'recordings/invoice.json'), JSON.stringify({ url: `${app.url}#/invoices`, viewport: { width: 1280, height: 720 }, steps: [{ do: 'click', text: 'Accept', before: true }, { do: 'mark', name: 'a' }] }));
   await record(dir, 'invoice', { keepProfile: true });
   const kept1 = await record(dir, 'invoice', { keepProfile: true });
   assert.deepEqual([kept1.steps, kept1.notes], [1, ['step 1 (click "Accept") found nothing and was skipped. That\'s fine when an earlier run did it already, and the kept profile remembers it.']]);
@@ -251,4 +257,103 @@ test('a new recording takes out the frames of the one it replaces, and s.recordi
   const made = fs.readdirSync(clips).filter((n) => n !== 'other');
   assert.equal(made.length, 1);
   assert.equal(JSON.parse(fs.readFileSync(path.join(clips, made[0], 'source.json'), 'utf8')).src, 'assets/recordings/invoice.webm');
+});
+
+test('inspect lists what a step can click or type into, and every text and selector it gives finds that element', { skip: !chrome }, async (t) => {
+  const app = await serveDemoApp();
+  t.after(app.close);
+  const dir = project(t, { url: app.url, steps: [{ do: 'mark', name: 'a' }] });
+  const r = await inspect(dir, `${app.url}#/notes`, { viewport: { width: 1280, height: 720 } });
+  assert.deepEqual(r.viewport, { width: 1280, height: 720 });
+  const byKind = (kind) => r.elements.filter((e) => e.kind === kind);
+  // The editor shows its placeholder as an element inside the field.
+  const [editor] = byKind('editor');
+  assert.equal(editor.aria_label, 'Note text');
+  assert.equal(editor.placeholder, 'Write the note here, or paste one.');
+  assert.equal(editor.text, 'Write the note here, or paste one.');
+  assert.equal(editor.selector, 'div[aria-label="Note text"]');
+  // A button that shows only an icon goes by its aria-label.
+  const clear = r.elements.find((e) => e.aria_label === 'Clear note');
+  assert.deepEqual([clear.kind, clear.words, clear.text, clear.selector], ['button', '×', 'Clear note', 'button[aria-label="Clear note"]']);
+  // A link whose class changes with the page is found by its address or its place.
+  const invoices = r.elements.find((e) => e.words === 'Invoices');
+  assert.equal(invoices.selector, 'a[href="#/invoices"]');
+  assert.ok(r.elements.every((e) => e.in_view && e.box.w > 0), 'the page fits the window');
+  const text = formatInspect(r);
+  assert.match(text, /^http:\/\/127\.0\.0\.1:\d+\/#\/notes at 1280x720: 7 elements to click or type into, from the top\n/);
+  assert.match(text, /\n {2}\d\. editor "Write the note here, or paste one\.", aria-label "Note text" {2}at \d+,\d+, 720x220\n {5}text "Write the note here, or paste one\.", or selector div\[aria-label="Note text"\]\n/);
+
+  // A form: a field goes by the words of its label, and each selector matches
+  // only its element.
+  const form = await inspect(dir, `${app.url}#/new-invoice`, { viewport: { width: 1280, height: 720 } });
+  const amount = form.elements.find((e) => e.selector === '#amount');
+  assert.deepEqual([amount.kind, amount.placeholder, amount.text], ['input text', '0', 'Amount']);
+  assert.equal(form.elements.find((e) => e.kind === 'select').text, 'Customer');
+  // "Cancel" is a button inside a link, one thing to click.
+  assert.equal(form.elements.filter((e) => e.words === 'Cancel').length, 1);
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  await page.goto(`${app.url}#/new-invoice`);
+  for (const e of form.elements) {
+    const boxes = await page.evaluate((sel) => [...document.querySelectorAll(sel)].map((el) => {
+      const b = el.getBoundingClientRect();
+      return [Math.round(b.left + b.width / 2), Math.round(b.top + b.height / 2)];
+    }), e.selector);
+    assert.deepEqual(boxes, [[e.box.x, e.box.y]], e.selector);
+  }
+
+  // A recording types into the editor by the start of its placeholder, and
+  // clicks the icon button by its aria-label.
+  fs.writeFileSync(path.join(dir, 'recordings/invoice.json'), JSON.stringify({ url: `${app.url}#/notes`, viewport: { width: 1280, height: 720 }, steps: [
+    { do: 'type', text: 'Write the note here', value: 'Thanks!' },
+    { do: 'click', text: 'Clear note' },
+  ] }));
+  const log = JSON.parse(fs.readFileSync(path.join(dir, (await record(dir, 'invoice')).log), 'utf8'));
+  assert.deepEqual(log.steps[0].box, editor.box);
+  assert.deepEqual(log.steps[1].box, clear.box);
+});
+
+test('a type step types at 14 characters a second, at its cps, and faster at a higher pace', { skip: !chrome }, async (t) => {
+  const app = await serveDemoApp();
+  t.after(app.close);
+  const value = 'Design work for the spring issue';
+  const typing = async (step, pace) => {
+    const dir = project(t, { url: `${app.url}#/new-invoice`, viewport: { width: 1280, height: 720 }, ...(pace ? { pace } : {}), steps: [{ do: 'type', text: 'Note', value, ...step }, { do: 'mark', name: 'typed' }] });
+    const log = JSON.parse(fs.readFileSync(path.join(dir, (await record(dir, 'invoice')).log), 'utf8'));
+    // The step ends 0.7 s and a moment to settle after the last key.
+    return log.steps[0].end - log.steps[0].t;
+  };
+  const plain = await typing({});
+  const quick = await typing({ cps: 28 });
+  const paced = await typing({ cps: 28 }, 2);
+  // 32 characters take about 2.3 s at 14 a second, 1.1 s at 28, and 0.6 s at 28 with pace 2.
+  assert.ok(plain - quick > 0.6 && plain - quick < 2, `${plain} and ${quick}`);
+  assert.ok(quick - paced > 0.2 && quick - paced < 1.2, `${quick} and ${paced}`);
+});
+
+test('check warns about a recording that plays small with no zoom, and names the zoom step to add', { skip: !chrome }, async (t) => {
+  const dir = project(t, { url: 'http://127.0.0.1:4500/', viewport: { width: 1280, height: 720 }, steps: [{ do: 'mark', name: 'a' }] });
+  fs.mkdirSync(path.join(dir, 'assets/recordings'), { recursive: true });
+  await ffmpeg(['-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=white:s=1280x720:r=25:d=4', '-c:v', 'libvpx', '-b:v', '200k', path.join(dir, 'assets/recordings/invoice.webm')]);
+  const steps = [
+    { step: 1, do: 'click', text: 'Accept', before: true, start: 0.1, t: 0.2, end: 0.3 },
+    { step: 2, do: 'click', text: 'New invoice', cue: '#new', start: 1, t: 1.5, click: 1.5, end: 2, box: { x: 1100, y: 80, w: 140, h: 44 } },
+    { step: 3, do: 'type', selector: '#amount', start: 2, t: 2.6, click: 2.4, end: 3, box: { x: 600, y: 300, w: 400, h: 44 } },
+  ];
+  const writeLog = (more = []) => fs.writeFileSync(path.join(dir, 'assets/recordings/invoice.log.json'), JSON.stringify({ version: 1, url: 'http://127.0.0.1:4500/', width: 1280, height: 720, duration: 4, start: 0.5, end: 3.5, cursor: { x: 640, y: 360 }, steps: [...steps, ...more], blur: [] }));
+  const timeline = { pace: 1, duration: 4, frames: 120, fps: 30, width: 1920, height: 1080, transitionSeconds: 0,
+    scenes: [{ id: 'demo', index: 0, start: 0, dur: 4, words: [], marks: { new: 1 }, voice: null, lead: 0, transition: 'none' }] };
+  const findings = async (o) => {
+    fs.writeFileSync(path.join(dir, 'scenes.js'), `export default { demo(s) { s.recording('invoice', ${JSON.stringify(o)}); } };`);
+    return withEngine(loadProject(dir), timeline, { scale: 0.25 }, async (page) => (await page.evaluate(() => window.explainroo.check(0.25))).filter((i) => /plays at/.test(i.message)).map((i) => i.message));
+  };
+  writeLog();
+  // 700 pixels wide is 55% of the 1280 of the video.
+  assert.deepEqual(await findings({ w: 700 }), ['recording "invoice" plays at 55% of its size, 1280 pixels wide in 700, and none of its steps zooms in, so its text is small to read. Add a zoom step to recordings/invoice.json before step 2, like { "do": "zoom", "text": "New invoice", "cue": "#new" }, and record it again']);
+  // From 60% on it's fine, and so is a zoom step.
+  assert.deepEqual(await findings({ w: 768 }), []);
+  writeLog([{ step: 4, do: 'zoom', selector: 'form', start: 3, t: 3, end: 3.4, box: { x: 600, y: 300, w: 600, h: 300 } }]);
+  assert.deepEqual(await findings({ w: 700 }), []);
+  assert.deepEqual(await findings({ h: 300, zoom: false }), ['recording "invoice" plays at 42% of its size, 1280 pixels wide in 533, and zoom: false keeps its zooms out, so its text is small to read. Take out zoom: false, or show it larger']);
 });

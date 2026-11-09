@@ -232,6 +232,56 @@ test('every command prints its own usage, options and one example with --help', 
   assert.match((await runAll(['help', 'nothing'])).out, /"explainroo <command> --help" prints the options of one command and an example\./);
 });
 
+// A flag a command doesn't take is an error that names its flags, and the
+// closest one when it is only a typo away. Every flag the code reads stays taken.
+test('every command refuses a flag it does not take, and takes every flag it reads', async () => {
+  const { COMMAND_HELP, commandFlags } = await import('../src/help.js');
+  const source = fs.readFileSync(new URL('../src/cli.js', import.meta.url), 'utf8');
+  const reads = (text) => [...text.matchAll(/flags\.([a-z]+)\b|flags\['([a-z-]+)'\]|(?:textFlag|num)\(flags(?:, |\.|\[')'?([a-z-]+)/g)].map((m) => m[1] ?? m[2] ?? m[3]);
+  // What the helpers a command calls read.
+  const body = (name) => source.slice(source.indexOf(`function ${name}(`)).split(/\n}\n/)[0];
+  const helpers = ['runProject', 'runOverrides', 'langOverride', 'qualityOverride', 'timesFlag', 'init', 'preview', 'say', 'docs', 'services', 'formats'];
+  const blocks = source.split(/^ {6}case '/m).slice(1).map((b) => [b.slice(0, b.indexOf("'")), b.split(/^ {6}default:/m)[0]]);
+  for (const [cmd, block] of blocks) {
+    if (cmd === 'connect') continue;
+    const read = new Set(reads(block).filter((f) => !['help', 'json', 'quiet', 'version'].includes(f)));
+    for (const name of helpers) if (block.includes(`${name}(`)) for (const f of reads(body(name))) read.add(f);
+    if (block.includes('runProject(')) for (const f of reads(body('runOverrides'))) read.add(f);
+    // check and verify read the flags of a video file in videoFileCheck.
+    const takes = commandFlags(cmd);
+    assert.deepEqual([...read].filter((f) => f !== 'flag' && !takes.includes(f)), [], `${cmd} takes every flag it reads`);
+  }
+  assert.ok(Object.keys(COMMAND_HELP).length > 25);
+
+  const dir = tempDir();
+  const still = await runAll(['still', dir, '--at', 'demo@2']);
+  assert.equal(still.code, 1);
+  assert.equal(still.out, '');
+  assert.match(still.err, /^error: still does not take --at\. It takes --size, --platform, --no-watermark, --transparent, --scale, --lang, --json\. Times go after the project, like: explainroo still videos\/<name> intro@2\.4\n$/);
+  assert.match((await run(['render', dir, '--sacle', '0.5'])).err, /^error: render does not take --sacle\. Did you mean --scale\? It takes --draft, /);
+  assert.match((await run(['sheet', dir, '--time=3'])).err, /Did you mean --times\?/);
+  assert.match((await run(['images', dir, '--all'])).err, /^error: images does not take --all\. It takes only --json\.\n$/);
+  // A flag only a video file takes is named as such with a project.
+  assert.match((await run(['check', dir, '--script', 'a.txt'])).err, /--script is for a video file, like: explainroo check video\.mp4 --script script\.txt\./);
+  // The older flag of a paid voice list still takes no value.
+  const { CONNECTORS } = await import('../src/connectors/index.js');
+  const paid = CONNECTORS.find((c) => c.voices).id;
+  assert.ok(commandFlags('voices').includes(paid));
+  // The checks come before anything else, also before a project is loaded.
+  assert.equal(fs.readdirSync(dir).length, 0);
+});
+
+test('record --inspect takes a project and an address, and --viewport goes only with it', async (t) => {
+  const { tinyProject } = await import('./helpers/tiny-project.js');
+  const dir = tinyProject(t, {}, { narrated: false });
+  assert.match((await run(['record', dir, 'demo', '--inspect', 'http://127.0.0.1:9/'])).err, /usage: explainroo record <project> --inspect <url> \[--viewport 1280x720\]/);
+  assert.match((await run(['record', dir, '--inspect'])).err, /--inspect needs a value/);
+  assert.match((await run(['record', dir, '--inspect', 'ftp://example.com/'])).err, /--inspect must be an http:\/\/ or https:\/\/ address/);
+  assert.match((await run(['record', dir, '--inspect', 'http://127.0.0.1:9/', '--viewport', 'big'])).err, /--viewport must be like 1280x720/);
+  assert.match((await run(['record', dir, '--inspect', 'http://127.0.0.1:9/', '--viewport', '1281x720'])).err, /--viewport width must be an even number of pixels from 320 to 3840/);
+  assert.match((await run(['record', dir, 'demo', '--viewport', '1280x720'])).err, /--viewport goes with --inspect\. A recording takes its viewport from recordings\/<name>\.json\./);
+});
+
 test('words prints each spoken word of a scene with its start time, the cue of a word spoken twice, and the markers, also in JSON', async (t) => {
   const { tinyProject } = await import('./helpers/tiny-project.js');
   const { cachedVoice } = await import('./helpers/cached-voice.js');

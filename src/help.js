@@ -2,6 +2,7 @@
 // "explainroo help <command>": its usage, what it does, its options and one
 // example. The general help in cli.js lists every command on one or two lines.
 import { CONNECTORS } from './connectors/index.js';
+import { LIKENESS_FLAGS } from './presenter.js';
 
 // The paid voices that can list what a key may use, from their connectors.
 const VOICE_LISTS = CONNECTORS.filter((c) => c.voices).map((c) => c.id);
@@ -65,13 +66,13 @@ export const COMMAND_HELP = {
   render: {
     usage: 'render [project] [options]',
     about: 'Writes the video, with subtitles, chapters and a cover next to it.',
-    options: [['--draft', 'a quick, smaller video to watch'], ['--quality final|fast', 'fast leaves out the motion blur of a final'], ['--format mp4|gif|webm|mov', 'the file type'], ['--transparent', 'a transparent background, for webm and mov'], ['--from <s>, --to <s>', 'only part of the video'], ['--workers <n>', 'pages that draw at the same time'], ['--out <file>', 'where to write it'], SIZE, PLATFORM, WATERMARK, LANG, JSON_OUT],
+    options: [['--draft', 'a quick, smaller video to watch'], ['--quality final|fast', 'fast leaves out the motion blur of a final'], ['--format mp4|gif|webm|mov', 'the file type'], ['--transparent', 'a transparent background, for webm and mov'], ['--from <s>, --to <s>', 'only part of the video'], ['--workers <n>', 'pages that draw at the same time'], ['--scale <n>', 'a smaller video, like 0.5'], ['--out <file>', 'where to write it'], SIZE, PLATFORM, WATERMARK, LANG, JSON_OUT],
     example: 'render videos/how-dns-works',
   },
   verify: {
     usage: 'verify [project] [options], or verify <video.mp4> [options]',
     about: 'Checks a finished video: loudness, true peak, black frames, silence and how much of the narration the speech model understands. With a video file in place of the project, it checks any video, like check <video.mp4>.',
-    options: [['--file <file>', 'another video file than out/video.mp4'], [PLATFORM[0], 'check the file that render --platform <name> wrote'], [SIZE[0], 'check the file that render --size <size> wrote'], [WATERMARK[0], 'check the file that render --no-watermark wrote'], ['--script <file>', 'for a video file, compare the speech with this text'], ['--language <code>', 'for a video file, the language of the speech, en by default'], ['--view-width <px>', 'for a video file, also judge text at this player width'], VERBOSE, LANG, JSON_OUT],
+    options: [['--file <file>', 'another video file than out/video.mp4'], [PLATFORM[0], 'check the file that render --platform <name> wrote'], [SIZE[0], 'check the file that render --size <size> wrote'], [WATERMARK[0], 'check the file that render --no-watermark wrote'], ['--script <file>', 'for a video file, compare the speech with this text'], ['--language <code>', 'for a video file, the language of the speech, en by default'], ['--view-width <px>', 'for a video file, also judge text at this player width'], ['--step <s>', 'for a video file, seconds between the frames it reads, 1 by default'], VERBOSE, LANG, JSON_OUT],
     example: 'verify videos/how-dns-works',
   },
   cut: {
@@ -107,7 +108,7 @@ export const COMMAND_HELP = {
   publish: {
     usage: 'publish [project] --via youtube|buffer|blotato [options]',
     about: 'Posts a package under your name. It shows the exact post first, and a real run needs a typed yes, or --yes when there is no terminal.',
-    options: [['--via <service>', 'youtube, buffer or blotato'], ['--platform <name>', 'the package to post'], ['--dry-run', 'show the post and send nothing'], ['--yes', 'post without asking, where there is no terminal'], ['--privacy <p>', 'private, unlisted or public on YouTube'], ['--media-url <url>', 'a public link to the video, for Buffer and Blotato'], ['--channel <id>', 'the Buffer channel'], ['--account <id>', 'the Blotato account'], ['--draft', 'save it as a draft in Buffer'], ['--new', 'post again'], LANG, JSON_OUT],
+    options: [['--via <service>', 'youtube, buffer or blotato'], ['--platform <name>', 'the package to post'], ['--dry-run', 'show the post and send nothing'], ['--yes', 'post without asking, where there is no terminal'], ['--privacy <p>', 'private, unlisted or public on YouTube'], ['--media-url <url>', 'a public link to the video, for Buffer and Blotato'], ['--media-url-unchecked', 'post the link without checking that it leads to a file of the package\'s size'], ['--channel <id>', 'the Buffer channel'], ['--account <id>', 'the Blotato account'], ['--draft', 'save it as a draft in Buffer'], ['--new', 'post again'], LANG, JSON_OUT],
     example: 'publish videos/how-dns-works --via youtube --dry-run',
   },
   capture: {
@@ -117,15 +118,15 @@ export const COMMAND_HELP = {
     example: 'capture videos/my-demo https://example.com',
   },
   record: {
-    usage: 'record <project> <name> [options]',
+    usage: 'record <project> <name> [options], or record <project> --inspect <url>',
     about: 'Runs the steps of recordings/<name>.json in a browser of its own and saves the video as assets/recordings/<name>.webm, with the time and the box of every step in assets/recordings/<name>.log.json. s.recording(\'<name>\') plays it in a scene with a cursor, click rings and zooms. When a step can\'t find its element, or something covers it, it stops with the step number and a picture of the page. Every run starts with an empty browser profile.',
-    options: [['--keep-profile', 'keep cookies and stored data for the next run, for a site that needs a login'], JSON_OUT],
+    options: [['--keep-profile', 'keep cookies and stored data for the next run, for a site that needs a login'], ['--inspect <url>', 'open the page and list every visible element to click or type into, with a text and a selector a step can use and its box. It records nothing'], ['--viewport <w>x<h>', 'with --inspect, the size of the window, 1920x1080 by default. Use the viewport of the script'], JSON_OUT],
     example: 'record videos/my-demo new-invoice',
   },
   image: {
     usage: 'image [project] <name> "<what to draw>" [options]',
     about: 'Buys an illustration through OpenRouter and saves it as assets/<name>.png. This costs money. The same request returns the file it already bought.',
-    options: [['--model best|cheap', 'the image model'], ['--aspect <ratio>', 'like 16:9'], ['--ref <files>', 'pictures to follow, like assets/a.png,assets/b.png'], ['--no-style', 'without the project\'s style'], ['--new', 'buy it again'], ['--resume <id>', 'run a job from history again'], JSON_OUT],
+    options: [['--model best|cheap', 'the image model'], ['--aspect <ratio>', 'like 16:9'], ['--ref <files>', 'pictures to follow, like assets/a.png,assets/b.png'], ['--style "<words>"', 'the style of this image, in place of "style" in video.json'], ['--no-style', 'without the project\'s style'], ['--new', 'buy it again'], ['--resume <id>', 'run a job from history again'], JSON_OUT],
     example: 'image videos/how-dns-works server-room "a rack of servers in a cool room"',
   },
   images: {
@@ -199,6 +200,18 @@ export const COMMAND_HELP = {
   },
   version: { usage: 'version', about: 'Prints the version. --version works too.', options: [JSON_OUT], example: 'version' },
 };
+
+// Flags a command takes that its help doesn't list: the older way to name a
+// paid voice list, and the likeness flags presenter refuses with its consent
+// rule. --json, --quiet and --help work with every command.
+const MORE_FLAGS = { voices: VOICE_LISTS, presenter: LIKENESS_FLAGS };
+const EVERY_COMMAND = ['json', 'quiet', 'help', 'version'];
+
+// The flags of a command, from the options of its help.
+export function commandFlags(name) {
+  const listed = COMMAND_HELP[name].options.flatMap(([flag]) => [...flag.matchAll(/--([a-z][a-z-]*)/g)].map((m) => m[1]));
+  return [...new Set([...listed, ...(MORE_FLAGS[name] ?? []), ...EVERY_COMMAND])];
+}
 
 // The help of one command, as text.
 export function commandHelp(name, command = 'explainroo') {
