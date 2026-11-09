@@ -210,5 +210,6 @@ step you are on. A long topic has sections:
 | `publishing` | the user wants a package for a platform, a link or a post |
 | `web-player` | the video goes on a website, in an iframe |
 | `transparent-video` | the video goes over camera footage in a video editor |
+| `cut` | the user wants to cut their own recording by its words |
 | `connectors` | you add an outside service to explainroo |
 | `contributing` | you change explainroo itself |

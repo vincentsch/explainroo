@@ -91,6 +91,29 @@ video. A layout check finds text that is cut off or overlaps, and a speech
 check finds words the voice got wrong. For a feed-sized player,
 `explainroo check videos/<name> --view-width 854` also flags small text.
 
+## Check or cut any video
+
+`check` and `verify` also take a video file made with any tool:
+
+```bash
+npx --yes explainroo check talk.mp4 --script script.txt
+```
+
+They report:
+
+- black or blank frames, and stretches where the picture stands still
+- silence, the loudness and the true peak
+- text too small to read on a phone, found in frames of the video
+- with `--script`, the words of your script that the speech model didn't hear
+
+`--json` gives the same report for your agent.
+
+`explainroo cut talk.mp4` edits your own recording by its words. It writes
+`talk.cut.md`, one sentence a line with the time of each word. Your agent
+deletes words and long pauses there. Then `explainroo cut talk.mp4 --apply`
+writes `talk.cut.mp4`, with a short crossfade at every join so the cuts don't
+click. Both run on your computer, like the rest of explainroo.
+
 ## What leaves your computer
 
 Making a video needs no account and no key, and it costs nothing. The voice,
