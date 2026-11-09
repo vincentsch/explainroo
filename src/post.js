@@ -165,7 +165,13 @@ export function aiFacts(project) {
     reasons.push(`image: ${model}`);
     credits.push(`Illustrations: made with ${model}`);
   }
-  return { reasons, credits, notes };
+  // A presenter is a realistic AI person, which every platform asks to label.
+  const presenters = new Set(listJobs(project.dir).filter((job) => job.kind === 'presenter' && job.status === 'done').map((job) => String(job.request?.avatar_name ?? job.request?.avatar ?? 'an avatar')));
+  for (const name of presenters) {
+    reasons.push(`presenter: ${name}, an AI person`);
+    credits.push(`Presenter: ${name}, an AI person made by a presenter service`);
+  }
+  return { reasons, credits, notes, presenter: presenters.size > 0 };
 }
 
 function count(text, unit) {
@@ -207,12 +213,16 @@ export function postWords(project, platform, { file = readPostFile(project), fla
   const description = [written, platform === 'youtube' ? chapters.trim() : ''].filter(Boolean).join('\n\n');
   const text = withHashtags(description || title, words.hashtags);
   const box = platform === 'youtube' || platform === 'shorts' ? withHashtags(description, words.hashtags) : text;
-  const reasons = words.ai_label_from ? [...facts.reasons, `set to ${words.ai_label} in ${words.ai_label_from}`] : facts.reasons;
+  // A video with an AI presenter keeps its label, whatever post.json says.
+  const overruled = facts.presenter && words.ai_label === false;
+  if (overruled) words.ai_label = true;
+  const reasons = words.ai_label_from && !overruled ? [...facts.reasons, `set to ${words.ai_label} in ${words.ai_label_from}`] : facts.reasons;
   const credits = [...new Set([...facts.credits, ...words.credits.map((c) => c.trim()), 'Made with explainroo'])];
   const warnings = [
     ...(written ? [] : [`there is no description yet. Write a few plain sentences about what the viewer learns as "description" in ${file[FROM] ?? 'post.json'} next to video.json.`]),
     ...facts.notes,
+    ...(overruled ? [`${words.ai_label_from} sets ai_label to false, but the video has an AI presenter, so the AI label stays on.`] : []),
     ...limitWarnings(platform, { title, box, hashtags: words.hashtags, duration }),
   ];
-  return { title, description, text, box, hashtags: words.hashtags, ai_label: words.ai_label, ai_reasons: reasons, credits, made_for_kids: words.made_for_kids, category: words.category, warnings };
+  return { title, description, text, box, hashtags: words.hashtags, ai_label: words.ai_label, ai_presenter: facts.presenter, ai_reasons: reasons, credits, made_for_kids: words.made_for_kids, category: words.category, warnings };
 }

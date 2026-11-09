@@ -195,6 +195,7 @@ export async function packageVideo(arg, { lang, platform, size, title, descripti
     text: words.text,
     hashtags: words.hashtags,
     ai_label: words.ai_label,
+    ai_presenter: words.ai_presenter,
     ai_reasons: words.ai_reasons,
     credits: words.credits,
     made_for_kids: words.made_for_kids,

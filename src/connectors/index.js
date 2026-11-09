@@ -7,9 +7,10 @@ import cartesia from './cartesia.js';
 import cloud from './cloud.js';
 import elevenlabs from './elevenlabs.js';
 import openrouter from './openrouter.js';
+import presenter from './presenter.js';
 import youtube from './youtube.js';
 
-export const CONNECTORS = [elevenlabs, cartesia, openrouter, cloud, youtube, buffer, blotato];
+export const CONNECTORS = [elevenlabs, cartesia, openrouter, presenter, cloud, youtube, buffer, blotato];
 
 export function findConnector(id) {
   return CONNECTORS.find((c) => c.id === id) ?? null;

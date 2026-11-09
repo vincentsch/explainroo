@@ -118,6 +118,8 @@ function readPackage(project, platform) {
   const complete = post && post.platform === platform && /^[0-9a-f]{64}$/.test(post.sha256) && text(post.title) && post.title.trim() && text(post.description) && text(post.text)
     && Array.isArray(post.hashtags) && typeof post.ai_label === 'boolean' && typeof post.made_for_kids === 'boolean' && /^\d{1,3}$/.test(String(post.category)) && post.verify && typeof post.verify === 'object';
   if (!complete) fail(`${relativeFile(dir, path.join(folder, 'post.json'))} is not a package that publish can read. Run ${again} again.`);
+  // A video with an AI presenter always goes out with the AI label.
+  if (post.ai_presenter === true) post.ai_label = true;
   const video = path.join(folder, 'video.mp4');
   const name = relativeFile(dir, video);
   if (!fs.existsSync(video) || sha256File(video) !== post.sha256) fail(`${name} is not the video its post.json describes, so it was not posted. Run ${again} again.`);

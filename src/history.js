@@ -139,6 +139,7 @@ function outputPlaces(job) {
   if (job.kind === 'speech') return [`history/voice/${job.attempt > 1 ? `${job.key}.${job.attempt}` : job.key}.wav`];
   if (job.kind === 'image' && /^[\w-]+$/.test(job.request?.name) && new RegExp(`^assets/${job.request.name}\\.(png|jpg|webp)$`).test(name)) return [name, replacedFile(name, sha256)];
   if (job.kind === 'clip' && /^[\w-]+$/.test(job.request?.name) && name === `assets/clips/${job.request.name}.mp4`) return [name, replacedFile(name, sha256)];
+  if (job.kind === 'presenter' && /^[\w-]+$/.test(job.request?.name) && name === `assets/presenters/${job.request.name}.mp4`) return [name, replacedFile(name, sha256)];
   return [];
 }
 
@@ -440,6 +441,13 @@ const CONTINUE = {
     const cap = Number(job.max_cost_usd);
     return `clip ${where} --resume ${shortId(job)}${again}${reason !== 'running' && cap > 0 ? ` --max-cost ${cap}` : ''}`;
   },
+  // Only words and numbers from a job file go into the command.
+  presenter: (job, where, again) => {
+    const r = job.request ?? {};
+    const word = (v) => (typeof v === 'string' && /^[\w.-]+$/.test(v) ? v : '?');
+    const cap = Number(job.max_cost_usd);
+    return `presenter ${where} ${word(r.scene)} --avatar ${word(r.avatar)} --name ${word(r.name)}${cap > 0 ? ` --max-cost ${cap}` : ''}${again}`;
+  },
 };
 
 export function continueCommand(dir, job, reason) {
@@ -453,6 +461,7 @@ function jobLabel(job) {
   const r = job.request || {};
   if (job.kind === 'speech') return `scene ${oneLine(job.scene ?? '?', 60)}: "${oneLine(r.text, 60)}"`;
   if (job.kind === 'image') return `${oneLine(r.name ?? '?', 60)}: "${oneLine(r.prompt, 60)}" with ${oneLine(r.model ?? '?', 60)}`;
+  if (job.kind === 'presenter') return `presenter ${oneLine(r.name ?? '?', 60)}: scene ${oneLine(r.scene ?? '?', 60)} with ${oneLine(r.avatar_name ?? '?', 60)}`;
   if (job.kind === 'clip') return `${oneLine(r.name ?? '?', 60)}: "${oneLine(r.prompt, 60)}" with ${oneLine(r.model ?? '?', 60)}, ${oneLine(r.seconds ?? '?', 10)} seconds`;
   return oneLine(job.kind ?? 'unknown', 60);
 }

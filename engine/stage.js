@@ -1595,6 +1595,26 @@ export class Stage {
     return this._picture(src, () => frame === null ? null : this.engine.clipImage(clip, frame), clip.width, clip.height, o);
   }
 
+  // An AI presenter that "explainroo presenter" made: assets/presenters/<name>.mp4.
+  // It plays without sound from where the scene's narration starts, so the lips
+  // follow the voice of the video. It stands beside the content, or below it in
+  // a tall frame, with a small label that says it is an AI person.
+  presenter(name, o = {}) {
+    const { safe } = this;
+    // A card of its own shape, which the clip fills, cut to fit.
+    const place = this.portrait
+      ? { x: this.cx, y: safe.bottom - safe.h * 0.24, w: safe.w * 0.8, h: safe.h * 0.42 }
+      : { x: safe.right - safe.w * 0.15, y: this.cy, w: safe.w * 0.28, h: safe.h * 0.74 };
+    const at = o.at ?? this.voice.start;
+    const { label = 'AI presenter', ...rest } = o;
+    const box = this.clip(`assets/presenters/${name}.mp4`, { frame: 'card', fit: 'cover', ...place, ...rest, at, volume: 0 });
+    if (label !== false) {
+      const size = Math.max(18, Math.round(Math.min(safe.w, safe.h) * 0.026));
+      this.text(label, { x: box.x, y: box.bottom + size * 1.1, size, color: 'muted', at, out: o.out });
+    }
+    return box;
+  }
+
   _picture(src, source, naturalWidth, naturalHeight, o) {
     const th = this.theme;
     const ratio = naturalWidth / naturalHeight;

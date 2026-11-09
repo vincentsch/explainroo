@@ -4,6 +4,7 @@
     { "id": "timing", "name": "Timing", "what": "What notes when each word is spoken, so that pictures can appear on a word." },
     { "id": "images", "name": "Images", "what": "Where the pictures in a scene come from." },
     { "id": "clips", "name": "Clips", "what": "Where short pieces of video come from." },
+    { "id": "presenters", "name": "Presenters", "what": "Who appears on screen and talks next to the product, if anyone." },
     { "id": "music", "name": "Music", "what": "What plays under the voice." },
     { "id": "sharing", "name": "Sharing", "what": "How other people get to watch the video.", "command": "share" },
     { "id": "posting", "name": "Posting", "what": "How the video gets onto a platform.", "command": "publish" }
@@ -164,6 +165,38 @@
           "Open openrouter.ai/keys and make a new key.",
           "Copy the key."
         ]
+      }
+    },
+    {
+      "id": "own-presenter",
+      "step": "presenters",
+      "name": "Film yourself",
+      "about": "You record yourself talking with a camera or a phone, and the clip plays in a scene next to the product.",
+      "free": true,
+      "partner": false,
+      "status": "available",
+      "cost": "Free.",
+      "data_leaves": "Nothing leaves your computer.",
+      "setup": {
+        "env": [],
+        "steps": ["Nothing to set up. Film yourself saying the narration of a scene, and put the file in assets/."],
+        "use": "Play it in a scene with s.clip('assets/me.mp4', { volume: 1 }). Run \"explainroo docs presenters\" for more."
+      }
+    },
+    {
+      "id": "presenter",
+      "step": "presenters",
+      "name": "An AI presenter service",
+      "about": "A service that makes a clip of a talking AI person who speaks the narration of a scene. explainroo has the code for this kind of service and its consent rule: no real person's face or voice without the service's consent flow. No presenter service is built in yet.",
+      "free": false,
+      "partner": false,
+      "status": "coming",
+      "cost": "Paid per second of clip on your account at the presenter service. \"explainroo presenter --dry-run\" shows the price first.",
+      "data_leaves": "The narration of the scene, as sound, and the id of the avatar go to the presenter service, and only when you run \"explainroo presenter\".",
+      "setup": {
+        "env": ["PRESENTER_API_KEY"],
+        "steps": ["No presenter service is built in yet. A service that speaks the API in \"explainroo docs presenters\" works when EXPLAINROO_PRESENTER_URL names it and PRESENTER_API_KEY holds its key."],
+        "use": "List the avatars with: explainroo presenter <project> --avatars. See the plan first with: explainroo presenter <project> <scene> --avatar <id> --dry-run."
       }
     },
     {

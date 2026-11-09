@@ -34,6 +34,7 @@ import { bareWord } from './align.js';
 import { formatShare, share } from './share.js';
 import { formatPublish, publish } from './publish.js';
 import { COMMAND_HELP, commandHelp } from './help.js';
+import { LIKENESS_FLAGS, avatarList, consentRule, formatAvatars, formatPresenter, makePresenter } from './presenter.js';
 import { addFormat, addPlan, findFormat, formatAdded, formatEntry, formatList, formatPlan, listFormats, startFromFormat } from './formats.js';
 
 // Paid voices that can list what a key may use, each with its own flag.
@@ -107,6 +108,12 @@ AI video clips (optional, costs money, uses the same OpenRouter key as images)
                         without a project it prices 16:9 at 720p without sound unless the flags say otherwise
                         The same command never buys twice (--new buys it again, --resume <id> continues a job)
 
+AI presenters (optional, costs money, needs a presenter service; none is built in yet)
+  presenter [project] <scene> --avatar <id> --max-cost 1   make a clip of an AI presenter who speaks the
+                        narration of a scene, as assets/presenters/<scene>.mp4 for s.presenter (--name, --dry-run,
+                        --new). --avatars lists the service's avatars. No real person's face or voice without the
+                        service's consent flow, and every package then gets the AI label
+
 Outside services (optional)
   services [step]       list the choices for each step, free ones first (--project dir). For clips it
                         shows today's prices from OpenRouter's public list, which it reads at most once a day
@@ -158,7 +165,7 @@ function parseArgs(argv) {
   }
   return { pos, flags };
 }
-const BOOL = new Set(['json', 'draft', 'estimate', 'transparent', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'mobile', 'list', 'sections', 'new', 'key-stdin', 'audio', 'dry-run', 'no-wait', 'no-watermark', 'yes', 'media-url-unchecked', ...LISTS_VOICES.map((c) => c.id)]);
+const BOOL = new Set(['json', 'avatars', 'draft', 'estimate', 'transparent', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'mobile', 'list', 'sections', 'new', 'key-stdin', 'audio', 'dry-run', 'no-wait', 'no-watermark', 'yes', 'media-url-unchecked', ...LISTS_VOICES.map((c) => c.id)]);
 
 // publish refuses any other flag. A flag it ignored could change what a person
 // thinks is posted, like a time for a post, when it goes out right away.
@@ -202,6 +209,22 @@ export async function main(argv) {
         if (pos.length !== 3) throw new ProjectError('usage: explainroo set <project> <key> <value>, like: explainroo set videos/<name> targetSeconds 40. A dotted key like sizes.shorts.pace sets a setting of one size, and null takes a key out.');
         const r = setSetting(pos[0], pos[1], pos[2]);
         print(formatSet(r), r);
+        return 0;
+      }
+      case 'presenter': {
+        // explainroo sends no face or voice of its own, so these get the consent rule.
+        const likeness = LIKENESS_FLAGS.find((f) => flags[f] !== undefined);
+        if (likeness) throw new ProjectError(`presenter takes no --${likeness}. ${consentRule()} Pick one of the service's avatars with --avatar.`);
+        const isProject = pos[0] && fs.existsSync(path.join(pos[0], 'video.json'));
+        const project = loadProject(isProject ? pos.shift() : undefined);
+        if (flags.avatars) {
+          const list = await avatarList(project);
+          print(formatAvatars(list), { avatars: list });
+          return 0;
+        }
+        if (pos.length !== 1) throw new ProjectError('usage: explainroo presenter [project] <scene> --avatar <id> --max-cost <usd> [--name <name>] [--dry-run] [--new], or explainroo presenter [project] --avatars');
+        const r = await makePresenter(project, { scene: pos[0], avatar: textFlag(flags, 'avatar'), name: textFlag(flags, 'name'), maxCost: num(flags['max-cost'], 'max-cost'), dryRun: !!flags['dry-run'], fresh: !!flags.new, log });
+        print(formatPresenter(r), r);
         return 0;
       }
       case 'capture': {

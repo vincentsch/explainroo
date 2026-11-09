@@ -152,6 +152,12 @@ export const COMMAND_HELP = {
     example: 'say "Hello there" --voice am_michael',
   },
   themes: { usage: 'themes [options]', about: 'Lists the looks and the music styles.', options: [JSON_OUT], example: 'themes' },
+  presenter: {
+    usage: 'presenter [project] <scene> --avatar <id> --max-cost <usd> [options], or presenter [project] --avatars',
+    about: 'Makes a clip of an AI presenter who speaks the narration of one scene, through a presenter service the user picked, and saves it as assets/presenters/<scene>.mp4 for s.presenter. No service is built in yet: EXPLAINROO_PRESENTER_URL names one and PRESENTER_API_KEY holds its key. It refuses a real person\'s face or voice without the service\'s consent flow, before anything is sent. Every package of the video then gets the AI label.',
+    options: [['--avatars', 'list the service\'s avatars with their consent and price'], ['--avatar <id>', 'the avatar that speaks'], ['--max-cost <usd>', 'the most the clip may cost'], ['--name <name>', 'the file name, the scene id by default'], ['--dry-run', 'show what goes out and what it costs, and buy nothing'], ['--new', 'buy the clip again'], JSON_OUT],
+    example: 'presenter videos/acme-launch intro --avatar ava --dry-run',
+  },
   formats: {
     usage: 'formats [format] [options], or formats add <git address> [options]',
     about: 'Lists the formats, built in and installed, or prints the guide of one. A format is a ready way of making one kind of video. "formats add" prints the git commands it will run and installs nothing without --yes. Installing runs no code from the format.',
