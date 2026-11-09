@@ -38,9 +38,17 @@ gets, which is the video without the watermark.
   frame. The first spoken line names the stakes or the question. No greeting
   and no setup.
 - **Bold captions** sit in the safe area, two to four words at a time.
-- **The picture changes at least every 2 seconds.** A new element, a camera
-  move and a new scene count. A background that drifts doesn't. A second hook
-  halfway, like "Here's the good part", keeps people watching.
+- **The picture changes at least every 2 seconds.** A second hook halfway,
+  like "Here's the good part", keeps people watching. These count as a
+  change:
+  - an element that enters, like a sticker, a kicker or an icon;
+  - a camera key from `s.camera`, `s.short.punch` or the start of
+    `s.short.drift`;
+  - `s.short.jolt`, `s.short.flash` and `s.short.interrupt`;
+  - a clip while it plays;
+  - a new scene.
+
+  A background that drifts, like the turning rays of a backdrop, doesn't.
 - Short sentences of 6 to 14 words, spoken to one person, with one promise
   that is paid off before the end. The payoff is the clearest frame.
 

@@ -640,12 +640,19 @@ export class Short {
 
   // ---------- pattern interrupts ----------
 
+  // Tells check that the picture changes at `a`, like a camera move does, for
+  // the hint about a short that stands still for 2 seconds.
+  changes(a) {
+    this.s.engine.cameraKeys?.add(Math.round(a * 100) / 100);
+  }
+
   // A short jolt at `at`: the frame bumps in and shakes for a moment around the
   // middle of the screen. Call it before drawing what it should move.
   // o: dur, zoom, shake.
   jolt(at, o = {}) {
     const s = this.s;
     const a = this.at(at);
+    this.changes(a);
     const p = (s.t - a) / ((o.dur ?? 0.35) / s.pace);
     if (p <= 0 || p >= 1) return;
     s.engine.moving = true;
@@ -664,6 +671,7 @@ export class Short {
   flash(at, o = {}) {
     const s = this.s;
     const a = this.at(at);
+    this.changes(a);
     const p = (s.t - a) / ((o.dur ?? 0.24) / s.pace);
     if (p < 0 || p >= 1) return;
     s.engine.moving = true;
