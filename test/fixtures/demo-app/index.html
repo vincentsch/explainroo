@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Little Ledger</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<aside class="side">
+  <div class="brand"><span class="logo">L</span> Little Ledger</div>
+  <nav>
+    <a href="#/" data-page="dashboard">Dashboard</a>
+    <a href="#/invoices" data-page="invoices">Invoices</a>
+    <a href="#/customers" data-page="customers">Customers</a>
+    <a href="#/settings" data-page="settings">Settings</a>
+  </nav>
+  <div class="me"><span class="avatar">JD</span><span><b>Jane Doe</b><small class="email">jane.doe@example.com</small></span></div>
+</aside>
+<main id="main"></main>
+<div id="toast" class="toast" hidden></div>
+<div id="cookies" class="cookies" hidden>
+  <p>We use one cookie to remember your settings.</p>
+  <button id="accept" class="primary">Accept</button>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
