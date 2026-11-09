@@ -91,10 +91,12 @@ which `explainroo doctor --fetch` downloads once.
   Several steps may share one cue, like a `zoom` and the `type` after it.
   They run in order, and the first lands on the cue.
 - Steps with `"before": true` run before the video starts, like closing a
-  cookie banner or logging in. Every run starts with an empty browser
-  profile, so the site has no cookies or stored data from an earlier run.
-  For a site that needs a login, `--keep-profile` keeps the profile for the
-  next run, and a step before the video that finds nothing is skipped.
+  cookie banner or logging in. A step before the video that finds nothing
+  is skipped, in every run, with or without `--keep-profile`, so it can
+  close a pop-up that shows only sometimes. `record` names each step it
+  skipped. Every run starts with an empty browser profile, so the site has
+  no cookies or stored data from an earlier run. For a site that needs a
+  login, `--keep-profile` keeps the profile for the next run.
 - `blur` blurs elements by CSS selector or exact text on every page, before
   anything is recorded. Use it for real email addresses and keys.
 - `viewport` is 1920 x 1080 by default. Pick it for the size of the video:

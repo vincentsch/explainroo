@@ -592,3 +592,19 @@ test('product-demos puts recording the real app first and rebuilding screens wit
   const text = oneLine(demos);
   for (const words of ['the `box` of its element in pixels of the video: `x` and `y` are its middle, and `w` and `h` its width and height.', 'A zoom fits its element into about 70% of the frame, from 1.4 to 2.5 times closer.', 'Every run starts with an empty browser profile', '`--keep-profile` keeps the profile', 'Only `scroll` steps move the page.', '`explainroo doctor --fetch` downloads once', '`assets/recordings/<name>.log.json`']) assert.ok(text.includes(words), words);
 });
+
+test('product-demos says how to find elements, type, share cues, pick a viewport and skip a step before the video', () => {
+  const text = oneLine(page('product-demos'));
+  for (const words of [
+    'explainroo record videos/<name> --inspect https://example.com --viewport 1280x720',
+    'its `aria-label`, label or placeholder count too',
+    'An editor like CodeMirror shows its placeholder as an element inside the field',
+    '`"cps": 20` on a `type` step',
+    'Several steps may share one cue',
+    '1280 x 720 for 16:9',
+    '1000 x 1250 for 4:5',
+    '1080 x 1920 for 9:16',
+    'under 60% of its size gets a warning from `check`',
+    'A step before the video that finds nothing is skipped, in every run, with or without `--keep-profile`',
+  ]) assert.ok(text.includes(words), words);
+});

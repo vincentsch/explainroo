@@ -96,6 +96,12 @@ test('record runs the steps in a clean window, logs each one and blurs what it n
   fs.writeFileSync(path.join(dir, 'recordings/invoice.json'), JSON.stringify({ url: `${app.url}#/invoices`, viewport: { width: 1280, height: 720 }, steps: [{ do: 'click', text: 'Accept', before: true }, { do: 'mark', name: 'a' }] }));
   const again = await record(dir, 'invoice');
   assert.deepEqual([again.steps, again.notes], [2, []]);
+  // A step before the video that finds nothing is skipped in every run, also
+  // without keepProfile, like a pop-up that shows only sometimes.
+  fs.writeFileSync(path.join(dir, 'recordings/invoice.json'), JSON.stringify({ url: `${app.url}#/invoices`, viewport: { width: 1280, height: 720 }, steps: [{ do: 'click', text: 'Accept', before: true }, { do: 'click', text: 'No thanks', before: true }, { do: 'mark', name: 'a' }] }));
+  const sometimes = await record(dir, 'invoice');
+  assert.deepEqual([sometimes.steps, sometimes.notes], [2, ['step 2 (click "No thanks") found nothing and was skipped. Check the step if the page should show it on every visit.']]);
+  fs.writeFileSync(path.join(dir, 'recordings/invoice.json'), JSON.stringify({ url: `${app.url}#/invoices`, viewport: { width: 1280, height: 720 }, steps: [{ do: 'click', text: 'Accept', before: true }, { do: 'mark', name: 'a' }] }));
   await record(dir, 'invoice', { keepProfile: true });
   const kept1 = await record(dir, 'invoice', { keepProfile: true });
   assert.deepEqual([kept1.steps, kept1.notes], [1, ['step 1 (click "Accept") found nothing and was skipped. That\'s fine when an earlier run did it already, and the kept profile remembers it.']]);

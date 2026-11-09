@@ -288,9 +288,8 @@ s.text('Saved', { y: 120, at: r.times.saved });
 A step with a `cue` happens on its word: the video holds the frame before
 it until its action lands on the cue, or plays up to twice as fast when the
 steps before take longer than the words. `check` warns about a
-step late even then. Several steps may share one cue, like a `zoom` and a
-`type` both on `#type`: they run in order, and the first lands on the cue.
-`cues` sets cues by mark name or step number, and
+step late even then. Steps sharing a cue run in order, the first on the
+cue. `cues` sets cues by mark name or step number, and
 `r.times` has each step's scene time, by number and name. It also takes
 `cursor: false`, `zoom: false` and `sound: false` for the clicks. The
 automatic camera keeps out, as its zoom steps are the camera.
