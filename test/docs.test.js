@@ -340,7 +340,7 @@ test('the README headline is the first sentence of the package description', () 
 });
 
 // Each command that can send something off the computer has a row in the README.
-const SENDS = ['connect', 'voice', 'voices', 'image', 'clip', 'services', 'share', 'publish', 'capture'];
+const SENDS = ['connect', 'voice', 'voices', 'image', 'clip', 'services', 'share', 'publish', 'capture', 'formats add', 'presenter'];
 
 test('the README says what leaves the computer for each command that sends something', () => {
   const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');

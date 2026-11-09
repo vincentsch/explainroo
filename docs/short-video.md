@@ -22,6 +22,28 @@ own gets narration of its own. `"captions": "auto"` means no captions on 16:9
 and captions on tall, 4:5 and square sizes, so set `"captions"` yourself when
 you want them in the 16:9 video too.
 
+## The rules of a short
+
+A stranger scrolls past in the first second, so a short follows a few rules.
+`explainroo init videos/<name> --format vertical-short` starts from a short
+that keeps them, with helpers for each one.
+
+- **The hook is in the first second.** Give the first scene `{lead=0}`, so
+  the voice starts at once, and show the title and the subject on the first
+  frame. The first spoken line names the stakes or the question. No greeting
+  and no setup.
+- **Bold captions** sit in the safe area, two to four words at a time.
+- **The picture changes at least every 2 seconds.** A new element, a camera
+  move and a new scene count. A background that drifts doesn't. A second hook
+  halfway, like "Here's the good part", keeps people watching.
+- Short sentences of 6 to 14 words, spoken to one person, with one promise
+  that is paid off before the end. The payoff is the clearest frame.
+
+`check` treats a tall video of up to 3 minutes as a short. It gives a hint for
+each stretch of more than 2 seconds without a change, up to the last spoken
+word, and when the voice starts later than half a second in. Show something
+new on a word in that stretch, or move the camera with `s.short.punch`.
+
 ## A layout of its own for the tall frame
 
 Most scenes placed from `s.safe` work in both sizes. When a scene needs another

@@ -246,6 +246,8 @@ its label. With a label, it also returns `label`, the label's box, and
 `s.clip(src, options)` draws a video from `assets/`. It takes the same
 layout, frame and timing options as `s.image` and returns the same box.
 Use `.mp4`, `.mov`, `.webm` or `.m4v` files.
+`s.presenter(name)` plays an AI presenter from `explainroo presenter`
+beside the content, see `explainroo docs presenters`.
 
 ```js
 s.clip('assets/clips/waves-3f2a.mp4', { full: true, speed: 'fit', at: 0 });

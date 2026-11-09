@@ -31,7 +31,7 @@ Add an entry to `src/services.json`. The website can read the same file later.
 }
 ```
 
-- `step` is `voice`, `timing`, `images`, `clips`, `music`, `sharing` or `posting`.
+- `step` is `voice`, `timing`, `images`, `clips`, `presenters`, `music`, `sharing` or `posting`.
 - `free` means it costs no money at all to use. Within a step, free entries come
   first, and every step starts with a free entry.
 - One entry can serve several steps on the same key. Its `step` is then a list,

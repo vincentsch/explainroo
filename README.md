@@ -112,6 +112,8 @@ agent run them:
 | `publish` | The video or a link to it, its title and its text. With a link, first a request for the size of the file there | YouTube, Buffer or Blotato, and whatever they send it to. The size request goes to the host of the link |
 | `publish --dry-run` | Your login, to read your channels or accounts, and the same size request | YouTube, Buffer or Blotato, and the host of the link |
 | `capture` | Requests for the page you name and the files it loads | That site and the servers it loads from |
+| `formats add --yes` | A git clone of the address you name. Without `--yes` it only prints what it will run | The host of that Git repository |
+| `presenter` | The narration of one scene, as sound, and the id of the avatar. `--avatars` and `--dry-run` send only your key | The presenter service you set up. None is built in yet |
 
 With ElevenLabs or Cartesia, the commands that make missing narration, like
 `check` and `render`, send the narration text too.
@@ -204,6 +206,26 @@ own products. The files for the Unspar demo are in
 [examples/unspar-demo](examples/unspar-demo). explainroo.com also has
 unofficial demos of [Gmail, ChatGPT and Claude](https://www.explainroo.com/videos/#product-demos).
 
+## Formats
+
+A format is a ready way of making one kind of video, with a short guide for
+your agent, scene helpers, settings and a whole example video. Four come with
+explainroo:
+
+| Format | For |
+| --- | --- |
+| `product-launch` | a launch video of about a minute |
+| `narrated-explainer` | one idea explained in about a minute |
+| `vertical-short` | a short for Shorts, TikTok and Reels, with the hook in the first second |
+| `product-ad` | an ad of 15 to 30 seconds for a feed |
+
+`explainroo init videos/acme --format product-launch` starts from one.
+Anyone can publish a format as a Git repository, and
+`explainroo formats add <address>` installs it. It first prints the git
+commands it will run and installs only with `--yes`. A format's code runs
+only when you make a video from it, and its author is named in the credits of
+every package (`explainroo docs formats`).
+
 ## Outside services
 
 Each step of making a video has a free choice first. The services that cost
@@ -215,6 +237,7 @@ money use your own account and key:
 | Timing | Whisper | |
 | Images | The built-in icons and your own files | OpenRouter |
 | Clips | Your own footage | OpenRouter |
+| Presenters | Film yourself | An AI presenter service (coming, none built in yet) |
 | Music | The built-in music, your own file, or Soundroo | |
 | Sharing | A web player for your own site, or a link from `share` (coming) | |
 | Posting | A package you upload yourself, YouTube, or Buffer on its free plan | Blotato |
@@ -230,6 +253,16 @@ same request again uses the file it already bought. After a crash, a clip that
 was already ordered is picked up again, and a request whose outcome is unknown
 is never sent again by itself. `explainroo history` shows the record, and
 `explainroo docs connectors` says how to add a service.
+
+## Presenters
+
+A presenter is a person who talks on screen next to the product. The free
+choice is to film yourself. `explainroo presenter` can also make a clip of an
+AI presenter who speaks the narration of a scene, through a presenter service
+you pick. The code and its rules are built, and no presenter service is built
+in yet. explainroo never makes a real person's face or voice without the
+service's consent flow, and every package of a video with an AI presenter gets
+the AI label (`explainroo docs presenters`).
 
 ## AI video clips
 

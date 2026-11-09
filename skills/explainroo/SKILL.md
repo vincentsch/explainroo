@@ -21,11 +21,10 @@ explainroo turns two files into an MP4 video with narration. `script.md`
 holds what the voice says. `scenes.js` draws what the viewer sees. Every
 drawing can appear on a word the voice says. A voice model (Kokoro) reads
 the script on this computer, or the narration comes from ElevenLabs,
-Cartesia or the user's own recording. Whisper listens to the narration and writes
-down when each word is spoken. Chrome draws the frames in the background.
-explainroo adds music and sound effects, and ffmpeg makes the MP4. Kokoro,
-Whisper, Chrome and ffmpeg run on this computer, so a video needs no account
-and no key. The full documentation for people is at
+Cartesia or the user's own recording. Whisper notes when each word is spoken.
+Chrome draws the frames, and ffmpeg makes the MP4 with music and sound
+effects. All of this runs on this computer, so a video needs no account and
+no key. The full documentation for people is at
 https://www.explainroo.com/docs/.
 
 ## The hard limits
@@ -55,6 +54,7 @@ the user's own account, and only when you run a command that uses them.
 | OpenRouter | AI images (`image`) and AI clips (`clip`) | one key for both, from `connect openrouter` | yes, per image and per second of clip | the prompt and any reference images, also for the company that runs the model |
 | ElevenLabs, Cartesia | a paid voice | a key | yes, per character | the narration text, when narration is made |
 | Blotato | posting with `publish` | a key | yes, creating the key starts its paid plan | the video, its title and its text |
+| A presenter service, none yet | AI presenters (`presenter`) | a key | yes | the narration of a scene |
 | YouTube | posting with `publish` | a sign-in with the user's own Google client | no | the video, its title and its description |
 | Buffer | posting with `publish` | a sign-in | no, on Buffer's free plan | the title, the text and a link to the video |
 
@@ -65,8 +65,8 @@ reads OpenRouter's public price list, without the prompt or a key. `services`
 reads the same list when it lists clips, at most once a day. `share` will
 upload the video and its title to explainroo.com, and sends nothing until that
 service runs.
-`capture` loads the page you name. The models and fonts download the first
-time, and `doctor --fetch` may download espeak-ng's packages. Nothing of the
+`capture` loads the page you name, and `formats add` clones the Git address
+you name. The models and fonts download the first time, and `doctor --fetch` may download espeak-ng's packages. Nothing of the
 user's goes along. Nothing else leaves the computer, and everything else is
 free.
 
@@ -119,7 +119,7 @@ that can use an outside service, run `explainroo services <step> --json` and
 tell the user the options, free ones first. Say which cost money and which are
 paid partners. Let the user choose. Never pick a paid service for them and
 never call a partner the best. The steps are `voice`, `timing`, `images`,
-`clips`, `music`, `sharing` and `posting`. `publish` and `share` work as
+`clips`, `presenters`, `music`, `sharing` and `posting`. `publish` and `share` work as
 names for the last two.
 
 When the user has already picked a service or given a budget, use it and
@@ -144,7 +144,8 @@ there and publishes nothing.
 2. **Create the project** with
    `explainroo init videos/<name> --theme paper --size 16:9 --title "..."`.
    Pick the look for the audience, and the size for the platform
-   (`explainroo docs sizes`).
+   (`explainroo docs sizes`). `init --format <name>` starts from a format,
+   like `vertical-short` (`explainroo docs formats`).
    The video has a small "explainroo.com" watermark in a corner by default,
    and `"watermark": false` in `video.json` turns it off. With
    `"captions": "auto"`, vertical, 4:5 and square videos get captions, and a
@@ -154,12 +155,10 @@ there and publishes nothing.
    asks for a length, set it in `video.json`, like `"targetSeconds": 40`.
    After `voice`, a shorter video gets longer holds at the scene ends to
    reach it, and `voice` and `check` warn when the video is longer.
-   `explainroo set videos/<name> targetSeconds 40` writes one setting into
-   `video.json` after the same check every command runs, and a dotted key
-   like `sizes.shorts.pace` sets a setting of one size.
+   `explainroo set videos/<name> targetSeconds 40` writes one setting, and a
+   dotted key like `sizes.shorts.pace` sets one of a single size.
 4. **Make the voice** with `explainroo voice videos/<name>`. Fix a word the
-   speech check did not confirm with `{shown|spoken}`, and run it again. When
-   the word already has one, try another spoken spelling
+   speech check did not confirm with `{shown|spoken}`, and run it again
    (`explainroo docs writing`).
 5. **Plan the pictures.** Decide what appears on each cue, what leaves and
    what stays in place (`explainroo docs pictures`).
@@ -178,10 +177,8 @@ there and publishes nothing.
 10. **Make the video** with `explainroo render videos/<name>`. Make a draft
     with `--draft` only when you will watch it, because `still` and `sheet`
     are the cheap way to see frames. Check the file with
-    `explainroo verify videos/<name>`. It fails when the sound clips above
-    0 dBTP, and it warns when the loudness is off, frames are black or the
-    voice is hard to understand over the music. Its last line says whether
-    it passed.
+    `explainroo verify videos/<name>`. It checks the loudness, black frames
+    and how clear the voice is, and its last line says whether it passed.
 11. **Tell the user** where the video, its subtitles, chapters and cover are,
     how long it is, what `verify` said and what you could not check. To post
     it, read `explainroo docs publishing`.
@@ -208,8 +205,10 @@ step you are on. A long topic has sections:
 | `clips` | the user wants AI video clips |
 | `music` | the user wants their own music, a sound file or original music from Soundroo |
 | `sizes` | the video is for a platform: sizes, captions, pace and the watermark |
+| `formats` | you use, install or publish a format |
 | `short-video` | you make a Short, a TikTok or a Reel |
 | `product-demos` | the user wants a product demo of an app or a website |
+| `presenters` | the user wants an AI presenter next to the product |
 | `settings` | you change `video.json`, make a look of your own or set up a key |
 | `commands` | you need a command or a flag that this page doesn't show |
 | `publishing` | the user wants a package for a platform, a link or a post |
