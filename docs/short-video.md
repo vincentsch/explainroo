@@ -208,8 +208,9 @@ another shape. `overlap: true` says that is meant.
 
 "STEP 2/4" with dots at the top of the content area, outside the camera. Step
 `n` fills at `at`. `word` replaces "STEP", like `word: s.str('step')` in a video
-in several languages. Also `label`, `x`, `y`, `size`, `color`, `at`, `out`,
-`sfx`.
+in several languages. Also `label`, `x`, `y`, `size` (48 with
+`"defaults": "0.6"`, which reads well on a phone, and 34 before), `color`,
+`at`, `out`, `sfx`.
 
 ### `progress(options)`
 
