@@ -101,6 +101,8 @@ test('near the top, the start page sends a request to edit a recording to the cu
   const flat = start.replace(/\s+/g, ' ');
   const at = flat.indexOf('When the user wants their own recording edited instead, read `explainroo docs cut`.');
   assert.ok(at > 0 && at < flat.indexOf('## '), 'the line about cut comes before the first section');
+  // words lists every scene without a scene's name.
+  assert.ok(flat.includes("`explainroo words videos/<name>` lists each scene's spoken words and times."));
 });
 
 test('the start page has its parts in order', () => {

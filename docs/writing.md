@@ -86,8 +86,9 @@ Narration for this scene. [#marker] A marker names a moment you can animate on.
 - `## scene-id` starts a scene. The id must match a function in `scenes.js`.
 - Put a `[#marker]` wherever a picture should change. Every sentence should
   trigger at least one picture. After `voice`, `explainroo words
-  videos/<name> <scene>` lists the spoken words of a scene with their start
-  times and the markers between them, so you can pick a word as a cue.
+  videos/<name>` lists the spoken words of every scene with their start times
+  and the markers between them, so you can pick a word as a cue. Add a scene's
+  name to list only that scene.
 - Use `{shown|spoken}` for anything the voice may misread: acronyms
   (`{CLI|C L I}`), versions (`{v2.1|version two point one}`), symbols and
   domains (`{example.com|example dot com}`, otherwise the voice says "example

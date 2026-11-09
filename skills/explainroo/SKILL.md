@@ -160,7 +160,7 @@ publishes nothing.
    (`explainroo docs writing`).
 5. **Plan the pictures.** Decide what appears on each cue, what leaves and
    what stays in place (`explainroo docs pictures`).
-   `explainroo words videos/<name> <scene>` lists the spoken words with their
+   `explainroo words videos/<name>` lists each scene's spoken words and
    times.
 6. **Make images**, if the video needs them and the user agrees
    (`explainroo docs images`).

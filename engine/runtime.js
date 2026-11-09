@@ -774,7 +774,8 @@ export class Engine {
       if (gap <= SHORT_CHANGE + 0.05) continue;
       const sc = scenes.findLast((x) => x.start <= points[i - 1] + 1e-6) ?? scenes[0];
       const from = points[i - 1] - sc.start;
-      add('hint', sc.id, from, `the picture doesn't change for ${gap.toFixed(1)}s, from ${from.toFixed(1)}s, and a short changes it at least every ${SHORT_CHANGE} seconds; show something new on a word in that stretch, or move the camera with s.short.punch`);
+      const words = stretchWords(scenes, points[i - 1], points[i], sc);
+      add('hint', sc.id, from, `the picture doesn't change for ${gap.toFixed(1)}s, from ${from.toFixed(1)}s, and a short changes it at least every ${SHORT_CHANGE} seconds; show something new on a word in that stretch${words ? `, like ${words}` : ''}, or move the camera with s.short.punch`);
     }
   }
 
@@ -1231,6 +1232,39 @@ function zoomCause(b, cam, areas, band) {
   if (contentMessage('', { x0, y0, x1, y1 }, areas, { band })) return '';
   const zoom = Math.round(cam.zoom * 100) / 100;
   return `. The camera's zoom of ${zoom}x pushes it there, and without the zoom it fits: zoom less, or move it toward the point the camera zooms onto`;
+}
+
+// The first two words spoken between `from` and `to` in the video, as cues
+// with their times in their scene, like "twitch" at 1.6s. A word said more than
+// once in its scene is named with its number, like "fills#2". A word of
+// another scene than `sc` names its scene.
+function stretchWords(scenes, from, to, sc) {
+  const found = [];
+  for (const scene of scenes) {
+    const count = new Map();
+    for (const w of scene.words ?? []) {
+      const key = bareCue(w.text);
+      count.set(key, (count.get(key) ?? 0) + 1);
+    }
+    const seen = new Map();
+    for (const w of scene.words ?? []) {
+      const key = bareCue(w.text);
+      seen.set(key, (seen.get(key) ?? 0) + 1);
+      const at = scene.start + w.start;
+      if (!key || at <= from + 0.05 || at >= to - 0.05 || found.length >= 2) continue;
+      const word = bareCue(w.text, false);
+      const cue = count.get(key) > 1 ? `${word}#${seen.get(key)}` : word;
+      found.push(`"${cue}" at ${scene === sc ? '' : `${scene.id}@`}${w.start.toFixed(1)}s`);
+    }
+  }
+  return found.join(' or ');
+}
+
+// A word as a cue names it: without the marks around it, and to compare, in
+// lower case.
+function bareCue(text, lower = true) {
+  const bare = String(text).trim().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}%]+$/gu, '');
+  return lower ? bare.toLowerCase() : bare;
 }
 
 // What check says about a box that runs off the frame, or null.
