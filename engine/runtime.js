@@ -997,6 +997,7 @@ export class Engine {
             }
           }
         }
+        for (const f of stickersOverTitles(laid.draw.shapes, solid)) once(`sticker:${sc.id}:${f.key}`, () => add('warn', sc.id, t, f.message));
         for (const f of shapeOverlaps(laid.draw.shapes)) once(`shapes:${sc.id}:${f.key}`, () => add('warn', sc.id, t, f.message));
         for (const f of textsIntoShapes(solid, laid.draw.shapes)) once(`shapes:${sc.id}:${f.key}`, () => add('warn', sc.id, t, f.message));
         for (const f of linesOverText(laid.draw.strokes, solid)) once(`line:${sc.id}:${f.key}`, () => add('warn', sc.id, t, f.message));
@@ -1385,6 +1386,22 @@ function shapeName(sh) {
 
 function shapeKey(sh) {
   return `${sh.kind}|${sh.name}|${Math.round((sh.box.x0 + sh.box.x1) / 8)}|${Math.round((sh.box.y0 + sh.box.y1) / 8)}`;
+}
+
+// Stickers that cover words of a hook title. A sticker's overlap: true lets it
+// sit on pictures and backgrounds, never on the title, so this ignores it.
+function stickersOverTitles(shapes, texts) {
+  const found = [];
+  const titles = texts.filter((tx) => tx.role === 'title');
+  if (!titles.length) return found;
+  for (const sh of shapes) {
+    if (sh.kind !== 'sticker' || !sh.settled || sh.alpha <= 0.95) continue;
+    const covered = titles.filter((tx) => Math.min(sh.box.x1, tx.x1) - Math.max(sh.box.x0, tx.x0) > 4 && Math.min(sh.box.y1, tx.y1) - Math.max(sh.box.y0, tx.y0) > 4 && overlapDepth(sh.poly, [[tx.x0, tx.y0], [tx.x1, tx.y0], [tx.x1, tx.y1], [tx.x0, tx.y1]]) > 4);
+    if (!covered.length) continue;
+    const words = covered.map((tx) => tx.text).join(' ');
+    found.push({ key: `${sh.serial}/${words}`, message: `the sticker "${sh.name.slice(0, 30)}" covers "${words.slice(0, 40)}" of the hook title; move the sticker with x and y, or give it a later at` });
+  }
+  return found;
 }
 
 // Shapes that partly overlap: they reach more than 4 pixels into each other

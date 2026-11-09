@@ -98,3 +98,20 @@ test('s.short.jolt, flash and interrupt each count as a change of the picture', 
   const bare = project(t, { size: '9:16' }, { one: [`${ICON(0)} ${ICON(3.5)}`, 4.5] });
   assert.equal(still(await check(bare)).length, 1);
 });
+
+test('a sticker moves below the hook title with "defaults": "0.6", and check warns when one covers the title', { skip }, async (t) => {
+  const body = (area = '') => `const box = s.short.hook('Solve any equation in *seconds*', { at: 0 }); s.short.sticker('*x = ?*', { x: s.cx + 180, y: box.bottom - 20, at: 0.5, overlap: true${area} });`;
+  const covers = (issues) => issues.filter((i) => / of the hook title;/.test(i.message));
+  // Before 0.6 the sticker stays where it was put, so check names what it covers.
+  const old = covers(await check(project(t, { size: 'shorts', defaults: '0.5' }, { one: [body(), 2] })));
+  assert.equal(old.length, 1, JSON.stringify(old));
+  assert.equal(old[0].level, 'warn');
+  assert.match(old[0].message, /^the sticker "x = \?" covers "[A-Z ]*SECONDS[A-Z ]*" of the hook title; move the sticker with x and y, or give it a later at$/);
+  // With 0.6 it moves below the title.
+  assert.deepEqual(covers(await check(project(t, { size: 'shorts', defaults: '0.6' }, { one: [body(), 2] }))), []);
+  // Without room below the title it stays, and check warns.
+  const tight = covers(await check(project(t, { size: 'shorts', defaults: '0.6' }, { one: [body(', area: { bottom: box.bottom + 10 }'), 2] })));
+  assert.equal(tight.length, 1, JSON.stringify(tight));
+  // A sticker after the title has gone, or beside it, is fine.
+  assert.deepEqual(covers(await check(project(t, { size: 'shorts', defaults: '0.5' }, { one: [`const box = s.short.hook('Solve it', { at: 0, out: 0.4 }); s.short.sticker('*x = ?*', { y: box.y, at: 0.5 });`, 2] }))), []);
+});

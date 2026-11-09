@@ -90,15 +90,16 @@ export function beats(s, items, { y = s.safe.y + s.safe.h * 0.55 } = {}) {
   });
 }
 
-// One fact on a tilted sticker, like "*20%*". It may sit on the subject's corner.
-// It moves in and gets smaller where it needs to, so it stays in s.safe at the
-// zoom of the scene's punch().
+// One fact on a tilted sticker, like "*20%*". It may sit on the subject's corner,
+// and it moves below the hook title when it would cover it. It moves in and gets
+// smaller where it needs to, so it stays in s.safe at the zoom of the scene's
+// punch().
 export function fact(s, text, { at, x = s.cx + s.safe.w * 0.24, y = s.safe.y + s.safe.h * 0.42, out } = {}) {
   const area = wordArea(s);
   const { size, w } = fitLine(s, String(text).replace(/\*/g, ''), unit(s) * 11, 900, area.w * 0.96 - unit(s) * 11);
   const half = { w: (w + size * 0.9) / 2, h: size * 0.75 + w * 0.04 };
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-  s.short.sticker(text, { x: clamp(x, area.left + half.w, area.right - half.w), y: clamp(y, area.top + half.h, area.bottom - half.h), size, at, out, overlap: true });
+  s.short.sticker(text, { x: clamp(x, area.left + half.w, area.right - half.w), y: clamp(y, area.top + half.h, area.bottom - half.h), size, at, out, area, overlap: true });
 }
 
 // A fast zoom onto the middle on a cue, for a turn in the story. Put it in

@@ -716,6 +716,8 @@ export class Stage {
       partial: entry.partial ?? null,
       group: this._groups[0] ?? null,
       overlap: entry.overlap === true,
+      // 'title' for the words of a hook.
+      role: entry.role ?? null,
       order: drawn ? drawn.order++ : 0,
       scene: this.id,
       t: this.t,
