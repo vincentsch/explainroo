@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { checkRecordingScript, readRecordingScript, scriptHash, stepLabel, videoOffset, wholeHash } from '../src/record.js';
+import { checkRecordingScript, readRecordingScript, scriptHash, stepLabel, stepLine, videoOffset, wholeHash } from '../src/record.js';
 import { ffmpeg } from '../src/ffmpeg.js';
 import { cuedSteps, recordingClock, videoTime, sceneTime, cursorAt, viewAt, focusRect, coverRect, zoomScale, ZOOM_SECONDS, ZOOM_RANGE, CATCH_UP } from '../engine/recording.js';
 import { makeState } from '../src/pipeline.js';
@@ -288,6 +288,12 @@ test('a new cue plays from the script without a new recording, and any other cha
   assert.equal(state().changed, undefined);
   write(moved);
   assert.equal(state().changed, true);
+});
+
+test('record says in one line what each step found', () => {
+  assert.equal(stepLine('step 2 (click "Save")', { match: { tag: 'button', text: 'Save invoice', selector: '#save' } }), 'step 2 (click "Save"): <button> "Save invoice"');
+  assert.equal(stepLine('step 3 (zoom "section")', { match: { tag: 'section', text: '', selector: 'section.a', hidden: 3 } }), 'step 3 (zoom "section"): <section> with no words, skipping 3 hidden matches of the selector');
+  assert.equal(stepLine('step 4 (mark "a")', {}), 'step 4 (mark "a")');
 });
 
 // Chrome sends the first frame of a recording a little after the page opens,

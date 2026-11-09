@@ -61,13 +61,22 @@ log, `assets/recordings/<name>.log.json`. The video shows only the page,
 with no browser bars or pop-ups. `record` needs Playwright's own ffmpeg,
 which `explainroo doctor --fetch` downloads once.
 
+`record` prints one line per step with what it found, like
+`step 7 (zoom "section.results", nth 2): <section> "Solutions: x = 1 ..."`,
+and saves a small picture of each step's element in
+`build/record/<name>/step-<n>.png`. The step log keeps the element's words
+and a selector that matches only it, under `match`. Open the pictures before
+you write the scene, because a step that found the wrong element still
+records.
+
 - A step finds its element by `text` or by a CSS `selector`. `text` is the
   words the element shows, and its `aria-label`, label or placeholder count
   too. A long placeholder also matches its first part, up to a comma or a
   full stop. An editor like CodeMirror shows its placeholder as an element
   inside the field, and that counts as the field's placeholder: the step
   clicks or types into the field. `nth: 2` takes the second match from the
-  top.
+  top. `nth` counts visible elements only. When a selector also matches
+  hidden ones, `record` says how many it skipped.
 - `open` goes to `url`, an address or a path. `click`, `hover` and `type`
   move the pointer to the element. `type` clicks the field and types
   `value` at 14 characters a second, or at `cps`, and `press` presses a key

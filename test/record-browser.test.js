@@ -4,11 +4,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { findChrome, launch } from '../src/browser.js';
-import { formatInspect, inspect, record } from '../src/record.js';
+import { formatInspect, formatRecord, inspect, record } from '../src/record.js';
 import { loadProject } from '../src/project.js';
 import { withEngine } from '../src/pipeline.js';
 import { execFileSync } from 'node:child_process';
-import { ffmpeg, ffmpegPath } from '../src/ffmpeg.js';
+import { ffmpeg, ffmpegPath, probe } from '../src/ffmpeg.js';
 import { serveDemoApp } from './fixtures/demo-app/serve.js';
 
 let chrome;
@@ -356,4 +356,56 @@ test('check warns about a recording that plays small with no zoom, and names the
   writeLog([{ step: 4, do: 'zoom', selector: 'form', start: 3, t: 3, end: 3.4, box: { x: 600, y: 300, w: 600, h: 300 } }]);
   assert.deepEqual(await findings({ w: 700 }), []);
   assert.deepEqual(await findings({ h: 300, zoom: false }), ['recording "invoice" plays at 42% of its size, 1280 pixels wide in 533, and zoom: false keeps its zooms out, so its text is small to read. Take out zoom: false, or show it larger']);
+});
+
+test('record says what each step found, with a picture of it, and nth leaves out hidden matches', { skip: !chrome }, async (t) => {
+  const app = await serveDemoApp();
+  t.after(app.close);
+  const dir = project(t, {
+    url: `${app.url}#/invoices`,
+    viewport: { width: 1280, height: 720 },
+    steps: [
+      { do: 'click', text: 'Accept', before: true },
+      // The closed cookie banner keeps its <p>, hidden, so "p" number 2 is the total.
+      { do: 'zoom', selector: 'p', nth: 2 },
+      { do: 'click', selector: 'h1' },
+      { do: 'click', text: 'New invoice' },
+      { do: 'type', text: 'Amount', value: '75' },
+      { do: 'mark', name: 'typed' },
+    ],
+  });
+  const lines = [];
+  const r = await record(dir, 'invoice', { log: (l) => lines.push(l) });
+  const log = JSON.parse(fs.readFileSync(path.join(dir, r.log), 'utf8'));
+  const [, zoom, , click, type, mark] = log.steps;
+  assert.deepEqual(zoom.match, { tag: 'p', text: 'Total $2,430', selector: 'p.total', hidden: 1 });
+  assert.deepEqual(click.match, { tag: 'button', text: 'New invoice', selector: '#new' });
+  assert.deepEqual([type.match.tag, type.match.selector], ['input', '#amount']);
+  assert.equal(mark.match, undefined);
+  // One line per step, with what it found.
+  assert.deepEqual(lines.filter((l) => /^step/.test(l)), [
+    'step 1 (click "Accept"), before the video: <button> "Accept"',
+    'step 2 (zoom "p"): <p> "Total $2,430", skipping 1 hidden match of the selector',
+    'step 3 (click "h1"): <h1> "Invoices"',
+    'step 4 (click "New invoice"): <button> "New invoice"',
+    'step 5 (type "Amount"): <input> "Amount"',
+    'step 6 (mark "typed")',
+  ]);
+  // A small picture of each element the video shows, from the video.
+  assert.equal(r.pictures, 'build/record/invoice');
+  // A step before the video is not in it, so it has no picture.
+  assert.deepEqual(r.matched.map((m) => [m.step, m.picture]), [[1, undefined], ...[2, 3, 4, 5].map((n) => [n, `build/record/invoice/step-${n}.png`])]);
+  assert.deepEqual(fs.readdirSync(path.join(dir, 'build/record/invoice')).sort(), ['step-2.png', 'step-3.png', 'step-4.png', 'step-5.png']);
+  const size = async (file) => (await probe(file)).streams.map((st) => [st.width, st.height])[0];
+  // The button with 12 pixels around it, and the wide field scaled to 480 at most.
+  assert.deepEqual(await size(path.join(dir, 'build/record/invoice/step-4.png')), [click.box.w + 24, click.box.h + 24]);
+  const [w] = await size(path.join(dir, 'build/record/invoice/step-5.png'));
+  assert.ok(w <= 480, w);
+  // The button is blue in its picture.
+  const mid = rgbAt(path.join(dir, 'build/record/invoice/step-4.png'), Math.round(click.box.w / 2) + 12, 14);
+  assert.ok(mid[2] > 200 && mid[0] < 90, `the button: ${mid}`);
+  assert.match(formatRecord(r), /\nwhat each step found: build\/record\/invoice\/step-<n>\.png\. Open them/);
+  // A selector with only hidden matches says so when it stops.
+  fs.writeFileSync(path.join(dir, 'recordings/invoice.json'), JSON.stringify({ url: `${app.url}#/invoices`, viewport: { width: 1280, height: 720 }, steps: [{ do: 'zoom', selector: '#toast' }] }));
+  await assert.rejects(record(dir, 'invoice', { findSeconds: 1 }), /no visible element with the selector "#toast" after 1 s\. The selector matches 1 hidden element, which a step leaves out\./);
 });
