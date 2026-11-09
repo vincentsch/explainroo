@@ -271,10 +271,13 @@ test('every command refuses a flag it does not take, and takes every flag it rea
   assert.equal(fs.readdirSync(dir).length, 0);
 });
 
-test('record --inspect takes a project and an address, and --viewport goes only with it', async (t) => {
+test('record --inspect takes a project and an address, and --viewport, --all and --text go only with it', async (t) => {
   const { tinyProject } = await import('./helpers/tiny-project.js');
   const dir = tinyProject(t, {}, { narrated: false });
-  assert.match((await run(['record', dir, 'demo', '--inspect', 'http://127.0.0.1:9/'])).err, /usage: explainroo record <project> --inspect <url> \[--viewport 1280x720\]/);
+  assert.match((await run(['record', dir, 'demo', '--inspect', 'http://127.0.0.1:9/'])).err, /usage: explainroo record <project> --inspect <url> \[--all\] \[--text "<words>"\] \[--viewport 1280x720\]/);
+  assert.match((await run(['record', dir, '--inspect', 'http://127.0.0.1:9/', '--all', '--text', 'Total'])).err, /--text lists only the elements that hold its words, so leave out --all/);
+  assert.match((await run(['record', dir, '--inspect', 'http://127.0.0.1:9/', '--text'])).err, /--text needs a value/);
+  assert.match((await run(['record', dir, 'demo', '--all'])).err, /--all goes with --inspect <url>, which lists what is on a page\./);
   assert.match((await run(['record', dir, '--inspect'])).err, /--inspect needs a value/);
   assert.match((await run(['record', dir, '--inspect', 'ftp://example.com/'])).err, /--inspect must be an http:\/\/ or https:\/\/ address/);
   assert.match((await run(['record', dir, '--inspect', 'http://127.0.0.1:9/', '--viewport', 'big'])).err, /--viewport must be like 1280x720/);

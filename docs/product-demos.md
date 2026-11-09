@@ -55,6 +55,13 @@ your script, because the page may lay itself out differently in another
 size. `--json` gives the same list as JSON, and `--keep-profile` opens the
 page with the kept profile, for a page behind a login.
 
+A zoom or a scroll often goes to plain content, like a heading, a section of
+results or a chart. `--all` adds the visible headings, sections and images to
+the list, each with its words and a selector. `--text "Solutions"` lists only
+the elements that hold those words: the smallest one, and then the larger
+ones around it, like the section the heading starts. Pick the one whose box
+holds what the voice talks about.
+
 Then run `explainroo record videos/<name> <name>`. It runs the steps in a
 browser of its own and saves `assets/recordings/<name>.webm` and its step
 log, `assets/recordings/<name>.log.json`. The video shows only the page,

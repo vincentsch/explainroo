@@ -921,7 +921,7 @@ const SELECTOR_SCRIPT = `window.__explainrooSelector = ${selectorInPage.toString
 // with what a step finds it by: a text that finds it, with nth when it is not
 // the first match, and a CSS selector that matches only it. findInPage has to
 // be in the page as window.__explainrooFind.
-function inspectInPage({ limit }) {
+function inspectInPage({ limit, all = false, holding = null }) {
   const find = window.__explainrooFind;
   const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
   const visible = (el) => {
@@ -967,33 +967,77 @@ function inspectInPage({ limit }) {
     }
     return best;
   };
+  const describe = (el, more = {}) => {
+    const r = el.getBoundingClientRect();
+    const x = r.left + r.width / 2;
+    const y = r.top + r.height / 2;
+    const words = el.matches('input, textarea, select, img') ? '' : norm(el.innerText);
+    const aria = norm(el.getAttribute('aria-label'));
+    const alt = el.matches('img') ? norm(el.getAttribute('alt')) : '';
+    const holder = placeholder(el);
+    const text = textOf(el, words.length <= 80 ? words : '', aria || alt, holder);
+    return {
+      kind: kind(el),
+      ...more,
+      ...(words ? { words: words.length > 120 ? `${words.slice(0, 117)}...` : words } : {}),
+      ...(aria ? { aria_label: aria } : {}),
+      ...(alt ? { alt } : {}),
+      ...(holder ? { placeholder: holder } : {}),
+      ...(text ?? {}),
+      selector: selectorOf(el),
+      box: { x: Math.round(x), y: Math.round(y), w: Math.round(r.width), h: Math.round(r.height) },
+      in_view: x >= 0 && y >= 0 && x <= innerWidth && y <= innerHeight,
+    };
+  };
+  const top = (el) => el.getBoundingClientRect().top + scrollY;
+  const order = (a, b) => top(a) - top(b) || a.getBoundingClientRect().left - b.getBoundingClientRect().left;
+  // With `holding`, the elements that hold those words: the smallest one, and
+  // the larger ones around it, each a zoom or scroll target of its own.
+  if (holding !== null) {
+    const want = norm(holding).toLowerCase();
+    const holds = (el) => [norm(el.innerText), norm(el.getAttribute('aria-label')), el.matches('img') ? norm(el.getAttribute('alt')) : ''].some((w) => w.toLowerCase().includes(want));
+    const hits = [...document.body.querySelectorAll('*')].filter((el) => visible(el) && holds(el));
+    const smallest = hits.filter((el) => !hits.some((o) => o !== el && el.contains(o))).sort(order);
+    const entries = [];
+    for (const el of smallest) {
+      entries.push(describe(el, { level: 0 }));
+      let last = el.getBoundingClientRect();
+      let level = 0;
+      for (let up = el.parentElement; up && up !== document.body && level < 4; up = up.parentElement) {
+        const r = up.getBoundingClientRect();
+        // A parent with the same box shows nothing more.
+        if (!visible(up) || (Math.abs(r.width - last.width) < 4 && Math.abs(r.height - last.height) < 4)) continue;
+        entries.push(describe(up, { level: ++level }));
+        last = r;
+      }
+    }
+    return { title: document.title, total: entries.length, matches: smallest.length, elements: entries.slice(0, limit) };
+  }
   const found = [...document.body.querySelectorAll(CLICKABLE)].filter(visible);
   // A link around a button with the same words is one thing to click.
   const list = found.filter((el) => !found.some((o) => o !== el && el.contains(o) && norm(o.innerText) === norm(el.innerText)));
-  const top = (el) => el.getBoundingClientRect().top + scrollY;
-  list.sort((a, b) => top(a) - top(b) || a.getBoundingClientRect().left - b.getBoundingClientRect().left);
+  // With `all`, also what a zoom or a scroll goes to: headings, sections and images.
+  const content = [];
+  if (all) {
+    const taken = new Set(list);
+    for (const el of document.body.querySelectorAll('h1, h2, h3, h4, h5, h6, [role=heading], section, article, figure, table, [role=region], [role=figure], img, svg[role=img], [role=img], picture, video, canvas')) {
+      if (taken.has(el) || !visible(el)) continue;
+      const r = el.getBoundingClientRect();
+      const heading = el.matches('h1, h2, h3, h4, h5, h6, [role=heading]');
+      if (heading ? !norm(el.innerText) : r.width < 24 || r.height < 24) continue;
+      // An image inside a picture is the same picture.
+      if (el.matches('img') && el.parentElement?.matches('picture') && taken.has(el.parentElement)) continue;
+      taken.add(el);
+      content.push(el);
+    }
+  }
+  const clickable = new Set(list);
+  const every = [...list, ...content].sort(order);
   return {
     title: document.title,
-    total: list.length,
-    elements: list.slice(0, limit).map((el) => {
-      const r = el.getBoundingClientRect();
-      const x = r.left + r.width / 2;
-      const y = r.top + r.height / 2;
-      const words = el.matches('input, textarea, select') ? '' : norm(el.innerText);
-      const aria = norm(el.getAttribute('aria-label'));
-      const holder = placeholder(el);
-      const text = textOf(el, words.length <= 80 ? words : '', aria, holder);
-      return {
-        kind: kind(el),
-        ...(words ? { words: words.length > 120 ? `${words.slice(0, 117)}...` : words } : {}),
-        ...(aria ? { aria_label: aria } : {}),
-        ...(holder ? { placeholder: holder } : {}),
-        ...(text ?? {}),
-        selector: selectorOf(el),
-        box: { x: Math.round(x), y: Math.round(y), w: Math.round(r.width), h: Math.round(r.height) },
-        in_view: x >= 0 && y >= 0 && x <= innerWidth && y <= innerHeight,
-      };
-    }),
+    total: every.length,
+    ...(all ? { content: content.length } : {}),
+    elements: every.slice(0, limit).map((el) => describe(el, all ? { group: clickable.has(el) ? 'click' : 'content' } : {})),
   };
 }
 
@@ -1003,10 +1047,11 @@ const INSPECT_PRINTED = 200;
 
 // Opens a page in the browser record uses and lists what a step can click or
 // type into, so a script never has to guess a button.
-export async function inspect(dirArg, url, { viewport, keepProfile = false, log = () => {} } = {}) {
+export async function inspect(dirArg, url, { viewport, keepProfile = false, all = false, holding = null, log = () => {} } = {}) {
   const dir = findProjectDir(dirArg);
   const fail = (m) => { throw new ProjectError(m); };
   const address = checkUrl(url, fail, '--inspect').href;
+  if (holding !== null && (typeof holding !== 'string' || !holding.trim())) fail('--text needs the words to look for, like --text "Solutions"');
   const size = checkViewport(viewport, (m) => fail(m.replace('viewport must be like { "width": 1920, "height": 1080 }', '--viewport must be like 1280x720').replace(/^viewport\.(width|height)/, '--viewport $1')));
   const profile = browserProfile(dir, keepProfile);
   log(`opening ${address} at ${size.width}x${size.height}${keepProfile ? ', with the profile of earlier runs' : ''}`);
@@ -1029,8 +1074,8 @@ export async function inspect(dirArg, url, { viewport, keepProfile = false, log 
     await page.evaluate(() => document.fonts?.ready.then(() => true)).catch(() => {});
     await sleep(500);
     await page.evaluate(`window.__explainrooFind = ${findInPage.toString()}`);
-    const r = await page.evaluate(inspectInPage, { limit: INSPECT_LIMIT });
-    return { url: page.url(), title: r.title, viewport: size, total: r.total, elements: r.elements };
+    const r = await page.evaluate(inspectInPage, { limit: INSPECT_LIMIT, all, holding });
+    return { url: page.url(), title: r.title, viewport: size, ...(holding !== null ? { text: holding, matches: r.matches } : all ? { all: true, content: r.content } : {}), total: r.total, elements: r.elements };
   } finally {
     if (context) await context.close().catch(() => {});
     if (!keepProfile) fs.rmSync(profile, { recursive: true, force: true });
@@ -1040,18 +1085,27 @@ export async function inspect(dirArg, url, { viewport, keepProfile = false, log 
 export function formatInspect(r) {
   const cut = (v) => (v.length > 60 ? `${v.slice(0, 57)}...` : v);
   const lines = r.elements.slice(0, INSPECT_PRINTED).map((e, i) => {
-    const said = [e.words ? quoted(cut(e.words)) : '', e.aria_label && e.aria_label !== e.words ? `aria-label ${quoted(cut(e.aria_label))}` : '', e.placeholder && e.placeholder !== e.words ? `placeholder ${quoted(cut(e.placeholder))}` : ''].filter(Boolean).join(', ');
+    const said = [e.words ? quoted(cut(e.words)) : '', e.alt ? `alt ${quoted(cut(e.alt))}` : '', e.aria_label && e.aria_label !== e.words ? `aria-label ${quoted(cut(e.aria_label))}` : '', e.placeholder && e.placeholder !== e.words ? `placeholder ${quoted(cut(e.placeholder))}` : ''].filter(Boolean).join(', ');
     const where = `at ${e.box.x},${e.box.y}, ${e.box.w}x${e.box.h}${e.in_view ? '' : ', outside the window'}`;
     const by = e.text !== undefined ? `text ${quoted(e.text)}${e.nth ? `, nth ${e.nth}` : ''}, or selector ${e.selector}` : `selector ${e.selector}`;
-    return `${String(i + 1).padStart(3)}. ${e.kind}${said ? ` ${said}` : ''}  ${where}\n     ${by}`;
+    // Around the words of --text, each larger element is one step further in.
+    const pad = ' '.repeat(2 * (e.level ?? 0));
+    const kind = e.level ? `in ${e.kind}` : e.kind;
+    return `${String(i + 1).padStart(3)}. ${pad}${kind}${said ? ` ${said}` : ''}  ${where}\n     ${pad}${by}`;
   });
   const more = r.total > lines.length ? [`and ${r.total - lines.length} more${r.elements.length > lines.length ? ', which --json lists' : ''}`] : [];
-  return [
-    `${r.url} at ${r.viewport.width}x${r.viewport.height}: ${r.total} element${r.total === 1 ? '' : 's'} to click or type into, from the top`,
-    ...lines,
-    ...more,
-    'A step takes the text or the selector as it is, like { "do": "click", "text": "Save" }. An element outside the window needs a scroll step to it first.',
-  ].join('\n');
+  const size = `${r.viewport.width}x${r.viewport.height}`;
+  const head = r.text !== undefined
+    ? r.matches
+      ? `${r.url} at ${size}: ${r.matches} element${r.matches === 1 ? '' : 's'} hold${r.matches === 1 ? 's' : ''} ${quoted(r.text)}, each with the larger ones around it, from the top`
+      : `${r.url} at ${size}: no visible element holds ${quoted(r.text)}. The words are matched without case, also inside longer text.`
+    : r.all
+      ? `${r.url} at ${size}: ${r.total} element${r.total === 1 ? '' : 's'}, ${r.total - r.content} to click or type into, and ${r.content} of the headings, sections and images to zoom or scroll to, from the top`
+      : `${r.url} at ${size}: ${r.total} element${r.total === 1 ? '' : 's'} to click or type into, from the top`;
+  const tail = r.text !== undefined || r.all
+    ? 'A step takes the text or the selector as it is, like { "do": "zoom", "selector": "#results", "align": "left" }. An element outside the window needs a scroll step to it first.'
+    : 'A step takes the text or the selector as it is, like { "do": "click", "text": "Save" }. An element outside the window needs a scroll step to it first. --all also lists headings, sections and images, and --text "<words>" the elements that hold those words.';
+  return [head, ...lines, ...more, tail].join('\n');
 }
 
 export function formatRecord(r) {

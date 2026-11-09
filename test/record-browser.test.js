@@ -409,3 +409,26 @@ test('record says what each step found, with a picture of it, and nth leaves out
   fs.writeFileSync(path.join(dir, 'recordings/invoice.json'), JSON.stringify({ url: `${app.url}#/invoices`, viewport: { width: 1280, height: 720 }, steps: [{ do: 'zoom', selector: '#toast' }] }));
   await assert.rejects(record(dir, 'invoice', { findSeconds: 1 }), /no visible element with the selector "#toast" after 1 s\. The selector matches 1 hidden element, which a step leaves out\./);
 });
+
+test('inspect --all lists headings, sections and images, and --text what holds the words', { skip: !chrome }, async (t) => {
+  const app = await serveDemoApp();
+  t.after(app.close);
+  const dir = project(t, { url: app.url, steps: [{ do: 'mark', name: 'a' }] });
+  const viewport = { width: 1280, height: 720 };
+  const plain = await inspect(dir, `${app.url}#/invoices`, { viewport });
+  const all = await inspect(dir, `${app.url}#/invoices`, { viewport, all: true });
+  const content = all.elements.filter((e) => e.group === 'content');
+  assert.equal(all.content, content.length);
+  assert.equal(all.total, plain.total + content.length);
+  assert.deepEqual(content.map((e) => e.kind), ['h1', 'table']);
+  assert.deepEqual([content[0].words, content[0].text, content[0].selector], ['Invoices', 'Invoices', 'h1']);
+  assert.match(formatInspect(all), /^http:\/\/127\.0\.0\.1:\d+\/#\/invoices at 1280x720: \d+ elements, \d+ to click or type into, and 2 of the headings, sections and images to zoom or scroll to, from the top\n/);
+  const held = await inspect(dir, `${app.url}#/invoices`, { viewport, holding: 'total' });
+  assert.equal(held.matches, 1);
+  assert.deepEqual(held.elements.map((e) => [e.level, e.kind]), [[0, 'p'], [1, 'main']]);
+  assert.deepEqual([held.elements[0].words, held.elements[0].selector], ['Total $2,430', 'p.total']);
+  const text = formatInspect(held);
+  assert.match(text, /: 1 element holds "total", each with the larger ones around it, from the top\n {2}1\. p "Total \$2,430" {2}at \d+,\d+, \d+x\d+\n {5}text "Total \$2,430", or selector p\.total\n {2}2\. {3}in main /);
+  const none = formatInspect(await inspect(dir, `${app.url}#/invoices`, { viewport, holding: 'Nothing like it' }));
+  assert.match(none, /: no visible element holds "Nothing like it"\./);
+});
