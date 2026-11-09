@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { loadProject } from '../src/project.js';
 import { speechChunks } from '../src/script.js';
-import { reviewSpeech, sceneHash, synthesize, voicePaths, heardQuote } from '../src/voice.js';
+import { CHECK, reviewSpeech, sceneHash, synthesize, voicePaths, heardQuote } from '../src/voice.js';
 import { speechFindings } from '../src/qa.js';
 import { writeWav } from '../src/wav.js';
 import { main } from '../src/cli.js';
@@ -148,7 +148,7 @@ test('an older scene gets the speech check of today from its transcript once, wi
   assert.deepEqual(voices.intro.nearly, [{ word: 'piece', heard: 'peace', alike: true }]);
   // Saved once with today's rules and the old times, so the next command takes it as it is.
   const saved = JSON.parse(fs.readFileSync(files.json, 'utf8'));
-  assert.deepEqual([saved.check, saved.matchRate, saved.unmatched, saved.hash], [3, 1, [], JSON.parse(before).hash]);
+  assert.deepEqual([saved.check, saved.matchRate, saved.unmatched, saved.hash], [CHECK, 1, [], JSON.parse(before).hash]);
   assert.deepEqual(saved.words.map((w) => [w.start, w.end]), JSON.parse(before).words.map((w) => [w.start, w.end]));
   const after = fs.readFileSync(files.json, 'utf8');
   await synthesize(loadProject(dir), { transcribe: noSpeech });
@@ -158,7 +158,7 @@ test('an older scene gets the speech check of today from its transcript once, wi
   const reviewed = (await synthesize(loadProject(merge.dir), { transcribe: noSpeech })).intro;
   assert.deepEqual(reviewed.nearly, [{ word: 'A', heard: 'Emerge', joined: true }, { word: 'merge', heard: 'Emerge', joined: true }]);
   // A scene checked with today's rules is taken as it is.
-  const today = { ...JSON.parse(before), check: 3 };
+  const today = { ...JSON.parse(before), check: CHECK };
   assert.equal((await reviewSpeech(today, 'en')).matchRate, 0.786);
   const { issues } = speechFindings(loadProject(dir), voices);
   assert.ok(!issues.some((i) => i.level === 'warn'), JSON.stringify(issues));
