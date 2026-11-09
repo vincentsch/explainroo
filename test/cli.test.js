@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { main } from '../src/cli.js';
+import { loadProject, THEME_MUSIC } from '../src/project.js';
 import { ASR_MODEL, TTS_MODEL, cacheRoot } from '../src/models.js';
 
 // Run the CLI in-process and collect what it wrote to stderr.
@@ -381,6 +382,28 @@ test('set writes one setting into video.json, dotted keys reach into blocks, nul
   fs.writeFileSync(file, '{\n\t"theme": "paper"\n}\n');
   await set('fps', '25');
   assert.equal(fs.readFileSync(file, 'utf8'), '{\n\t"theme": "paper",\n\t"fps": 25\n}\n');
+});
+
+test('music.volume works without a style: set turns "music": true into a block, and the look keeps its own music', async (t) => {
+  const dir = tempDir();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(dir, 'script.md'), '# Test\n\n## a\nHello there.\n');
+  fs.writeFileSync(path.join(dir, 'scenes.js'), 'export default { a() {} };');
+  const file = path.join(dir, 'video.json');
+  fs.writeFileSync(file, '{\n  "theme": "midnight",\n  "music": true\n}\n');
+  const r = await runAll(['set', dir, 'music.volume', '0.35']);
+  assert.equal(r.code, 0, r.err);
+  assert.equal(r.out, 'set music.volume to 0.35 in video.json\n');
+  assert.equal(fs.readFileSync(file, 'utf8'), '{\n  "theme": "midnight",\n  "music": {\n    "volume": 0.35\n  }\n}\n');
+  const { config } = loadProject(dir);
+  assert.deepEqual([config.music.style, config.music.volume], [THEME_MUSIC.midnight, 0.35]);
+  // A style written as text stays that style.
+  fs.writeFileSync(file, '{\n  "theme": "midnight",\n  "music": "calm"\n}\n');
+  assert.equal((await runAll(['set', dir, 'music.volume', '0.3'])).code, 0);
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).music, { style: 'calm', volume: 0.3 });
+  // The docs name each look's own music.
+  const docs = fs.readFileSync(new URL('../docs/music.md', import.meta.url), 'utf8');
+  for (const [look, style] of Object.entries(THEME_MUSIC)) assert.match(docs, new RegExp(`\\| \`${look}\` \\| \`${style}\` \\|`), look);
 });
 
 test('set refuses an unknown key or a bad value with the check every command runs, and writes nothing', async (t) => {
