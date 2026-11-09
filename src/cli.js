@@ -153,8 +153,8 @@ Reference
   doctor [project]      check ffmpeg, Chrome, Playwright's ffmpeg for record, espeak-ng, misaki and models: each is
                         ready, not needed or missing. With a project, for its languages and voices. Before there
                         is a project, --language es checks what that language needs (--fetch downloads the models
-                        it needs and Playwright's ffmpeg, and on Debian and Ubuntu it sets up espeak-ng without
-                        root when a language needs it)
+                        it needs, and on Debian and Ubuntu it sets up espeak-ng without root when a language needs
+                        it. It gets Playwright's ffmpeg for a project with recordings, or with --record)
   docs [topic] [section]  print the start page for coding agents, one topic, or one section of a topic by its
                         heading (--list shows the topics, --sections the sections of a topic with their size)
   version               print the version (--version works too)
@@ -548,7 +548,7 @@ export async function main(argv) {
       case 'icons': return icons(pos, print);
       case 'doctor': {
         const language = textFlag(flags, 'language');
-        const r = await doctor({ project: pos[0] === undefined ? null : loadProject(pos[0]), language: language ?? null, fetch: !!flags.fetch, log, notice });
+        const r = await doctor({ project: pos[0] === undefined ? null : loadProject(pos[0]), language: language ?? null, fetch: !!flags.fetch, record: !!flags.record, log, notice });
         print(formatDoctor(r), r);
         return r.ok ? 0 : 1;
       }

@@ -147,11 +147,20 @@ export function setupEspeak({ notice = () => {} } = {}) {
   return { folder, launcher, settings, version, ...(used !== launcher ? { shadowed: process.env.EXPLAINROO_ESPEAK ? 'the environment' : `the .env of ${ROOT}` } : {}) };
 }
 
+// Whether a project has a recording script in recordings/.
+function hasRecordings(dir) {
+  try {
+    return fs.readdirSync(path.join(dir, 'recordings')).some((f) => f.endsWith('.json'));
+  } catch {
+    return false;
+  }
+}
+
 // `project` is a loaded project, `language` the codes of --language, or neither for
 // the default setup. Only `fetch` downloads anything, and it fetches the models
 // that setup needs: the voice model for a Kokoro voice, the English speech check
 // model for English, and the language model for every other language.
-export async function doctor({ project = null, language = null, fetch = false, log = () => {}, notice = log } = {}) {
+export async function doctor({ project = null, language = null, fetch = false, record = false, log = () => {}, notice = log } = {}) {
   if (project && language !== null) throw new ProjectError('doctor checks a project or the languages of --language, not both. With a project it checks the languages in its video.json.');
   const setup = project ? projectSetup(project) : language !== null ? languageSetup(language) : DEFAULT_SETUP;
   const needs = setupNeeds(setup);
@@ -182,21 +191,27 @@ export async function doctor({ project = null, language = null, fetch = false, l
   always('chrome', chrome, chrome, noChrome);
   // The same setup, with --fetch.
   const again = `${command} doctor --fetch${language !== null ? ` --language ${language}` : project ? ` ${projectWord(project.dir)}` : ''}`;
-  // Only record needs Playwright's ffmpeg, so a missing one doesn't fail the run.
+  // Only record needs Playwright's ffmpeg, so a missing one doesn't fail the
+  // run. It counts for a project with recordings and with --record. record
+  // downloads it the first time otherwise.
+  const recording = record || (!!project && hasRecordings(project.dir));
   let encoder = await recordEncoder();
   let encoderFailed = null;
-  if (!encoder.ready && fetch && process.env.EXPLAINROO_OFFLINE !== '1') {
+  if (!encoder.ready && recording && fetch && process.env.EXPLAINROO_OFFLINE !== '1') {
     try {
       encoder = await installRecordEncoder({ log });
     } catch (e) {
       encoderFailed = String(e.message).split('\n').map((l) => l.trim()).find(Boolean);
     }
   }
+  const fetchRecord = `${command} doctor --fetch${project ? ` ${projectWord(project.dir)}` : ' --record'}`;
   rows.push({
     name: 'playwright ffmpeg',
-    state: encoder.ready ? 'ready' : 'missing',
-    ok: encoder.ready,
-    detail: encoder.ready ? `${encoder.file}, for the video of "record"` : `only "record" needs it. ${encoderFailed ? `The download failed: ${encoderFailed}` : `"${again}" downloads it.`}`,
+    state: !recording ? 'not needed' : encoder.ready ? 'ready' : 'missing',
+    ok: encoder.ready || !recording,
+    detail: !recording ? (encoder.ready ? `only "record" needs it. It is installed: ${encoder.file}` : `only "record" needs it, and it downloads it the first time. "${fetchRecord}" gets it now`)
+      : encoder.ready ? `${encoder.file}, for the video of "record"`
+      : `only "record" needs it. ${encoderFailed ? `The download failed: ${encoderFailed}` : `"${fetchRecord}" downloads it, and so does "record" the first time.`}`,
     fails: false,
   });
 

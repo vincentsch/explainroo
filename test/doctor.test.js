@@ -421,9 +421,8 @@ function zipOne(name, body) {
   return Buffer.concat([local, file, body, central, file, end]);
 }
 
-test('doctor lists Playwright\'s ffmpeg for record, and --fetch gets it with Playwright\'s own installer', async (t) => {
+test('Playwright\'s ffmpeg counts for a project with recordings or --record, and record downloads it the first time', async (t) => {
   const { default: http } = await import('node:http');
-  const browsers = temp(t);
   const asked = [];
   const name = { linux: 'ffmpeg-linux', darwin: 'ffmpeg-mac', win32: 'ffmpeg-win64.exe' }[process.platform];
   const server = http.createServer((req, res) => {
@@ -433,29 +432,52 @@ test('doctor lists Playwright\'s ffmpeg for record, and --fetch gets it with Pla
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise((resolve) => server.close(resolve)));
-  const env = { ...process.env, EXPLAINROO_CACHE: cache(t, true), PLAYWRIGHT_BROWSERS_PATH: browsers, PLAYWRIGHT_DOWNLOAD_HOST: `http://127.0.0.1:${server.address().port}` };
-  const run = (args, file = bin, extra = []) => new Promise((resolve) => {
-    execFile(process.execPath, [...extra, file, ...args], { encoding: 'utf8', env }, (error, stdout, stderr) => resolve({ status: error ? error.code : 0, stdout, stderr }));
+  // With the models of English in the cache, --fetch has no model to get.
+  const models = linkedModels(t, [TTS_MODEL, ASR_MODEL]);
+  const env = { ...process.env, EXPLAINROO_CACHE: models ?? cache(t, true), PLAYWRIGHT_DOWNLOAD_HOST: `http://127.0.0.1:${server.address().port}` };
+  const browsers = temp(t);
+  const run = (args, more = {}) => new Promise((resolve) => {
+    execFile(process.execPath, [bin, ...args], { encoding: 'utf8', env: { ...env, PLAYWRIGHT_BROWSERS_PATH: browsers, ...more } }, (error, stdout, stderr) => resolve({ status: error ? error.code : 0, stdout, stderr }));
   });
-  const row = async (args) => JSON.parse((await run(['doctor', ...args, '--json'])).stdout).checks.find((c) => c.name === 'playwright ffmpeg');
-  const missing = await row([]);
-  assert.deepEqual([missing.state, missing.ok], ['missing', false]);
-  assert.match(missing.detail, /^only "record" needs it\. ".* doctor --fetch" downloads it\.$/);
-  assert.deepEqual(asked, []);
-  // Only record needs it, so doctor passes without it, and record stops with one line.
-  assert.equal((await run(['doctor'])).status, 0);
+  const row = async (args, more) => JSON.parse((await run(['doctor', ...args, '--json'], more)).stdout).checks.find((c) => c.name === 'playwright ffmpeg');
+  // Without a project it isn't needed, and --fetch leaves it.
+  const plain = await row([]);
+  assert.deepEqual([plain.state, plain.ok], ['not needed', true]);
+  assert.match(plain.detail, /^only "record" needs it, and it downloads it the first time\. ".* doctor --fetch --record" gets it now$/);
+  if (models) {
+    const fetchAll = await run(['doctor', '--fetch']);
+    assert.equal(fetchAll.status, 0, fetchAll.stdout + fetchAll.stderr);
+    assert.deepEqual(asked, []);
+  }
   const dir = project(t, { title: 'T' });
+  assert.equal((await row([dir])).state, 'not needed');
+  // A project with a recording script needs it.
   fs.mkdirSync(path.join(dir, 'recordings'));
   fs.writeFileSync(path.join(dir, 'recordings/tour.json'), JSON.stringify({ url: 'http://127.0.0.1:9/', steps: [{ do: 'mark', name: 'a' }] }));
-  const record = await run(['record', dir, 'tour']);
-  assert.equal(record.status, 1);
-  assert.match(record.stderr, /^error: record needs Playwright's own ffmpeg to save the video, and it isn't there yet\. Run ".* doctor --fetch" once\.\n$/);
-  // The installer doctor --fetch runs gets it from Playwright's download address.
-  const fetched = await new Promise((resolve) => execFile(process.execPath, ['--input-type=module', '-e', `import { installRecordEncoder } from ${JSON.stringify(new URL('../src/browser.js', import.meta.url).href)}; const lines = []; console.log(JSON.stringify({ ...(await installRecordEncoder({ log: (l) => lines.push(l) })), lines }));`], { encoding: 'utf8', env }, (error, stdout, stderr) => resolve(error ? { error: stderr } : JSON.parse(stdout))));
-  assert.equal(fetched.ready, true, JSON.stringify(fetched));
-  assert.ok(fetched.file.startsWith(path.join(browsers, 'ffmpeg-')), fetched.file);
-  assert.match(fetched.lines[0], /^downloading Playwright's ffmpeg for record into /);
+  const missing = await row([dir]);
+  assert.deepEqual([missing.state, missing.ok], ['missing', false]);
+  assert.match(missing.detail, /^only "record" needs it\. ".* doctor --fetch \S+" downloads it, and so does "record" the first time\.$/);
+  // Only record needs it, so doctor passes without it.
+  assert.equal((await run(['doctor', dir])).status, 0);
+  // Offline, record stops with one line.
+  const offline = await run(['record', dir, 'tour'], { EXPLAINROO_OFFLINE: '1' });
+  assert.equal(offline.status, 1);
+  assert.match(offline.stderr, /^error: record needs Playwright's own ffmpeg to save the video, and EXPLAINROO_OFFLINE=1 keeps it from downloading it\. Run ".* doctor --fetch --record" once while online\.\n$/);
+  assert.deepEqual(asked, []);
+  // The first recording downloads it with Playwright's own installer and says
+  // so in one line. This one then stops, as nothing serves its page.
+  const first = await run(['record', dir, 'tour']);
+  assert.match(first.stderr, /^downloading Playwright's ffmpeg for record into .+\n/);
   assert.match(asked[0], /\/builds\/ffmpeg\/\d+\/ffmpeg-[a-z0-9]+\.zip$/);
-  const ready = await row([]);
-  assert.deepEqual([ready.state, ready.detail], ['ready', `${fetched.file}, for the video of "record"`]);
+  const ready = await row([dir]);
+  assert.equal(ready.state, 'ready');
+  assert.ok(ready.detail.startsWith(path.join(browsers, 'ffmpeg-')) && ready.detail.endsWith(', for the video of "record"'), ready.detail);
+  assert.match((await row([])).detail, /^only "record" needs it\. It is installed: /);
+  // doctor --fetch --record gets it ahead of time.
+  const other = temp(t);
+  assert.equal((await row(['--record'], { PLAYWRIGHT_BROWSERS_PATH: other })).state, 'missing');
+  if (!models) return;
+  const fetched = await run(['doctor', '--fetch', '--record', '--json'], { PLAYWRIGHT_BROWSERS_PATH: other });
+  assert.equal(JSON.parse(fetched.stdout).checks.find((c) => c.name === 'playwright ffmpeg').state, 'ready');
+  assert.equal(asked.length, 2);
 });

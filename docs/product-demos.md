@@ -65,8 +65,9 @@ holds what the voice talks about.
 Then run `explainroo record videos/<name> <name>`. It runs the steps in a
 browser of its own and saves `assets/recordings/<name>.webm` and its step
 log, `assets/recordings/<name>.log.json`. The video shows only the page,
-with no browser bars or pop-ups. `record` needs Playwright's own ffmpeg,
-which `explainroo doctor --fetch` downloads once.
+with no browser bars or pop-ups. `record` needs Playwright's own ffmpeg, and
+the first recording downloads it and says so. `explainroo doctor --fetch
+--record` gets it ahead of time.
 
 `record` prints one line per step with what it found, like
 `step 7 (zoom "section.results", nth 2): <section> "Solutions: x = 1 ..."`,

@@ -8,7 +8,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { launchProfile, recordEncoder } from './browser.js';
+import { installRecordEncoder, launchProfile, recordEncoder } from './browser.js';
 import { ProjectError, findProjectDir } from './project.js';
 import { cacheRoot } from './models.js';
 import { ffmpeg, probe } from './ffmpeg.js';
@@ -551,8 +551,16 @@ export async function record(dirArg, name, { log = () => {}, keepProfile = false
   const dir = findProjectDir(dirArg);
   const script = readRecordingScript(dir, name);
   const outDir = path.join(dir, 'assets', 'recordings');
-  const fetch = `"${selfCommand()} doctor --fetch"`;
-  if (!(await recordEncoder()).ready) throw new ProjectError(`record needs Playwright's own ffmpeg to save the video, and it isn't there yet. Run ${fetch} once.`);
+  const fetch = `"${selfCommand()} doctor --fetch --record"`;
+  // Only record needs Playwright's ffmpeg, so the first recording downloads it.
+  if (!(await recordEncoder()).ready) {
+    if (process.env.EXPLAINROO_OFFLINE === '1') throw new ProjectError(`record needs Playwright's own ffmpeg to save the video, and EXPLAINROO_OFFLINE=1 keeps it from downloading it. Run ${fetch} once while online.`);
+    try {
+      await installRecordEncoder({ log });
+    } catch (e) {
+      throw new ProjectError(`record needs Playwright's own ffmpeg to save the video, and the download failed: ${String(e.message).split('\n')[0]}. Run ${fetch} to try again.`);
+    }
+  }
   const profile = browserProfile(dir, keepProfile);
   const videos = fs.mkdtempSync(path.join(cacheRoot(), 'record', 'video-'));
   const { width, height } = script.viewport;
