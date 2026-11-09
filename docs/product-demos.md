@@ -86,9 +86,10 @@ browser of its own, with a profile in explainroo's cache folder, and saves
 `assets/recordings/<name>.webm` and a log with the time and place of every
 step. The video shows only the page, with no browser bars or pop-ups.
 
-- A step finds its element by `text`, the words it shows or its label,
-  placeholder or `aria-label`, or by a CSS `selector`. `nth: 2` takes the
-  second match from the top. An element out of view scrolls into view first.
+- A step finds its element by `text` or by a CSS `selector`. `text` is the
+  words the element shows, and its label or placeholder count too. `nth: 2`
+  takes the second match from the top. An element out of view scrolls into
+  view first.
 - `open` goes to `url`, an address or a path. `click`, `hover` and `type`
   move the pointer to the element. `type` clicks the field and types
   `value`, and `press` presses a key after it. `scroll` takes `y` in pixels
@@ -101,15 +102,16 @@ step. The video shows only the page, with no browser bars or pop-ups.
   next run, so such a step that finds nothing is skipped. `--fresh` starts
   with an empty profile.
 - `blur` blurs elements by CSS selector or exact text on every page, before
-  anything is recorded. Blur real names, email addresses and keys.
+  anything is recorded. Use it for real email addresses and keys.
 - `viewport` is 1920 x 1080 by default. 1280 x 720 makes the app's text
   larger in the video.
 
-When a step can't find its element, `record` stops with the step's number,
-close words from the page and a picture of the page in `build/record/`. Fix
-the script from what the page shows, and never guess a button. Then play it
-with `s.recording` (`explainroo docs scene-api recordings`), write the
-narration around what the video shows and look at stills.
+When a step can't find its element, `record` stops and names the step. It
+lists close words from the page and saves a picture of the page in
+`build/record/`. Fix the script from what the page shows, and never guess a
+button. Then play it with `s.recording`, which
+`explainroo docs scene-api recordings` explains. Write the narration around
+what the video shows, and look at stills.
 [examples/recording-demo](https://github.com/vincentsch/explainroo/tree/main/examples/recording-demo)
 is a complete one.
 

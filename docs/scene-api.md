@@ -278,10 +278,9 @@ inside a clip, so look at stills of those moments.
 ## Recordings
 
 `s.recording(name, options)` plays a recording of a real app that
-`explainroo record` made (`explainroo docs product-demos recording`), with a
-cursor moving from step to step, click rings and eased zooms. It takes
-the layout, frame and timing options of `s.clip`, and fills `s.safe` without
-`w` and `h`.
+`explainroo record` made (`explainroo docs product-demos recording`). A cursor
+moves from step to step and a ring shows each click. It takes the layout,
+frame and timing options of `s.clip`, and fills `s.safe` without `w` and `h`.
 
 ```js
 const r = s.recording('new-invoice', { frame: 'browser', url: 'app.example.com', cues: { saved: '#saved' } });
@@ -290,11 +289,11 @@ s.text('Saved', { y: 120, at: r.times.saved });
 
 A step with a `cue` happens on its word: the video holds the frame before
 the step until its action lands on the cue, or plays up to twice as fast
-when the steps before take longer than the words. `check` warns when a step
-is late even then. `cues` sets cues by mark name or step number, and
-`r.times` has each step's scene time by number and mark name. Also:
+when the steps before take longer than the words. `check` warns about a
+step late even then. `cues` sets cues by mark name or step number, and
+`r.times` has each step's scene time, by number and name. It also takes
 `cursor: false`, `zoom: false` and `sound: false` for the clicks. The
-automatic camera keeps out: the zoom steps are the camera.
+automatic camera keeps out, as its zoom steps are the camera.
 
 ## Pointing things out
 
