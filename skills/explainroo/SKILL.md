@@ -142,7 +142,7 @@ there and publishes nothing.
 1. **Learn the subject.** Read what the user points to, and write down the
    facts you will use. Never make up numbers, quotes or claims.
 2. **Create the project** with
-   `explainroo init videos/<name> --theme paper --size 16:9 --title "..."`.
+   `explainroo init videos/<name> --theme studio --size 16:9 --title "..."`.
    Pick the look for the audience, and the size for the platform
    (`explainroo docs sizes`).
    The video has a small "explainroo.com" watermark in a corner by default,

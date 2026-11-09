@@ -411,6 +411,7 @@ export async function main(argv) {
           blueprint: 'white technical drafting on blueprint blue with a grid; wipe transitions; tech music',
           midnight: 'dark developer look with glowing accents; zoom transitions; tech music',
           editorial: 'serif headlines and fine lines on warm paper, like a magazine; fade transitions; calm music',
+          studio: 'light and calm, white cards with a band of color, list items on cards; fade transitions; upbeat music',
         };
         print(THEMES.map((t) => `${t.padEnd(10)} ${desc[t]}`).join('\n') + `\n\nCustom looks: set theme in video.json to a relative .json file that extends a built-in look.\nmusic styles: ${MUSIC_STYLES.join(', ')}`, { themes: desc, music: MUSIC_STYLES });
         return 0;
@@ -607,10 +608,10 @@ function qualityOverride(flags) {
 }
 
 function init(dir, flags, print) {
-  if (!dir) throw new ProjectError('usage: explainroo init <dir> [--theme paper] [--size youtube|tiktok|linkedin|...] [--pace 1.2] [--language es] [--voice af_heart] [--title "..."]');
+  if (!dir) throw new ProjectError('usage: explainroo init <dir> [--theme studio] [--size youtube|tiktok|linkedin|...] [--pace 1.2] [--language es] [--voice af_heart] [--title "..."]');
   const target = path.resolve(dir);
   if (fs.existsSync(path.join(target, 'video.json'))) throw new ProjectError(`${target} already has a video.json`);
-  const theme = textFlag(flags, 'theme') || 'paper';
+  const theme = textFlag(flags, 'theme') || 'studio';
   if (!THEMES.includes(theme)) throw new ProjectError(`theme must be one of ${THEMES.join(', ')}`);
   const language = textFlag(flags, 'language') ?? 'en';
   checkLanguage(language);

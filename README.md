@@ -130,10 +130,12 @@ doesn't run yet.
 
 ## Looks
 
-There are six looks: paper, clean, chalk, blueprint, midnight and editorial.
-You change a video's look with one setting in `video.json`. A project can also
-bring its own look, a small JSON file with its colors, fonts and background.
-Here is one frame in each built-in look, from the example videos.
+There are seven looks: studio, paper, clean, chalk, blueprint, midnight and
+editorial. A new project starts in studio, which is light and calm, with white
+cards and lists on cards. You change a video's look with one setting in
+`video.json`. A project can also bring its own look, a small JSON file with its
+colors, fonts and background. Here is one frame in six of the built-in looks,
+from the example videos.
 
 <p align="center">
   <picture>

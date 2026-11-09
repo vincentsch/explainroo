@@ -192,7 +192,7 @@ const KIT = {
   ...Object.fromEntries(['good', 'bad', 'info', 'dark'].map((tone) => [`payoff${tone[0].toUpperCase()}${tone.slice(1)}`, `s.short.payoff({ tone: '${tone}', title: 'Fresh for weeks', lines: ['Paper bag for two days', 'Freezer for longer'] });`])),
 };
 const KIT_SCENES = { ...KIT, ...Object.fromEntries(Object.entries(KIT).map(([id, body]) => [`${id}OnBackdrop`, `s.short.backdrop(); ${body}`])) };
-const LOOKS = ['paper', 'clean', 'chalk', 'blueprint', 'midnight', 'editorial'];
+const LOOKS = ['paper', 'clean', 'chalk', 'blueprint', 'midnight', 'editorial', 'studio'];
 
 for (const theme of LOOKS) {
   test(`with "defaults": "0.5", every part of s.short reads in the ${theme} look with its own colors, so check gives no contrast warning`, { skip }, async (t) => {

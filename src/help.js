@@ -16,7 +16,7 @@ export const COMMAND_HELP = {
   init: {
     usage: 'init <dir> [options]',
     about: 'Creates a project: video.json, a script.md and a scenes.js with the same scene names, and an assets folder.',
-    options: [['--title "<title>"', 'the title of the video'], ['--theme <look>', 'paper, clean, chalk, blueprint, midnight or editorial'], ['--size <size>', 'like 16:9, tiktok or linkedin'], ['--pace <n>', 'speed of the whole video, 0.7 to 1.6'], ['--language <code>', 'en, es, fr, it, pt-br, hi, ja or zh'], ['--voice <id>', 'a Kokoro voice, see "explainroo voices"']],
+    options: [['--title "<title>"', 'the title of the video'], ['--theme <look>', 'studio (the default), paper, clean, chalk, blueprint, midnight or editorial'], ['--size <size>', 'like 16:9, tiktok or linkedin'], ['--pace <n>', 'speed of the whole video, 0.7 to 1.6'], ['--language <code>', 'en, es, fr, it, pt-br, hi, ja or zh'], ['--voice <id>', 'a Kokoro voice, see "explainroo voices"']],
     example: 'init videos/how-dns-works --theme chalk --title "How DNS works"',
   },
   set: {
