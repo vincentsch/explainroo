@@ -43,12 +43,13 @@ export default {
 
 `s.safe.h` and `s.safe.w` are smaller on Shorts, TikTok and Reels, where the
 app covers parts of the frame, and with captions on. Sizes that come from
-them, like `u` here, shrink with the space. `explainroo docs sizes` says more,
-and `explainroo docs pictures` has whole layouts like this. The examples below
-use plain numbers for a 1920 x 1080 frame to keep them short.
+them, like `u` here, shrink with the space. `explainroo docs sizes` says more.
+The examples below use plain numbers for a 1920 x 1080 frame to keep them
+short.
 
-`explainroo docs pictures` says what makes a scene look good, and
-`explainroo docs troubleshooting` lists the mistakes that break one.
+`explainroo docs pictures` has whole layouts like this and says what makes a
+scene look good, and `explainroo docs troubleshooting` lists the mistakes that
+break one.
 
 ## Time
 
@@ -78,8 +79,7 @@ second time "fills" is spoken in the scene, the same as `s.cue('fills', 2)`.
 Write `'fills#1'` when you mean the first time, and the hint goes away. This
 works wherever a time goes: `at`, `out`, `s.time`, `s.cue` and `s.cueEnd`.
 Only digits after the last `#` count, so `'C#'` stays a word and `'#ask'`
-stays a marker. A number larger than the times the word is spoken is an
-error that says how often it is spoken.
+stays a marker.
 
 An easing sets how a movement speeds up and slows down. The easing names are
 `linear`, `in`, `out`, `inOut`, `outBack`, `outElastic`, `outQuart` and
@@ -243,9 +243,9 @@ its label. With a label, it also returns `label`, the label's box, and
 (`none`, `card`, `browser`, `window`, `phone`), `url` (for the browser frame),
 `border`, `shadow: false`, `kenburns: true` for a slow zoom.
 
-`s.clip(src, options)` draws a video from `assets/`. It takes the same
-layout, frame and timing options as `s.image` and returns the same box.
-Use `.mp4`, `.mov`, `.webm` or `.m4v` files.
+`s.clip(src, options)` draws a video from `assets/` (`.mp4`, `.mov`, `.webm`
+or `.m4v`). It takes the layout, frame and timing options of `s.image`, and
+returns its box.
 
 ```js
 s.clip('assets/clips/waves-3f2a.mp4', { full: true, speed: 'fit', at: 0 });
@@ -253,37 +253,48 @@ s.clip('assets/signup.mp4', { w: 1200, frame: 'browser', url: 'app.example.com',
 s.clip('assets/demo.mov', { x: 1400, y: 540, h: 600, from: 12.5, speed: 1.5, at: '#demo', out: 9 });
 ```
 
-Like an image, a clip has no frame by default (`frame: 'none'`). It gets the
-look's shadow and rounded corners. `clean`, `midnight` and `editorial` draw a
-shadow, and `paper`, `chalk` and `blueprint` have none. It comes in with the
-look's entrance for images, which is `pop` in `paper`, `clean` and `midnight`,
-and `fade` in the other three. `shadow: false`, `radius: 0` and
-`enter: 'none'` turn these off.
+Like an image, a clip has no frame by default, and it gets the look's
+shadow, rounded corners and entrance for images. `shadow: false`,
+`radius: 0` and `enter: 'none'` turn these off.
 
-- `full: true` fills the whole frame, edge to edge, in any size. It has no
-  frame, shadow, rounded corners or entrance, and it ignores `x`, `y`, `w`
-  and `h`. Use it for a clip behind the whole scene.
-- `from` (0) is the second in the clip where playback starts.
-- `speed` (1) goes from 0.25 to 4. Playback starts at `at`. `speed: 'fit'`
-  plays the clip at the speed that makes it end with the scene, or at `out`,
-  from half speed to twice the speed. A clip that would need slower than half
-  speed plays at half speed and freezes at the end, and one that would need
-  faster than twice the speed is cut off when the scene ends.
-- `loop` (false) repeats the whole clip. Otherwise it holds the last frame.
-  `check` warns when that freeze lasts more than 0.3 seconds, and says how
-  long it is.
-- `volume` (0) goes from 0 to 1. Sound plays only at `speed: 1`.
-  It stops at `out`, the clip's end or the scene's end. Loops repeat the
-  sound too. Music ducks under clip sound as it does under the voice.
+- `full: true` fills the whole frame, edge to edge, for a clip behind the
+  whole scene. It has no frame, shadow, corners or entrance, and it ignores
+  `x`, `y`, `w` and `h`.
+- `from` (0) is the second in the clip where playback starts, at `at`.
+- `speed` (1) goes from 0.25 to 4. `speed: 'fit'` plays the clip at the
+  speed that makes it end with the scene, or at `out`, from half to twice the
+  speed. Slower, it freezes at the end. Faster, it is cut off.
+- `loop` (false) repeats the whole clip. Otherwise it holds the last frame,
+  and `check` warns when that lasts more than 0.3 seconds.
+- `volume` (0) goes from 0 to 1. Sound plays only at `speed: 1`, stops at
+  `out`, the clip's end or the scene's end, and repeats with a loop. Music
+  ducks under it as it does under the voice.
 
-Frames are extracted once at the project's fps and saved in `build/clips/`.
-They are at most 1920 pixels wide. Renders, stills and sheets use these
-frames. The preview may show a nearby frame while the right one loads.
-`s.video` still holds the whole video's duration, frames, fps and size.
-Playback starts at `at`, so `at: -1` starts a clip one second into it. To
-show a clip from its first frame when the scene starts, use
-`at: 0, enter: 'none'`. `check` cannot read text inside a clip, so look at
-stills of those moments.
+Frames are extracted once at the project's fps, at most 1920 pixels wide,
+into `build/clips/`. `at: -1` starts a clip one second into it, and `at: 0, enter: 'none'`
+shows it from its first frame when the scene starts. `check` cannot read text
+inside a clip, so look at stills of those moments.
+
+## Recordings
+
+`s.recording(name, options)` plays a recording of a real app that
+`explainroo record` made (`explainroo docs product-demos recording`), with a
+cursor moving from step to step, click rings and eased zooms. It takes
+the layout, frame and timing options of `s.clip`, and fills `s.safe` without
+`w` and `h`.
+
+```js
+const r = s.recording('new-invoice', { frame: 'browser', url: 'app.example.com', cues: { saved: '#saved' } });
+s.text('Saved', { y: 120, at: r.times.saved });
+```
+
+A step with a `cue` happens on its word: the video holds the frame before
+the step until its action lands on the cue, or plays up to twice as fast
+when the steps before take longer than the words. `check` warns when a step
+is late even then. `cues` sets cues by mark name or step number, and
+`r.times` has each step's scene time by number and mark name. Also:
+`cursor: false`, `zoom: false` and `sound: false` for the clicks. The
+automatic camera keeps out: the zoom steps are the camera.
 
 ## Pointing things out
 
