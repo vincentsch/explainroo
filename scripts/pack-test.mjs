@@ -301,11 +301,11 @@ const steps = [
     },
   },
   {
-    // The first sentence goes.
+    // The first sentence goes, the first line after the guide in the comment.
     setup: ({ temp }) => {
       const list = path.join(temp, 'video', 'out', 'video.cut.md');
       const lines = fs.readFileSync(list, 'utf8').split('\n');
-      const first = lines.findIndex((l) => /@\d+\.\d\d/.test(l));
+      const first = lines.findIndex((l, i) => i > lines.indexOf('-->') && /@\d+\.\d\d/.test(l));
       fs.writeFileSync(list, lines.filter((_, i) => i !== first).join('\n'));
     },
     args: ['cut', path.join('video', 'out', 'video.mp4'), '--apply', '--json'],
