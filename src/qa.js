@@ -427,7 +427,7 @@ export async function verify(project, { file = null, report: reportFile = null, 
         const to = Math.min(samples.length, Math.ceil((t.start + t.dur) * 16000));
         const heard = await transcribe(samples.subarray(from, to), { log, language: project.config.language });
         texts.push(heard.text);
-        const aligned = await alignSpeech(words, heard.words, t.dur, project.config.language);
+        const aligned = await alignSpeech(words, heard.words, t.dur, project.config.language, { accept: project.heard });
         const rate = aligned.matchRate;
         const near = timedNear(words, aligned, from / 16000);
         scenes.push({ id: t.id, matchRate: Math.round(rate * 1000) / 1000, nearly: near });
@@ -443,7 +443,7 @@ export async function verify(project, { file = null, report: reportFile = null, 
       // The whole file at once, so a word that only nearly matched has no scene.
       const heard = await transcribe(samples, { log, language: project.config.language });
       const script = project.script.scenes.flatMap(spokenWords);
-      const aligned = await alignSpeech(script, heard.words, duration, project.config.language);
+      const aligned = await alignSpeech(script, heard.words, duration, project.config.language, { accept: project.heard });
       speech = { matchRate: Math.round(aligned.matchRate * 1000) / 1000, transcript: heard.text, nearly: timedNear(script, aligned, 0), unconfirmed: missedWords(script, aligned, 0, null) };
     }
     if (speech.unconfirmed.length) issues.push({ level: 'warn', message: unconfirmedText(speech.unconfirmed) });

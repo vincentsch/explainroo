@@ -81,6 +81,9 @@ export const DEFAULTS = {
   // The most that all AI clips of the project may cost, in US dollars. It changes
   // no frame, so it stays out of the resolved settings and the render identity.
   clipBudget: null,
+  // Forms the speech check accepts for a word: { "regex101": ["reg x 101"] }.
+  // They change no frame, so they stay out of the resolved settings too.
+  heard: null,
   // "0.5" gives a project the defaults of explainroo 0.5, which change how some
   // things look, like the size of arrow labels, and "0.6" those of 0.6 with the
   // ones of 0.5. Without it a project keeps the look it had, and renders the
@@ -266,9 +269,9 @@ function checkLanguages(raw) {
     if (code === main) fail(`languages: ${code} is the main language, so its settings go at the top of video.json`);
     const voice = LANGUAGES[code] ? `"${LANGUAGES[code]}"` : `{ "provider": "recording", "src": "assets/narration-${code}.m4a" }`;
     if (!own || typeof own !== 'object' || Array.isArray(own)) fail(`languages.${code} must be an object with the settings of that language, like { "voice": ${voice} }`);
-    const bad = Object.keys(own).filter((k) => (!(k in DEFAULTS) && !k.startsWith('_')) || ['language', 'languages', 'sizes', 'clipBudget', 'defaults'].includes(k));
+    const bad = Object.keys(own).filter((k) => (!(k in DEFAULTS) && !k.startsWith('_')) || ['language', 'languages', 'sizes', 'clipBudget', 'defaults', 'heard'].includes(k));
     if (bad.length) {
-      const why = bad.includes('clipBudget') ? ' "clipBudget" is for all clips of the project, so it goes at the top of video.json.' : bad.includes('defaults') ? ' "defaults" is for the whole project, so it goes at the top of video.json.' : '';
+      const why = bad.includes('clipBudget') ? ' "clipBudget" is for all clips of the project, so it goes at the top of video.json.' : bad.includes('defaults') ? ' "defaults" is for the whole project, so it goes at the top of video.json.' : bad.includes('heard') ? ' "heard" goes at the top of video.json, with the forms of every language.' : '';
       fail(`languages.${code} has setting(s) that can't be set for one language: ${bad.join(', ')}${why ? `.${why}` : ''}`);
     }
   }
@@ -368,6 +371,17 @@ export function checkLanguage(language) {
   if (typeof language !== 'string' || !Object.hasOwn(LANGUAGES, language)) fail(`language must be one of ${Object.keys(LANGUAGES).join(', ')}`);
 }
 
+// "heard": each word with the forms the speech check may hear it as, like
+// { "regex101": ["reg x 101", "regex 101"] }.
+function checkHeard(heard) {
+  const example = 'like { "regex101": ["reg x 101", "regex 101"] }';
+  if (!heard || typeof heard !== 'object' || Array.isArray(heard)) fail(`heard must be an object with each word and the forms it is heard as, ${example}`);
+  for (const [word, forms] of Object.entries(heard)) {
+    if (!word.trim()) fail(`heard has an empty word; use the word as the script shows it, ${example}`);
+    if (!Array.isArray(forms) || !forms.length || !forms.every((f) => typeof f === 'string' && f.trim())) fail(`heard.${word} must be a list of the forms it is heard as, like ["reg x 101"]`);
+  }
+}
+
 // The checked settings of one language. `input` is the whole of video.json, and
 // `block` the block of the size that `raw` holds, if any.
 function settingsOf(raw, input, dir, block = null) {
@@ -376,6 +390,8 @@ function settingsOf(raw, input, dir, block = null) {
   delete cfg.sizes;
   if (cfg.clipBudget !== null) checkClipBudget(cfg.clipBudget, 'clipBudget in video.json');
   delete cfg.clipBudget;
+  if (cfg.heard !== null) checkHeard(cfg.heard);
+  delete cfg.heard;
   checkLanguage(cfg.language);
   // A language without a Kokoro voice needs a voice of its own, and never falls back to Kokoro.
   const noKokoro = () => fail(noKokoroVoice(cfg.language, cfg.language === (input.language ?? DEFAULTS.language) ? 'main' : 'version'));
@@ -696,6 +712,7 @@ export function loadProject(arg, overrides = {}, { settings: given } = {}) {
     // "sizes", or the top of video.json, or a block that turns it off with null.
     targetFrom: raw.sizes?.[config.size] && Object.hasOwn(raw.sizes[config.size], 'targetSeconds') ? (config.targetSeconds === undefined ? 'off' : 'block') : config.targetSeconds === undefined ? null : 'top',
     clipBudget: raw.clipBudget ?? null,
+    heard: raw.heard ?? null,
     ownPace,
     paths: { build, out, voice: path.join(build, 'voice'), scenes: scenesPath, script: files.script, strings: files.strings, post: files.post, look: config.look ? path.resolve(dir, config.theme) : null },
   };

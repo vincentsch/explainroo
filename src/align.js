@@ -259,7 +259,9 @@ function readWords(list, language, other = []) {
 // sound, a word heard as another word with the same sound, like "piece" as
 // "peace", counts as confirmed with `nearly` and `alike`. Both are matches
 // that weren't there before, so they do change times and the rate.
-export function alignWords(words, heard, duration, language = 'en', { sounds = null } = {}) {
+// `accept` is "heard" from video.json: { word: [forms] }. A word heard as one of
+// its forms, like "regex101" as "reg x 101", is confirmed fully.
+export function alignWords(words, heard, duration, language = 'en', { sounds = null, accept = null } = {}) {
   const cjk = ['ja', 'zh'].includes(language);
   const chars = word => normWord(word).normalize('NFC');
   const partsOf = word => Array.from(language === 'zh' ? simplified(chars(word)) : chars(word));
@@ -298,6 +300,7 @@ export function alignWords(words, heard, duration, language = 'en', { sounds = n
       joined.push({ ...h, text: t });
     }
   }
+  const accepted = accept ? new Map(Object.entries(accept).map(([word, forms]) => [normWord(word), forms])) : null;
   const tokens = [];
   const pieces = words.map((w) => String(w.spoken).split(/\s+/));
   const spoken = read(pieces.flat(), joined.map((h) => normWord(h.text)));
@@ -321,6 +324,8 @@ export function alignWords(words, heard, duration, language = 'en', { sounds = n
     const shown = w.display === undefined ? '' : read(String(w.display).split(/\s+/)).filter(Boolean).flat().join('');
     const first = tokens.findIndex((t) => t.wi === wi);
     if (shown && shown !== parts.join('')) tokens[first].shown = shown;
+    const forms = accepted && (accepted.get(normWord(w.display ?? w.spoken)) ?? accepted.get(normWord(w.spoken)));
+    if (forms) tokens[first].accepted = forms.map((f) => read(String(f).split(/\s+/)).filter(Boolean).flat().join('')).filter(Boolean);
     // A spelling hint, like {soundroo.com|sound roo dot com}, and a word with a
     // hyphen, like "arc-en-ciel", may be heard as several words.
     if (w.display !== undefined && String(w.display).replace(/\s+/g, ' ') !== String(w.spoken).replace(/\s+/g, ' ')) tokens[first].override = true;
@@ -376,10 +381,10 @@ export function alignWords(words, heard, duration, language = 'en', { sounds = n
         const v = c + (how ? 0 : 1.6);
         if (v < cost[i + 1][j + 1]) { cost[i + 1][j + 1] = v; move[i + 1][j + 1] = how ? 1 : 4; near[i + 1][j + 1] = MARK[how] ?? 0; }
       }
-      if (i < T && j < N && tokens[i].first && (groupEnd[i] > i || tokens[i].shown || tokens[i].hyphen)) {
+      if (i < T && j < N && tokens[i].first && (groupEnd[i] > i || tokens[i].shown || tokens[i].hyphen || tokens[i].accepted)) {
         const e = groupEnd[i];
         const group = wordJoin[i];
-        const how = Math.max(groupEnd[i] > i ? compare(group, H[j].norm) : 0, tokens[i].shown ? compare(tokens[i].shown, H[j].norm) : 0);
+        const how = Math.max(groupEnd[i] > i ? compare(group, H[j].norm) : 0, tokens[i].shown ? compare(tokens[i].shown, H[j].norm) : 0, tokens[i].accepted?.includes(H[j].norm) ? EXACT : 0);
         if (how && c < cost[e + 1][j + 1]) { cost[e + 1][j + 1] = c; move[e + 1][j + 1] = 5; near[e + 1][j + 1] = MARK[how]; }
         // The shown form heard as it is, like "SQL" for {SQL|sequel}, is exact also
         // when the spoken form nearly matched the same word first.
@@ -387,13 +392,20 @@ export function alignWords(words, heard, duration, language = 'en', { sounds = n
         // The spoken or shown form spelled out over several heard words, without
         // spaces and punctuation, like "tabslip.com" for "tab slip dot com".
         if (!cjk) {
-          const forms = [group, tokens[i].shown].filter(Boolean);
+          const own = tokens[i].accepted ?? [];
+          const forms = [group, tokens[i].shown, ...own].filter(Boolean);
           const longest = Math.max(...forms.map((f) => f.length));
           let said = H[j].norm;
           for (let L = 2; j + L <= N; L++) {
             said += H[j + L - 1].norm;
             if (said.length > longest) break;
-            if (forms.includes(said) && c + STEP < cost[e + 1][j + L]) {
+            // A form from "heard" wins over the same words heard one by one as near matches.
+            if (own.includes(said) && (c < cost[e + 1][j + L] || (c === cost[e + 1][j + L] && near[e + 1][j + L]))) {
+              cost[e + 1][j + L] = c;
+              move[e + 1][j + L] = 8;
+              length[e + 1][j + L] = L;
+              near[e + 1][j + L] = 0;
+            } else if (forms.includes(said) && c + STEP < cost[e + 1][j + L]) {
               cost[e + 1][j + L] = c + STEP;
               move[e + 1][j + L] = 8;
               length[e + 1][j + L] = L;
@@ -627,9 +639,9 @@ export function alignWords(words, heard, duration, language = 'en', { sounds = n
 // word isn't confirmed and explainroo has a phonemizer for the language, it
 // looks again with the sound of each word, so "piece" heard as "peace" counts.
 // Without a phonemizer, or when it fails, the first result stands.
-export async function alignSpeech(words, heard, duration, language = 'en') {
+export async function alignSpeech(words, heard, duration, language = 'en', { accept = null } = {}) {
   const alike = await readAlike(words, heard, language);
-  const first = alignWords(alike.words, alike.heard, duration, language);
+  const first = alignWords(alike.words, alike.heard, duration, language, { accept });
   if (first.words.every((w) => w.matched) || !hasPhonemizer(language)) return first;
   // Numbers outside English only match the same number, so their sound never counts.
   const wanted = (t) => t && (language === 'en' || !/\p{N}/u.test(t));
@@ -640,5 +652,5 @@ export async function alignSpeech(words, heard, duration, language = 'en') {
   } catch {
     return first;
   }
-  return alignWords(alike.words, alike.heard, duration, language, { sounds });
+  return alignWords(alike.words, alike.heard, duration, language, { sounds, accept });
 }

@@ -97,6 +97,13 @@ Narration for this scene. [#marker] A marker names a moment you can animate on.
   sounds the same as the spoken form, so "SoundRue.com" confirms
   `{soundroo.com|sound roo dot com}`. When `voice` still can't confirm a
   word that already has one, try another spoken spelling.
+- When the check hears a name the way it is said, but written another way,
+  like "Reg X 101" for regex101, accept that form in `video.json`:
+  `"heard": { "regex101": ["reg x 101", "regex 101"] }`. A transcript with one
+  of the forms where the script has the word confirms it fully, in `voice`,
+  `check` and `verify`, without making the voice again. When a word with
+  `{shown|spoken}` is heard the same way twice in a row, `voice` prints the
+  line to add.
 - The speech check also counts a word heard as another word with the same
   sound, like "peace" for "piece", and two words heard as one, like
   "Seacosts" for "See costs". A word with hyphens counts when its parts are
