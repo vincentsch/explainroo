@@ -84,8 +84,6 @@ export async function makePresenter(project, { scene: sceneId, avatar: avatarId,
   const request = { name: clipName, scene: scene.id, avatar: avatar.id, avatar_name: avatar.name, likeness: avatar.likeness, consent_id: avatar.consent.id, aspect: aspectOf(project), audio_sha256: sha256File(wav), seconds };
   const plan = { ...request, file: `assets/presenters/${clipName}.mp4`, estimated_usd: estimate, sends: `the narration of scene "${scene.id}" (${seconds} s of sound) and the avatar id` };
   if (dryRun) return { dry_run: true, ...plan };
-  if (maxCost === undefined) throw new ProjectError(`add --max-cost, the most this clip may cost in US dollars${estimate !== null ? `. The service asks about $${estimate} for it` : ''}. --dry-run shows the plan and costs nothing.`);
-  if (estimate !== null && estimate > maxCost) throw new ProjectError(`the clip costs about $${estimate}, more than --max-cost ${maxCost}. Nothing was bought.`);
 
   const key = jobKey({ kind: 'presenter', provider: presenter.id, name: clipName, avatar: avatar.id, audio: request.audio_sha256, aspect: request.aspect });
   const decision = decide(project.dir, key, { fresh });
@@ -97,6 +95,9 @@ export async function makePresenter(project, { scene: sceneId, avatar: avatarId,
   let job = decision.job;
   if (decision.action === 'stop') throw stopped(project, job, decision.reason);
   if (decision.action === 'buy') {
+    // Only buying needs a cap. Using or fetching what was bought costs nothing.
+    if (maxCost === undefined) throw new ProjectError(`add --max-cost, the most this clip may cost in US dollars${estimate !== null ? `. The service asks about $${estimate} for it` : ''}. --dry-run shows the plan and costs nothing.`);
+    if (estimate !== null && estimate > maxCost) throw new ProjectError(`the clip costs about $${estimate}, more than --max-cost ${maxCost}. Nothing was bought.`);
     presenter.key(project.dir);
     try {
       job = createJob(project.dir, key, { kind: 'presenter', provider: presenter.id, attempt: decision.attempt, estimated_usd: estimate, max_cost_usd: maxCost, request });

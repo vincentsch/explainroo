@@ -106,7 +106,8 @@ test('a presenter clip is bought once, and every package of the video gets the A
   assert.equal(sent.avatar, 'ava');
   assert.equal(sent.aspect, '16:9');
   assert.equal(Buffer.from(sent.audio, 'base64').subarray(0, 4).toString(), 'RIFF', 'the scene narration goes out as sound');
-  const again = await f.run(['presenter', dir, 'intro', '--avatar', 'ava', '--max-cost', '1', '--json']);
+  // Using what was bought needs no cap.
+  const again = await f.run(['presenter', dir, 'intro', '--avatar', 'ava', '--json']);
   assert.equal(JSON.parse(again.stdout).reused, true);
   assert.equal(f.count('presenter', POST), 1);
   const words = postWords(loadProject(dir), 'tiktok');
