@@ -36,7 +36,7 @@ here serves that second and keeps the picture moving after it.
 - `beats(s, [{ at, icon, label, color }])` shows one big picture per cue, each
   one replacing the one before. Give each beat its own `[#marker]`, at most 2
   seconds apart.
-- `fact(s, '*20*%', { at })` puts one fact on a tilted sticker.
+- `fact(s, '*20%*', { at })` puts one fact on a tilted sticker.
 - `punch(s, at)` gives camera keys for a fast zoom. Use it as
   `s.camera(punch(s, '#back'))`, first in the scene.
 - `backdrop(s, { glow, pattern })` draws the background of a scene.

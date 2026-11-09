@@ -34,9 +34,9 @@ export function beats(s, items, { y = s.safe.y + s.safe.h * 0.55 } = {}) {
   });
 }
 
-// One fact on a tilted sticker, like "*20*%".
-export function fact(s, text, { at, x = s.cx + s.safe.w * 0.2, y = s.safe.y + s.safe.h * 0.3, out } = {}) {
-  s.short.sticker(text, { x, y, size: unit(s) * 11, at, out });
+// One fact on a tilted sticker, like "*20%*". It may sit on the subject's corner.
+export function fact(s, text, { at, x = s.cx + s.safe.w * 0.24, y = s.safe.y + s.safe.h * 0.42, out } = {}) {
+  s.short.sticker(text, { x, y, size: unit(s) * 11, at, out, overlap: true });
 }
 
 // A fast zoom onto the middle on a cue, for a turn in the story. Put it in

@@ -6,7 +6,7 @@ export default {
   hook(s) {
     s.camera(punch(s, '#dies', { zoom: 1.15 }));
     hookFrame(s, 'Your phone dies in the *cold*', { icon: 'battery-low', color: 'orange' });
-    fact(s, '*20*%', { at: '#twenty' });
+    fact(s, '*20%*', { at: '#twenty' });
     s.short.flash('#dies', { color: '#4dabf7', alpha: 0.35 });
   },
 
