@@ -432,3 +432,13 @@ test('check gives a hint when the first frame shows only the background or eleme
   assert.equal(await first({ intro: `s.title('How a cache works', { at: 0, enter: 'none' }); s.icon('laptop', { y: 800, at: 1 });` }), null);
   assert.equal(await first({ intro: `s.title('How a cache works', { at: -1 });` }), null);
 });
+
+test('the first-frame hint also names a text placed at: 0 that is still coming in next to what is there', { skip }, async (t) => {
+  const first = (scenes) => check(project(t, {}, scenes), (page) => page.evaluate(() => window.explainroo.firstFrameIssue())).then((r) => r.more);
+  const name = await first({ intro: `s.icon('laptop', { y: 700, size: 200, at: -1 }); s.text('Tabslip', { y: 300, size: 60, at: 0 });` });
+  assert.deepEqual(name, { level: 'hint', scene: 'intro', t: 0, message: 'the first frame of the video shows "Tabslip" still coming in, and Buffer, LinkedIn and other services use it as the thumbnail; give it at: -1 instead of at: 0, so it is there from the first frame' });
+  // The kicker of a hook, which pops in.
+  const kicker = await first({ intro: `s.icon('laptop', { y: 700, size: 200, at: -1 }); s.short.kicker('Tabslip', { y: 300, at: 0 });` });
+  assert.match(kicker?.message ?? '', /shows "TABSLIP" still coming in.*give it at: -1 instead of at: 0/);
+  assert.equal(await first({ intro: `s.icon('laptop', { y: 700, size: 200, at: -1 }); s.text('Tabslip', { y: 300, size: 60, at: -1 }); s.text('Later', { y: 400, at: 1 });` }), null);
+});

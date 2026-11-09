@@ -646,7 +646,7 @@ export class Engine {
       texts = this.textLog;
       log = this.drawLog;
     } catch {
-      return { count: 0, onlyText: false, partial: [] };
+      return { count: 0, onlyText: false, partial: [], coming: [] };
     } finally {
       Object.assign(this, saved);
     }
@@ -663,7 +663,9 @@ export class Engine {
     const lines = log.strokes.filter((s) => s.settled && s.alpha > 0.95).length
       + log.lives.filter((l) => l.settled && l.kind === 'line').length;
     const partial = fresh ? [...new Map(log.partial.map((p) => [p.name, p])).values()] : [];
-    return { count: words + pictures + lines, picture: pictures > 0, onlyText: words > 0 && pictures + lines === 0, partial };
+    // Text still on its way in, like a name placed at: 0.
+    const coming = texts.filter((x) => !x.problem && !x.settled && x.text.trim() && inside(x)).map((x) => x.text);
+    return { count: words + pictures + lines, picture: pictures > 0, onlyText: words > 0 && pictures + lines === 0, partial, coming };
   }
 
   // The moment "cover": "auto" takes with "defaults": "0.5": the frame of the
@@ -692,7 +694,17 @@ export class Engine {
   // start, a picture first.
   firstFrameIssue() {
     const sc = this.timeline.scenes[0];
-    if (!sc || this.framed(sc.index, 0).count > 0) return null;
+    if (!sc) return null;
+    const first = this.framed(sc.index, 0);
+    if (first.count > 0) {
+      // Something shows, but a text placed at: 0, like the product's name,
+      // is still coming in, so the thumbnail misses it.
+      if (!first.coming.length) return null;
+      const text = first.coming[0];
+      const more = new Set(first.coming).size - 1;
+      const name = `"${text.length > 40 ? text.slice(0, 37) + '...' : text}"${more > 0 ? ` and ${more} more text${more > 1 ? 's' : ''}` : ''}`;
+      return { level: 'hint', scene: sc.id, t: 0, message: `the first frame of the video shows ${name} still coming in, and Buffer, LinkedIn and other services use it as the thumbnail; give ${more > 0 ? 'them' : 'it'} at: -1 instead of at: 0, so ${more > 0 ? 'they are' : 'it is'} there from the first frame` };
+    }
     const T = this.coverMoment();
     const t = T - sc.start;
     if (!(this.framed(sc.index, t).count > 0)) return null;
