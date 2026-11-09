@@ -753,6 +753,31 @@ export class Engine {
     return { level: 'hint', scene: sc.id, t: Math.round((at - sc.start) * 100) / 100, message: `${where}, which shows only text on an empty background; ${advice}` };
   }
 
+  // A tall video of up to 3 minutes is a short: the kind of video that Shorts,
+  // TikTok and Reels show to people who scroll.
+  isShort() {
+    return this.H / this.W >= 1.7 && this.timeline.duration <= SHORT_LONGEST;
+  }
+
+  // The rules of a short: the voice starts in the first second, and the picture
+  // changes at least every SHORT_CHANGE seconds. The stretch after the last
+  // words is the payoff's hold, which may stay still.
+  shortHints(changes, add) {
+    const scenes = this.timeline.scenes;
+    const first = scenes.find((sc) => sc.voice);
+    if (first && first.voice.start > SHORT_VOICE_START) add('hint', first.id, 0, `the voice starts at ${first.voice.start.toFixed(1)}s, and in a short the first second carries the hook; give the first scene {lead=0} in the script, so the voice starts at once`);
+    const spoken = scenes.filter((sc) => sc.voice).at(-1);
+    const end = spoken ? spoken.voice.start + spoken.voice.dur : this.timeline.duration;
+    const points = [...new Set(changes.filter((x) => x <= end).map((x) => Math.round(x * 100) / 100)), end].sort((a, b) => a - b);
+    for (let i = 1; i < points.length; i++) {
+      const gap = points[i] - points[i - 1];
+      if (gap <= SHORT_CHANGE + 0.05) continue;
+      const sc = scenes.findLast((x) => x.start <= points[i - 1] + 1e-6) ?? scenes[0];
+      const from = points[i - 1] - sc.start;
+      add('hint', sc.id, from, `the picture doesn't change for ${gap.toFixed(1)}s, from ${from.toFixed(1)}s, and a short changes it at least every ${SHORT_CHANGE} seconds; show something new on a word in that stretch, or move the camera with s.short.punch`);
+    }
+  }
+
   // Samples every scene and reports layout problems.
   check(step = 0.25, viewWidth = null) {
     // check looks at the layout as written, and then at what the automatic
@@ -828,8 +853,13 @@ export class Engine {
     // measured with the cue at the scene start.
     this.cueErrors = new Map();
     this.soundsPlayed = new Map();
+    // A short video: what changes the picture, in seconds of the video.
+    const shortVideo = this.isShort();
+    const changes = [];
+    let anyBroke = false;
     for (const sc of this.timeline.scenes) {
       const entrances = [];
+      this.cameraKeys = new Set();
       // Which moments show something besides the background.
       const filled = [];
       // The automatic camera of this scene. check looks at the layout as
@@ -1018,6 +1048,19 @@ export class Engine {
       this.recorder = null;
       this.textLog = null;
       const times = [...new Set(entrances.map((e) => Math.round(e.at * 100) / 100))].sort((a, b) => a - b);
+      // A new scene, an entrance and a camera move change the picture, and a
+      // clip changes it all the time it plays. A scene that stopped with an
+      // error has its error, and no hint is given about stretches.
+      if (broke) anyBroke = true;
+      if (shortVideo && !broke) {
+        changes.push(sc.start);
+        for (const x of [...times, ...this.cameraKeys]) if (x >= 0 && x <= sc.dur) changes.push(sc.start + x);
+        for (const e of entrances) {
+          if (e.kind !== 'clip') continue;
+          for (let x = Math.max(0, e.at); x < Math.min(sc.dur, e.end ?? e.at); x += 0.5) changes.push(sc.start + x);
+        }
+      }
+      this.cameraKeys = null;
       for (const e of entrances) {
         if (e.kind === 'clip') {
           if (e.volume > 0 && e.speed !== 1) once(`clip-sound:${sc.id}:${e.key}`, () => add('warn', sc.id, e.at, `clip "${e.src}" stays silent at speed ${Math.round(e.speed * 100) / 100}${e.fit ? ", which speed: 'fit' picked" : ''}; use speed: 1 for its sound`));
@@ -1092,10 +1135,11 @@ export class Engine {
           const gap = marks[i] - marks[i - 1];
           // The empty start already has its hint.
           if (emptyStart && i === 1) continue;
-          if (gap > 6) add('hint', sc.id, marks[i - 1], `no new element for ${gap.toFixed(1)}s (from ${marks[i - 1].toFixed(1)}s); consider revealing something on a cue in that stretch`);
+          if (gap > 6 && !shortVideo) add('hint', sc.id, marks[i - 1], `no new element for ${gap.toFixed(1)}s (from ${marks[i - 1].toFixed(1)}s); consider revealing something on a cue in that stretch`);
         }
       }
     }
+    if (shortVideo && !anyBroke) this.shortHints(changes, add);
     const repeated = new Map();
     for (const c of this.cueNotes) repeated.set(`${c.scene}|${c.word.toLowerCase()}`, c);
     for (const c of repeated.values()) {
@@ -1205,6 +1249,11 @@ const EMPTY_START = 1.5;
 const MARK_SLACK = 0.3;
 // A code window or a terminal may be empty this long before its first line.
 const EMPTY_WINDOW = 1;
+// A short is a tall video of up to this many seconds. Its picture changes at
+// least this often, and its voice starts within the first second.
+const SHORT_LONGEST = 180;
+const SHORT_CHANGE = 2;
+const SHORT_VOICE_START = 0.5;
 // "cover": "auto" looks at this many frames of the first scene at most.
 const COVER_FRAMES = 600;
 

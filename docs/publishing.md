@@ -66,7 +66,7 @@ corner. The same rule is why credits never go into the text of a post by
 themselves.
 
 Without the watermark, `s.safe` starts a little higher on TikTok.
-`explainroo formats` prints both areas. To look at the frames as they will be
+`explainroo sizes` prints both areas. To look at the frames as they will be
 packaged, run:
 
 ```bash

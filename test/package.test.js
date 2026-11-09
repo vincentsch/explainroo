@@ -44,7 +44,7 @@ test('the package holds what an installed copy needs', () => {
 
 test('the package holds nothing else, and no .env anywhere', () => {
   const files = JSON.parse(pack.stdout)[0].files.map((f) => f.path.split(path.sep).join('/'));
-  const allowed = new Set(['bin', 'src', 'engine', 'fonts', 'templates', 'skills', 'docs', 'examples', 'AGENTS.md', 'CLAUDE.md', 'README.md', 'LICENSE', 'package.json']);
+  const allowed = new Set(['bin', 'src', 'engine', 'fonts', 'templates', 'formats', 'skills', 'docs', 'examples', 'AGENTS.md', 'CLAUDE.md', 'README.md', 'LICENSE', 'package.json']);
   assert.deepEqual(files.filter((f) => !allowed.has(f.split('/')[0])), []);
   // Only pages directly under docs/. Pictures and other folders stay out.
   assert.deepEqual(files.filter((f) => f.startsWith('docs/') && !/^docs\/[^/]+\.md$/.test(f)), []);
@@ -54,7 +54,7 @@ test('the package holds nothing else, and no .env anywhere', () => {
 
 // The examples' sources come along, so an agent can read them without the
 // repository, and nothing that a render or a purchase makes.
-test('the package has the sources and assets of every example, and no build, out or history', () => {
+test('the package has the sources and assets of every example and format, and no build, out or history', () => {
   const files = JSON.parse(pack.stdout)[0].files.map((f) => f.path.split(path.sep).join('/'));
   const examples = fs.readdirSync(path.join(root, 'examples')).filter((name) => fs.existsSync(path.join(root, 'examples', name, 'video.json')));
   assert.ok(examples.length >= 10);
@@ -64,6 +64,11 @@ test('the package has the sources and assets of every example, and no build, out
   for (const file of ['examples/unspar-demo/assets/unspar-logo.svg', 'examples/leap-years-de/assets/narration.m4a', 'examples/callbacks-to-async-await/code-versions.js']) assert.ok(files.includes(file), file);
   assert.deepEqual(files.filter((f) => /^examples\/[^/]+\/(build|out|history)\//.test(f)), []);
   assert.deepEqual(files.filter((f) => f.startsWith('examples/') && !/^examples\/[^/]+\/(video\.json|script[^/]*\.md|strings[^/]*\.json|[^/]+\.js|README\.md|assets\/.+)$/.test(f)), []);
+  // The formats come with their sources only, so init --format works from npx.
+  for (const name of fs.readdirSync(path.join(root, 'formats'))) {
+    for (const file of ['format.json', 'guide.md', 'format.js', 'video.json', 'script.md', 'scenes.js']) assert.ok(files.includes(`formats/${name}/${file}`), `formats/${name}/${file}`);
+  }
+  assert.deepEqual(files.filter((f) => f.startsWith('formats/') && !/^formats\/[^/]+\/([^/]+\.(json|md|js)|assets\/.+)$/.test(f)), []);
   // Under 2 MB packed.
   assert.ok(JSON.parse(pack.stdout)[0].size < 2 * 1024 * 1024, String(JSON.parse(pack.stdout)[0].size));
 });

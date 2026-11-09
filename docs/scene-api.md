@@ -1,8 +1,8 @@
 # Scene API
 
 Each scene function draws one frame. explainroo calls it for every frame with
-a fresh `s`, so everything in the scene depends only on the time. Do not keep
-values between calls and do not use timers. Give each element an `at` time,
+a fresh `s`, so everything in the scene depends only on the time. Keep no
+values between calls and use no timers. Give each element an `at` time,
 and the look animates it in. Give it an `out` time, and the look animates it
 out.
 
@@ -44,8 +44,7 @@ export default {
 `s.safe.h` and `s.safe.w` are smaller on Shorts, TikTok and Reels, where the
 app covers parts of the frame, and with captions on. Sizes that come from
 them, like `u` here, shrink with the space. `explainroo docs sizes` says more.
-The examples below use plain numbers for a 1920 x 1080 frame to keep them
-short.
+The examples below use plain numbers for a 1920 x 1080 frame.
 
 `explainroo docs pictures` has whole layouts like this and says what makes a
 scene look good, and `explainroo docs troubleshooting` lists the mistakes that
@@ -126,8 +125,7 @@ one `exit: 'none'` and the new one the same time as its `at`.
 In `paper`, `chalk` and `blueprint`, shapes are drawn line by line and text
 is written out. In `clean` and `midnight`, shapes pop and text rises. In
 `editorial`, shapes fade in and text rises. In `studio`, shapes and text
-rise. Use
-`at: -1` for things that were already on screen in the previous scene. They
+rise. Use `at: -1` for things that were already on screen in the previous scene. They
 are there from the start and make no sound.
 
 ## Text
@@ -245,7 +243,8 @@ its label. With a label, it also returns `label`, the label's box, and
 
 `s.clip(src, options)` draws a video from `assets/` (`.mp4`, `.mov`, `.webm`
 or `.m4v`). It takes the layout, frame and timing options of `s.image`, and
-returns its box.
+returns its box. `s.presenter(name)` plays an AI presenter from
+`explainroo presenter` beside the content (`explainroo docs presenters`).
 
 ```js
 s.clip('assets/clips/waves-3f2a.mp4', { full: true, speed: 'fit', at: 0 });
@@ -270,9 +269,8 @@ shadow, rounded corners and entrance for images. `shadow: false`,
   `out`, the clip's end or the scene's end, and repeats with a loop. Music
   ducks under it as it does under the voice.
 
-Frames are extracted once at the project's fps, at most 1920 pixels wide,
-into `build/clips/`. `at: -1` starts a clip one second into it, and `at: 0, enter: 'none'`
-shows it from its first frame when the scene starts. `check` cannot read text
+`at: -1` starts a clip one second into it, and `at: 0, enter: 'none'` shows
+it from its first frame when the scene starts. `check` cannot read text
 inside a clip, so look at stills of those moments.
 
 ## Recordings
@@ -288,8 +286,8 @@ s.text('Saved', { y: 120, at: r.times.saved });
 ```
 
 A step with a `cue` happens on its word: the video holds the frame before
-the step until its action lands on the cue, or plays up to twice as fast
-when the steps before take longer than the words. `check` warns about a
+it until its action lands on the cue, or plays up to twice as fast when the
+steps before take longer than the words. `check` warns about a
 step late even then. `cues` sets cues by mark name or step number, and
 `r.times` has each step's scene time, by number and name. It also takes
 `cursor: false`, `zoom: false` and `sound: false` for the clicks. The
@@ -388,7 +386,7 @@ than a second, and about a command that starts with the prompt.
 
 `s.short` is a kit for Shorts, TikTok and Reels: a hook title that is there on
 the first frame, stickers, a step pill, a payoff card and camera punch-ins.
-Run `explainroo docs short-video` before you use it.
+Read `explainroo docs short-video` first.
 
 ## Camera, groups and your own drawing
 

@@ -94,7 +94,8 @@ Narration for this scene. [#marker] A marker names a moment you can animate on.
   comm"). The speech check counts the word when it hears either form, so
   "example.com" confirms `{example.com|example dot com}`. It also counts what
   sounds the same as the spoken form, so "SoundRue.com" confirms
-  `{soundroo.com|sound roo dot com}`.
+  `{soundroo.com|sound roo dot com}`. When `voice` still can't confirm a
+  word that already has one, try another spoken spelling.
 - The speech check also counts a word heard as another word with the same
   sound, like "peace" for "piece", and two words heard as one, like
   "Seacosts" for "See costs". A word with hyphens counts when its parts are

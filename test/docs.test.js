@@ -340,7 +340,7 @@ test('the README headline is the first sentence of the package description', () 
 });
 
 // Each command that can send something off the computer has a row in the README.
-const SENDS = ['connect', 'voice', 'voices', 'image', 'clip', 'services', 'share', 'publish', 'capture'];
+const SENDS = ['connect', 'voice', 'voices', 'image', 'clip', 'services', 'share', 'publish', 'capture', 'formats add', 'presenter'];
 
 test('the README says what leaves the computer for each command that sends something', () => {
   const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
@@ -410,8 +410,8 @@ test('the docs say that verify takes no --size, that German is a language, and t
   assert.match(page('settings'), /^\| `language` \| `en` \| .*and `de` with a paid voice or a recording/m);
   assert.ok(oneLine(read('README.md')).includes('For narration with Kokoro, the free voice, in Spanish, French, Italian, Portuguese or Hindi, also install'));
   assert.ok(oneLine(read('AGENTS.md')).includes('With `--fetch` it also downloads the speech models that setup needs, the first time only: about 400 MB for English, and 252 MB for another language.'));
-  const formats = run('formats').stdout;
-  assert.match(formats, /--size on init, preview, still, sheet, check, render or export\./);
+  const sizes = run('sizes').stdout;
+  assert.match(sizes, /--size on init, preview, still, sheet, check, render or export\./);
 });
 
 // An agent's tool can cut off a long page, so each part that a command prints

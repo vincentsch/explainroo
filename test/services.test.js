@@ -19,7 +19,7 @@ const run = (args, env = {}) => spawnSync(process.execPath, [bin, ...args], { en
 const views = SERVICES.flatMap((s) => serviceSteps(s).map((step) => forStep(s, step)));
 
 test('the steps are the ones the docs name', () => {
-  assert.deepEqual(STEPS.map((s) => s.id), ['voice', 'timing', 'images', 'clips', 'music', 'sharing', 'posting']);
+  assert.deepEqual(STEPS.map((s) => s.id), ['voice', 'timing', 'images', 'clips', 'presenters', 'music', 'sharing', 'posting']);
   for (const step of STEPS) assert.ok(step.name && step.what, step.id);
 });
 
@@ -63,7 +63,7 @@ test('within each step free entries come first, and the first entry of every ste
 });
 
 test('the first list holds what exists today', () => {
-  assert.deepEqual(SERVICES.map((s) => s.id), ['kokoro', 'recording', 'elevenlabs', 'cartesia', 'whisper', 'own-images', 'own-footage', 'openrouter', 'built-in-music', 'own-music', 'soundroo', 'web-player', 'cloud', 'package', 'youtube', 'buffer', 'blotato']);
+  assert.deepEqual(SERVICES.map((s) => s.id), ['kokoro', 'recording', 'elevenlabs', 'cartesia', 'whisper', 'own-images', 'own-footage', 'openrouter', 'own-presenter', 'presenter', 'built-in-music', 'own-music', 'soundroo', 'web-player', 'cloud', 'package', 'youtube', 'buffer', 'blotato']);
 });
 
 test('the hosted link is coming and says what leaves the computer, and package is the free route for posting', () => {
@@ -93,11 +93,13 @@ test('a service with a key has a connector with a free key test, and a connector
     const connector = findConnector(s.id);
     assert.ok(connector, s.id);
     assert.equal(typeof connector.test, 'function', s.id);
-    assert.ok(/^https:\/\//.test(s.setup.url), s.id);
+    // A kind of service with no company built in yet has no address, and is coming.
+    if (connector.baseUrl === null) assert.equal(s.status, 'coming', s.id);
+    else assert.ok(/^https:\/\//.test(s.setup.url), s.id);
   }
   for (const connector of CONNECTORS) {
     assert.ok(findService(connector.id), connector.id);
-    assert.ok(/^https:\/\//.test(connector.baseUrl), connector.id);
+    assert.ok(connector.baseUrl === null || /^https:\/\//.test(connector.baseUrl), connector.id);
     // A service either takes a key or signs in through the browser.
     assert.ok(typeof connector.key === 'function' || (connector.signIn && typeof connector.login === 'function'), connector.id);
   }
@@ -276,7 +278,7 @@ test('services takes publish and share as names for the posting and sharing step
   }
   assert.equal(findStep('voice').id, 'voice');
   assert.equal(findStep('render'), null);
-  assert.match(run(['--help']).stdout, /Steps: voice, timing, images, clips, music, sharing, posting\. The command names share and publish also work/);
+  assert.match(run(['--help']).stdout, /Steps: voice, timing, images, clips, presenters, music, sharing, posting\. The command names share and publish also work/);
 });
 
 // Buffer is free, but it can only post a video that is online already. share

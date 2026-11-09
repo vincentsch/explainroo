@@ -149,8 +149,54 @@ async function shareRoute({ req, res, raw, count, state }) {
   });
 }
 
+// A presenter service as docs/presenters.md describes the API: two made-up
+// people, a real person who gave consent for face and voice, and one whose
+// consent is still pending.
+export const PRESENTER_AVATARS = [
+  { id: 'ava', name: 'Ava', likeness: 'synthetic', consent: { status: 'none' }, usd_per_second: 0.05 },
+  { id: 'max', name: 'Max', likeness: 'synthetic', consent: { status: 'none' }, usd_per_second: 0.08 },
+  { id: 'jane-twin', name: 'Jane Doe', likeness: 'real', consent: { status: 'verified', id: 'consent-1', covers: ['face', 'voice'] }, usd_per_second: 0.1 },
+  { id: 'sam-twin', name: 'Sam Roe', likeness: 'real', consent: { status: 'pending', id: 'consent-2', covers: [] }, usd_per_second: 0.1 },
+];
+
+const presenterAllowed = (req, res) => {
+  if (req.headers.authorization === `Bearer ${GOOD_KEY}`) return true;
+  sendJson(res, 401, { error: 'invalid key' });
+  return false;
+};
+
 export const ROUTES = {
   ...PUBLISHING_ROUTES,
+  presenter: {
+    'GET /v1/avatars': ({ req, res }) => {
+      if (presenterAllowed(req, res)) sendJson(res, 200, { avatars: PRESENTER_AVATARS });
+    },
+    'POST /v1/videos': ({ req, res, body, count, state }) => {
+      if (!presenterAllowed(req, res)) return;
+      const avatar = PRESENTER_AVATARS.find((a) => a.id === body.avatar);
+      if (!avatar) return sendJson(res, 404, { error: 'no such avatar' });
+      // The service keeps its own consent rule too.
+      if (avatar.likeness !== 'synthetic' && (avatar.consent.status !== 'verified' || body.consent_id !== avatar.consent.id)) return sendJson(res, 451, { error: 'no verified consent' });
+      if (!body.audio || !Buffer.from(body.audio, 'base64').subarray(0, 4).equals(Buffer.from('RIFF'))) return sendJson(res, 400, { error: 'audio must be a WAV file' });
+      const id = `talk_${count}`;
+      state.videos.set(id, { body: { duration: 1 }, take: count, avatar });
+      sendJson(res, 202, { id, status: 'processing' });
+    },
+    'GET /v1/videos/*/file': ({ req, res, pathname, state }) => {
+      if (!presenterAllowed(req, res)) return;
+      const video = state.videos.get(decodeURIComponent(pathname.split('/')[3]));
+      if (!video) return sendJson(res, 404, { error: 'not found' });
+      res.writeHead(200, { 'Content-Type': 'video/mp4' });
+      res.end(fakeClip(video.body, video.take));
+    },
+    'GET /v1/videos/*': ({ req, res, pathname, state }) => {
+      if (!presenterAllowed(req, res)) return;
+      const id = decodeURIComponent(pathname.split('/')[3]);
+      const video = state.videos.get(id);
+      if (!video) return sendJson(res, 404, { error: 'not found' });
+      sendJson(res, 200, { id, status: 'done', url: `v1/videos/${id}/file`, cost_usd: video.avatar.usd_per_second });
+    },
+  },
   cloud: {
     'POST /api/v1/shares': shareRoute,
   },

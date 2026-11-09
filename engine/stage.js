@@ -806,6 +806,8 @@ export class Stage {
     // A scene that moves its own camera gets no automatic camera.
     if (this.engine.planning) this.engine.manualCamera = true;
     const list = [{ at: 0, x: this.cx, y: this.cy, zoom: 1, dur: 0 }, ...keys.map((k) => ({ x: this.cx, y: this.cy, zoom: 1, dur: 1.1, ...k, at: this.time(k.at ?? 0) }))].sort((a, b) => a.at - b.at);
+    // check counts a camera move as a change of the picture in a short video.
+    for (const k of list.slice(1)) this.engine.cameraKeys?.add(Math.round(k.at * 100) / 100);
     let cur = { ...list[0] };
     const motion = this.engine.motion;
     if (o.shake) {
@@ -1736,6 +1738,26 @@ export class Stage {
       if (st.name) g.times[st.name] = g.times[st.step];
     }
     return g;
+  }
+
+  // An AI presenter that "explainroo presenter" made: assets/presenters/<name>.mp4.
+  // It plays without sound from where the scene's narration starts, so the lips
+  // follow the voice of the video. It stands beside the content, or below it in
+  // a tall frame, with a small label that says it is an AI person.
+  presenter(name, o = {}) {
+    const { safe } = this;
+    // A card of its own shape, which the clip fills, cut to fit.
+    const place = this.portrait
+      ? { x: this.cx, y: safe.bottom - safe.h * 0.24, w: safe.w * 0.8, h: safe.h * 0.42 }
+      : { x: safe.right - safe.w * 0.15, y: this.cy, w: safe.w * 0.28, h: safe.h * 0.74 };
+    const at = o.at ?? this.voice.start;
+    const { label = 'AI presenter', ...rest } = o;
+    const box = this.clip(`assets/presenters/${name}.mp4`, { frame: 'card', fit: 'cover', ...place, ...rest, at, volume: 0 });
+    if (label !== false) {
+      const size = Math.max(18, Math.round(Math.min(safe.w, safe.h) * 0.026));
+      this.text(label, { x: box.x, y: box.bottom + size * 1.1, size, color: 'muted', at, out: o.out });
+    }
+    return box;
   }
 
   _picture(src, source, naturalWidth, naturalHeight, o, paint) {

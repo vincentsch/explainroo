@@ -37,6 +37,8 @@ import { formatPublish, publish } from './publish.js';
 import { COMMAND_HELP, commandHelp } from './help.js';
 import { checkVideo, formatVideoCheck, isVideoFile, VIDEO_FILE } from './video-check.js';
 import { applyCut, formatCut, writeCut } from './cut.js';
+import { LIKENESS_FLAGS, avatarList, consentRule, formatAvatars, formatPresenter, makePresenter } from './presenter.js';
+import { addFormat, addPlan, findFormat, formatAdded, formatEntry, formatList, formatPlan, listFormats, startFromFormat } from './formats.js';
 
 // Paid voices that can list what a key may use, each with its own flag.
 const LISTS_VOICES = CONNECTORS.filter((c) => c.voices);
@@ -48,6 +50,9 @@ Usage: explainroo <command> [project] [options]
 Make a video
   init <dir>            create a project (--theme, --size, --pace, --language en|es|fr|it|pt-br|hi|ja|zh, --voice, --title).
                         German works with a paid voice or a recording, see "explainroo docs languages"
+                        --format product-launch starts from a format: its guide, scene helpers, settings and example
+  formats [format]      list the formats, or print the guide of one. "formats add <git address>" shows what it
+                        will run, and installs the format with --yes (--commit id takes that commit)
   set <project> <key> <value>  write one setting into video.json, after the same check every command
                         runs. A dotted key like sizes.shorts.pace sets one size's setting, the value is
                         JSON when it reads as JSON, and null takes the key out
@@ -116,6 +121,12 @@ AI video clips (optional, costs money, uses the same OpenRouter key as images)
                         without a project it prices 16:9 at 720p without sound unless the flags say otherwise
                         The same command never buys twice (--new buys it again, --resume <id> continues a job)
 
+AI presenters (optional, costs money, needs a presenter service; none is built in yet)
+  presenter [project] <scene> --avatar <id> --max-cost 1   make a clip of an AI presenter who speaks the
+                        narration of a scene, as assets/presenters/<scene>.mp4 for s.presenter (--name, --dry-run,
+                        --new). --avatars lists the service's avatars. No real person's face or voice without the
+                        service's consent flow, and every package then gets the AI label
+
 Outside services (optional)
   services [step]       list the choices for each step, free ones first (--project dir). For clips it
                         shows today's prices from OpenRouter's public list, which it reads at most once a day
@@ -129,7 +140,7 @@ Reference
                         voices your key may use)
   say "text"            hear a Kokoro voice (--voice am_michael, --speed 1, --out sample.wav)
   themes                list looks
-  formats               list sizes for YouTube, Shorts, TikTok, Reels, Instagram and LinkedIn. For each it
+  sizes                 list sizes for YouTube, Shorts, TikTok, Reels, Instagram and LinkedIn. For each it
                         shows the content area with the watermark and without it, also with bold captions
   icons <word…>         search the 1,800+ built-in icons
   doctor [project]      check ffmpeg, Chrome, espeak-ng, misaki and models: each is ready, not needed or missing.
@@ -167,7 +178,7 @@ function parseArgs(argv) {
   }
   return { pos, flags };
 }
-const BOOL = new Set(['json', 'fresh', 'draft', 'estimate', 'transparent', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'mobile', 'list', 'sections', 'new', 'key-stdin', 'audio', 'dry-run', 'no-wait', 'no-watermark', 'yes', 'media-url-unchecked', '...LISTS_VOICES.map((c) => c.id)', 'apply']);
+const BOOL = new Set(['json', 'fresh', 'apply', 'avatars', 'draft', 'estimate', 'transparent', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'mobile', 'list', 'sections', 'new', 'key-stdin', 'audio', 'dry-run', 'no-wait', 'no-watermark', 'yes', 'media-url-unchecked', ...LISTS_VOICES.map((c) => c.id)]);
 
 // publish refuses any other flag. A flag it ignored could change what a person
 // thinks is posted, like a time for a post, when it goes out right away.
@@ -211,6 +222,22 @@ export async function main(argv) {
         if (pos.length !== 3) throw new ProjectError('usage: explainroo set <project> <key> <value>, like: explainroo set videos/<name> targetSeconds 40. A dotted key like sizes.shorts.pace sets a setting of one size, and null takes a key out.');
         const r = setSetting(pos[0], pos[1], pos[2]);
         print(formatSet(r), r);
+        return 0;
+      }
+      case 'presenter': {
+        // explainroo sends no face or voice of its own, so these get the consent rule.
+        const likeness = LIKENESS_FLAGS.find((f) => flags[f] !== undefined);
+        if (likeness) throw new ProjectError(`presenter takes no --${likeness}. ${consentRule()} Pick one of the service's avatars with --avatar.`);
+        const isProject = pos[0] && fs.existsSync(path.join(pos[0], 'video.json'));
+        const project = loadProject(isProject ? pos.shift() : undefined);
+        if (flags.avatars) {
+          const list = await avatarList(project);
+          print(formatAvatars(list), { avatars: list });
+          return 0;
+        }
+        if (pos.length !== 1) throw new ProjectError('usage: explainroo presenter [project] <scene> --avatar <id> --max-cost <usd> [--name <name>] [--dry-run] [--new], or explainroo presenter [project] --avatars');
+        const r = await makePresenter(project, { scene: pos[0], avatar: textFlag(flags, 'avatar'), name: textFlag(flags, 'name'), maxCost: num(flags['max-cost'], 'max-cost'), dryRun: !!flags['dry-run'], fresh: !!flags.new, log });
+        print(formatPresenter(r), r);
         return 0;
       }
       case 'capture': {
@@ -445,7 +472,8 @@ export async function main(argv) {
         print(THEMES.map((t) => `${t.padEnd(10)} ${desc[t]}`).join('\n') + `\n\nCustom looks: set theme in video.json to a relative .json file that extends a built-in look.\nmusic styles: ${MUSIC_STYLES.join(', ')}`, { themes: desc, music: MUSIC_STYLES });
         return 0;
       }
-      case 'formats': {
+      case 'formats': return formats(pos, flags, print);
+      case 'sizes': {
         // The free area for content with the defaults (captions as "auto"
         // decides), and with bold captions, the same box scenes get as s.safe
         // and check measures: with the watermark, as "check --size <name>" uses
@@ -464,7 +492,7 @@ export async function main(argv) {
         const area = (a) => `${a.w}x${a.h} at ${a.x},${a.y}`;
         const areas = (on, off) => (area(on) === area(off) ? `${area(on)} with or without the watermark` : `${area(on)} with the watermark, ${area(off)} without it`);
         const rows = info.map((r) => `${r.name.padEnd(10)} ${`${r.width}x${r.height}`.padEnd(10)} ${r.use}\n${''.padEnd(22)}content area ${areas(r.content, r.content_without_watermark)}${r.captions ? ', captions below it' : ', no captions'}\n${''.padEnd(22)}with bold captions ${areas(r.content_bold_captions, r.content_bold_captions_without_watermark)}`);
-        print(rows.join('\n') + '\n\nThe content area is s.safe. The caption band sits below it and is not part of it. On shorts, tiktok, reels and vertical, check warns about anything outside it.\nAlso: 16:9, 9:16, 1:1, 4:5 or WIDTHxHEIGHT. Set it with "size" in video.json or --size on init, preview, still, sheet, check, render or export. "check --size <name>" uses the area with the watermark, and "check --size <name> --no-watermark" the one without it. "check --platform <name>" uses the area of that package, so "check --platform tiktok" uses the one without the watermark.', { formats: info });
+        print(rows.join('\n') + '\n\nThe content area is s.safe. The caption band sits below it and is not part of it. On shorts, tiktok, reels and vertical, check warns about anything outside it.\nAlso: 16:9, 9:16, 1:1, 4:5 or WIDTHxHEIGHT. Set it with "size" in video.json or --size on init, preview, still, sheet, check, render or export. "check --size <name>" uses the area with the watermark, and "check --size <name> --no-watermark" the one without it. "check --platform <name>" uses the area of that package, so "check --platform tiktok" uses the one without the watermark.', { sizes: info });
         return 0;
       }
       case 'icons': return icons(pos, print);
@@ -658,27 +686,40 @@ function qualityOverride(flags) {
 }
 
 function init(dir, flags, print) {
-  if (!dir) throw new ProjectError('usage: explainroo init <dir> [--theme studio] [--size youtube|tiktok|linkedin|...] [--pace 1.2] [--language es] [--voice af_heart] [--title "..."]');
+  if (!dir) throw new ProjectError('usage: explainroo init <dir> [--format product-launch] [--theme studio] [--size youtube|tiktok|linkedin|...] [--pace 1.2] [--language es] [--voice af_heart] [--title "..."]');
   const target = path.resolve(dir);
   if (fs.existsSync(path.join(target, 'video.json'))) throw new ProjectError(`${target} already has a video.json`);
-  const theme = textFlag(flags, 'theme') || 'studio';
-  if (!THEMES.includes(theme)) throw new ProjectError(`theme must be one of ${THEMES.join(', ')}`);
-  const language = textFlag(flags, 'language') ?? 'en';
+  const format = flags.format === undefined ? null : findFormat(textFlag(flags, 'format') ?? '');
+  const base = format?.settings ?? {};
+  const theme = textFlag(flags, 'theme') || base.theme || 'studio';
+  if (!THEMES.includes(theme) && theme !== base.theme) throw new ProjectError(`theme must be one of ${THEMES.join(', ')}`);
+  const language = textFlag(flags, 'language') ?? base.language ?? 'en';
   checkLanguage(language);
   // init sets a Kokoro voice, so it can't set up a language that Kokoro doesn't speak.
   if (!LANGUAGES[language]) throw new ProjectError(noKokoroVoice(language, 'init'));
-  const voice = textFlag(flags, 'voice') || LANGUAGES[language];
+  const voice = textFlag(flags, 'voice') || (typeof base.voice === 'string' && voiceLanguage(base.voice) === language ? base.voice : LANGUAGES[language]);
   if (!VOICES[voice]) throw new ProjectError(`voice "${voice}" does not exist. Run "explainroo voices".`);
   const title = textFlag(flags, 'title') || path.basename(target).replace(/[-_]+/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
   const tpl = path.join(ROOT, 'templates', 'starter');
-  const size = textFlag(flags, 'size') || '16:9';
+  const size = textFlag(flags, 'size') || base.size || '16:9';
   resolveSize(size);
   // A new project gets the defaults of this version. A project without the line
-  // keeps the look of the version it was made with.
-  const config = { title, theme, size, voice, music: true, captions: 'auto', defaults: DEFAULTS_VERSIONS.at(-1) };
+  // keeps the look of the version it was made with. A format keeps the defaults
+  // its helpers were made for.
+  const config = format
+    ? { ...base, title, theme, size, voice, defaults: base.defaults ?? DEFAULTS_VERSIONS.at(-1) }
+    : { title, theme, size, voice, music: true, captions: 'auto', defaults: DEFAULTS_VERSIONS.at(-1) };
   if (flags.language !== undefined) config.language = language;
   if (flags.pace !== undefined) config.pace = num(flags.pace, 'pace');
-  normalizeConfig(config);
+  normalizeConfig(config, format?.dir ?? '.');
+  if (format) {
+    startFromFormat(format, target, config);
+    fs.writeFileSync(path.join(target, '.gitignore'), 'build/\nout/\n.env\nhistory/private/\nhistory/locks/\n');
+    const english = language !== 'en' ? `\nThe example script is in English. Write script.md in ${language}, with the same scene names.` : '';
+    print(`created ${target} from the format ${format.name} ${format.version} by ${format.author}${english}\nscript.md and scenes.js hold its example, and scenes.js imports its helpers from format.js. Its guide is in format.md:\n\n${format.guide.trim()}\n\nnext: write the narration in script.md, then run "${selfCommand()} voice ${dir}". After that, change the scenes in scenes.js and run "${selfCommand()} check ${dir}".`,
+      { dir: target, format: formatEntry(format), guide: format.guide });
+    return 0;
+  }
   // Create the folder only after every setting checks out, so a bad flag
   // leaves nothing behind.
   fs.mkdirSync(path.join(target, 'assets'), { recursive: true });
@@ -689,6 +730,33 @@ function init(dir, flags, print) {
   // which belong to the runs on this computer.
   fs.writeFileSync(path.join(target, '.gitignore'), 'build/\nout/\n.env\nhistory/private/\nhistory/locks/\n');
   print(`created ${target}\nnext: write the narration in script.md, then run "${selfCommand()} voice ${dir}". After that, draw each scene in scenes.js and run "${selfCommand()} check ${dir}".`, { dir: target });
+  return 0;
+}
+
+// "formats" lists them, "formats <name>" prints one guide, and "formats add"
+// shows what it will run and installs only with --yes.
+function formats(pos, flags, print) {
+  if (pos[0] === 'add') {
+    if (pos.length !== 2) throw new ProjectError('usage: explainroo formats add <git address> [--commit <commit>] [--yes]');
+    const commit = flags.commit === undefined ? undefined : textFlag(flags, 'commit') ?? '';
+    if (!flags.yes) {
+      const plan = addPlan(pos[1], { commit });
+      print(formatPlan(plan), { installed: false, plan });
+      return 0;
+    }
+    const r = addFormat(pos[1], { commit });
+    print(formatAdded(r), { installed: true, format: r });
+    return 0;
+  }
+  if (pos.length > 1) throw new ProjectError('usage: explainroo formats [format], or explainroo formats add <git address>');
+  if (pos[0]) {
+    const f = findFormat(pos[0]);
+    const entry = formatEntry(f);
+    print(`${f.name} ${f.version} by ${f.author}: ${f.description}\n${f.dir}\n\n${f.guide.trim()}`, { format: entry, guide: f.guide });
+    return 0;
+  }
+  const list = listFormats().map(formatEntry);
+  print(formatList(list), { formats: list });
   return 0;
 }
 

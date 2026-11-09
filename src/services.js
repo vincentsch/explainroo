@@ -172,7 +172,7 @@ export function serviceUrl({ id, name, baseUrl }) {
   if (url.username || url.password) throw new ProjectError(`${variable} must not hold a user name or password`);
   if (!announced.has(variable)) {
     announced.add(variable);
-    process.stderr.write(`${variable} is set, so ${name} requests go to ${url.origin}${url.pathname.replace(/\/+$/, '')} instead of ${baseUrl}.\n`);
+    process.stderr.write(`${variable} is set, so ${name} requests go to ${url.origin}${url.pathname.replace(/\/+$/, '')}${baseUrl ? ` instead of ${baseUrl}` : ''}.\n`);
   }
   return override.replace(/\/+$/, '');
 }

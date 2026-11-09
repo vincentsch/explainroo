@@ -58,8 +58,9 @@
 - Colored text in `paper` and `clean`. Green, orange and red are light enough
   for shapes but often too light for text. `check` warns about low contrast.
   It suggests a readable color and shows its contrast ratio.
-- Long video clips fill `build/clips/` with frames. Trim footage to the part
-  you show before you add it. Deleting `build/clips/` is safe.
+- Long video clips fill `build/clips/` with frames, taken once at the
+  project's fps and at most 1920 pixels wide. Trim footage to the part you
+  show before you add it. Deleting `build/clips/` is safe.
 - Screen recordings often have a variable frame rate. explainroo converts
   them to the project's fps, so a frame can repeat or drop. Record at a fixed
   frame rate when the motion matters.

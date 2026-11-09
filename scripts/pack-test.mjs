@@ -163,6 +163,22 @@ const steps = [
     },
   },
   {
+    // The formats ship in the package, and a project starts from one.
+    args: ['formats', '--json'],
+    check: (r, { installed }) => {
+      const names = r.formats.map((f) => f.name).join();
+      expect(names === 'narrated-explainer,product-ad,product-launch,vertical-short', `formats lists ${names}`);
+      expect(r.formats.every((f) => f.dir.startsWith(path.join(installed, 'formats'))), 'the formats do not come from the installed copy');
+    },
+  },
+  {
+    args: ['init', 'short', '--format', 'vertical-short', '--json'],
+    check: (r) => {
+      for (const file of ['video.json', 'script.md', 'scenes.js', 'format.js', 'format.md']) expect(fs.existsSync(path.join(r.dir, file)), `init --format did not write ${file}`);
+      return `${r.format.name} ${r.format.version}`;
+    },
+  },
+  {
     // One setting into video.json, checked first, with the rest of the file kept.
     args: ['set', 'video', 'sizes.shorts.pace', '1.15', '--json'],
     check: (r, { temp }) => {
@@ -185,7 +201,7 @@ const steps = [
     env: priceCache,
     setup: ({ fake }) => { before = { list: fake.count('openrouter', PRICE_LIST) }; },
     check: (r, { fake }) => {
-      expect(r.steps.length === 7 && r.services.length > 0, 'services lists no steps');
+      expect(r.steps.length === 8 && r.services.length > 0, 'services lists no steps');
       for (const step of r.steps) {
         const first = r.services.find((s) => s.step === step.id);
         expect(first?.free, `the first entry of ${step.id} is not free`);
@@ -396,6 +412,15 @@ const steps = [
       expect(post.text === 'A short test of packaging.\n\n#explainroo' && post.ai_label === true && post.credits.includes('Made with explainroo'), `post.json says ${JSON.stringify(post)}`);
       expect(post.verify.ok && post.verify.understood >= MIN_NARRATION_UNDERSTOOD, `verify of the package says ${JSON.stringify(post.verify)}`);
       return `${post.width}x${post.height}, ${post.duration.toFixed(1)}s, ${Math.round(post.verify.understood * 100)}% of the narration understood`;
+    },
+  },
+  {
+    // A presenter plan against the fake service, which buys nothing.
+    args: ['presenter', 'tiny', 'hello', '--avatar', 'ava', '--dry-run', '--json'],
+    env: () => ({ PRESENTER_API_KEY: GOOD_KEY }),
+    check: (r, { fake }) => {
+      expect(r.dry_run && r.file === 'assets/presenters/hello.mp4' && r.estimated_usd > 0, `the presenter plan says ${JSON.stringify(r)}`);
+      expect(fake.count('presenter', 'POST /v1/videos') === 0, 'the presenter dry run sent a paid request');
     },
   },
   {
