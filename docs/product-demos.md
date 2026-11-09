@@ -15,7 +15,9 @@ about. See "Rebuilding the screens with s.ui".
 and
 [examples/unspar-demo](https://github.com/vincentsch/explainroo/tree/main/examples/unspar-demo)
 are complete ones. The examples also come with the package, and
-`explainroo doctor` prints their folder.
+`explainroo doctor` prints their folder. recording-demo comes with its step
+file, `recordings/new-invoice.json`, but not with its video, and its README
+says how to record it.
 
 ## Recording the real app
 

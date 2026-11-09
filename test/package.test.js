@@ -63,7 +63,10 @@ test('the package has the sources and assets of every example and format, and no
   }
   for (const file of ['examples/unspar-demo/assets/unspar-logo.svg', 'examples/leap-years-de/assets/narration.m4a', 'examples/callbacks-to-async-await/code-versions.js']) assert.ok(files.includes(file), file);
   assert.deepEqual(files.filter((f) => /^examples\/[^/]+\/(build|out|history)\//.test(f)), []);
-  assert.deepEqual(files.filter((f) => f.startsWith('examples/') && !/^examples\/[^/]+\/(video\.json|script[^/]*\.md|strings[^/]*\.json|[^/]+\.js|README\.md|assets\/.+)$/.test(f)), []);
+  assert.deepEqual(files.filter((f) => f.startsWith('examples/') && !/^examples\/[^/]+\/(video\.json|script[^/]*\.md|strings[^/]*\.json|[^/]+\.js|README\.md|recordings\/[^/]+\.json|assets\/.+)$/.test(f)), []);
+  // A recording's step file and its log come along, and its video stays out.
+  for (const file of ['examples/recording-demo/recordings/new-invoice.json', 'examples/recording-demo/assets/recordings/new-invoice.log.json']) assert.ok(files.includes(file), file);
+  assert.deepEqual(files.filter((f) => f.endsWith('.webm')), []);
   // The formats come with their sources only, so init --format works from npx.
   for (const name of fs.readdirSync(path.join(root, 'formats'))) {
     for (const file of ['format.json', 'guide.md', 'format.js', 'video.json', 'script.md', 'scenes.js']) assert.ok(files.includes(`formats/${name}/${file}`), `formats/${name}/${file}`);
