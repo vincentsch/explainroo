@@ -8,7 +8,7 @@ import { normWord, ScriptError } from './script.js';
 import { prepare, makeState, outdatedLine, outdatedRenders, VERSION } from './pipeline.js';
 import { render } from './render.js';
 import { exportPlayer } from './export.js';
-import { check, formatVerify, NEARLY_LISTED, NEARLY_SHORT, nearlyText, untimed, stills, sheet, unconfirmedLine, unconfirmedWords, verify } from './qa.js';
+import { check, formatVerify, heardEveryTime, NEARLY_LISTED, NEARLY_SHORT, nearlyText, untimed, stills, sheet, unconfirmedLine, unconfirmedWords, verify } from './qa.js';
 import { startServer, ROOT } from './server.js';
 import { VOICES, LANGUAGES, voiceLanguage, loadTTS, TTS_SAMPLE_RATE } from './models.js';
 import { phonemize, generateSpeech } from './phonemes.js';
@@ -309,9 +309,10 @@ export async function main(argv) {
         const { voices, timeline } = await prepare(project, { log, notice, force: !!flags.force, fresh: !!flags.new, onEstimate: (e) => { estimate = e; } });
         const characters = paid ? boughtCharacters(project.dir) - before : 0;
         const recorded = project.config.voice.provider === 'recording';
+        const every = heardEveryTime(project, voices);
         const rows = project.script.scenes.map((s) => {
           const v = voices[s.id];
-          return { scene: s.id, voice: v.duration, narration: narrationTime(v), confirmed: v.matchRate, unconfirmed: v.unmatched, heard: unconfirmedWords(project, v), marks: v.marks,
+          return { scene: s.id, voice: v.duration, narration: narrationTime(v), confirmed: v.matchRate, unconfirmed: v.unmatched, heard: unconfirmedWords(project, v, every), marks: v.marks,
             ...(recorded && v.matchRate < 0.85 ? { message: `The recording does not match ${scriptName(project)} here. Make ${scriptName(project)} say what was actually said.` } : {}) };
         });
         // How long the voice speaks, and the narration with its pauses. A recording has its pauses in it.

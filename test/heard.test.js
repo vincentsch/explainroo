@@ -1,7 +1,8 @@
 // "heard" in video.json: the forms the speech check accepts for a word, like
 // "reg x 101" for regex101. A word heard as one of them is confirmed fully, in
-// voice, check and verify, and voice suggests the line when a word with a
-// {shown|spoken} override is heard the same way twice in a row.
+// voice, check and verify. voice suggests the line when a word is heard the
+// same way twice in a row, and voice and check suggest it when a word is heard
+// as the same other spelling each time it comes up.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -10,6 +11,7 @@ import path from 'node:path';
 import { alignWords } from '../src/align.js';
 import { loadProject } from '../src/project.js';
 import { heardLine, heardTwice, synthesize, voicePaths, withHeard } from '../src/voice.js';
+import { heardEveryTime, speechFindings, unconfirmedWords } from '../src/qa.js';
 import { cachedVoice } from './helpers/cached-voice.js';
 import { GOOD_KEY, startFakeServices } from './helpers/fake-services.js';
 
@@ -107,4 +109,36 @@ test('voice prints the line for "heard" when a new spoken form is heard as befor
   fs.writeFileSync(path.join(dir, 'script.md'), '# Regex\n\n## intro\n{regex101|reg ex one oh one} explains them.\n');
   await synthesize(loadProject(dir), { transcribe, notice: (m) => notes.push(m), log: () => {} });
   assert.deepEqual(notes.filter((n) => /twice in a row/.test(n)), ['voice intro: the speech check heard "regex101" as "Reg X 101" twice in a row. If that is how it is said, add this to video.json, and the check accepts it: "heard": {"regex101": ["Reg X 101"]}']);
+});
+
+test('a word heard as the same other spelling each time gets the line for "heard", in voice and in check', (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-heard-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ music: false }));
+  fs.writeFileSync(path.join(dir, 'script.md'), '# Tabslip\n\n## intro\nTabslip keeps your tabs.\n\n## outro\nTry Tabslip today.\n');
+  fs.writeFileSync(path.join(dir, 'scenes.js'), 'export default { intro() {}, outro() {} };');
+  const voices = {};
+  for (const [id, transcript] of [['intro', 'Tap Lip keeps your tabs.'], ['outro', 'Try Tap Lip today.']]) {
+    cachedVoice(dir, id);
+    const file = voicePaths(loadProject(dir), id).json;
+    const info = JSON.parse(fs.readFileSync(file, 'utf8'));
+    info.transcript = transcript;
+    info.words = info.words.map((w) => (w.text === 'Tabslip' ? { ...w, matched: false } : w));
+    info.matchRate = 0.75;
+    info.unmatched = ['Tabslip'];
+    voices[id] = info;
+  }
+  const project = loadProject(dir);
+  const line = 'It was heard as "Tap Lip" each time. If it is said right, add this to video.json, and the check accepts it: "heard": {"Tabslip": ["Tap Lip"]}';
+  assert.deepEqual([...heardEveryTime(project, voices).values()], [{ word: 'Tabslip', heard: 'Tap Lip' }]);
+  const [word] = unconfirmedWords(project, voices.intro, heardEveryTime(project, voices));
+  assert.equal(word.advice, `If the voice says it wrong, write it as {Tabslip|spoken spelling} in script.md. ${line}`);
+  const { issues } = speechFindings(project, voices);
+  assert.equal(issues.filter((i) => i.level === 'warn').length, 2);
+  for (const issue of issues.filter((i) => i.level === 'warn')) assert.ok(issue.message.endsWith(` "Tabslip" ${line.replace(/^It /, '')}`), issue.message);
+  // Heard another way in one place, or only once, it gets the usual advice.
+  const other = { ...voices.outro, transcript: 'Try Tab Lid today.' };
+  assert.equal(heardEveryTime(project, { ...voices, outro: other }).size, 0);
+  assert.equal(heardEveryTime(project, { intro: voices.intro }).size, 0);
+  assert.match(unconfirmedWords(project, voices.intro)[0].advice, /reword the sentence\.$/);
 });

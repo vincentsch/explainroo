@@ -102,9 +102,10 @@ Narration for this scene. [#marker] A marker names a moment you can animate on.
   like "Reg X 101" for regex101, accept that form in `video.json`:
   `"heard": { "regex101": ["reg x 101", "regex 101"] }`. A transcript with one
   of the forms where the script has the word confirms it fully, in `voice`,
-  `check` and `verify`, without making the voice again. When a word with
-  `{shown|spoken}` is heard the same way twice in a row, `voice` prints the
-  line to add.
+  `check` and `verify`, without making the voice again. When `voice` hears a
+  word the same way twice in a row, it prints the line to add. When a word
+  comes up several times and is heard as the same other spelling each time,
+  `voice` and `check` print it too.
 - The speech check also counts a word heard as another word with the same
   sound, like "peace" for "piece", and two words heard as one, like
   "Seacosts" for "See costs". A word with hyphens counts when its parts are

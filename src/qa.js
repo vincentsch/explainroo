@@ -10,7 +10,7 @@ import { alignSpeech, bareWord, editDistance, expand, nearList, similar } from '
 import { signWords } from './math-words.js';
 import { hasPhonemizer } from './phonemes.js';
 import { normWord } from './script.js';
-import { heardInstead, heardQuote, readVoice, withHeard } from './voice.js';
+import { heardEntry, heardInstead, heardQuote, readVoice, sameHeard, withHeard } from './voice.js';
 import { estimateLength, targetNotes } from './timeline.js';
 import { buildChapters, chapterHints } from './chapters.js';
 import { coverTime } from './render.js';
@@ -217,7 +217,7 @@ const hasOverride = (word) => word.spoken !== undefined && word.spoken.replace(/
 // compare sounds, and else both: a spelling hint if the voice says it wrong, and
 // rewording if it is said right and only heard wrong. Empty for a recording,
 // which has advice of its own.
-export function unconfirmedWords(project, v) {
+export function unconfirmedWords(project, v, every = new Map()) {
   if (project.config.voice.provider === 'recording' || !Array.isArray(v?.words)) return [];
   const { language } = project.config;
   const missed = v.words.map((word, k) => ({ word, k })).filter(({ word }) => !word.matched);
@@ -231,9 +231,39 @@ export function unconfirmedWords(project, v) {
     if (hasOverride(word)) advice = unconfirmedAdvice([{ word, heard }], false, script);
     else if (heard && !hasPhonemizer(language) && soundsAlike(normWord(heard), normWord(word.text))) advice = `"${heard}" may sound the same, and in this language the speech check can't compare sounds, so {shown|spoken} can't help. Reword the sentence.`;
     else if (shortWord(word.text)) advice = `"${bareWord(word.text)}" is a short, common word, so a spelling hint can't change how it sounds. Reword the sentence.`;
+    else if (every.has(normWord(word.text))) advice = `If the voice says it wrong, write it as {${bareWord(word.text)}|spoken spelling} in ${script}. ${everyTimeAdvice(every.get(normWord(word.text)))}`;
     else advice = `If the voice says it wrong, write it as {${bareWord(word.text)}|spoken spelling} in ${script}. If it is said right and only heard wrong, reword the sentence.`;
     return { word: word.text, heard, quote, advice };
   });
+}
+
+// The words of the narration that the speech check heard as the same other
+// spelling each time they come up, at least twice, like "halves" as "5/2", as
+// a map from the word to { word, heard }. A short everyday word is left out:
+// "heard" would accept its other spelling anywhere.
+export function heardEveryTime(project, voices) {
+  const { language } = project.config;
+  const seen = new Map();
+  for (const sc of project.script.scenes) {
+    const v = voices[sc.id];
+    if (!Array.isArray(v?.words)) continue;
+    const instead = v.words.some((w) => !w.matched) ? heardInstead(v, language) : {};
+    v.words.forEach((w, k) => {
+      const key = normWord(w.text);
+      if (!key) return;
+      const entry = seen.get(key) ?? { word: bareWord(w.text), heard: [], times: 0 };
+      entry.times++;
+      if (!w.matched && instead[k]) entry.heard.push(instead[k]);
+      seen.set(key, entry);
+    });
+  }
+  return new Map([...seen].filter(([, e]) => e.times >= 2 && e.heard.length === e.times && !shortWord(e.word) && e.heard.every((h) => sameHeard(h, e.heard[0])))
+    .map(([key, e]) => [key, { word: e.word, heard: e.heard[0] }]));
+}
+
+// What to do about a word heard as the same other spelling each time.
+function everyTimeAdvice({ word, heard }) {
+  return `It was heard as "${heard}" each time. If it is said right, add this to video.json, and the check accepts it: ${heardEntry([{ word, heard }])}`;
 }
 
 // Two spellings close enough to sound alike, also when they are short, like "Rad" and "Rat".
@@ -253,6 +283,7 @@ export function speechFindings(project, voices, timeline = null) {
   const speech = [];
   const script = scriptName(project);
   const recording = project.config.voice.provider === 'recording';
+  const every = recording ? new Map() : heardEveryTime(project, voices);
   for (const sc of project.script.scenes) {
     const v = voices[sc.id];
     const suspicious = v ? v.unmatched.filter((w) => w.replace(/[^\p{L}\p{M}\p{N}]/gu, '').length > 3) : [];
@@ -271,9 +302,11 @@ export function speechFindings(project, voices, timeline = null) {
       // The transcript where the named words should be, four words on each side.
       const named = listed ?? unconfirmed.filter(({ word }) => suspicious.includes(word.text)).slice(0, 8);
       const quote = heardQuote(v, project.config.language, (named.length ? named : unconfirmed.slice(0, 3)).map(({ k }) => k)) ?? cutTranscript(v.transcript);
+      // Words without an override heard as the same other spelling each time get the line for "heard".
+      const same = recording ? [] : [...new Map(missed.filter(({ word }) => !hasOverride(word) && every.has(normWord(word.text))).map(({ word }) => [normWord(word.text), every.get(normWord(word.text))])).values()];
       const advice = recording
         ? `The recording does not match ${script} here. Make ${script} say what was actually said.`
-        : unconfirmedAdvice(shown.map(({ word, k }) => ({ word, heard: instead[k] })), missed.some(({ word }) => !hasOverride(word)), script);
+        : unconfirmedAdvice(shown.map(({ word, k }) => ({ word, heard: instead[k] })), missed.some(({ word }) => !hasOverride(word)), script) + same.map((e) => ` "${e.word}" ${everyTimeAdvice(e).replace(/^It /, '')}`).join('');
       issues.push({ level: 'warn', scene: sc.id, t: null, message: `the voice check could not confirm ${names.length ? names.map((w) => `"${w}"`).join(', ') : `${Math.round((1 - v.matchRate) * 100)}% of the words`}. It heard: ${quote}. ${advice}` });
     }
     if (v && v.duration > 40) issues.push({ level: 'hint', scene: sc.id, t: null, message: `the narration runs ${v.duration.toFixed(0)}s; long scenes are easier to follow when split` });
