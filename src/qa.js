@@ -6,7 +6,8 @@ import { prepare, withEngine } from './pipeline.js';
 import { dbtp, probe, loudness, ffmpeg, PEAK_CEILING } from './ffmpeg.js';
 import { transcribeWords } from './models.js';
 import { readWav } from './wav.js';
-import { alignSpeech, bareWord, editDistance, nearList, similar } from './align.js';
+import { alignSpeech, bareWord, editDistance, expand, nearList, similar } from './align.js';
+import { signWords } from './math-words.js';
 import { hasPhonemizer } from './phonemes.js';
 import { normWord } from './script.js';
 import { heardInstead, heardQuote, readVoice, withHeard } from './voice.js';
@@ -118,16 +119,46 @@ function confirmedAlone(project, id, words) {
   return info.words.map((w, k) => !!w.matched && w.text === words[k].display);
 }
 
+// The music's volume when video.json gives none, and the lowest volume the
+// advice goes to.
+const MUSIC_VOLUME = 0.5;
+const QUIETEST = 0.2;
+
+// A number, sign or maths word, like "two", "minus" or "halves". Whisper often
+// writes such words in another way in the final mix, so quieter music may not
+// bring them back.
+export function mathWord(word, language = 'en') {
+  const signs = signWords(language);
+  const tokens = expand(word, language);
+  return tokens.length > 0 && tokens.every((t) => /^\d+(?:[.,]\d+)?$/.test(t) || signs.has(t));
+}
+
+// Whether verify may tell the user to lower the music: it is at the default
+// volume or above, and not yet at the quietest the advice goes to.
+const canLower = (music) => Boolean(music) && (music.volume ?? MUSIC_VOLUME) >= MUSIC_VOLUME && (music.volume ?? MUSIC_VOLUME) > QUIETEST;
+
 // The advice for words that the narration alone confirmed and the final mix
-// didn't: music.volume 3 dB lower, which is 0.71 times the volume.
-export function mixAdvice(list, music) {
+// didn't: music.volume 3 dB lower, which is 0.71 times the volume, and never
+// under 0.2. Number and maths words don't count, and music that is already
+// quieter than the default gets no lower volume: listening comes next.
+export function mixAdvice(list, music, language = 'en') {
   const covered = list.filter((u) => u.mix);
   if (!covered.length || !music) return '';
-  const now = music.volume ?? 0.5;
-  const lower = Math.floor(now * Math.pow(10, -3 / 20) * 100) / 100;
   const which = covered.length === list.length ? (list.length === 1 ? 'it' : 'them') : covered.slice(0, 3).map((u) => `"${u.word}"`).join(', ');
-  return `. The narration alone confirmed ${which}, so the music may cover ${covered.length === 1 ? 'it' : 'them'}: set music.volume in video.json to ${lower}, from ${now}, which is 3 dB quieter`;
+  const one = covered.length === 1;
+  const masked = covered.filter((u) => !mathWord(u.word, language));
+  if (!masked.length) {
+    return `. The narration alone confirmed ${which}. ${one ? 'It is a number or maths word' : 'They are number or maths words'}, which the speech check often hears written another way in the final mix, so quieter music may not help. Listen at ${one ? 'that time' : 'those times'} to be sure`;
+  }
+  const now = music.volume ?? MUSIC_VOLUME;
+  if (!canLower(music)) {
+    return `. The narration alone confirmed ${which}. The music is already at ${now}, quieter than the default ${MUSIC_VOLUME}, so listen at ${one ? 'that time' : 'those times'} before you lower it more`;
+  }
+  const lower = Math.max(QUIETEST, Math.floor(now * Math.pow(10, -3 / 20) * 100) / 100);
+  return `. The narration alone confirmed ${which}, so the music may cover ${one ? 'it' : 'them'}: set music.volume in video.json to ${lower}, from ${now}, which is ${dbQuieter(now, lower)} dB quieter`;
 }
+
+const dbQuieter = (from, to) => Math.round(20 * Math.log10(from / to));
 
 // The near matches of a transcribed piece of the video, with their times in it.
 // `offset` is where the piece starts.
@@ -467,8 +498,8 @@ export async function verify(project, { file = null, report: reportFile = null, 
       const aligned = await alignSpeech(script, heard.words, duration, project.config.language, { accept: project.heard });
       speech = { matchRate: Math.round(aligned.matchRate * 1000) / 1000, transcript: heard.text, nearly: timedNear(script, aligned, 0), unconfirmed: missedWords(script, aligned, 0, null) };
     }
-    if (speech.unconfirmed.length) issues.push({ level: 'warn', message: unconfirmedText(speech.unconfirmed) + mixAdvice(speech.unconfirmed, project.config.music) });
-    if (speech.matchRate < 0.85) issues.push({ level: 'warn', message: `only ${Math.round(speech.matchRate * 100)}% of the script was understood in the final mix; lower music.volume or check pronunciation` });
+    if (speech.unconfirmed.length) issues.push({ level: 'warn', message: unconfirmedText(speech.unconfirmed) + mixAdvice(speech.unconfirmed, project.config.music, project.config.language) });
+    if (speech.matchRate < 0.85) issues.push({ level: 'warn', message: `only ${Math.round(speech.matchRate * 100)}% of the script was understood in the final mix; ${canLower(project.config.music) ? 'lower music.volume or check pronunciation' : 'listen to it and check pronunciation'}` });
     fs.rmSync(wav, { force: true });
   }
   const sha256 = sha256File(video);

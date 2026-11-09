@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { loadProject } from '../src/project.js';
-import { formatVerify, unconfirmedText, verdictOf, verify } from '../src/qa.js';
+import { formatVerify, mathWord, mixAdvice, unconfirmedText, verdictOf, verify } from '../src/qa.js';
 import { ffmpeg } from '../src/ffmpeg.js';
 
 // Scene texts heard in the final mix, one per call, with words 0.2 s apart.
@@ -100,4 +100,24 @@ test('a word the narration alone confirmed and the final mix did not names music
   settings(false);
   const quiet = await verify(loadProject(project.dir), { transcribe: says(['Free open source.']) });
   assert.doesNotMatch(quiet.issues.find((i) => i.message.startsWith('the speech check could not confirm')).message, /music/);
+  // A music block without a style keeps the look's music, and music under the
+  // default volume gets no lower volume: listening comes next.
+  settings({ volume: 0.35 });
+  const lowered = await verify(loadProject(project.dir), { transcribe: says(['Free open source.']) });
+  assert.match(lowered.issues.find((i) => i.message.startsWith('the speech check could not confirm')).message, /\. The narration alone confirmed it\. The music is already at 0\.35, quieter than the default 0\.5, so listen at that time before you lower it more$/);
+});
+
+test('the music advice leaves out number and maths words, and never goes under 0.2', () => {
+  const maths = ['squared', 'minus', 'equals', 'halves', 'two'].map((word, i) => ({ word, time: i, mix: true }));
+  assert.equal(mixAdvice(maths, { volume: 0.5 }), '. The narration alone confirmed them. They are number or maths words, which the speech check often hears written another way in the final mix, so quieter music may not help. Listen at those times to be sure');
+  assert.match(mixAdvice([...maths, { word: 'and', time: 6, mix: true }], { volume: 0.5 }), /so the music may cover them: set music\.volume in video\.json to 0\.35, from 0\.5/);
+  assert.match(mixAdvice([{ word: 'menos', mix: true }, { word: 'medios', mix: true }], { volume: 0.5 }, 'es'), /number or maths words/);
+  assert.match(mixAdvice([{ word: 'and', mix: true }], { volume: 0.9 }), /to 0\.63, from 0\.9, which is 3 dB quieter$/);
+  for (const volume of [0.1, 0.2, 0.3, 0.49]) assert.match(mixAdvice([{ word: 'and', mix: true }], { volume }), /listen at that time before you lower it more$/, String(volume));
+  for (const volume of [0.5, 0.6, 0.75, 1]) {
+    const lower = Number(/to ([\d.]+), from/.exec(mixAdvice([{ word: 'and', mix: true }], { volume }))[1]);
+    assert.ok(lower >= 0.2 && lower < volume, `${volume} to ${lower}`);
+  }
+  for (const word of ['two', '5', 'minus', 'squared', 'halves', 'equals']) assert.equal(mathWord(word), true, word);
+  for (const word of ['and', 'is', 'second', 'free']) assert.equal(mathWord(word), false, word);
 });

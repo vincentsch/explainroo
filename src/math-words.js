@@ -183,3 +183,15 @@ export function mathReading(word, before, after, language, number, other = []) {
   }
   return readings(parts, signs, number).flatMap((ways) => pick(ways, other));
 }
+
+// Everyday words that are also in a reading, like "is" in "is equal to".
+const EVERYDAY = new Set(['is', 'to', 'the', 'of', 'by', 'a', 'al', 'ao', 'la', 'e', 'est', 'ist', 'par', 'per', 'por', 'na', 'un', 'um', 'ein', 'alla', 'entre', 'sobre', 'sur', 'durch', 'mal', 'cube', 'cubo', 'quarto', 'quart', 'quarter', 'second', 'secondo', 'segundo']);
+
+// The words a language says for signs and fractions, like "minus", "squared"
+// and "halves", without everyday words.
+export function signWords(language) {
+  const signs = SIGNS[language];
+  if (!signs) return new Set();
+  const all = [...Object.entries(signs).flatMap(([key, forms]) => (key === 'one' ? [] : forms.flat())), ...signs.fraction.flat()];
+  return new Set(all.flatMap((form) => form.split(' ')).filter((t) => t !== '#' && !EVERYDAY.has(t)));
+}
