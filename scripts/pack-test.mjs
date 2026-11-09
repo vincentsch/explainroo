@@ -183,7 +183,7 @@ const steps = [
     args: ['set', 'video', 'sizes.shorts.pace', '1.15', '--json'],
     check: (r, { temp }) => {
       const settings = JSON.parse(fs.readFileSync(path.join(temp, 'video/video.json'), 'utf8'));
-      expect(r.changed && settings.sizes.shorts.pace === 1.15 && settings.defaults === '0.5', `set says ${JSON.stringify(r)}`);
+      expect(r.changed && settings.sizes.shorts.pace === 1.15 && settings.defaults === '0.6', `set says ${JSON.stringify(r)}`);
     },
   },
   {
