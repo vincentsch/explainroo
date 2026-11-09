@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { checkRecordingScript, readRecordingScript, scriptHash, stepLabel } from '../src/record.js';
+import { checkRecordingScript, readRecordingScript, scriptHash, stepLabel, videoOffset } from '../src/record.js';
+import { ffmpeg } from '../src/ffmpeg.js';
 import { recordingClock, videoTime, sceneTime, cursorAt, viewAt, focusRect, coverRect, ZOOM_SECONDS, MAX_ZOOM, CATCH_UP } from '../engine/recording.js';
 import { makeState } from '../src/pipeline.js';
 import { loadProject } from '../src/project.js';
@@ -183,4 +184,41 @@ test('the page gets the step log of each recording, and a project without one ke
   assert.deepEqual(makeState(loadProject(dir), timeline).recordings, { demo: log });
   fs.writeFileSync(path.join(dir, 'recordings/demo.json'), JSON.stringify({ ...script, steps: [{ do: 'mark', name: 'b' }] }));
   assert.equal(makeState(loadProject(dir), timeline).recordings.demo.changed, true);
+});
+
+// Chrome sends the first frame of a recording a little after the page opens,
+// by an amount that depends on the browser and the load. record paints the
+// time as 24 black and white blocks before the app opens, and reads how far
+// the video is from the log from those frames.
+test('videoOffset reads how far the video is from the log, from the frames that paint the time', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-sync-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const [width, height, fps] = [480, 270, 25];
+  const zero = 1762690000123;
+  // Frame i shows the page at i / 25 + ahead seconds. Under load Chrome sends
+  // a frame twice, and the page is white before it paints.
+  const make = async (file, ahead) => {
+    const frames = [];
+    for (let i = 0; i < fps * 2; i++) {
+      const frame = Buffer.alloc(width * height, 0x88);
+      const repeat = i % 7 === 3 ? 1 : 0;
+      const t = Math.round(zero + ((i - repeat) / fps + ahead) * 1000) % 16777216;
+      for (let b = 0; b < 24; b++) {
+        for (let y = 0; y < height; y++) frame.fill(i < 2 ? 255 : (t >> b) & 1 ? 255 : 0, y * width + b * 20, y * width + b * 20 + 20);
+      }
+      frames.push(frame);
+    }
+    await ffmpeg(['-f', 'rawvideo', '-pix_fmt', 'gray', '-s', `${width}x${height}`, '-r', String(fps), '-i', '-', '-c:v', 'libvpx', '-b:v', '2M', file], { input: Buffer.concat(frames) });
+  };
+  for (const ahead of [0.14, -0.03, 0.5]) {
+    const file = path.join(dir, `ahead-${ahead}.webm`);
+    await make(file, ahead);
+    const got = await videoOffset(file, { width, height, zero });
+    assert.ok(Math.abs(got - ahead) < 0.02, `${ahead}: ${got}`);
+  }
+  // A video without the blocks, or no video at all, leaves the times as they are.
+  const plain = path.join(dir, 'plain.webm');
+  await ffmpeg(['-f', 'lavfi', '-i', `color=gray:s=${width}x${height}:d=1`, '-c:v', 'libvpx', plain]);
+  assert.equal(await videoOffset(plain, { width, height, zero }), 0);
+  assert.equal(await videoOffset(path.join(dir, 'missing.webm'), { width, height, zero }), 0);
 });

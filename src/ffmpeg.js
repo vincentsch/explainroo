@@ -16,16 +16,17 @@ export function ffmpegVersion() {
   return r.stdout.split('\n')[0];
 }
 
-export function run(bin, args, { input } = {}) {
+// With `binary`, stdout comes back as a Buffer, for raw frames.
+export function run(bin, args, { input, binary = false } = {}) {
   return new Promise((resolve, reject) => {
     const p = spawn(bin, args, { stdio: ['pipe', 'pipe', 'pipe'] });
-    let out = '';
+    const out = [];
     let err = '';
-    p.stdout.on('data', (d) => (out += d));
+    p.stdout.on('data', (d) => out.push(d));
     p.stderr.on('data', (d) => (err += d));
     p.on('error', (e) => reject(Object.assign(new Error(`${bin} could not start: ${e.message}. Install ffmpeg or set EXPLAINROO_FFMPEG.`), { code: e.code })));
     p.on('close', (code) => {
-      if (code === 0) resolve({ stdout: out, stderr: err });
+      if (code === 0) resolve({ stdout: binary ? Buffer.concat(out) : Buffer.concat(out).toString(), stderr: err });
       else reject(new Error(`${bin} ${args.slice(0, 6).join(' ')} ... failed (${code}):\n${err.split('\n').slice(-12).join('\n')}`));
     });
     if (input) p.stdin.end(input);

@@ -10,7 +10,7 @@ import crypto from 'node:crypto';
 import { launchProfile } from './browser.js';
 import { ProjectError, findProjectDir } from './project.js';
 import { cacheRoot } from './models.js';
-import { probe } from './ffmpeg.js';
+import { ffmpeg, probe } from './ffmpeg.js';
 import { ease, suggest } from '../engine/util.js';
 import { ZOOM_SECONDS } from '../engine/recording.js';
 
@@ -299,6 +299,79 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const round = (v) => Math.round(v * 1000) / 1000;
 const roundBox = (b) => ({ x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.w), h: Math.round(b.h) });
 
+// The video's clock. Chrome sends the first frame of the video a moment after
+// the page opens, and how long that takes depends on the browser and on how
+// busy the computer is: up to a few tenths of a second, enough to show a
+// button already pressed while playback holds the frame before its click.
+// So before the app opens, the page paints the time as SYNC_BITS black and
+// white blocks across its middle, and the frames of that say how far the
+// video's clock is from the log's. The video before start is never shown.
+const SYNC_BITS = 24;
+const SYNC_SECONDS = 0.8;
+function syncPage() {
+  const c = document.createElement('canvas');
+  c.width = innerWidth;
+  c.height = innerHeight;
+  c.style.cssText = 'position:fixed;inset:0';
+  document.body.style.margin = '0';
+  document.body.append(c);
+  const ctx = c.getContext('2d');
+  const w = Math.floor(innerWidth / 24);
+  const paint = () => {
+    const t = Date.now() % 16777216;
+    for (let i = 0; i < 24; i++) {
+      ctx.fillStyle = (t >> i) & 1 ? '#fff' : '#000';
+      ctx.fillRect(i * w, 0, w, innerHeight);
+    }
+    requestAnimationFrame(paint);
+  };
+  paint();
+}
+
+// How many seconds the log's clock is ahead of the video's, less than 0 when it
+// is behind, from the frames of the sync page, or 0 when they can't be read.
+// `zero` is the Date.now() of the log's 0.
+export async function videoOffset(file, { width, height, zero }) {
+  const w = Math.floor(width / SYNC_BITS);
+  const { stdout, stderr } = await ffmpeg(['-loglevel', 'info', '-t', String(SYNC_SECONDS + 2), '-i', file, '-an',
+    '-vf', `crop=${w * SYNC_BITS}:2:0:${Math.floor(height / 4) * 2},scale=${SYNC_BITS}:1:flags=area,format=gray,showinfo`, '-f', 'rawvideo', '-'], { binary: true }).catch(() => ({ stdout: Buffer.alloc(0), stderr: '' }));
+  const times = [...stderr.matchAll(/\bpts_time:\s*([-\d.e]+)/g)].map((m) => Number(m[1]));
+  const n = stdout.length / SYNC_BITS;
+  if (!n || times.length !== n) return 0;
+  const offsets = [];
+  let last = null;
+  for (let i = 0; i < n; i++) {
+    let v = 0;
+    let clean = true;
+    for (let b = 0; b < SYNC_BITS; b++) {
+      const px = stdout[i * SYNC_BITS + b];
+      if (px > 192) v += 2 ** b;
+      else if (px > 64) clean = false;
+    }
+    // Only the first frame that shows a time: a repeated frame shows it late.
+    if (!clean || v === last) continue;
+    last = v;
+    const page = (((v - zero) % 16777216) + 16777216) % 16777216 / 1000;
+    if (page <= SYNC_SECONDS + 1) offsets.push(page - times[i]);
+  }
+  if (offsets.length < 3) return 0;
+  offsets.sort((a, b) => a - b);
+  return round(offsets[Math.floor(offsets.length / 2)]);
+}
+
+// The times of the log moved by `by` seconds, onto the video's clock.
+function shiftTimes(out, by) {
+  if (!by) return;
+  const shift = (o, keys) => {
+    for (const k of keys) if (typeof o[k] === 'number') o[k] = round(Math.max(0, o[k] - by));
+  };
+  shift(out, ['start', 'end']);
+  for (const st of out.steps) {
+    shift(st, ['start', 't', 'end', 'click']);
+    if (st.move) shift(st.move, ['t0', 't1']);
+  }
+}
+
 export async function record(dirArg, name, { log = () => {}, fresh = false, findSeconds = FIND_SECONDS } = {}) {
   const dir = findProjectDir(dirArg);
   const script = readRecordingScript(dir, name);
@@ -331,6 +404,8 @@ export async function record(dirArg, name, { log = () => {}, fresh = false, find
     const now = () => (Date.now() - zero) / 1000;
     await page.addInitScript(pageSetup, script.blur);
     page.on('dialog', (d) => d.accept().catch(() => {}));
+    await page.evaluate(syncPage).catch(() => {});
+    await sleep(SYNC_SECONDS * 1000);
     const blurSeen = new Set();
     const readBlur = async () => {
       for (const i of await page.evaluate(() => [...(window.__explainrooBlurSeen ?? [])]).catch(() => [])) blurSeen.add(i);
@@ -484,6 +559,7 @@ export async function record(dirArg, name, { log = () => {}, fresh = false, find
     const raw = await video.path();
     const info = await probe(raw);
     const duration = Number(info.format?.duration) || end;
+    const offset = await videoOffset(raw, { width, height, zero });
     const missed = script.blur.map((b, i) => ({ ...b, i })).filter((b) => !blurSeen.has(b.i));
     const out = {
       version: 1,
@@ -498,6 +574,7 @@ export async function record(dirArg, name, { log = () => {}, fresh = false, find
       steps,
       blur: script.blur.map((b, i) => ({ ...b, found: blurSeen.has(i) })),
     };
+    shiftTimes(out, offset);
     fs.mkdirSync(outDir, { recursive: true });
     const webm = path.join(outDir, `${name}.webm`);
     const json = path.join(outDir, `${name}.json`);
@@ -508,7 +585,7 @@ export async function record(dirArg, name, { log = () => {}, fresh = false, find
     fs.renameSync(json + '.tmp', json);
     const rel = (p) => path.relative(dir, p).split(path.sep).join('/');
     const notes = [...skipped, ...missed.map((b) => `blur ${b.i + 1} (${b.selector !== undefined ? `selector ${quoted(b.selector)}` : `text ${quoted(b.text)}`}) matched nothing on any page. Check it, or take it out.`)];
-    return { name, video: rel(webm), log: rel(json), duration: out.duration, start, steps: steps.length, width, height, notes };
+    return { name, video: rel(webm), log: rel(json), duration: out.duration, start: out.start, steps: steps.length, width, height, notes };
   } finally {
     if (context) await context.close().catch(() => {});
     fs.rmSync(videos, { recursive: true, force: true });
