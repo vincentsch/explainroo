@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { loadProject, ProjectError, THEMES, MUSIC_STYLES, FORMATS, resolveSize, normalizeConfig, scriptName, checkClipBudget, checkLanguage, noKokoroVoice, DEFAULTS_VERSIONS } from './project.js';
 import { layoutAreas } from '../engine/layout.js';
-import { suggest } from '../engine/util.js';
+import { levenshtein, suggest } from '../engine/util.js';
 import { normWord, ScriptError } from './script.js';
 import { prepare, makeState, outdatedLine, outdatedRenders, VERSION } from './pipeline.js';
 import { render } from './render.js';
@@ -35,7 +35,7 @@ import { PLATFORMS } from './post.js';
 import { bareWord } from './align.js';
 import { formatShare, share } from './share.js';
 import { formatPublish, publish } from './publish.js';
-import { COMMAND_HELP, commandHelp } from './help.js';
+import { COMMAND_HELP, commandFlags, commandHelp } from './help.js';
 import { checkVideo, formatVideoCheck, isVideoFile, VIDEO_FILE } from './video-check.js';
 import { applyCut, formatCut, writeCut } from './cut.js';
 import { LIKENESS_FLAGS, avatarList, consentRule, formatAvatars, formatPresenter, makePresenter } from './presenter.js';
@@ -184,11 +184,32 @@ function parseArgs(argv) {
   }
   return { pos, flags };
 }
-const BOOL = new Set(['json', 'keep-profile', 'apply', 'avatars', 'draft', 'estimate', 'transparent', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'mobile', 'list', 'sections', 'new', 'key-stdin', 'audio', 'dry-run', 'no-wait', 'no-watermark', 'yes', 'media-url-unchecked', '...LISTS_VOICES.map((c) => c.id)', 'verbose']);
+const BOOL = new Set(['json', 'keep-profile', 'apply', 'avatars', 'draft', 'estimate', 'transparent', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'mobile', 'list', 'sections', 'new', 'key-stdin', 'audio', 'dry-run', 'no-wait', 'no-watermark', 'yes', 'media-url-unchecked', ...LISTS_VOICES.map((c) => c.id), 'verbose']);
 
-// publish refuses any other flag. A flag it ignored could change what a person
-// thinks is posted, like a time for a post, when it goes out right away.
-const PUBLISH_FLAGS = new Set(['via', 'platform', 'privacy', 'media-url', 'media-url-unchecked', 'channel', 'account', 'draft', 'lang', 'dry-run', 'yes', 'new', 'json', 'quiet']);
+// What a command adds when it refuses a flag. A flag publish ignored could
+// change what a person thinks is posted, like a time for a post, when it goes
+// out right away.
+const FLAG_NOTES = {
+  still: 'Times go after the project, like: explainroo still videos/<name> intro@2.4',
+  publish: 'It has no scheduler, so a post goes out when the command runs. Nothing was sent.',
+};
+
+// Every command refuses a flag it doesn't take, so a typo or a flag of another
+// command never falls back to a default without a word. connect has a rule of
+// its own, because what is on its line may be a key.
+export function unknownFlag(cmd, flags) {
+  if (cmd === 'connect' || !Object.hasOwn(COMMAND_HELP, cmd)) return null;
+  const takes = commandFlags(cmd);
+  const flag = Object.keys(flags).find((f) => !takes.includes(f));
+  if (flag === undefined) return null;
+  const listed = takes.filter((f) => !['quiet', 'help', 'version'].includes(f));
+  // The closest flag, when it is only a typo or a part away.
+  const close = listed.map((f) => ({ f, d: Math.min(f.length, flag.length) >= 4 && (f.includes(flag) || flag.includes(f)) ? 0 : levenshtein(flag, f) }))
+    .sort((a, b) => a.d - b.d)[0];
+  const near = close && close.d <= (flag.length >= 4 ? 2 : 1);
+  const takesWhat = listed.length > 1 ? `It takes ${listed.map((f) => `--${f}`).join(', ')}.` : 'It takes only --json.';
+  return [`${cmd} does not take --${flag}.`, near ? `Did you mean --${close.f}?` : '', takesWhat, FLAG_NOTES[cmd] ?? ''].filter(Boolean).join(' ');
+}
 
 function num(v, name) {
   if (v === undefined) return undefined;
@@ -222,6 +243,8 @@ export async function main(argv) {
   }
 
   try {
+    const refused = unknownFlag(cmd, flags);
+    if (refused) throw new ProjectError(refused);
     switch (cmd) {
       case 'init': return init(pos[0], flags, print);
       case 'set': {
@@ -332,6 +355,7 @@ export async function main(argv) {
       }
       case 'check': {
         if (videoArg(pos[0])) return await videoFileCheck('check', pos, flags, log, print);
+        videoOnly('check', flags, ['script', 'language']);
         const { project, platform } = runProject(pos[0], flags);
         const r = await check(project, { log, step: num(flags.step, 'step') ?? 0.25, viewWidth: num(flags['view-width'], 'view-width') ?? null, platform });
         const errors = r.issues.filter((i) => i.level === 'error').length;
@@ -361,8 +385,6 @@ export async function main(argv) {
         return 0;
       }
       case 'publish': {
-        const unknown = Object.keys(flags).filter((flag) => !PUBLISH_FLAGS.has(flag));
-        if (unknown.length) throw new ProjectError(`publish does not take --${unknown[0]}. It takes ${[...PUBLISH_FLAGS].map((f) => `--${f}`).join(', ')}. It has no scheduler, so a post goes out when the command runs. Nothing was sent.`);
         if (pos.length > 1) throw new ProjectError('usage: explainroo publish [project] --via youtube|buffer|blotato [--platform tiktok] [--dry-run] [--yes]. Nothing was sent.');
         const project = loadProject(pos[0], langOverride(flags));
         const r = await publish(project, { via: textFlag(flags, 'via'), platform: textFlag(flags, 'platform'), privacy: textFlag(flags, 'privacy'), mediaUrl: textFlag(flags, 'media-url'), mediaUnchecked: !!flags['media-url-unchecked'], channel: textFlag(flags, 'channel'), account: textFlag(flags, 'account'), draft: !!flags.draft, dryRun: !!flags['dry-run'], yes: !!flags.yes, fresh: !!flags.new, log, notice });
@@ -396,6 +418,7 @@ export async function main(argv) {
       }
       case 'verify': {
         if (videoArg(pos[0])) return await videoFileCheck('verify', pos, flags, log, print);
+        videoOnly('verify', flags, ['script', 'language', 'view-width', 'step']);
         const { project } = runProject(pos[0], flags);
         const r = await verify(project, { file: textFlag(flags, 'file'), log });
         print(formatVerify(r, { verbose: !!flags.verbose }), r);
@@ -621,6 +644,14 @@ export function shownIssues(issues, verbose) {
   const rest = issues.filter((i) => i.key !== 'nearly');
   rest.splice(at, 0, { level: 'hint', scene: null, t: null, message: `${words} words only nearly matched in the speech check of ${near.length === 1 ? `scene ${near[0].scene}` : `${near.length} scenes`}. No fix is needed unless one of them sounds wrong when you listen, and --verbose lists them with their times` });
   return rest;
+}
+
+// The flags check and verify take only for a video file. A project has its own
+// script and language.
+function videoOnly(cmd, flags, names) {
+  const flag = names.find((f) => flags[f] !== undefined);
+  const example = { script: 'script.txt', language: 'es', 'view-width': '400', step: '2' };
+  if (flag) throw new ProjectError(`--${flag} is for a video file, like: explainroo ${cmd} video.mp4 --${flag} ${example[flag]}. With a project, ${cmd} uses the project's own script and settings.`);
 }
 
 // check and verify of any video file: the same findings, read from the file.
