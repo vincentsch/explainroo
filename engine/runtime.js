@@ -744,6 +744,10 @@ export class Engine {
     // Where content may go: the frame, its margin, the content area of a
     // platform size and the caption band.
     const areas = { W, H, margin, app: this.appArea, band: this.captionBand, format: this.config.format, safe: this.safeArea };
+    // With "defaults": "0.6", pictures in a tall frame of Shorts, TikTok or
+    // Reels may run into the parts the app covers and behind the captions, as
+    // long as they stay on the frame. Text keeps to s.safe.
+    const roomy = this.appArea && H > W && newDefaults(this.config, '0.6');
     const colors = Object.fromEntries(['ink', 'accent', ...Object.keys(this.theme.colors)].map(name => [name, colorOf(this.theme, name)]));
     let colorCtx;
     const pixelColor = color => {
@@ -875,7 +879,8 @@ export class Engine {
           if (!sh.settled || sh.alpha <= 0.95) continue;
           const drawing = sh.kind === 'drawing';
           if (!drawing && (fillsFrame(sh.box, W, H) || (sh.ui && sh.zoomed))) continue;
-          const message = edgeMessage(shapeName(sh), sh.box, areas, { edge: drawing });
+          if (roomy && !drawing) continue;
+          const message = roomy ? offFrame(shapeName(sh), sh.box, W, H) : edgeMessage(shapeName(sh), sh.box, areas, { edge: drawing });
           if (message) once(`drawing-edge:${sc.id}:${shapeKey(sh)}`, () => add('warn', sc.id, t, message));
         }
         // The line of an arrow counts in the frame like its label: off the frame,
@@ -889,6 +894,7 @@ export class Engine {
           const banded = !!band && line.points.some(([x, y]) => y > band.top + 2 && y < band.bottom - 2 && x > band.left && x < band.right);
           const near = !this.appArea && (b.x0 < margin || b.y0 < margin || b.x1 > W - margin || b.y1 > H - margin);
           const message = !inFrame(b) ? `${line.name} runs off the frame (${where} in a ${W}x${H} frame); move its ends inside`
+            : roomy ? null
             : contentMessage(line.name, b, areas, { band: banded })
               ?? (near ? `${line.name} comes closer than ${margin}px to the edge (${where})` : null)
               ?? (banded ? `${line.name} runs into the caption band (y ${Math.round(band.top)} to ${Math.round(band.bottom)}), where captions can cover it; keep it above s.safe.bottom (${Math.round(this.safeArea.bottom)})` : null);
@@ -1114,6 +1120,12 @@ function contentMessage(name, b, { app, safe, format }, { verb = 'reaches', band
   const area = `the ${format} content area (${R(safe.left)},${R(safe.top)} to ${R(safe.right)},${R(safe.bottom)}, ${R(safe.right - safe.left)}x${R(safe.bottom - safe.top)})`;
   if (out(app)) return `${name} ${verb} outside ${area}, where the app's buttons and post text can cover it`;
   return `${name} ${verb} outside ${area}, ${b.y0 < safe.top - 2 ? 'in the strip at the top that the watermark takes' : 'right next to the captions'}`;
+}
+
+// What check says about a box that runs off the frame, or null.
+function offFrame(name, b, W, H) {
+  if (b.x0 >= -1 && b.y0 >= -1 && b.x1 <= W + 1 && b.y1 <= H + 1) return null;
+  return `${name} runs off the frame (${Math.round(b.x0)},${Math.round(b.y0)} to ${Math.round(b.x1)},${Math.round(b.y1)} in a ${W}x${H} frame)`;
 }
 
 // What check says about a box that runs off the frame, outside the content area

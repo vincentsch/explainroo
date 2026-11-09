@@ -47,6 +47,10 @@ export class Stage {
     // Platform formats (tiktok, reels, shorts...) keep content inside the part
     // of the frame the app leaves free, so the center moves with it.
     this.safe = engine.safeArea;
+    // The whole frame, for pictures and backgrounds that may fill it. On
+    // Shorts, TikTok and Reels with "defaults": "0.6", check lets pictures run
+    // into the parts the app covers; text stays in s.safe.
+    this.full = { x: 0, y: 0, w: this.W, h: this.H, left: 0, top: 0, right: this.W, bottom: this.H };
     this.platform = Boolean(engine.config.safe);
     this.cx = this.platform ? this.safe.x + this.safe.w / 2 : this.W / 2;
     this.cy = this.platform ? this.safe.y + this.safe.h / 2 : this.H / 2;

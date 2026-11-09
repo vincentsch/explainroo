@@ -93,6 +93,7 @@ there for your own math.
 | `s.W`, `s.H`, `s.cx`, `s.cy` | canvas size and its center (on Shorts, TikTok and Reels the center of `s.safe`) |
 | `s.portrait` | true when the frame is taller than wide |
 | `s.safe` | `{ x, y, w, h, left, top, right, bottom }`: the area for content (a 7% margin, or the part a platform leaves free) |
+| `s.full` | the same for the whole frame, for pictures that fill it, see `explainroo docs short-video` |
 | `s.row(n, { width, x })` | n x positions spread over a width |
 | `s.col(n, { height, y })` | n y positions spread over a height, centered in `s.safe` |
 | `s.grid(cols, rows, { x, y, w, h, gap })` | cells `{ x, y, w, h }`, row by row, filling `s.safe` |
@@ -135,7 +136,7 @@ are there from the start and make no sound.
 s.title('How DNS works', { at: 0 });                     // display font, 104 px, at 44% height
 s.subtitle('the phone book of the internet', { at: 1 }); // 46 px, muted, at 60% height
 s.text('Every site has an *address*', { y: 300, size: 64, at: 'address' });
-s.note('about 20 ms', { x: 1400, y: 820, at: 3 });        // 32 px (34 with "0.6"), muted
+s.note('about 20 ms', { x: 1400, y: 820, at: 3 });        // 32 px, muted
 ```
 
 `s.str('key')` gives on-screen text from the strings file of the language
@@ -213,8 +214,8 @@ at both ends.
 
 A label sits above a straight arrow, left of a vertical one and on the outer
 side of a curve, `labelOffset` away from the arrow's middle: 38 for a label of
-40 pixels, the size with `"defaults": "0.6"`, which `init` writes. `"0.5"`
-gives 48 pixels, 44 out. A project without the line keeps labels of 34
+40 pixels with `"defaults": "0.6"`, which `init` writes, and 44 for 48
+with `"0.5"`. A project without the line keeps labels of 34
 pixels, 34 out, arrows that start at an icon's edge, and no `gap` at a point
 end. `explainroo docs settings` lists what the line changes.
 `labelSide: 'left'`, `'right'`, `'above'` or `'below'` puts it on that side
@@ -317,8 +318,7 @@ s.pie([{ label: 'Images', value: 55 }, { label: 'Other', value: 45 }], { donut: 
 ```
 
 - `s.list(items, options)`: items are text or `{ text, at, icon, color, out }`.
-  `x` is the left edge and `y` the top. Options: `size` (50, and 48 with
-  `"defaults": "0.6"`), `width`, `gap`,
+  `x` is the left edge and `y` the top. Options: `size` (50), `width`, `gap`,
   `bullet` (`dot`, `dash`, `number`, `badge`, `check`, `arrow` or an icon
   name), `card: false` (no cards in `studio`),
   `bulletColor`, `at` (a start time or a list of times), `stagger` (0.7),

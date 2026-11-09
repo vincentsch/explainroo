@@ -104,6 +104,9 @@ because labels may move.
   into the axis. In looks with clean lines, the axis under the bars is a thin
   muted line.
 - A highlighted line of code gets a bar in the accent color at its left edge.
+- On Shorts, TikTok and Reels, pictures and backgrounds may fill `s.full`,
+  past the content area, and `check` warns only about text outside `s.safe`
+  and pictures that run off the frame. See `explainroo docs short-video`.
 
 `check` finds the same problems with or without the line.
 

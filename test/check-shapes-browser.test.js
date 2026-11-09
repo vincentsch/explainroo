@@ -398,3 +398,23 @@ test('an icon with a label returns the label\'s box and an outer box with both, 
   // Text below outer clears the label, as check sees it.
   assert.deepEqual(issues.filter((i) => i.level !== 'hint'), []);
 });
+
+test('with "defaults": "0.6" pictures in a tall frame may fill s.full, past the content area, and text keeps to s.safe', { skip }, async (t) => {
+  const scenes = {
+    // A wave of the whole frame's width below the captions, a box at the
+    // bottom of the frame, and a label in the same place.
+    picture: `globalThis.full = s.full;
+    s.draw({ x: s.full.w / 2, y: s.full.bottom - 300, at: 0, box: { x: 0, y: 0, w: s.full.w, h: 120 } }, (ctx) => { ctx.fillRect(-s.full.w / 2, -60, s.full.w, 120); });
+    s.box({ x: s.full.w / 2, y: s.full.bottom - 120, w: 600, h: 160, color: 'blue', at: 0 });`,
+    words: `s.text('Below the captions', { x: s.full.w / 2, y: s.full.bottom - 500, at: 0 });`,
+    off: `s.draw({ x: s.full.w / 2, y: s.full.bottom, at: 0, box: { x: 0, y: 0, w: 400, h: 200 } }, (ctx) => { ctx.fillRect(-200, -100, 400, 200); });`,
+  };
+  const outside = (issues, scene) => messages(issues, scene, 'content area').length + messages(issues, scene, 'caption band').length;
+  const { issues: now, more: full } = await check(project(t, { size: 'tiktok', captions: 'bold', defaults: '0.6' }, scenes), (page) => page.evaluate(() => globalThis.full));
+  assert.deepEqual(full, { x: 0, y: 0, w: 1080, h: 1920, left: 0, top: 0, right: 1080, bottom: 1920 });
+  assert.equal(outside(now, 'picture'), 0, JSON.stringify(now));
+  assert.ok(outside(now, 'words') > 0, 'text below the content area still gets a warning');
+  assert.match(messages(now, 'off', 'runs off the frame')[0] ?? '', /the 1st s\.draw at 540,1920 runs off the frame/);
+  const before = await check(project(t, { size: 'tiktok', captions: 'bold', defaults: '0.5' }, scenes));
+  assert.ok(outside(before, 'picture') >= 2, 'with "0.5" the pictures get warnings');
+});

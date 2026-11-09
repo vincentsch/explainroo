@@ -46,6 +46,27 @@ test('the layouts in the pictures topic pass check in a wide and in a tall frame
   }
 });
 
+// The layout in the short-video topic fills the whole frame, and check says
+// nothing about its pictures with "defaults": "0.6".
+test('the layout that fills the frame in the short-video topic passes check on TikTok with "defaults": "0.6"', { skip, timeout: 120000 }, async (t) => {
+  const doc = fs.readFileSync(new URL('../docs/short-video.md', import.meta.url), 'utf8');
+  const start = doc.indexOf('```js\nproblem(s) {') + 6;
+  const code = doc.slice(start, doc.indexOf('```', start));
+  assert.match(code, /s\.full\.bottom/);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-full-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(dir, 'script.md'), '## problem\nOn a plane, the engines make a steady, low hum. Noise-cancelling headphones remove most of it.\n');
+  fs.writeFileSync(path.join(dir, 'scenes.js'), `export default {\n${code}};\n`);
+  const outside = (issues) => issues.filter((i) => /content area|caption band|off the frame/.test(i.message));
+  for (const defaults of ['0.6', '0.5']) {
+    fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ theme: 'clean', size: 'tiktok', captions: 'bold', music: false, sfx: false, defaults }));
+    cachedVoice(dir, 'problem');
+    const { issues } = await check(loadProject(dir));
+    if (defaults === '0.6') assert.deepEqual(outside(issues), [], JSON.stringify(issues));
+    else assert.ok(outside(issues).length > 0, 'without it, the lines below the captions get warnings');
+  }
+});
+
 // What scene-api says about bend and wrapping, and what the code does.
 test('a positive bend curves to the right of the way an arrow points, and a box label wraps at maxWidth, not at minW, as scene-api says', { skip }, async (t) => {
   const api = fs.readFileSync(new URL('../docs/scene-api.md', import.meta.url), 'utf8').replace(/\s+/g, ' ');

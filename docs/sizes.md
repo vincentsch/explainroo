@@ -23,11 +23,13 @@ text on top of the video. With `shorts`, `tiktok`, `reels` and `vertical`,
 explainroo keeps your content away from those spots. The captions sit right
 above the app's bottom band, and the watermark moves to the top right corner.
 `s.safe` is the content area, and `s.cx` and `s.cy` are its center. `check`
-warns about text, shapes and arrows outside it. Plain `9:16` has no such
-margins, so use it only when the video is not meant for those apps.
+warns about text, shapes and arrows outside it. With `"defaults": "0.6"`
+only text has to stay in it: pictures and backgrounds may fill `s.full`, the
+whole frame, behind the captions and the app's buttons. Plain `9:16` has no
+such margins, so use it only when the video is not meant for those apps.
 
 Vertical videos have little room. Stack things instead of putting them side
-by side, use fewer words on screen, and place everything from `s.safe`.
+by side, use fewer words on screen, and place words from `s.safe`.
 `explainroo docs short-video` has a kit for the parts these videos share, like a
 hook title on the first frame.
 
