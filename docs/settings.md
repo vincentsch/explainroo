@@ -55,16 +55,19 @@ the file keeps its order.
 | `clipBudget` | none | the most all AI clips of the project may cost together, in US dollars, like `0.40`. `clip` stops before a clip that would go over it; see `explainroo docs clips` |
 | `brand` | none | colors, fonts and logo for `s.ui`; its `accent` also colors the spoken word in captions; see `explainroo docs product-demos` |
 | `fonts` | none | the video's own font files, see `explainroo docs product-demos` |
-| `defaults` | none | `"0.5"` gives the project the defaults of explainroo 0.5, see below. `init` writes it |
+| `defaults` | none | `"0.6"` gives the project the defaults of explainroo 0.6, which include those of 0.5, see below. `init` writes it |
 
 ### The defaults of a version
 
 Some defaults change how a video looks. So that a finished video comes out
-the same after an update, they apply only to a project with `"defaults":
-"0.5"` in `video.json`. `init` writes that line. A project without it keeps
-the look it had, frame for frame, also its cover. To give an older project
-the new look, add the line, then look at `still` and `sheet` again, because
-labels may move. The line changes these:
+the same after an update, they apply only to a project with `"defaults"` in
+`video.json`. `init` writes `"defaults": "0.6"`. A project without the line
+keeps the look it had, frame for frame, also its cover, and a project with
+`"0.5"` keeps the look of explainroo 0.5. To give an older project the new
+look, set the line to `"0.6"`, then look at `still` and `sheet` again,
+because labels may move.
+
+`"0.5"` changes these, and `"0.6"` has them too:
 
 - Arrow labels are body size, 48 pixels, and sit 44 pixels from the arrow.
   Before, they were 34 pixels, 34 pixels from it.

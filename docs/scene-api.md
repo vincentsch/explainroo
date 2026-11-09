@@ -213,7 +213,7 @@ at both ends.
 A label sits above a straight arrow, left of a vertical one and on the outer
 side of a curve, `labelOffset` away from the arrow's middle: 44 for a label of
 48 pixels, and 34 for one of 34. These are the defaults of `"defaults":
-"0.5"`, which `init` writes into `video.json`. A project without it keeps its
+"0.5"` and later, and `init` writes the line into `video.json`. A project without it keeps its
 old look: labels of 34 pixels, arrows that start at an icon's edge, and no
 `gap` at a point end. `explainroo docs settings` lists what the line changes.
 `labelSide: 'left'`, `'right'`, `'above'` or `'below'` puts it on that side

@@ -174,7 +174,7 @@ test('init writes a neutral starter whose scenes match, with "defaults", and say
   const r = await runAll(['init', target, '--title', 'How Bees Make Honey']);
   assert.equal(r.code, 0, r.err);
   assert.match(r.out, /^next: write the narration in script\.md, then run ".+ voice .+bees"\. After that, draw each scene in scenes\.js and run ".+ check .+bees"\.$/m);
-  assert.equal(JSON.parse(fs.readFileSync(path.join(target, 'video.json'), 'utf8')).defaults, '0.5');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(target, 'video.json'), 'utf8')).defaults, '0.6');
   const script = fs.readFileSync(path.join(target, 'script.md'), 'utf8');
   const scenes = fs.readFileSync(path.join(target, 'scenes.js'), 'utf8');
   const { parseScript } = await import('../src/script.js');

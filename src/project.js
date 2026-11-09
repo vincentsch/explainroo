@@ -82,14 +82,16 @@ export const DEFAULTS = {
   // no frame, so it stays out of the resolved settings and the render identity.
   clipBudget: null,
   // "0.5" gives a project the defaults of explainroo 0.5, which change how some
-  // things look, like the size of arrow labels. Without it a project keeps the
-  // look it had, and renders the same frames. Left out of the settings when it
-  // isn't set, so such a project keeps its render identity too.
+  // things look, like the size of arrow labels, and "0.6" those of 0.6 with the
+  // ones of 0.5. Without it a project keeps the look it had, and renders the
+  // same frames. Left out of the settings when it isn't set, so such a project
+  // keeps its render identity too.
   defaults: undefined,
 };
 
-// The values "defaults" takes, oldest first.
-export const DEFAULTS_VERSIONS = ['0.5'];
+// The values "defaults" takes, oldest first. Each one has the defaults of the
+// ones before it.
+export const DEFAULTS_VERSIONS = ['0.5', '0.6'];
 
 // Settings for the UI kit (s.ui), for product demos in a brand's own look.
 export const BRAND_KEYS = ['accent', 'background', 'ink', 'font', 'headline', 'logo', 'colors'];
