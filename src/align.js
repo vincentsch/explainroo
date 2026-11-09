@@ -286,15 +286,17 @@ export function alignWords(words, heard, duration, language = 'en', { sounds = n
   };
   // Whisper splits numbers into pieces ("$1", ",000" and "5", "%" and "1",
   // ".1", and in German "19", "-hundert"), writes thousands with a space, like
-  // "300" and "000", and splits units, like "km" and "/s". Join them back before
-  // comparing.
+  // "300" and "000", splits units, like "km" and "/s", and splits fractions and
+  // powers, like "-5" and "/2". Join them back before comparing.
   const joined = [];
   for (const h of heard) {
     const prev = joined[joined.length - 1];
     const t = String(h.text).trim();
     const thousands = !cjk && prev && (prev.grouped ? /\d{3}$/.test(prev.text) : /^[$€£]?\d{1,3}$/.test(prev.text)) && /^\d{3}(?!\d)/.test(t);
     const unit = !cjk && prev && ((/^\/\p{L}/u.test(t) && /\p{L}$/u.test(prev.text)) || (/^[cC]\b/.test(t) && /°$/.test(prev.text)));
-    const glue = prev && (thousands || unit || (/^[,.]\d/.test(t) && /\d$/.test(prev.text)) || (/^%/.test(t) && /\d$/.test(prev.text)) || (/^\d/.test(t) && /^[$€£]$/.test(prev.text))
+    // A fraction or a power split after its number, like "-5" and "/2", or "2x" and "^2".
+    const maths = !cjk && prev && ((/^\/\d/.test(t) && /\d$/.test(prev.text)) || (/^(\^\d|[²³])/.test(t) && /[\p{L}\p{N})]$/u.test(prev.text)));
+    const glue = prev && (thousands || unit || maths || (/^[,.]\d/.test(t) && /\d$/.test(prev.text)) || (/^%/.test(t) && /\d$/.test(prev.text)) || (/^\d/.test(t) && /^[$€£]$/.test(prev.text))
       || (language === 'de' && /^-(hundert|tausend)/i.test(t) && /\d$/.test(prev.text)));
     if (glue) {
       prev.text += t;
