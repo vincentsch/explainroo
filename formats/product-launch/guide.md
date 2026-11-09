@@ -42,6 +42,6 @@ when the voice says it.
 
 ## Look and brand
 
-The format starts with the `clean` look. Put the product's colors, fonts and
+The format starts with the `studio` look. Put the product's colors, fonts and
 logo in `"brand"` in `video.json`, from what `capture` found. Keep the
 product's real name and address, and leave out logos of other companies.
