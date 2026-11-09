@@ -116,6 +116,7 @@ export class Engine {
     this.sfxMode = config.sfx;
     this.recorder = null;
     this.textLog = null;
+    this.cropLog = null;
     this.drawLog = null;
     this.errors = [];
     this.canvas = canvas;
@@ -712,6 +713,35 @@ export class Engine {
     const name = picture ? shapeName(picture) : texts[0] ? `the text "${texts[0].text.length > 40 ? texts[0].text.slice(0, 37) + '...' : texts[0].text}"` : null;
     const advice = name ? `give ${name} at: -1, so it is there from the first frame` : 'show one element from the start with at: -1';
     return { level: 'hint', scene: sc.id, t: 0, message: `the first frame of the video ${what}, and Buffer, LinkedIn and other services use it as the thumbnail; ${advice}` };
+  }
+
+  // A hint when the cover shows an image that fit: 'cover' cuts at its edges,
+  // which can cut off words or a face in the thumbnail. `T` is the cover's
+  // time, or null for the time the page works out.
+  coverCropIssue(T = null) {
+    const at = T === null ? this.coverMoment() : T;
+    const i = this.sceneAt(at);
+    const sc = this.timeline.scenes[i];
+    const scratch = (this._framedCanvas ??= Object.assign(document.createElement('canvas'), { width: 16, height: 16 }));
+    const saved = { textLog: this.textLog, drawLog: this.drawLog, recorder: this.recorder, cropLog: this.cropLog };
+    this.textLog = [];
+    this.drawLog = drawLog();
+    this.recorder = null;
+    this.cropLog = [];
+    let crops;
+    try {
+      this.drawScene(scratch.getContext('2d'), i, at - sc.start);
+      crops = this.cropLog;
+    } catch {
+      return null;
+    } finally {
+      Object.assign(this, saved);
+    }
+    const most = crops.sort((a, b) => b.part - a.part)[0];
+    if (!most) return null;
+    const label = `${sc.id}@${(at - sc.start).toFixed(1)}`;
+    const name = most.id === null ? `the image ${most.src}` : `the image "${most.id}" (${most.src})`;
+    return { level: 'hint', scene: sc.id, t: Math.round((at - sc.start) * 100) / 100, message: `the cover at ${label} shows ${name} with fit: 'cover', which cuts ${Math.round(most.part * 100)}% of it off at the ${most.sides}; look at the cover for words or faces cut at its edge, and give the image the shape of the picture or fit: 'contain' if they are` };
   }
 
   // A hint when the cover shows only text on an empty background, or when the

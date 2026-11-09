@@ -428,3 +428,20 @@ test('the hold that targetSeconds adds at the end of a scene doesn\'t count as a
   const held = await check(project(t, { size: '16:9' }, scenes, { dur: 10, added: { long: 6 } }));
   assert.ok(!held.some((i) => i.message.startsWith('no new element')), JSON.stringify(held));
 });
+
+test('check gives a hint when the cover shows an image that fit: \'cover\' cuts at its edges', { skip }, async (t) => {
+  const { execFileSync } = await import('node:child_process');
+  const { ffmpegPath } = await import('../src/ffmpeg.js');
+  const cropped = (fit) => {
+    const p = project(t, { size: '16:9', defaults: '0.6' }, {
+      intro: `s.title('Our app', { y: 200, at: -1 }); s.image('assets/wide.png', { w: 500, h: 500, y: 650, at: -1${fit ? `, fit: '${fit}'` : ''} });`,
+    });
+    fs.mkdirSync(path.join(p.project.dir, 'assets'), { recursive: true });
+    execFileSync(ffmpegPath(), ['-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc=s=800x200:d=1', '-frames:v', '1', path.join(p.project.dir, 'assets', 'wide.png')]);
+    return withEngine(p.project, p.timeline, { scale: 0.5 }, (page) => page.evaluate(() => window.explainroo.coverCropIssue(null)));
+  };
+  const hint = await cropped(null);
+  assert.equal(hint.level, 'hint');
+  assert.match(hint.message, /^the cover at intro@\d\.\d shows the image assets\/wide\.png with fit: 'cover', which cuts 75% of it off at the left and right; look at the cover for words or faces cut at its edge, and give the image the shape of the picture or fit: 'contain' if they are$/);
+  assert.equal(await cropped('contain'), null);
+});
