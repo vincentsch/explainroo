@@ -109,6 +109,16 @@ test('init --format starts from the format: its settings, example, helpers and g
   assert.equal(shown.status, 0, shown.stderr);
   assert.ok(shown.stdout.includes('# Product ad'));
   assert.equal(JSON.parse(fs.readFileSync(path.join(path.dirname(dir), 'ad', 'video.json'), 'utf8')).size, 'linkedin');
+  // The example is about the format's own topic, to be replaced.
+  assert.match(shown.stdout, /script\.md and scenes\.js hold the format's example, a video about "Acme Invoices"\. Replace it with your own topic, and keep the helpers that scenes\.js imports from format\.js\./);
+  assert.doesNotMatch(shown.stdout, /The size is "vertical"/);
+  // The vertical short takes --size, and without it, init asks for a platform's size.
+  const plain = cli(t, ['init', path.join(path.dirname(dir), 'plain'), '--format', 'vertical-short']);
+  assert.match(plain.stdout, /\nThe size is "vertical", a tall frame for no app in particular\. For one app, set its size, so pictures and captions keep clear of its buttons: .* set .*plain size tiktok \(or shorts, or reels\)\.\n/);
+  const sized = cli(t, ['init', path.join(path.dirname(dir), 'sized'), '--format', 'vertical-short', '--size', 'tiktok']);
+  assert.equal(sized.status, 0, sized.stderr);
+  assert.doesNotMatch(sized.stdout, /The size is "vertical"/);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(path.dirname(dir), 'sized', 'video.json'), 'utf8')).size, 'tiktok');
   // An unknown format leaves nothing behind.
   const none = path.join(path.dirname(dir), 'none');
   const bad = cli(t, ['init', none, '--format', 'nope']);

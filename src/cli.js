@@ -722,7 +722,12 @@ function init(dir, flags, print) {
     startFromFormat(format, target, config);
     fs.writeFileSync(path.join(target, '.gitignore'), 'build/\nout/\n.env\nhistory/private/\nhistory/locks/\n');
     const english = language !== 'en' ? `\nThe example script is in English. Write script.md in ${language}, with the same scene names.` : '';
-    print(`created ${target} from the format ${format.name} ${format.version} by ${format.author}${english}\nscript.md and scenes.js hold its example, and scenes.js imports its helpers from format.js. Its guide is in format.md:\n\n${format.guide.trim()}\n\nnext: write the narration in script.md, then run "${selfCommand()} voice ${dir}". After that, change the scenes in scenes.js and run "${selfCommand()} check ${dir}".`,
+    const example = base.title ? `, a video about "${base.title}". Replace it with your own topic` : '. Replace it with your own topic';
+    // A tall format without a platform's size fits no app exactly.
+    const sized = flags.size === undefined && size === 'vertical'
+      ? `\nThe size is "vertical", a tall frame for no app in particular. For one app, set its size, so pictures and captions keep clear of its buttons: ${selfCommand()} set ${dir} size tiktok (or shorts, or reels).`
+      : '';
+    print(`created ${target} from the format ${format.name} ${format.version} by ${format.author}${english}${sized}\nscript.md and scenes.js hold the format's example${example}, and keep the helpers that scenes.js imports from format.js. Its guide is in format.md:\n\n${format.guide.trim()}\n\nnext: write the narration in script.md, then run "${selfCommand()} voice ${dir}". After that, change the scenes in scenes.js and run "${selfCommand()} check ${dir}".`,
       { dir: target, format: formatEntry(format), guide: format.guide });
     return 0;
   }

@@ -25,8 +25,13 @@ you want them in the 16:9 video too.
 ## The rules of a short
 
 A stranger scrolls past in the first second, so a short follows a few rules.
-`explainroo init videos/<name> --format vertical-short` starts from a short
-that keeps them, with helpers for each one.
+`explainroo init videos/<name> --format vertical-short --size tiktok` starts
+from a short that keeps them, with helpers for each one. Without `--size` it
+stays `vertical`, a tall frame for no app in particular, so give it the size of
+the app it goes on: `tiktok`, `shorts` or `reels`. With that size in
+`video.json`, `check`, `render` and `verify` use the app's content area without
+`--platform`. Add `--platform tiktok` to get exactly what the TikTok package
+gets, which is the video without the watermark.
 
 - **The hook is in the first second.** Give the first scene `{lead=0}`, so
   the voice starts at once, and show the title and the subject on the first
