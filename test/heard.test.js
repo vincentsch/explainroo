@@ -140,5 +140,8 @@ test('a word heard as the same other spelling each time gets the line for "heard
   const other = { ...voices.outro, transcript: 'Try Tab Lid today.' };
   assert.equal(heardEveryTime(project, { ...voices, outro: other }).size, 0);
   assert.equal(heardEveryTime(project, { intro: voices.intro }).size, 0);
+  // Another word each time, like "Snow", is no other spelling.
+  const snow = (v) => ({ ...v, transcript: v.transcript.replace('Tap Lip', 'Snow') });
+  assert.equal(heardEveryTime(project, { intro: snow(voices.intro), outro: snow(voices.outro) }).size, 0);
   assert.match(unconfirmedWords(project, voices.intro)[0].advice, /reword the sentence\.$/);
 });

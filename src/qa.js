@@ -244,7 +244,7 @@ export function unconfirmedWords(project, v, every = new Map()) {
 }
 
 // The words of the narration that the speech check heard as the same other
-// spelling each time they come up, at least twice, like "halves" as "5/2", as
+// spelling each time they come up, at least twice, like "Tabslip" as "Tap Lip", as
 // a map from the word to { word, heard }. A short everyday word is left out:
 // "heard" would accept its other spelling anywhere.
 export function heardEveryTime(project, voices) {
@@ -263,8 +263,15 @@ export function heardEveryTime(project, voices) {
       seen.set(key, entry);
     });
   }
-  return new Map([...seen].filter(([, e]) => e.times >= 2 && e.heard.length === e.times && !shortWord(e.word) && e.heard.every((h) => sameHeard(h, e.heard[0])))
+  return new Map([...seen].filter(([key, e]) => e.times >= 2 && e.heard.length === e.times && !shortWord(e.word) && e.heard.every((h) => sameHeard(h, e.heard[0])) && spelling(key, e.heard[0]))
     .map(([key, e]) => [key, { word: e.word, heard: e.heard[0] }]));
+}
+
+// Whether what was heard is another way to write the word: close to it, like
+// "Tap Lip" for "Tabslip", or written with digits or signs, like "5/2" for
+// "halves". A different word, like "station" for "Gravitation", is none.
+function spelling(word, heard) {
+  return /[\p{N}\p{S}/]/u.test(heard) || soundsAlike(heard.split(/\s+/).map(normWord).join(''), word);
 }
 
 // What to do about a word heard as the same other spelling each time.
