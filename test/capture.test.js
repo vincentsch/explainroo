@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { capture, cutText, fontType, validateUrl, pickColors, rankLogos, isGoogleFont, isCaptureName, TEXT_BYTES } from '../src/capture.js';
+import { capture, cutText, fontType, validateUrl, pickAccent, pickColors, rankLogos, isGoogleFont, isCaptureName, TEXT_BYTES } from '../src/capture.js';
 
 test('capture accepts only HTTP URLs without login credentials', () => {
   assert.equal(validateUrl('https://example.com/demo').hostname, 'example.com');
@@ -28,6 +28,14 @@ test('accent counts saturated button backgrounds by area and frequency', () => {
   assert.ok(colors.other.every((c) => c.share >= 0 && c.share <= 1));
   assert.deepEqual(pickColors([]), { accent: null, other: [] });
   assert.equal(pickColors([{ color: '#aaaaaa' }]).accent, null);
+});
+
+test('without a button color, the accent is the theme-color, unless that is gray', () => {
+  const gray = [{ color: '#eeeeee', area: 9000 }, { color: '#333333', area: 400 }];
+  assert.deepEqual(pickAccent(gray, '#2C5C97'), { accent: '#2c5c97', from: 'theme-color' });
+  assert.deepEqual(pickAccent([...gray, { color: '#245cff', area: 200 }], '#2c5c97'), { accent: '#245cff', from: 'buttons' });
+  assert.deepEqual(pickAccent(gray, '#ffffff'), { accent: null, from: null });
+  assert.deepEqual(pickAccent(gray, null), { accent: null, from: null });
 });
 
 test('logos prefer brand SVGs, SVG icons, large PNGs, then the social image', () => {

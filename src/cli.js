@@ -276,7 +276,7 @@ export async function main(argv) {
         const families = r.fonts.families.map((f) => f.family).join(', ') || 'none found';
         const onFirst = r.images.filter((i) => i.firstScreen).length;
         const page = `page: ${r.text.body.length.toLocaleString('en-US')} characters of text${r.text.bodyCut ? ', the first 30 KB,' : ''} and ${r.images.length} image${r.images.length === 1 ? '' : 's'} (${onFirst} on the first screen) in capture.json`;
-        print(`saved:\n${r.files.map((f) => '  ' + f).join('\n')}\naccent: ${r.colors.accent || 'none found'}\nfonts: ${families}\nlogo: ${r.logo.picked || 'none found'}\n${page}\n${r.notes.join('\n')}\nPaste into video.json:\n${JSON.stringify(r.suggestion, null, 2)}\nOpen the screenshots and check them before you use them.`, r);
+        print(`saved:\n${r.files.map((f) => '  ' + f).join('\n')}\naccent: ${r.colors.accent ? `${r.colors.accent}${r.colors.accentFrom === 'theme-color' ? ' (from the theme-color tag)' : ''}` : 'none found'}\nfonts: ${families}\nlogo: ${r.logo.picked || 'none found'}\n${page}\n${r.notes.join('\n')}\nPaste into video.json:\n${JSON.stringify(r.suggestion, null, 2)}\nOpen the screenshots and check them before you use them.`, r);
         return 0;
       }
       case 'record': {

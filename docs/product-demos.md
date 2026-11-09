@@ -143,7 +143,9 @@ saves what a demo needs in `assets/capture/<hostname>/`:
   came from. Fonts that come with explainroo are not copied.
 
 It prints a `brand` and `fonts` block to paste into `video.json`, and one line
-for each font it saved. Check the block against the screenshots. A font on a
+for each font it saved. The accent is the color of the page's buttons, or,
+when they show none, the page's `theme-color` tag, and then `capture` says
+so. Check the block against the screenshots. A font on a
 website isn't always free to use in a video, so check the license of each
 saved font before you publish, and copy the license file next to it. For a
 font it could not save, get the files yourself. Cookie banners and chat

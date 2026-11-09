@@ -74,6 +74,15 @@ export function pickColors(samples, exclude = []) {
   };
 }
 
+// The accent: the saturated color of the most button area, or the page's
+// theme-color when its buttons show none. A gray theme-color is no accent.
+export function pickAccent(buttonSamples, themeColor) {
+  const accent = pickColors(buttonSamples).accent;
+  if (accent) return { accent, from: 'buttons' };
+  if (themeColor && pickColors([{ color: themeColor }]).accent) return { accent: themeColor.toLowerCase(), from: 'theme-color' };
+  return { accent: null, from: null };
+}
+
 export function rankLogos(candidates) {
   const score = (c) => c.type === 'svg' ? (c.kind === 'brand' ? 4 : 3) : (c.kind === 'og' ? 1 : 2);
   const seen = new Set();
@@ -325,8 +334,10 @@ export async function capture(project, value, { mobile = false, name: pageName, 
     const pageText = cutText(result.text.body);
     result.text.body = pageText.text;
     result.text.bodyCut = pageText.cut;
-    result.colors.accent = pickColors(buttonSamples).accent;
+    const accent = pickAccent(buttonSamples, result.themeColor);
+    result.colors.accent = accent.accent;
     result.colors.other = pickColors(samples, Object.values(result.colors).filter(Boolean)).other;
+    if (accent.from) result.colors.accentFrom = accent.from;
     result.brand = {};
     // The font of the first heading is the headline font, so u.headline doesn't
     // fall back to the kit's serif on a site that has none.
@@ -334,6 +345,7 @@ export async function capture(project, value, { mobile = false, name: pageName, 
       if (val) result.brand[key] = val;
     }
     result.notes = [];
+    if (accent.from === 'theme-color') result.notes.push(`The buttons show no clear color, so the accent ${accent.accent} comes from the page's theme-color tag. Check it against the screenshots.`);
     fs.mkdirSync(path.join(projectDir, 'assets/capture'), { recursive: true });
     temp = fs.mkdtempSync(path.join(projectDir, 'assets/capture', `.${host}-`));
     await screenshots(page, temp);

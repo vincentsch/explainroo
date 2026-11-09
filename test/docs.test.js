@@ -606,5 +606,6 @@ test('product-demos says how to find elements, type, share cues, pick a viewport
     '1080 x 1920 for 9:16',
     'under 60% of its size gets a warning from `check`',
     'A step before the video that finds nothing is skipped, in every run, with or without `--keep-profile`',
+    'when they show none, the page\'s `theme-color` tag',
   ]) assert.ok(text.includes(words), words);
 });
