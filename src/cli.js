@@ -18,6 +18,7 @@ import { generateImage, jobRequest, imageLog, imageSpend, oldImageLog, IMAGE_MOD
 import { buyClip, clipJobRequest, clipRequest, formatClip, quoteClip } from './ai-clips.js';
 import { capture } from './capture.js';
 import { formatRecord, record } from './record.js';
+import { clean, formatClean } from './clean.js';
 import { connect } from './connect.js';
 import { CONNECTORS } from './connectors/index.js';
 import { hideSecrets } from './errors.js';
@@ -77,6 +78,8 @@ Make a video
   verify [project]      check the video: loudness, black frames, narration (--file). verify <video.mp4> checks
                         any video file, like check <video.mp4>
   export [project]      write a web player folder (--out dir, default: out/player/; --size, --no-watermark)
+  clean [project]       list and take out what build/ holds that the next run makes again, like the frames
+                        of clips and recordings, and say how much room that frees (--dry-run). The narration stays
 
 Edit your own recording
   cut <video>           write <name>.cut.md, the words of the recording with their times (--language, --force).
@@ -373,6 +376,11 @@ export async function main(argv) {
           ? await applyCut(pos[0], { out: textFlag(flags, 'out') ?? null, log })
           : await writeCut(pos[0], { language: textFlag(flags, 'language') ?? 'en', force: !!flags.force, log });
         print(formatCut(r), r);
+        return 0;
+      }
+      case 'clean': {
+        const r = clean(pos[0], { dryRun: !!flags['dry-run'] });
+        print(formatClean(r), r);
         return 0;
       }
       case 'export': {

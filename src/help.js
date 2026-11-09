@@ -85,6 +85,12 @@ export const COMMAND_HELP = {
     options: [['--out <dir>', 'where to write it'], SIZE, WATERMARK, LANG, JSON_OUT],
     example: 'export videos/how-dns-works',
   },
+  clean: {
+    usage: 'clean [project] [options]',
+    about: 'Lists and takes out what build/ holds that the next run makes again by itself, like the frames of clips and recordings, and says how much room that frees. The narration in build/voice/ stays.',
+    options: [['--dry-run', 'list it and take out nothing'], JSON_OUT],
+    example: 'clean videos/how-dns-works',
+  },
   package: {
     usage: 'package [project] --platform <name> [options]',
     about: 'Writes out/package/<platform>/ with everything for one platform: the sized video, its words, captions, cover, AI label and credits. It checks the exact setup first and reuses a render that is this exact video.',
