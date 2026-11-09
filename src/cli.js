@@ -79,8 +79,9 @@ Make a video
   export [project]      write a web player folder (--out dir, default: out/player/; --size, --no-watermark)
 
 Edit your own recording
-  cut <video>           write <name>.cut.md, the words of the recording with their times (--language, --force).
-                        Delete words and pauses in it, then cut <video> --apply writes <name>.cut.mp4 (--out)
+  cut <video>           write <name>.cut.md, the words of the recording with their times (--language, --force,
+                        --min-gap seconds shows shorter pauses and sounds). Delete words and pauses in it, then
+                        cut <video> --apply writes <name>.cut.mp4 (--out; --dry-run tries it and writes nothing)
 
 Post a video
   package [project]     write a folder for one platform: the sized video, its words, captions, cover, AI label
@@ -367,10 +368,11 @@ export async function main(argv) {
         return r.stage === 'failed' ? 1 : 0;
       }
       case 'cut': {
-        if (pos.length !== 1) throw new ProjectError('usage: explainroo cut <video> [--language en] [--force], then edit <name>.cut.md and run: explainroo cut <video> --apply [--out file]');
+        if (pos.length !== 1) throw new ProjectError('usage: explainroo cut <video> [--language en] [--min-gap seconds] [--force], then edit <name>.cut.md and run: explainroo cut <video> --apply [--dry-run] [--out file]');
+        if (flags['dry-run'] && !flags.apply) throw new ProjectError('--dry-run goes with --apply: explainroo cut <video> --apply --dry-run tries the cut list and writes no file');
         const r = flags.apply
-          ? await applyCut(pos[0], { out: textFlag(flags, 'out') ?? null, log })
-          : await writeCut(pos[0], { language: textFlag(flags, 'language') ?? 'en', force: !!flags.force, log });
+          ? await applyCut(pos[0], { out: textFlag(flags, 'out') ?? null, dryRun: !!flags['dry-run'], log })
+          : await writeCut(pos[0], { language: textFlag(flags, 'language') ?? 'en', force: !!flags.force, minGap: textFlag(flags, 'min-gap') ?? null, log });
         print(formatCut(r), r);
         return 0;
       }

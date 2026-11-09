@@ -32,15 +32,36 @@ export function cutFiles(video) {
   return { list: `${base}.cut.md`, out: `${base}.cut.mp4` };
 }
 
+// A word's end is moved on through the sound that follows it without a gap,
+// when that sound reaches this level in dBFS: the speech model often ends a word
+// before its last sound, like the "s" of "settings".
+export const TAIL_LEVEL = -35;
+// The most a word's end moves on that way, in seconds.
+const TAIL = 0.4;
+// A [sound] that starts this close to the end of a word may hold the end of it.
+const NEAR_WORD = 0.08;
+// Quiet this long, in 10 ms steps, is a gap that a word's end doesn't move past.
+const GAP_STEPS = 5;
+
+// The smallest pause and sound in a cut list. --min-gap sets a smaller pause,
+// and then a sound may be as short as the pause, with half of it not quiet.
+export function gapSizes(minGap = null) {
+  if (minGap === null || minGap === undefined) return { pause: PAUSE, sound: SOUND };
+  return { pause: minGap, sound: Math.min(SOUND, minGap) };
+}
+
 // The words, pauses and sounds of a recording in order. Each runs from its start
 // to the start of what comes next, so the short gap after a word goes with it,
 // and the first starts at 0. A pause is a quiet stretch of PAUSE seconds or
 // more. A sound is a stretch of SOUND seconds or more between words, at least
 // half of it not quiet, with no word in it: the speech model leaves out "um" and
-// coughs. The
-// model's word times can run into a quiet stretch, so a word that starts in one
-// starts at its end, and one that ends in one ends at its start.
-export function cutItems(words, duration, quiet = []) {
+// coughs. The model's word times can run into a quiet stretch, so a word that
+// starts in one starts at its end, and one that ends in one ends at its start.
+// With `levels`, the sound level in dBFS of each 10 ms, a word also ends after
+// the sound that joins it without a gap, 50 ms or more of quiet, up to the last
+// 10 ms at TAIL_LEVEL or louder. A sound whose first 10 ms at that level comes
+// within NEAR_WORD of a word's end has `holds`, the word it may hold the end of.
+export function cutItems(words, duration, quiet = [], { levels = null, pause = PAUSE, sound: soundSize = SOUND } = {}) {
   const list = words.map((w) => ({ text: w.text, start: Math.max(0, w.start), end: Math.max(0, w.start, w.end) }));
   for (const [s, e] of quiet) {
     for (const w of list) {
@@ -49,40 +70,69 @@ export function cutItems(words, duration, quiet = []) {
       if (w.end < w.start) w.end = w.start;
     }
   }
+  const limit = levels ? quietLevel(levels) : null;
+  if (levels) {
+    list.forEach((w, k) => {
+      const stop = Math.min(list[k + 1]?.start ?? duration, w.end + TAIL, quiet.find(([s]) => s >= w.end - 1e-6)?.[0] ?? duration);
+      let end = w.end;
+      let still = 0;
+      for (let i = Math.ceil(w.end * 100 - 1e-6); i < levels.length && (i + 1) / 100 <= stop + 1e-6; i++) {
+        still = levels[i] < limit ? still + 1 : 0;
+        if (still >= GAP_STEPS) break;
+        if (levels[i] >= TAIL_LEVEL) end = (i + 1) / 100;
+      }
+      w.end = Math.max(w.end, Math.min(end, stop));
+    });
+  }
   const items = [];
   // The pauses and sounds between `from` and `to`. What is left after a pause
   // and too short to be a sound goes with the pause.
   // How long the sound between `from` and `to` isn't quiet.
   const loud = (from, to) => quiet.reduce((n, [s, e]) => n - Math.max(0, Math.min(e, to) - Math.max(s, from)), to - from);
-  const sound = (from, to) => to - from >= SOUND && loud(from, to) >= SOUND / 2;
+  const sound = (from, to) => to - from >= soundSize - 1e-6 && loud(from, to) >= soundSize / 2 - 1e-6;
+  let word = null;
+  // Where a sound is first heard: its first 10 ms at TAIL_LEVEL, or without
+  // levels, after the quiet it starts with.
+  const heard = (start, end) => {
+    if (levels) {
+      for (let i = Math.floor(start * 100 + 1e-6); i < Math.min(levels.length, end * 100); i++) if (levels[i] >= TAIL_LEVEL) return i / 100;
+      return end;
+    }
+    return quiet.find(([s, e]) => s <= start + 1e-6 && e > start)?.[1] ?? start;
+  };
+  const addSound = (start, end) => {
+    const item = { type: 'sound', start, end };
+    if (word && heard(start, end) - word.end < NEAR_WORD - 1e-6) item.holds = bareWord(word.text);
+    items.push(item);
+  };
   const gap = (from, to) => {
     let at = from;
     for (const [s, e] of quiet) {
       const qs = Math.max(s, from);
       const qe = Math.min(e, to);
-      if (qe - qs < PAUSE) continue;
-      if (sound(at, qs)) items.push({ type: 'sound', start: at, end: qs });
+      if (qe - qs < pause - 1e-6) continue;
+      if (sound(at, qs)) addSound(at, qs);
       items.push({ type: 'pause', start: qs, end: qe });
       at = qe;
     }
-    if (sound(at, to)) items.push({ type: 'sound', start: at, end: to });
+    if (sound(at, to)) addSound(at, to);
     else if (items.at(-1)?.type === 'pause' && items.at(-1).end === at) items.at(-1).end = to;
   };
   let t = 0;
   for (const w of list) {
     gap(t, w.start);
     items.push({ type: 'word', ...w });
+    word = w;
     t = Math.max(t, w.end);
   }
   gap(t, duration);
   return items;
 }
 
-// The quiet stretches of a sound, 0.1 seconds or longer, as [start, end] in
-// seconds. Quiet is under a level between the noise floor and the speech, read in
-// 10 ms steps: the floor is the level that 10% of the steps stay under, and the
-// speech the level that 5% of them reach.
-export function quietStretches(samples, rate) {
+// The sound level of each 10 ms in dBFS, and the level under which it counts as
+// quiet: between the noise floor and the speech, where the floor is the level
+// that 10% of the steps stay under, and the speech the level that 5% of them reach.
+export function soundLevels(samples, rate) {
   const step = Math.round(rate / 100);
   const levels = [];
   for (let i = 0; i + step <= samples.length; i += step) {
@@ -90,11 +140,22 @@ export function quietStretches(samples, rate) {
     for (let k = i; k < i + step; k++) sum += samples[k] * samples[k];
     levels.push(10 * Math.log10(sum / step + 1e-12));
   }
-  if (!levels.length) return [];
+  return { levels, limit: quietLevel(levels) };
+}
+
+// The level under which sound counts as quiet, from the levels of its 10 ms steps.
+export function quietLevel(levels) {
+  if (!levels.length) return -Infinity;
   const sorted = [...levels].sort((a, b) => a - b);
   const floor = sorted[Math.floor(sorted.length * 0.1)];
   const loud = sorted[Math.floor(sorted.length * 0.95)];
-  const limit = Math.min(floor + Math.max(6, (loud - floor) * 0.25), loud - 20);
+  return Math.min(floor + Math.max(6, (loud - floor) * 0.25), loud - 20);
+}
+
+// The quiet stretches of a sound, 0.1 seconds or longer, as [start, end] in
+// seconds, read from its levels in 10 ms steps.
+export function quietStretches(samples, rate) {
+  const { levels, limit } = soundLevels(samples, rate);
   const out = [];
   for (let i = 0; i < levels.length; i++) {
     if (levels[i] >= limit) continue;
@@ -107,12 +168,12 @@ export function quietStretches(samples, rate) {
 }
 
 const time = (t) => t.toFixed(2);
-const gapToken = (p) => `[${p.type} ${time(p.end - p.start)}s @${time(p.start)}]`;
+const gapToken = (p) => `[${p.type} ${time(p.end - p.start)}s @${time(p.start)}${p.holds ? ` may hold the end of "${p.holds}"` : ''}]`;
 const sentenceEnd = /[.!?…。！？]["'’”)\]]*$/u;
 
 // The text of a cut list: a short guide in a comment, then one line a sentence.
 // A pause starts the line of the sentence after it.
-export function cutListText(name, items, { sha256, language }) {
+export function cutListText(name, items, { sha256, language, minGap = null }) {
   const lines = [];
   let line = [];
   for (const item of items) {
@@ -131,10 +192,12 @@ export function cutListText(name, items, { sha256, language }) {
     'Delete a word to cut it out of the video, or delete a whole line.',
     `A [pause 1.20s @14.02] is a silence. Delete it to shorten it to ${BREATH} s, or change`,
     'its seconds to keep that much of it.',
-    'A [sound 0.50s @7.02] is sound without words, like "um" or a cough. Delete it to cut it out.',
+    'A [sound 0.50s @7.02] is sound without words, like "um" or a cough. Delete it to cut it out,',
+    'or change its seconds to keep that much of it from the start. A sound that "may hold the',
+    'end" of a word can be the last sound of that word, so listen before you delete it.',
     'Leave the other words as they are. The cut only takes things out.',
     `Then run: explainroo cut ${name} --apply`,
-    `video: ${name}, sha256 ${sha256.slice(0, 16)}, language ${language}`,
+    `video: ${name}, sha256 ${sha256.slice(0, 16)}, language ${language}${minGap === null ? '' : `, min gap ${minGap}s`}`,
     '-->',
     '',
     ...lines,
@@ -143,7 +206,8 @@ export function cutListText(name, items, { sha256, language }) {
 }
 
 // What the cut list keeps: for each item, false for a word or sound that was
-// taken out, and for a pause the seconds it keeps. `name` names the file in messages.
+// taken out, and for a pause the seconds it keeps. A sound with fewer seconds
+// than it has keeps that many from its start. `name` names the file in messages.
 export function readCutList(text, items, name = 'the cut list') {
   const keep = items.map((item) => (item.type === 'pause' ? 0 : false));
   const byTime = new Map();
@@ -154,7 +218,7 @@ export function readCutList(text, items, name = 'the cut list') {
   });
   const used = new Set();
   let last = -1;
-  const token = /\[\s*(pause|sound)\s+([\d.]+)\s*s?\s*@\s*([\d.]+)\s*\]|(\S+?)@(\d+\.\d+)(?=\s|$)/gu;
+  const token = /\[\s*(pause|sound)\s+([\d.]+)\s*s?\s*@\s*([\d.]+)[^\]\n]*\]|(\S+?)@(\d+\.\d+)(?=\s|$)/gu;
   let comment = false;
   text.split(/\r?\n/).forEach((raw, n) => {
     let line = raw;
@@ -180,11 +244,12 @@ export function readCutList(text, items, name = 'the cut list') {
       if (i < last) throw new ProjectError(`${where}: "${whole}" comes before a word that stands earlier in the list. The cut keeps the order of the recording, so it can't move words.`);
       used.add(i);
       last = i;
-      if (type === 'pause') {
-        const s = Number(seconds);
-        if (!Number.isFinite(s)) throw new ProjectError(`${where}: "${whole}" needs the seconds to keep, like [pause 0.5s @${time(Number(gapAt))}]`);
-        keep[i] = Math.min(s, items[i].end - items[i].start);
-      } else keep[i] = true;
+      const s = Number(seconds);
+      if (type !== undefined && !Number.isFinite(s)) throw new ProjectError(`${where}: "${whole}" needs the seconds to keep, like [${type} 0.5s @${time(Number(gapAt))}]`);
+      if (type === 'pause') keep[i] = Math.min(s, items[i].end - items[i].start);
+      // A sound keeps all of it at the seconds cut wrote, which are rounded.
+      else if (type === 'sound') keep[i] = s >= Number(time(items[i].end - items[i].start)) ? true : s;
+      else keep[i] = true;
       return ' ';
     });
     const left = rest.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w));
@@ -221,6 +286,10 @@ export function keptParts(items, keep, duration) {
   items.forEach((item, i) => {
     const start = i === 0 ? 0 : item.start;
     const end = i + 1 < items.length ? items[i + 1].start : duration;
+    if (item.type === 'sound' && typeof keep[i] === 'number') {
+      if (keep[i] > 0) add(start, start + keep[i], join(i), fixed(start + keep[i]));
+      return;
+    }
     if (item.type !== 'pause') {
       if (keep[i]) add(start, end, join(i), join(i + 1));
       return;
@@ -368,47 +437,76 @@ async function videoInfo(file) {
 // The saved transcript of a video, by the hash of the file and the language.
 const transcriptFile = (sha256, language) => path.join(cacheRoot(), 'cut', `${sha256}-${language}.json`);
 
+// The words of a recording, its quiet stretches and the level of each 10 ms.
+// A transcript saved before the levels were kept gets them from the video.
 async function transcript(video, sha256, language, { log, transcribe }) {
   const file = transcriptFile(sha256, language);
-  if (fs.existsSync(file)) return JSON.parse(fs.readFileSync(file, 'utf8'));
+  const saved = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : null;
+  if (saved?.levels) return saved;
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-cut-'));
   try {
     const wav = path.join(dir, 'speech-16k.wav');
     await ffmpeg(['-loglevel', 'error', '-i', video, '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', wav]);
-    log(`listening to ${path.basename(video)}`);
     const { samples } = readWav(wav);
-    const heard = await transcribe(samples, { log, language });
-    const words = heard.words.filter((w) => w.text.trim()).map((w) => ({ text: w.text.trim().replace(/\s+/g, ' '), start: Math.round(w.start * 100) / 100, end: Math.round(w.end * 100) / 100 }));
-    const saved = { language, words, quiet: quietStretches(samples, 16000) };
+    let words = saved?.words;
+    if (!words) {
+      log(`listening to ${path.basename(video)}`);
+      const heard = await transcribe(samples, { log, language });
+      words = heard.words.filter((w) => w.text.trim()).map((w) => ({ text: w.text.trim().replace(/\s+/g, ' '), start: Math.round(w.start * 100) / 100, end: Math.round(w.end * 100) / 100 }));
+    }
+    const levels = soundLevels(samples, 16000).levels.map((l) => Math.round(l * 10) / 10);
+    const result = { language, words, quiet: quietStretches(samples, 16000), levels };
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, JSON.stringify(saved));
-    return saved;
+    fs.writeFileSync(file, JSON.stringify(result));
+    return result;
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 }
 
+// --min-gap: seconds, 0.1 or more.
+function checkMinGap(minGap) {
+  if (minGap === null || minGap === undefined) return null;
+  const n = Number(minGap);
+  if (!Number.isFinite(n) || n < 0.1) throw new ProjectError(`--min-gap needs seconds of 0.1 or more, like --min-gap 0.3. Without it a pause is ${PAUSE} s or more.`);
+  return Math.round(n * 100) / 100;
+}
+
 // cut <video>: writes the cut list. It won't write over one that is there,
-// because that holds the edits, unless `force`.
-export async function writeCut(file, { language = 'en', force = false, log = () => {}, transcribe = transcribeWords } = {}) {
+// because that holds the edits, unless `force`. `minGap` shows shorter pauses and
+// sounds.
+export async function writeCut(file, { language = 'en', force = false, minGap = null, log = () => {}, transcribe = transcribeWords } = {}) {
   checkLanguage(language);
+  minGap = checkMinGap(minGap);
   const video = path.resolve(file);
   const { duration } = await videoInfo(video);
   const { list } = cutFiles(video);
   const name = path.basename(video);
   if (fs.existsSync(list) && !force) throw new ProjectError(`${path.basename(list)} is already there and may hold your edits. Edit it and run "explainroo cut ${file} --apply", or add --force to write it again from the recording.`);
   const sha256 = sha256File(video);
-  const { words, quiet } = await transcript(video, sha256, language, { log, transcribe });
+  const { words, quiet, levels } = await transcript(video, sha256, language, { log, transcribe });
   if (!words.length) throw new ProjectError(`the speech model heard no words in ${name}, so there is nothing to cut by`);
-  const items = cutItems(words, duration, quiet);
-  fs.writeFileSync(list, cutListText(name, items, { sha256, language }));
+  const items = cutItems(words, duration, quiet, { levels, ...gapSizes(minGap) });
+  fs.writeFileSync(list, cutListText(name, items, { sha256, language, minGap }));
   const pauses = items.filter((i) => i.type === 'pause');
-  return { video, list, duration: Math.round(duration * 100) / 100, words: words.length, pauses: pauses.length, pauseSeconds: Math.round(pauses.reduce((n, p) => n + p.end - p.start, 0) * 10) / 10, sounds: items.filter((i) => i.type === 'sound').length };
+  const sounds = items.filter((i) => i.type === 'sound');
+  return { video, list, duration: Math.round(duration * 100) / 100, words: words.length, pauses: pauses.length, pauseSeconds: Math.round(pauses.reduce((n, p) => n + p.end - p.start, 0) * 10) / 10, sounds: sounds.length, soundsNearWords: sounds.filter((x) => x.holds).length, ...(minGap === null ? {} : { minGap }) };
+}
+
+// The item that a kept word's join cut next to, as it stands in the cut list:
+// a sound or word taken out right after the word, else right before it.
+function cutNextTo(items, keep, i) {
+  const gone = (k) => items[k] && items[k].type !== 'pause' && (keep[k] === false || typeof keep[k] === 'number');
+  const name = (k) => (items[k].type === 'word' ? `${items[k].text}@${time(items[k].start)}` : gapToken(items[k]));
+  if (gone(i + 1)) return { item: name(i + 1), side: 'after', type: items[i + 1].type };
+  if (gone(i - 1)) return { item: name(i - 1), side: 'before', type: items[i - 1].type };
+  return null;
 }
 
 // cut <video> --apply: the video as the cut list says, in <name>.cut.mp4 or
-// `out`. The sound gets the loudness and peak limit of a rendered video.
-export async function applyCut(file, { out = null, log = () => {}, transcribe = transcribeWords } = {}) {
+// `out`. The sound gets the loudness and peak limit of a rendered video. With
+// `dryRun` it only listens to the joined sound and writes no file.
+export async function applyCut(file, { out = null, dryRun = false, log = () => {}, transcribe = transcribeWords } = {}) {
   const video = path.resolve(file);
   const { duration, fps, fpsText, channels } = await videoInfo(video);
   const files = cutFiles(video);
@@ -416,17 +514,17 @@ export async function applyCut(file, { out = null, log = () => {}, transcribe = 
   const listName = path.basename(files.list);
   if (!fs.existsSync(files.list)) throw new ProjectError(`${listName} is not there yet. Run "explainroo cut ${file}" first, then edit it.`);
   const text = fs.readFileSync(files.list, 'utf8');
-  const head = /video: .*, sha256 ([0-9a-f]+), language ([\w-]+)/.exec(text);
+  const head = /video: .*, sha256 ([0-9a-f]+), language ([\w-]+)(?:, min gap ([\d.]+)s)?/.exec(text);
   if (!head) throw new ProjectError(`${listName} has lost the line with "video:" in its comment, so cut can't tell which recording it belongs to. Run "explainroo cut ${file} --force" to write it again.`);
   const sha256 = sha256File(video);
   if (!sha256.startsWith(head[1])) throw new ProjectError(`${listName} was made from another version of ${name}. Run "explainroo cut ${file} --force" to write it again from this one.`);
-  const { words, quiet } = await transcript(video, sha256, head[2], { log, transcribe });
-  const items = cutItems(words, duration, quiet);
+  const { words, quiet, levels } = await transcript(video, sha256, head[2], { log, transcribe });
+  const items = cutItems(words, duration, quiet, { levels, ...gapSizes(head[3] === undefined ? null : Number(head[3])) });
   const keep = readCutList(text, items, listName);
   const parts = keptParts(items, keep, duration);
   if (!parts.length) throw new ProjectError(`${listName} keeps nothing of ${name}`);
 
-  const target = path.resolve(out ?? files.out);
+  const target = dryRun ? null : path.resolve(out ?? files.out);
   if (target === video) throw new ProjectError('--out has to be another file than the video you cut');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-cut-'));
   try {
@@ -442,26 +540,46 @@ export async function applyCut(file, { out = null, log = () => {}, transcribe = 
     const joined = path.join(dir, 'joined.wav');
     const mixed = path.join(dir, 'mixed.wav');
     writeFloatWav(joined, joinedSound, channels);
-    log('leveling the sound');
-    await finishMix(joined, mixed, DEFAULTS.loudness, AUDIO_CODECS.mp4, { log });
-    log(`writing ${path.basename(target)}`);
-    const select = frames.map(([a, b]) => `between(n\\,${a}\\,${b - 1})`).join('+');
-    await ffmpeg(['-loglevel', 'error', '-i', video, '-i', mixed,
-      '-filter_complex', `[0:v]fps=${fpsText},select='${select}',setpts=N/(${fpsText})/TB[v]`,
-      '-map', '[v]', '-map', '1:a', '-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', fpsText,
-      ...AUDIO_CODECS.mp4, '-movflags', '+faststart', target]);
+    if (!dryRun) {
+      log('leveling the sound');
+      await finishMix(joined, mixed, DEFAULTS.loudness, AUDIO_CODECS.mp4, { log });
+      log(`writing ${path.basename(target)}`);
+      const select = frames.map(([a, b]) => `between(n\\,${a}\\,${b - 1})`).join('+');
+      await ffmpeg(['-loglevel', 'error', '-i', video, '-i', mixed,
+        '-filter_complex', `[0:v]fps=${fpsText},select='${select}',setpts=N/(${fpsText})/TB[v]`,
+        '-map', '[v]', '-map', '1:a', '-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', fpsText,
+        ...AUDIO_CODECS.mp4, '-movflags', '+faststart', target]);
+    }
     // Listen to the cut, for the words it should say.
     const wav = path.join(dir, 'cut-16k.wav');
-    await ffmpeg(['-loglevel', 'error', '-i', mixed, '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', wav]);
-    log(`listening to ${path.basename(target)}`);
+    await ffmpeg(['-loglevel', 'error', '-i', dryRun ? joined : mixed, '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', wav]);
+    log(dryRun ? 'listening to the cut' : `listening to ${path.basename(target)}`);
     const heard = await transcribe(readWav(wav).samples, { log, language: head[2] });
-    const said = items.filter((item, i) => item.type === 'word' && keep[i]).map((w) => w.text);
+    const keptWords = items.flatMap((item, i) => (item.type === 'word' && keep[i] ? [i] : []));
+    const speech = await compareCut(keptWords.map((i) => items[i].text), heard, kept, head[2]);
+    // A time in the cut, in the recording.
+    const original = (t) => {
+      let at = Math.round(t * RATE);
+      for (const [a, b] of sound) {
+        if (at < b - a) return Math.round(((a + at) / RATE) * 100) / 100;
+        at -= b - a;
+      }
+      return Math.round(duration * 100) / 100;
+    };
+    for (const m of speech.missing) {
+      const i = keptWords[m.index];
+      m.original = Math.round(items[i].start * 100) / 100;
+      const next = cutNextTo(items, keep, i);
+      if (next) m.next = next;
+      delete m.index;
+    }
+    for (const x of speech.extra) x.original = original(x.time);
     return {
-      video, list: files.list, out: target,
+      video, list: files.list, out: target, ...(dryRun ? { dryRun: true } : {}),
       before: Math.round(duration * 100) / 100, after: Math.round(kept * 100) / 100,
       joins: sound.length - 1,
       parts: sound.map(([a, b]) => [Math.round((a / RATE) * 1000) / 1000, Math.round((b / RATE) * 1000) / 1000]),
-      speech: await compareCut(said, heard, kept, head[2]),
+      speech,
     };
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
@@ -479,24 +597,31 @@ export async function compareCut(said, heard, duration, language) {
   return {
     matchRate: Math.round(forward.matchRate * 1000) / 1000,
     transcript: heard.text,
-    missing: forward.words.flatMap((w, k) => (w.matched ? [] : [{ word: bareWord(said[k]), time: at(w.start), ...(w.heard ? { heard: w.heard } : {}) }])),
+    missing: forward.words.flatMap((w, k) => (w.matched ? [] : [{ word: bareWord(said[k]), time: at(w.start), ...(w.heard ? { heard: w.heard } : {}), index: k }])),
     extra: back.words.flatMap((w, k) => (w.matched || !bareWord(heard.words[k].text) ? [] : [{ word: bareWord(heard.words[k].text), time: at(heard.words[k].start) }])),
   };
 }
 
 // What cut prints.
 export function formatCut(r) {
-  if (r.out) {
-    const list = (l) => l.slice(0, 8).map((w) => `"${w.word}" at ${w.time.toFixed(1)} s`).join(', ') + (l.length > 8 ? `, and ${l.length - 8} more` : '');
+  if (r.after !== undefined) {
+    const name = path.basename(r.video ?? 'the recording');
+    const where = (w) => `"${w.word}" at ${w.time.toFixed(1)} s${w.original === undefined ? '' : ` (${w.original.toFixed(2)} s in ${name})`}`;
+    const list = (l) => l.slice(0, 8).map(where).join(', ') + (l.length > 8 ? `, and ${l.length - 8} more` : '');
     const { missing, extra } = r.speech;
-    return [
-      r.out,
-      `${r.before.toFixed(1)} s cut to ${r.after.toFixed(1)} s, with ${r.joins} join${r.joins === 1 ? '' : 's'}. The speech model heard ${Math.round(r.speech.matchRate * 100)}% of the words the list keeps.`,
-      missing.length ? `It didn't hear ${list(missing)}. A join may cut into ${missing.length === 1 ? 'that word' : 'those words'}, so listen there.` : '',
-      extra.length ? `It heard ${list(extra)}, which the list doesn't keep. That may be left from a word you cut, so listen there. If it is, delete the word next to it too.` : '',
-      `Check the video with: explainroo verify ${path.basename(r.out)}`,
-    ].filter(Boolean).join('\n');
+    const plain = missing.filter((w) => !w.next);
+    const near = (x) => missing.some((w) => Math.abs(w.time - x.time) < 0.6);
+    const lines = [
+      r.dryRun ? `Dry run of ${path.basename(r.list)}, nothing written.` : r.out,
+      `${r.before.toFixed(1)} s ${r.dryRun ? 'would cut' : 'cut'} to ${r.after.toFixed(1)} s, with ${r.joins} join${r.joins === 1 ? '' : 's'}. The speech model heard ${Math.round(r.speech.matchRate * 100)}% of the words the list keeps.`,
+      ...missing.filter((w) => w.next).slice(0, 8).map((w) => `It didn't hear ${where(w)}. You deleted ${w.next.item} right ${w.next.side} it, and that may hold the ${w.next.side === 'after' ? 'end' : 'start'} of the word. Keep it${w.next.type === 'sound' ? ', or give it fewer seconds to keep part of it,' : ''} and try again.`),
+      plain.length ? `It didn't hear ${list(plain)}. A join may cut into ${plain.length === 1 ? 'that word' : 'those words'}, so listen there.` : '',
+      extra.length ? `It heard ${list(extra)}, which the list doesn't keep. ${extra.every(near) ? 'That may be what is left of a kept word it didn\'t hear, so listen there.' : 'That may be left from a word you cut, so listen there. If it is, delete the word next to it too.'}` : '',
+      r.dryRun ? `To write ${path.basename(cutFiles(r.video ?? 'video.mp4').out)}, run it again without --dry-run.` : `Check the video with: explainroo verify ${path.basename(r.out)}`,
+    ];
+    return lines.filter(Boolean).join('\n');
   }
   const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
-  return `${r.list}\n${plural(r.words, 'word')}, ${plural(r.pauses, 'pause')} (${r.pauseSeconds} s) and ${plural(r.sounds, 'sound')} without words in ${r.duration.toFixed(1)} s. Delete words, pauses and sounds in it, then run: explainroo cut ${path.basename(r.video)} --apply`;
+  const near = r.soundsNearWords ? `\n${r.soundsNearWords === 1 ? 'One sound starts' : `${r.soundsNearWords} sounds start`} right after a word and may hold the end of it, so listen before you delete ${r.soundsNearWords === 1 ? 'it' : 'them'}.` : '';
+  return `${r.list}\n${plural(r.words, 'word')}, ${plural(r.pauses, 'pause')} (${r.pauseSeconds} s) and ${plural(r.sounds, 'sound')} without words in ${r.duration.toFixed(1)} s. Delete words, pauses and sounds in it, then run: explainroo cut ${path.basename(r.video)} --apply${near}`;
 }
