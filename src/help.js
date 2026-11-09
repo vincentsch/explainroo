@@ -56,9 +56,9 @@ export const COMMAND_HELP = {
     example: 'sheet videos/how-dns-works --scene intro',
   },
   check: {
-    usage: 'check [project] [options]',
-    about: 'Finds layout, timing and pronunciation problems without rendering. It exits with 1 when it finds an error.',
-    options: [['--view-width <px>', 'also judge text at this player width'], ['--step <s>', 'seconds between the moments it looks at, 0.25 by default'], SIZE, PLATFORM, WATERMARK, LANG, JSON_OUT],
+    usage: 'check [project] [options], or check <video.mp4> [options]',
+    about: 'Finds layout, timing and pronunciation problems without rendering. It exits with 1 when it finds an error. With a video file in place of the project, it checks any video, made with explainroo or not: black, blank and frozen stretches, silence, loudness and true peak, and text too small to read in frames 1 second apart.',
+    options: [['--view-width <px>', 'also judge text at this player width'], ['--step <s>', 'seconds between the moments it looks at, 0.25 by default, and for a video file 1'], ['--script <file>', 'for a video file, compare the speech with this text'], ['--language <code>', 'for a video file, the language of the speech, en by default'], SIZE, PLATFORM, WATERMARK, LANG, JSON_OUT],
     example: 'check videos/how-dns-works --platform tiktok',
   },
   render: {
@@ -68,10 +68,16 @@ export const COMMAND_HELP = {
     example: 'render videos/how-dns-works',
   },
   verify: {
-    usage: 'verify [project] [options]',
-    about: 'Checks a finished video: loudness, true peak, black frames, silence and how much of the narration the speech model understands.',
-    options: [['--file <file>', 'another video file than out/video.mp4'], LANG, JSON_OUT],
+    usage: 'verify [project] [options], or verify <video.mp4> [options]',
+    about: 'Checks a finished video: loudness, true peak, black frames, silence and how much of the narration the speech model understands. With a video file in place of the project, it checks any video, like check <video.mp4>.',
+    options: [['--file <file>', 'another video file than out/video.mp4'], ['--script <file>', 'for a video file, compare the speech with this text'], ['--language <code>', 'for a video file, the language of the speech, en by default'], ['--view-width <px>', 'for a video file, also judge text at this player width'], LANG, JSON_OUT],
     example: 'verify videos/how-dns-works',
+  },
+  cut: {
+    usage: 'cut <video> [options], then cut <video> --apply',
+    about: 'Edits your own recording by its words. The speech model listens to it and writes <name>.cut.md next to it: one sentence a line, each word with its time, with [pause] for quiet stretches and [sound] for sound without words. Delete words, pauses and sounds in it. Then --apply writes <name>.cut.mp4, with the sound crossfaded at every join. See "explainroo docs cut".',
+    options: [['--apply', 'cut the video as the list says'], ['--out <file>', 'with --apply, where to write it'], ['--language <code>', 'the language of the speech, en by default'], ['--force', 'write the list again from the recording, over your edits'], JSON_OUT],
+    example: 'cut talk.mp4',
   },
   export: {
     usage: 'export [project] [options]',

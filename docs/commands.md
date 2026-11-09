@@ -15,9 +15,10 @@ an example.
 | `preview [project]` | a live preview in the browser that reloads when you save (`--size`, `--no-watermark`) |
 | `still [project] [times]` | PNG pictures at `12.5`, `scene`, `scene@2.4` or `scene@end` (`--size`, `--platform`, `--no-watermark`, `--transparent` keeps alpha). A still caught while the camera moves, or while something draws itself in, says so next to its file |
 | `sheet [project]` | one image with many frames of the video or of one scene (`--scene`, `--every`, `--size`, `--platform`, `--no-watermark`). A frame caught while the camera moves, or while something draws itself in, has "camera moving" or "drawing in" under it. `--times 3,12.5,intro@2` makes `out/sheet-times.jpg` of just those moments, in that order. It takes every time that `still` takes. With `--size tiktok` the file is `out/sheet-times-tiktok.jpg` |
-| `check [project]` | finds layout, timing and pronunciation problems (`--size`, `--platform`, `--no-watermark`) |
+| `check [project]` | finds layout, timing and pronunciation problems (`--size`, `--platform`, `--no-watermark`). `check <video.mp4>` checks any video file instead, see below |
 | `render [project]` | the video plus subtitle files, chapters and a cover (`--format mp4`, `gif`, `webm` or `mov`, `--transparent`, `--size`, `--platform`, `--no-watermark`, `--draft`, `--quality final` or `fast`, `--from`, `--to`, `--workers`, `--out`). Its last line says how long it took before the first frame, for the frames and after them, and a step that takes longer than 2 seconds says what it is |
-| `verify [project]` | checks the finished MP4, WebM or MOV: loudness, true peak, black frames, silence, clear voice (`--file` picks another file). The last line says "passed", "passed with N warnings" or "failed: N problems" |
+| `verify [project]` | checks the finished MP4, WebM or MOV: loudness, true peak, black frames, silence, clear voice (`--file` picks another file). The last line says "passed", "passed with N warnings" or "failed: N problems". `verify <video.mp4>` checks any video file, like `check <video.mp4>` |
+| `cut <video>` | writes `<name>.cut.md`, the words of your own recording with their times, to cut it by deleting words and pauses (`--language`, `--force`). `cut <video> --apply` writes `<name>.cut.mp4` (`--out`). See `explainroo docs cut` |
 | `export [project]` | writes a web player folder (`--out dir`, `--size`, `--no-watermark`, `--json`), by default `out/player/`, or `out/player-tiktok/` with `--size tiktok` |
 | `package [project]` | a folder to post on one platform (`--platform`, `--title`, `--description`, `--hashtags`, `--size` for x, `--workers`) |
 | `share [project]` | uploads a video to explainroo.com for a page link, once that service runs. Until then it sends nothing and says so (`--platform`, `--file`, `--title`, `--new`) |
@@ -66,3 +67,30 @@ narration gets no subtitle files.
 To put a diagram or a lower third over camera footage, render with an alpha
 channel: `render --transparent --format mov` or `--format webm`. Run
 `explainroo docs transparent-video` first.
+
+## Checking any video
+
+`check` and `verify` also take a video file instead of a project, made with
+explainroo or with any other tool: MP4, MOV, WebM, MKV or M4V. Both give the
+same report:
+
+- black frames, and blank frames of one other color
+- stretches where the picture stands still for 3 seconds or more
+- near silence of 2.5 seconds or more
+- loudness against -14 LUFS, and the true peak against -1 dBTP
+- text too small to read, from frames taken 1 second apart, or 120 frames for
+  a video longer than 2 minutes (`--step` sets the seconds)
+
+Text counts as too small by the rules that `check` uses for a project: under
+2.2% of the frame's short side, which is 24 pixels at 1080p. In a tall or square
+frame, text under 40 pixels at 1080p gets a hint, because people watch those on
+a phone. `--view-width 854` also flags text under 16 pixels in a player that
+wide. The text is found from the pixels, so its size is about right, not exact.
+
+With `--script script.txt` the speech model compares the speech with that text.
+A `script.md` of explainroo works too. Add `--language es` for another language.
+`--json` gives the whole report. The exit code is 1 when the video failed.
+
+```bash
+explainroo check talk.mp4 --script script.txt
+```

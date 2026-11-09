@@ -16,6 +16,8 @@ import { fileURLToPath } from 'node:url';
 import { GOOD_KEY, formFields, startFakeServices } from '../test/helpers/fake-services.js';
 import { BLOTATO_KEY, GOOGLE_CLIENT } from '../test/helpers/fake-publishing.js';
 import { serveDemoApp } from '../test/fixtures/demo-app/serve.js';
+import { cacheRoot } from '../src/models.js';
+import { sha256File } from '../src/history.js';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const GUARD = new URL('../test/helpers/guard.js', import.meta.url).href;
@@ -282,6 +284,46 @@ const steps = [
       expect(r.speech?.matchRate >= MIN_NARRATION_UNDERSTOOD, `only ${r.speech?.matchRate} of the narration was understood, and ${MIN_NARRATION_UNDERSTOOD} is the minimum`);
       expect(r.loudness.truePeak <= -1 && !r.issues.some((i) => /true peak/.test(i.message)), `the true peak is ${r.loudness.truePeak} dBTP`);
       return `${r.duration}s, ${r.video.width}x${r.video.height}, ${r.loudness.integrated} LUFS, ${r.loudness.truePeak} dBTP, ${Math.round(r.speech.matchRate * 100)}% of the narration understood`;
+    },
+  },
+  {
+    // check takes any video file without a project, here the one just rendered.
+    args: ['check', path.join('video', 'out', 'video.mp4'), '--json'],
+    check: (r) => {
+      expect(r.passed && r.text.frames > 0 && r.loudness.truePeak <= -1, `check of the video file: ${JSON.stringify(r.issues)}`);
+      return `${r.text.frames} frames read, ${r.issues.length} finding(s)`;
+    },
+  },
+  {
+    // cut writes the words of a recording with their times, and --apply cuts it
+    // as the edited list says.
+    args: ['cut', path.join('video', 'out', 'video.mp4'), '--json'],
+    check: (r) => {
+      expect(r.words > 3 && fs.statSync(r.list).size > 0, `cut wrote ${JSON.stringify(r)}`);
+      return `${r.words} words, ${r.pauses} pause(s)`;
+    },
+  },
+  {
+    // The first sentence goes, the first line after the guide in the comment.
+    setup: ({ temp }) => {
+      const list = path.join(temp, 'video', 'out', 'video.cut.md');
+      const lines = fs.readFileSync(list, 'utf8').split('\n');
+      const first = lines.findIndex((l, i) => i > lines.indexOf('-->') && /@\d+\.\d\d/.test(l));
+      fs.writeFileSync(list, lines.filter((_, i) => i !== first).join('\n'));
+    },
+    args: ['cut', path.join('video', 'out', 'video.mp4'), '--apply', '--json'],
+    check: (r) => {
+      expect(r.after < r.before && r.speech.matchRate >= MIN_NARRATION_UNDERSTOOD, `the cut: ${JSON.stringify(r)}`);
+      return `${r.before}s cut to ${r.after}s, ${Math.round(r.speech.matchRate * 100)}% of the kept words heard`;
+    },
+  },
+  {
+    args: ['verify', path.join('video', 'out', 'video.cut.mp4'), '--json'],
+    check: (r) => {
+      expect(r.passed && r.loudness.truePeak <= -1, `verify of the cut: ${JSON.stringify(r.issues)}`);
+      // The cut keeps its transcript in the cache, by the hash of the video.
+      fs.rmSync(path.join(cacheRoot(), 'cut', `${sha256File(r.file.replace(/\.cut\.mp4$/, '.mp4'))}-en.json`), { force: true });
+      return `${r.duration}s, ${r.loudness.integrated} LUFS, ${r.verdict}`;
     },
   },
   {

@@ -79,9 +79,17 @@ function nearTimes(nearly, sc) {
   });
 }
 
+// Each word the speech check could not confirm, with its time in the video.
+// `offset` is where the transcribed piece starts.
+export function missedWords(words, aligned, offset, scene) {
+  return aligned.words.flatMap((a, k) => (a.matched ? [] : [{
+    ...(scene ? { scene } : {}), word: bareWord(words[k].display ?? words[k].spoken), time: Math.round((offset + a.start) * 100) / 100, ...(a.heard ? { heard: a.heard } : {}),
+  }]));
+}
+
 // The near matches of a transcribed piece of the video, with their times in it.
 // `offset` is where the piece starts.
-function timedNear(words, aligned, offset) {
+export function timedNear(words, aligned, offset) {
   const times = aligned.words.filter((a) => a.nearly).map((a) => Math.round((offset + a.start) * 10) / 10);
   return nearList(words, aligned.words).map((n, i) => ({ ...n, time: times[i] }));
 }
@@ -348,17 +356,13 @@ export async function verify(project, { file = null, report: reportFile = null, 
   let blacks = [];
   if (alpha) issues.push({ level: 'hint', message: 'black-frame detection is skipped because the video has alpha' });
   else if (v) {
-    const { stderr: bd } = await ffmpeg(['-nostats', '-i', video, '-vf', 'blackdetect=d=0.4:pix_th=0.08', '-an', '-f', 'null', '-']);
-    blacks = [...bd.matchAll(/black_start:([\d.]+) black_end:([\d.]+)/g)].map((m) => [Number(m[1]), Number(m[2])]);
+    blacks = await blackSegments(video);
   }
   for (const [s, e] of blacks) issues.push({ level: 'warn', message: `black frames from ${s.toFixed(2)}s to ${e.toFixed(2)}s` });
 
   let silences = [];
   if (a) {
-    const { stderr: sd } = await ffmpeg(['-nostats', '-i', video, '-af', 'silencedetect=n=-50dB:d=2.5', '-vn', '-f', 'null', '-']);
-    const starts = [...sd.matchAll(/silence_start: ([\d.]+)/g)].map((m) => Number(m[1]));
-    const ends = [...sd.matchAll(/silence_end: ([\d.]+)/g)].map((m) => Number(m[1]));
-    silences = starts.map((s, i) => [s, ends[i] ?? duration]);
+    silences = await silentStretches(video, duration);
     for (const [s, e] of silences) issues.push({ level: 'hint', message: `near silence from ${s.toFixed(1)}s to ${e.toFixed(1)}s` });
   }
 
@@ -377,11 +381,6 @@ export async function verify(project, { file = null, report: reportFile = null, 
     const spokenWords = (sc) => sc.units.filter((u) => u.type === 'word').map((u) => ({ spoken: u.spoken, display: u.display }));
     const byId = new Map(project.script.scenes.map((sc) => [sc.id, sc]));
     const sameScenes = timeline && timeline.scenes.length === project.script.scenes.length && timeline.scenes.every((t) => byId.has(t.id)) && Math.abs(timeline.duration - duration) < 1;
-    // Each word the check could not confirm, with its time in the video. `offset`
-    // is where the transcribed piece starts.
-    const missedWords = (words, aligned, offset, scene) => aligned.words.flatMap((a, k) => (a.matched ? [] : [{
-      ...(scene ? { scene } : {}), word: bareWord(words[k].display ?? words[k].spoken), time: Math.round((offset + a.start) * 100) / 100, ...(a.heard ? { heard: a.heard } : {}),
-    }]));
     if (sameScenes) {
       const texts = [];
       const scenes = [];
@@ -448,6 +447,20 @@ export async function verify(project, { file = null, report: reportFile = null, 
     report: relativeFile(project.dir, target),
   });
   return report;
+}
+
+// The stretches of black frames of a video, as [start, end] in seconds.
+export async function blackSegments(video) {
+  const { stderr } = await ffmpeg(['-nostats', '-i', video, '-vf', 'blackdetect=d=0.4:pix_th=0.08', '-an', '-f', 'null', '-']);
+  return [...stderr.matchAll(/black_start:([\d.]+) black_end:([\d.]+)/g)].map((m) => [Number(m[1]), Number(m[2])]);
+}
+
+// The stretches of near silence of 2.5 seconds or more, as [start, end].
+export async function silentStretches(video, duration) {
+  const { stderr } = await ffmpeg(['-nostats', '-i', video, '-af', 'silencedetect=n=-50dB:d=2.5', '-vn', '-f', 'null', '-']);
+  const starts = [...stderr.matchAll(/silence_start: ([\d.]+)/g)].map((m) => Number(m[1]));
+  const ends = [...stderr.matchAll(/silence_end: ([\d.]+)/g)].map((m) => Number(m[1]));
+  return starts.map((s, i) => [s, ends[i] ?? duration]);
 }
 
 // "the speech check could not confirm 2 words in the final mix: "key" at 12.3 s

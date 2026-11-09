@@ -35,6 +35,8 @@ import { bareWord } from './align.js';
 import { formatShare, share } from './share.js';
 import { formatPublish, publish } from './publish.js';
 import { COMMAND_HELP, commandHelp } from './help.js';
+import { checkVideo, formatVideoCheck, isVideoFile, VIDEO_FILE } from './video-check.js';
+import { applyCut, formatCut, writeCut } from './cut.js';
 
 // Paid voices that can list what a key may use, each with its own flag.
 const LISTS_VOICES = CONNECTORS.filter((c) => c.voices);
@@ -60,13 +62,20 @@ Make a video
   sheet [project]       contact sheet of the whole video (--scene id, --every s, --size, --no-watermark).
                         --times 3,12.5,intro@2 makes out/sheet-times.jpg of just those moments, written
                         like the times of still
-  check [project]       find layout, timing and pronunciation problems (--view-width pixels, --size, --no-watermark)
+  check [project]       find layout, timing and pronunciation problems (--view-width pixels, --size, --no-watermark).
+                        check <video.mp4> checks any video file: blank, frozen and silent stretches, loudness,
+                        true peak and text too small to read (--script file compares the speech with it)
   render [project]      write the video with subtitles, chapters and a cover (--format mp4|gif|webm|mov,
                         --transparent, --size, --no-watermark, --draft, --quality final|fast, --from s, --to s,
                         --workers n, --out file). A final draws 6 samples per frame for motion blur, and
                         --quality fast makes a final without it
-  verify [project]      check the video: loudness, black frames, narration (--file)
+  verify [project]      check the video: loudness, black frames, narration (--file). verify <video.mp4> checks
+                        any video file, like check <video.mp4>
   export [project]      write a web player folder (--out dir, default: out/player/; --size, --no-watermark)
+
+Edit your own recording
+  cut <video>           write <name>.cut.md, the words of the recording with their times (--language, --force).
+                        Delete words and pauses in it, then cut <video> --apply writes <name>.cut.mp4 (--out)
 
 Post a video
   package [project]     write a folder for one platform: the sized video, its words, captions, cover, AI label
@@ -158,7 +167,7 @@ function parseArgs(argv) {
   }
   return { pos, flags };
 }
-const BOOL = new Set(['json', 'fresh', 'draft', 'estimate', 'transparent', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'mobile', 'list', 'sections', 'new', 'key-stdin', 'audio', 'dry-run', 'no-wait', 'no-watermark', 'yes', 'media-url-unchecked', ...LISTS_VOICES.map((c) => c.id)]);
+const BOOL = new Set(['json', 'fresh', 'draft', 'estimate', 'transparent', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'mobile', 'list', 'sections', 'new', 'key-stdin', 'audio', 'dry-run', 'no-wait', 'no-watermark', 'yes', 'media-url-unchecked', '...LISTS_VOICES.map((c) => c.id)', 'apply']);
 
 // publish refuses any other flag. A flag it ignored could change what a person
 // thinks is posted, like a time for a post, when it goes out right away.
@@ -289,6 +298,7 @@ export async function main(argv) {
         return 0;
       }
       case 'check': {
+        if (videoArg(pos[0])) return await videoFileCheck('check', pos, flags, log, print);
         const { project, platform } = runProject(pos[0], flags);
         const r = await check(project, { log, step: num(flags.step, 'step') ?? 0.25, viewWidth: num(flags['view-width'], 'view-width') ?? null, platform });
         const errors = r.issues.filter((i) => i.level === 'error').length;
@@ -329,6 +339,14 @@ export async function main(argv) {
         print(formatPublish(r), r);
         return r.stage === 'failed' ? 1 : 0;
       }
+      case 'cut': {
+        if (pos.length !== 1) throw new ProjectError('usage: explainroo cut <video> [--language en] [--force], then edit <name>.cut.md and run: explainroo cut <video> --apply [--out file]');
+        const r = flags.apply
+          ? await applyCut(pos[0], { out: textFlag(flags, 'out') ?? null, log })
+          : await writeCut(pos[0], { language: textFlag(flags, 'language') ?? 'en', force: !!flags.force, log });
+        print(formatCut(r), r);
+        return 0;
+      }
       case 'export': {
         const project = loadProject(pos[0], runOverrides(flags));
         const r = await exportPlayer(project, { log, out: textFlag(flags, 'out') });
@@ -336,6 +354,7 @@ export async function main(argv) {
         return 0;
       }
       case 'verify': {
+        if (videoArg(pos[0])) return await videoFileCheck('verify', pos, flags, log, print);
         const project = loadProject(pos[0], langOverride(flags));
         const r = await verify(project, { file: flags.file, log });
         print(formatVerify(r), r);
@@ -536,6 +555,27 @@ function lineLog(stream) {
 function textFlag(flags, name) {
   if (flags[name] === true) throw new ProjectError(`--${name} needs a value`);
   return flags[name];
+}
+
+// A video file named where check and verify take a project. One that isn't
+// there stops with its name, rather than with a project that isn't found.
+function videoArg(arg) {
+  if (typeof arg !== 'string' || !VIDEO_FILE.test(arg)) return false;
+  if (!isVideoFile(arg)) throw new ProjectError(`${arg} does not exist`);
+  return true;
+}
+
+// The flags check and verify take for a video file without a project.
+const VIDEO_FLAGS = new Set(['script', 'language', 'view-width', 'step', 'json', 'quiet']);
+
+// check and verify of any video file: the same findings, read from the file.
+async function videoFileCheck(cmd, pos, flags, log, print) {
+  if (pos.length > 1) throw new ProjectError(`usage: explainroo ${cmd} <video> [--script <file>] [--language en] [--view-width <px>] [--step <s>]`);
+  const other = Object.keys(flags).find((flag) => !VIDEO_FLAGS.has(flag));
+  if (other) throw new ProjectError(`--${other} works with a project. For a video file, ${cmd} takes ${[...VIDEO_FLAGS].filter((f) => f !== 'quiet').map((f) => `--${f}`).join(', ')}.`);
+  const r = await checkVideo(pos[0], { script: textFlag(flags, 'script') ?? null, language: textFlag(flags, 'language') ?? 'en', viewWidth: num(flags['view-width'], 'view-width') ?? null, step: num(flags.step, 'step') ?? null, log });
+  print(formatVideoCheck(r), r);
+  return r.passed ? 0 : 1;
 }
 
 // The settings of video.json that --size and --no-watermark replace for one run,
