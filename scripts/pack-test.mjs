@@ -596,6 +596,16 @@ const steps = [
     },
   },
   {
+    // What a step can use on a page, from the same browser.
+    args: () => ['record', 'tiny', '--inspect', `${demoApp.url}#/new-invoice`, '--viewport', '1280x720', '--json'],
+    env: ({ temp }) => ({ EXPLAINROO_CACHE: path.join(temp, 'record-cache') }),
+    check: (r) => {
+      const amount = r.elements?.find((e) => e.selector === '#amount');
+      expect(amount?.text === 'Amount' && r.elements.some((e) => e.text === 'Save invoice'), `record --inspect says ${JSON.stringify(r)}`);
+      return `${r.total} elements`;
+    },
+  },
+  {
     setup: ({ temp }) => fs.writeFileSync(path.join(temp, 'tiny/scenes.js'), "export default { hello(s) { const r = s.recording('ledger', { frame: 'browser', cues: { typed: 'TikTok' } }); s.text('Typed', { at: r.times.typed, y: s.safe.y + 60 }); } };\n"),
     args: ['still', 'tiny', 'hello@end', '--json'],
     check: (r) => {
