@@ -651,9 +651,11 @@ export class Short {
   // o: word (instead of STEP, like s.str('step')), label, x, y, size, color, at, out, sfx.
   step(n, total, o = {}) {
     const s = this.s;
-    const size = o.size ?? 34;
+    // With "defaults": "0.6", the label reads on a phone: verify reads 48px
+    // letters at about 41px, above the 40px that text on a phone needs.
+    const size = o.size ?? (s._v6 ? 48 : 34);
     const x = o.x ?? s.cx;
-    const y = o.y ?? s.safe.top + 40;
+    const y = o.y ?? s.safe.top + (s._v6 ? Math.max(40, size * 0.9) : 40);
     const color = o.color ?? KEY;
     const label = `${String(o.word ?? 'STEP').toUpperCase()} ${n}/${total}`;
     const at = o.at ?? -1;

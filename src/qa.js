@@ -15,6 +15,7 @@ import { buildChapters, chapterHints } from './chapters.js';
 import { coverTime } from './render.js';
 import { languageIssues, outputPath, ProjectError, scriptName } from './project.js';
 import { recordVersion, relativeFile, sha256File } from './history.js';
+import { allOf } from './services.js';
 import { decodedSound } from './server.js';
 
 // "2 words only nearly matched: Soundroo (heard "Soundru"), Codex (heard "codecs")",
@@ -57,6 +58,17 @@ export function nearlyText(nearly) {
     ...(groups.near.words ? [`${count(groups.near.words)} only nearly matched: ${list(groups.near)}`] : []),
     ...(groups.alike.words ? [`${count(groups.alike.words)} sounded the same: ${list(groups.alike)}`] : []),
   ].join('; ');
+}
+
+// Up to this many words that only nearly matched are listed. More are counted,
+// and --verbose lists them.
+export const NEARLY_LISTED = 2;
+
+// The near matches as check and verify print them: the list with its advice,
+// or, for more than NEARLY_LISTED words without `verbose`, how many there are.
+export function nearlyLine(nearly, verbose = false) {
+  if (verbose || nearly.length <= NEARLY_LISTED) return `${nearlyText(nearly)}. ${nearlyAdvice(nearly)}`;
+  return `${nearly.length} words only nearly matched. No fix is needed unless one of them sounds wrong when you listen, and --verbose lists them with their times`;
 }
 
 // What to do about words that only nearly matched or sounded the same: nothing,
@@ -207,7 +219,7 @@ export function speechFindings(project, voices, timeline = null) {
     if (v && v.duration) {
       const nearly = nearTimes(v.nearly ?? [], placed.get(sc.id));
       speech.push({ scene: sc.id, matchRate: v.matchRate, nearly });
-      if (nearly.length) issues.push({ level: 'hint', scene: sc.id, t: null, message: `understood ${Math.round(v.matchRate * 100)}%, ${nearlyText(nearly)}. ${nearlyAdvice(nearly)}` });
+      if (nearly.length) issues.push({ level: 'hint', scene: sc.id, t: null, key: 'nearly', words: nearly.length, message: `understood ${Math.round(v.matchRate * 100)}%, ${nearlyText(nearly)}. ${nearlyAdvice(nearly)}` });
     }
   }
   return { issues, speech };
@@ -251,6 +263,7 @@ export async function check(project, { log = () => {}, step = 0.25, viewWidth = 
     ...(await page.evaluate(([s, w]) => window.explainroo.check(s, w), [step, viewWidth])),
     ...(await page.evaluate(() => window.explainroo.soundFileIssues())),
     ...(cover ? [await page.evaluate(([T, auto]) => window.explainroo.coverIssue(T, auto), [cover.T, !!cover.auto])].filter(Boolean) : []),
+    ...(cover ? [await page.evaluate((T) => window.explainroo.coverCropIssue(T), cover.T)].filter(Boolean) : []),
     ...[await page.evaluate(() => window.explainroo.firstFrameIssue())].filter(Boolean),
   ]);
   issues.push(...pageIssues);
@@ -329,12 +342,22 @@ export async function sheet(project, { scene = null, every = null, times: moment
   return { file: path.join(project.dir, file), frames: times.length, ...(moments ? { times: times.map((T, i) => ({ time: Math.round(T * 100) / 100, label: labels[i] })) } : {}), marked };
 }
 
+// Why verify has no video: the file it looked for, and the videos that are in
+// out/, which render wrote with other flags.
+function missingVideo(project, video, named) {
+  if (named) return `${video} does not exist`;
+  const out = project.paths.out;
+  const there = fs.existsSync(out) ? fs.readdirSync(out).filter((f) => /\.(mp4|webm|mov)$/i.test(f) && fs.statSync(path.join(out, f)).isFile()).sort() : [];
+  if (!there.length) return `${video} does not exist. Run "explainroo render" first.`;
+  return `${video} does not exist, but ${path.relative(project.dir, out) || out}/ has ${allOf(there)}. verify looks for the file that render writes with the same --platform, --size and --no-watermark, so give it those flags, or name a file with --file.`;
+}
+
 // The report goes to `report`, and by default to out/report.json, also for a
 // file given with --file. `transcribe` replaces Whisper in tests.
 export async function verify(project, { file = null, report: reportFile = null, log = () => {}, transcribe = transcribeWords } = {}) {
-  const video = path.resolve(file || path.join(project.paths.out, 'video.mp4'));
+  const video = path.resolve(file || outputPath(project, 'video', '.mp4'));
   if (path.extname(video).toLowerCase() === '.gif') throw new Error('verify checks MP4, WebM and MOV files. Pass a video with --file.');
-  if (!fs.existsSync(video)) throw new Error(`${video} does not exist. Run "explainroo render" first.`);
+  if (!fs.existsSync(video)) throw new Error(missingVideo(project, video, !!file));
   const issues = [];
   const info = await probe(video);
   const v = info.streams.find((s) => s.codec_type === 'video');
@@ -482,8 +505,8 @@ export function verdictOf(issues) {
 
 // What verify prints: the file, the narration understood with the words that
 // only nearly matched, each finding, and the verdict last.
-export function formatVerify(r) {
-  const nearly = r.speech?.nearly?.length ? `, ${nearlyText(r.speech.nearly)}. ${nearlyAdvice(r.speech.nearly)}` : '';
+export function formatVerify(r, { verbose = false } = {}) {
+  const nearly = r.speech?.nearly?.length ? `, ${nearlyLine(r.speech.nearly, verbose)}` : '';
   return [
     `${r.file}: ${r.duration}s, ${r.video ? `${r.video.width}x${r.video.height}` : 'no video'}, loudness ${r.loudness?.integrated ?? '?'} LUFS, true peak ${dbtp(r.loudness?.truePeak)}`,
     r.speech ? `narration understood: ${Math.round(r.speech.matchRate * 100)}%${nearly}` : '',

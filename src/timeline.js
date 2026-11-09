@@ -58,6 +58,8 @@ export function buildTimeline(project, voices) {
       words: v.words.map((w, k) => ({ text: w.text, start: lead + w.start, end: lead + w.end, ...(shown[k]?.key && shown[k].display === w.text ? { key: true } : {}) })),
       marks: Object.fromEntries(Object.entries(v.marks || {}).map(([k, m]) => [k, lead + m])),
       attrs: a,
+      // The hold that targetSeconds adds at the end of the scene.
+      ...(target && dur > durs[index] ? { added: Math.round((dur - durs[index]) * 1000) / 1000 } : {}),
     });
     for (const c of v.chunks || []) voiceSpans.push({ start: start + lead + c.start, end: start + lead + c.end });
     t = start + dur;

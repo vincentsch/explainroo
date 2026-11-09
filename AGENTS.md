@@ -7,8 +7,9 @@ the full form when you run them. Running through `npx` does not install a
 permanent `explainroo` command on `PATH`.
 
 This page tells you, the coding agent, how to make a video with explainroo.
-The user usually gives you a topic, and maybe a length or a style. You write
-the words and the pictures. explainroo makes the video.
+The user gives you a topic, maybe with a length or a style. You write the words
+and the pictures, and explainroo makes the video. When the user wants their own
+recording edited instead, read `explainroo docs cut`.
 
 ## What explainroo does
 
@@ -24,8 +25,8 @@ https://www.explainroo.com/docs/.
 
 ## The hard limits
 
-Check these first. When a request runs into one, tell the user
-before you make anything.
+Check these first, and tell the user before you make anything that
+runs into one.
 
 **Languages.** Set `language` in `video.json` to one of these codes. No other
 language works yet, with any voice.
@@ -131,8 +132,6 @@ publishes nothing.
 
 ## From a brief to a finished video
 
-`explainroo docs making-a-video` has each step in full.
-
 1. **Learn the subject.** Read what the user points to, and write down the
    facts you will use. Never make up numbers, quotes or claims.
 2. **Create the project** with
@@ -156,7 +155,7 @@ publishes nothing.
    (`explainroo docs writing`).
 5. **Plan the pictures.** Decide what appears on each cue, what leaves and
    what stays in place (`explainroo docs pictures`).
-   `explainroo words videos/<name> <scene>` lists the spoken words with their
+   `explainroo words videos/<name>` lists each scene's spoken words and
    times.
 6. **Make images**, if the video needs them and the user agrees
    (`explainroo docs images`).
@@ -167,7 +166,7 @@ publishes nothing.
 9. **Look at the frames** with `explainroo still videos/<name>` and
    `explainroo sheet videos/<name>`. Open the images and judge them like a
    viewer would. For a platform's version, add `--platform tiktok` to
-   `check`, `still`, `sheet` and `render`.
+   `check`, `still`, `sheet`, `render` and `verify`.
 10. **Make the video** with `explainroo render videos/<name>`. Make a draft
     with `--draft` only when you will watch it, because `still` and `sheet`
     are the cheap way to see frames. Check the file with

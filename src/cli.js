@@ -8,7 +8,7 @@ import { normWord, ScriptError } from './script.js';
 import { prepare, makeState, outdatedLine, outdatedRenders, VERSION } from './pipeline.js';
 import { render } from './render.js';
 import { exportPlayer } from './export.js';
-import { check, formatVerify, stills, sheet, unconfirmedLine, unconfirmedWords, verify } from './qa.js';
+import { check, formatVerify, NEARLY_LISTED, stills, sheet, unconfirmedLine, unconfirmedWords, verify } from './qa.js';
 import { startServer, ROOT } from './server.js';
 import { VOICES, LANGUAGES, voiceLanguage, loadTTS, TTS_SAMPLE_RATE } from './models.js';
 import { phonemize, generateSpeech } from './phonemes.js';
@@ -82,8 +82,9 @@ Make a video
                         of clips and recordings, and say how much room that frees (--dry-run). The narration stays
 
 Edit your own recording
-  cut <video>           write <name>.cut.md, the words of the recording with their times (--language, --force).
-                        Delete words and pauses in it, then cut <video> --apply writes <name>.cut.mp4 (--out)
+  cut <video>           write <name>.cut.md, the words of the recording with their times (--language, --force,
+                        --min-gap seconds shows shorter pauses and sounds). Delete words and pauses in it, then
+                        cut <video> --apply writes <name>.cut.mp4 (--out; --dry-run tries it and writes nothing)
 
 Post a video
   package [project]     write a folder for one platform: the sized video, its words, captions, cover, AI label
@@ -159,7 +160,7 @@ Reference
 "explainroo <command> --help" prints the options of one command and an example.
 
 Options: --size <size> and --no-watermark override video.json for preview, still, sheet, check, render and export.
-         --platform <name> on check, still, sheet and render sets the size, its block and the watermark rule
+         --platform <name> on check, still, sheet, render and verify sets the size, its block and the watermark rule
          that "package --platform <name>" uses.
          Their outputs get a suffix, like video-tiktok.mp4, player-tiktok/ or video-no-watermark.mp4. --out still wins.
          "sizes" in video.json sets captions, cover, pace, watermark and targetSeconds for one size, see "docs sizes".
@@ -183,7 +184,7 @@ function parseArgs(argv) {
   }
   return { pos, flags };
 }
-const BOOL = new Set(['json', 'keep-profile', 'apply', 'avatars', 'draft', 'estimate', 'transparent', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'mobile', 'list', 'sections', 'new', 'key-stdin', 'audio', 'dry-run', 'no-wait', 'no-watermark', 'yes', 'media-url-unchecked', ...LISTS_VOICES.map((c) => c.id)]);
+const BOOL = new Set(['json', 'keep-profile', 'apply', 'avatars', 'draft', 'estimate', 'transparent', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'mobile', 'list', 'sections', 'new', 'key-stdin', 'audio', 'dry-run', 'no-wait', 'no-watermark', 'yes', 'media-url-unchecked', '...LISTS_VOICES.map((c) => c.id)', 'verbose']);
 
 // publish refuses any other flag. A flag it ignored could change what a person
 // thinks is posted, like a time for a post, when it goes out right away.
@@ -334,14 +335,16 @@ export async function main(argv) {
         const { project, platform } = runProject(pos[0], flags);
         const r = await check(project, { log, step: num(flags.step, 'step') ?? 0.25, viewWidth: num(flags['view-width'], 'view-width') ?? null, platform });
         const errors = r.issues.filter((i) => i.level === 'error').length;
+        const shown = shownIssues(r.issues, !!flags.verbose);
         const human = r.issues.length
-          ? r.issues.map((i) => `${i.level.toUpperCase().padEnd(5)} ${i.scene ?? ''}${i.t !== null && i.t !== undefined ? ' @' + i.t + 's' : ''}: ${i.message}`).join('\n') + `\n${errors} error(s), ${r.issues.length - errors} other finding(s) in ${r.scenes} scenes (${r.duration.toFixed(1)}s)`
+          ? shown.map((i) => `${i.level.toUpperCase().padEnd(5)} ${i.scene ?? ''}${i.t !== null && i.t !== undefined ? ' @' + i.t + 's' : ''}: ${i.message}`).join('\n') + `\n${errors} error(s), ${shown.length - errors} other finding(s) in ${r.scenes} scenes (${r.duration.toFixed(1)}s)`
           : `no problems found in ${r.scenes} scenes (${r.duration.toFixed(1)}s)`;
         print(human, r);
         return errors ? 1 : 0;
       }
       case 'render': {
-        const { project } = runProject(pos[0], flags, qualityOverride(flags));
+        const { project, watermarkNote } = runProject(pos[0], flags, qualityOverride(flags));
+        if (watermarkNote) notice(watermarkNote);
         const r = await render(project, { log, draft: !!flags.draft, transparent: !!flags.transparent, from: num(flags.from, 'from'), to: num(flags.to, 'to'), workers: num(flags.workers, 'workers'), scale: num(flags.scale, 'scale'), out: textFlag(flags, 'out'), format: textFlag(flags, 'format') });
         print([r.out, r.subtitles?.srt, r.subtitles?.vtt, r.chapters, r.cover].filter(Boolean).map((f) => path.relative(process.cwd(), f) || f).join('\n'), r);
         return 0;
@@ -372,10 +375,11 @@ export async function main(argv) {
         return r.stage === 'failed' ? 1 : 0;
       }
       case 'cut': {
-        if (pos.length !== 1) throw new ProjectError('usage: explainroo cut <video> [--language en] [--force], then edit <name>.cut.md and run: explainroo cut <video> --apply [--out file]');
+        if (pos.length !== 1) throw new ProjectError('usage: explainroo cut <video> [--language en] [--min-gap seconds] [--force], then edit <name>.cut.md and run: explainroo cut <video> --apply [--dry-run] [--out file]');
+        if (flags['dry-run'] && !flags.apply) throw new ProjectError('--dry-run goes with --apply: explainroo cut <video> --apply --dry-run tries the cut list and writes no file');
         const r = flags.apply
-          ? await applyCut(pos[0], { out: textFlag(flags, 'out') ?? null, log })
-          : await writeCut(pos[0], { language: textFlag(flags, 'language') ?? 'en', force: !!flags.force, log });
+          ? await applyCut(pos[0], { out: textFlag(flags, 'out') ?? null, dryRun: !!flags['dry-run'], log })
+          : await writeCut(pos[0], { language: textFlag(flags, 'language') ?? 'en', force: !!flags.force, minGap: textFlag(flags, 'min-gap') ?? null, log });
         print(formatCut(r), r);
         return 0;
       }
@@ -392,9 +396,9 @@ export async function main(argv) {
       }
       case 'verify': {
         if (videoArg(pos[0])) return await videoFileCheck('verify', pos, flags, log, print);
-        const project = loadProject(pos[0], langOverride(flags));
-        const r = await verify(project, { file: flags.file, log });
-        print(formatVerify(r), r);
+        const { project } = runProject(pos[0], flags);
+        const r = await verify(project, { file: textFlag(flags, 'file'), log });
+        print(formatVerify(r, { verbose: !!flags.verbose }), r);
         return r.issues.some((i) => i.level === 'error') ? 1 : 0;
       }
       case 'image': {
@@ -604,7 +608,20 @@ function videoArg(arg) {
 }
 
 // The flags check and verify take for a video file without a project.
-const VIDEO_FLAGS = new Set(['script', 'language', 'view-width', 'step', 'json', 'quiet']);
+const VIDEO_FLAGS = new Set(['script', 'language', 'view-width', 'step', 'verbose', 'json', 'quiet']);
+
+// What check prints of its findings: the hints about words that only nearly
+// matched, one per scene, become one line when there are more than
+// NEARLY_LISTED words, unless --verbose. Its JSON has them all.
+export function shownIssues(issues, verbose) {
+  const near = issues.filter((i) => i.key === 'nearly');
+  const words = near.reduce((n, i) => n + i.words, 0);
+  if (verbose || words <= NEARLY_LISTED) return issues;
+  const at = issues.indexOf(near[0]);
+  const rest = issues.filter((i) => i.key !== 'nearly');
+  rest.splice(at, 0, { level: 'hint', scene: null, t: null, message: `${words} words only nearly matched in the speech check of ${near.length === 1 ? `scene ${near[0].scene}` : `${near.length} scenes`}. No fix is needed unless one of them sounds wrong when you listen, and --verbose lists them with their times` });
+  return rest;
+}
 
 // check and verify of any video file: the same findings, read from the file.
 async function videoFileCheck(cmd, pos, flags, log, print) {
@@ -612,7 +629,7 @@ async function videoFileCheck(cmd, pos, flags, log, print) {
   const other = Object.keys(flags).find((flag) => !VIDEO_FLAGS.has(flag));
   if (other) throw new ProjectError(`--${other} works with a project. For a video file, ${cmd} takes ${[...VIDEO_FLAGS].filter((f) => f !== 'quiet').map((f) => `--${f}`).join(', ')}.`);
   const r = await checkVideo(pos[0], { script: textFlag(flags, 'script') ?? null, language: textFlag(flags, 'language') ?? 'en', viewWidth: num(flags['view-width'], 'view-width') ?? null, step: num(flags.step, 'step') ?? null, log });
-  print(formatVideoCheck(r), r);
+  print(formatVideoCheck(r, { verbose: !!flags.verbose }), r);
   return r.passed ? 0 : 1;
 }
 
@@ -635,7 +652,10 @@ function runProject(dir, flags, extra = {}) {
   if (!Object.hasOwn(PLATFORMS, platform)) throw new ProjectError(`there is no platform "${platform}". The platforms are ${allOf(Object.keys(PLATFORMS))}.`);
   if (flags['no-watermark']) throw new ProjectError(`--platform ${platform} sets the watermark the way its package does, so leave out --no-watermark`);
   const own = loadProject(dir, langOverride(flags));
-  return { project: loadProject(own.dir, { ...packageOverrides(own, platform, textFlag(flags, 'size')), ...langOverride(flags), ...extra }), platform };
+  const overrides = packageOverrides(own, platform, textFlag(flags, 'size'));
+  // The platform's rule takes away a watermark the project has, so say why.
+  const watermarkNote = overrides.watermark === false && own.config.watermark !== false ? `no watermark: ${PLATFORMS[platform].name} asks apps not to add one` : null;
+  return { project: loadProject(own.dir, { ...overrides, ...langOverride(flags), ...extra }), platform, watermarkNote };
 }
 
 // The spoken words of the scenes, or of one, with their times in seconds into the
@@ -726,7 +746,12 @@ function init(dir, flags, print) {
     startFromFormat(format, target, config);
     fs.writeFileSync(path.join(target, '.gitignore'), 'build/\nout/\n.env\nhistory/private/\nhistory/locks/\n');
     const english = language !== 'en' ? `\nThe example script is in English. Write script.md in ${language}, with the same scene names.` : '';
-    print(`created ${target} from the format ${format.name} ${format.version} by ${format.author}${english}\nscript.md and scenes.js hold its example, and scenes.js imports its helpers from format.js. Its guide is in format.md:\n\n${format.guide.trim()}\n\nnext: write the narration in script.md, then run "${selfCommand()} voice ${dir}". After that, change the scenes in scenes.js and run "${selfCommand()} check ${dir}".`,
+    const example = base.title ? `, a video about "${base.title}". Replace it with your own topic` : '. Replace it with your own topic';
+    // A tall format without a platform's size fits no app exactly.
+    const sized = flags.size === undefined && size === 'vertical'
+      ? `\nThe size is "vertical", a tall frame for no app in particular. For one app, set its size, so pictures and captions keep clear of its buttons: ${selfCommand()} set ${dir} size tiktok (or shorts, or reels).`
+      : '';
+    print(`created ${target} from the format ${format.name} ${format.version} by ${format.author}${english}${sized}\nscript.md and scenes.js hold the format's example${example}, and keep the helpers that scenes.js imports from format.js. Its guide is in format.md:\n\n${format.guide.trim()}\n\nnext: write the narration in script.md, then run "${selfCommand()} voice ${dir}". After that, change the scenes in scenes.js and run "${selfCommand()} check ${dir}".`,
       { dir: target, format: formatEntry(format), guide: format.guide });
     return 0;
   }

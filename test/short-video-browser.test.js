@@ -131,3 +131,23 @@ test('the exported player brings the kit along', { skip, timeout: 120000 }, asyn
   assert.ok(fs.existsSync(path.join(out, 'engine/short.js')));
   assert.ok(fs.readFileSync(path.join(out, 'engine/runtime.js'), 'utf8').includes("from './short.js'"));
 });
+
+// The size of the step label in the frame, from what check says of it in a
+// player 200 pixels wide.
+async function stepLabelSize(t, defaults) {
+  const dir = project(t, `export default {
+  hook(s) { s.short.backdrop({ color: '#10304a', pattern: 'none' }); s.short.step(1, 2, { at: -1 }); },
+  tip(s) { s.short.backdrop({ color: '#10304a', pattern: 'none' }); },
+};`);
+  const file = path.join(dir, 'video.json');
+  fs.writeFileSync(file, JSON.stringify({ ...JSON.parse(fs.readFileSync(file, 'utf8')), captions: false, ...(defaults ? { defaults } : {}) }));
+  const { issues } = await json(['check', dir, '--view-width', '200']);
+  const found = issues.find((i) => i.message.startsWith('"STEP 1/2" is '));
+  assert.ok(found, JSON.stringify(issues));
+  return Math.round((Number(/is ([\d.]+)px at a 200px player/.exec(found.message)[1]) * 1080) / 200);
+}
+
+test('with "defaults": "0.6" the step label is 48px, which verify reads at 40px or more, and older projects keep 34px', { skip, timeout: 120000 }, async (t) => {
+  assert.equal(await stepLabelSize(t, '0.6'), 48);
+  assert.equal(await stepLabelSize(t, null), 34);
+});

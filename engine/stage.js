@@ -828,6 +828,9 @@ export class Stage {
     }
     const ctx = this.ctx;
     this._camMoved = cur.zoom !== 1 || cur.x !== this.cx || cur.y !== this.cy || Boolean(cur.rotate) || Boolean(o.shake);
+    // check undoes the camera on a box outside the content area, to tell
+    // whether the zoom is what put it there.
+    if (this.engine.drawLog) this.engine.sceneCamera = { ...cur, cx: this.cx, cy: this.cy };
     ctx.translate(this.cx, this.cy);
     if (cur.rotate) ctx.rotate((cur.rotate * Math.PI) / 180);
     ctx.scale(cur.zoom, cur.zoom);
@@ -1782,6 +1785,11 @@ export class Stage {
     const life = this._life(o, 'image', { label: src });
     const g = geom(x, y, fw, fh);
     if (!life) return g;
+    // check's hint about the cover: how much of an image fit: 'cover' cuts off.
+    if (this.engine.cropLog && typeof source !== 'function' && !paint && (o.fit ?? 'cover') === 'cover') {
+      const cut = w / h > ratio ? { sides: 'top and bottom', part: 1 - (h * ratio) / w } : { sides: 'left and right', part: 1 - w / (h * ratio) };
+      if (cut.part > 0.04) this.engine.cropLog.push({ src: String(src), id: o.id ?? null, ...cut });
+    }
     this._push(x, y, life, o);
     // The line on the outline: a rough card's, a window's, or o.border on a bare image.
     const border = frame === 'card' && th.stroke.rough ? th.stroke.width * 0.8 : bar ? 2 : frame === 'none' && o.border ? th.stroke.width : 0;

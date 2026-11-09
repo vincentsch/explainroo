@@ -125,6 +125,10 @@ It also finds:
 - a scene that shows only its background for more than 1.5 seconds, at the
   start or later, when everything has left and nothing new has come yet
 - a cover with only text on an empty background
+- a cover that shows an image cut by `fit: 'cover'`, the default when an image
+  has both `w` and `h`. It fills the box and cuts off what doesn't fit, which
+  can cut words or a face in the thumbnail. Give the box the image's shape, or
+  use `fit: 'contain'`
 - a first frame that shows only the background, or only elements still on
   their way in. Buffer, LinkedIn and other services use the first frame as
   the thumbnail, and a blank one looks like a broken video. The hint names an

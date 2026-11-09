@@ -25,8 +25,13 @@ you want them in the 16:9 video too.
 ## The rules of a short
 
 A stranger scrolls past in the first second, so a short follows a few rules.
-`explainroo init videos/<name> --format vertical-short` starts from a short
-that keeps them, with helpers for each one.
+`explainroo init videos/<name> --format vertical-short --size tiktok` starts
+from a short that keeps them, with helpers for each one. Without `--size` it
+stays `vertical`, a tall frame for no app in particular, so give it the size of
+the app it goes on: `tiktok`, `shorts` or `reels`. With that size in
+`video.json`, `check`, `render` and `verify` use the app's content area without
+`--platform`. Add `--platform tiktok` to get exactly what the TikTok package
+gets, which is the video without the watermark.
 
 - **The hook is in the first second.** Give the first scene `{lead=0}`, so
   the voice starts at once, and show the title and the subject on the first
@@ -203,8 +208,9 @@ another shape. `overlap: true` says that is meant.
 
 "STEP 2/4" with dots at the top of the content area, outside the camera. Step
 `n` fills at `at`. `word` replaces "STEP", like `word: s.str('step')` in a video
-in several languages. Also `label`, `x`, `y`, `size`, `color`, `at`, `out`,
-`sfx`.
+in several languages. Also `label`, `x`, `y`, `size` (48 with
+`"defaults": "0.6"`, which reads well on a phone, and 34 before), `color`,
+`at`, `out`, `sfx`.
 
 ### `progress(options)`
 
@@ -223,7 +229,9 @@ marks. `tone` (`'good'`, `'bad'`, `'info'` or `'dark'`), `icon`, `title`,
 Camera keys to spread into `s.camera([...])`. `punch` zooms fast onto `x`, `y`
 at `at`, holds for `hold` seconds and goes back, unless `back: false`. Also
 `zoom` (1.35) and `dur`. `drift` pushes in slowly over the rest of the scene:
-`from`, `x`, `y`, `zoom` (1.06) and `dur`.
+`from`, `x`, `y`, `zoom` (1.06) and `dur`. A zoom makes everything bigger
+around the point it zooms onto, so text near the edge of `s.safe` can leave it.
+When the zoom is what puts text outside the content area, `check` says so.
 
 ### `jolt(at, options)`, `flash(at, options)` and `interrupt(at, options)`
 

@@ -43,7 +43,9 @@ here serves that second and keeps the picture moving after it.
   apps cover part of it with their buttons, so nothing there must be read.
 - `fact(s, '*20%*', { at })` puts one fact on a tilted sticker.
 - `punch(s, at)` gives camera keys for a fast zoom. Use it as
-  `s.camera(punch(s, '#back'))`, first in the scene.
+  `s.camera(punch(s, '#back'))`, first in the scene. Then `fact()` and
+  `beats()` keep their words in the content area at that zoom: a sticker moves
+  in and a long label gets smaller.
 - `backdrop(s, { glow, pattern })` draws the background of a scene.
 - `payoff(s, title, lines, { icon })` is the closing card, with `icon` as
   its echo.

@@ -16,7 +16,7 @@ const skip = !chrome && 'no browser here';
 
 // A project whose scenes are { id: body }, each two seconds long unless `dur` says
 // otherwise, with `words` spoken in a scene when given.
-function project(t, settings, scenes, { words = {}, dur = 2 } = {}) {
+function project(t, settings, scenes, { words = {}, dur = 2, added = {} } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-findings-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ theme: 'clean', music: false, sfx: false, captions: false, ...settings }));
@@ -26,7 +26,7 @@ function project(t, settings, scenes, { words = {}, dur = 2 } = {}) {
   let start = 0;
   const list = Object.keys(scenes).map((id, index) => {
     const scene = { id, index, start, dur, marks: {}, voice: null, lead: 0, transition: 'none',
-      words: (words[id] ?? []).map((text, i) => ({ text, start: 0.2 + i * 0.2, end: 0.35 + i * 0.2 })) };
+      words: (words[id] ?? []).map((text, i) => ({ text, start: 0.2 + i * 0.2, end: 0.35 + i * 0.2 })), ...(added[id] ? { added: added[id] } : {}) };
     start += dur;
     return scene;
   });
@@ -397,4 +397,51 @@ test('check gives a hint for text below 40 pixels in a tall or square frame, whi
   assert.match(hints[0].message, /^"Cold coils" shows 36px tall at \d\.\ds, small on a phone, where labels read best at 40 to 56px; make it bigger, or give the picture more of the frame$/);
   const wide = await check(project(t, { camera: 'still' }, scenes));
   assert.deepEqual(wide.filter((i) => /small on a phone/.test(i.message)), []);
+});
+
+test('when the scene\'s camera zoom pushes text out of the TikTok content area, check names the zoom', { skip }, async (t) => {
+  const issues = await check(project(t, { size: 'tiktok', captions: false }, {
+    zoomed: `s.camera([{ at: 0.5, zoom: 1.6, dur: 0.2 }]);
+    s.text('Wide words here', { x: s.cx, y: s.cy, size: 60, at: 0 });`,
+    plain: `s.text('Out anyway', { x: 900, y: s.cy, size: 40, at: 0 });`,
+  }));
+  const said = (scene) => issues.filter((i) => i.scene === scene && /content area/.test(i.message)).map((i) => i.message);
+  assert.equal(said('zoomed').length, 1, JSON.stringify(issues));
+  assert.match(said('zoomed')[0], /^"Wide words here" is outside the tiktok content area .*\. The camera's zoom of 1\.6x pushes it there, and without the zoom it fits: zoom less, or move it toward the point the camera zooms onto$/);
+  assert.equal(said('plain').length, 1, JSON.stringify(issues));
+  assert.doesNotMatch(said('plain')[0], /camera/);
+});
+
+test('the hint that a short\'s picture doesn\'t change names the next two words in that stretch, with their times', { skip }, async (t) => {
+  const issues = await check(project(t, { size: 'tiktok', captions: false }, {
+    still: `s.text('Purring', { x: s.cx, y: s.cy, size: 80, at: 0 });`,
+  }, { dur: 4, words: { still: ['Cats', 'purr,', 'and', 'purr.'] } }));
+  const hint = issues.find((i) => i.message.startsWith('the picture doesn\'t change'));
+  assert.ok(hint, JSON.stringify(issues));
+  assert.match(hint.message, /show something new on a word in that stretch, like "Cats" at 0\.2s or "purr#1" at 0\.4s, or move the camera with s\.short\.punch$/);
+});
+
+test('the hold that targetSeconds adds at the end of a scene doesn\'t count as a stretch with no new element', { skip }, async (t) => {
+  const scenes = { long: `s.title('One', { at: 0 }); s.text('Two', { y: 700, at: 1 });` };
+  const plain = await check(project(t, { size: '16:9' }, scenes, { dur: 10 }));
+  assert.ok(plain.some((i) => i.message.startsWith('no new element for 9.0s (from 1.0s)')), JSON.stringify(plain));
+  const held = await check(project(t, { size: '16:9' }, scenes, { dur: 10, added: { long: 6 } }));
+  assert.ok(!held.some((i) => i.message.startsWith('no new element')), JSON.stringify(held));
+});
+
+test('check gives a hint when the cover shows an image that fit: \'cover\' cuts at its edges', { skip }, async (t) => {
+  const { execFileSync } = await import('node:child_process');
+  const { ffmpegPath } = await import('../src/ffmpeg.js');
+  const cropped = (fit) => {
+    const p = project(t, { size: '16:9', defaults: '0.6' }, {
+      intro: `s.title('Our app', { y: 200, at: -1 }); s.image('assets/wide.png', { w: 500, h: 500, y: 650, at: -1${fit ? `, fit: '${fit}'` : ''} });`,
+    });
+    fs.mkdirSync(path.join(p.project.dir, 'assets'), { recursive: true });
+    execFileSync(ffmpegPath(), ['-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc=s=800x200:d=1', '-frames:v', '1', path.join(p.project.dir, 'assets', 'wide.png')]);
+    return withEngine(p.project, p.timeline, { scale: 0.5 }, (page) => page.evaluate(() => window.explainroo.coverCropIssue(null)));
+  };
+  const hint = await cropped(null);
+  assert.equal(hint.level, 'hint');
+  assert.match(hint.message, /^the cover at intro@\d\.\d shows the image assets\/wide\.png with fit: 'cover', which cuts 75% of it off at the left and right; look at the cover for words or faces cut at its edge, and give the image the shape of the picture or fit: 'contain' if they are$/);
+  assert.equal(await cropped('contain'), null);
 });

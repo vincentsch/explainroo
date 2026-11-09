@@ -123,6 +123,7 @@ export class Engine {
     this.sfxMode = config.sfx;
     this.recorder = null;
     this.textLog = null;
+    this.cropLog = null;
     this.drawLog = null;
     this.errors = [];
     this.canvas = canvas;
@@ -721,6 +722,35 @@ export class Engine {
     return { level: 'hint', scene: sc.id, t: 0, message: `the first frame of the video ${what}, and Buffer, LinkedIn and other services use it as the thumbnail; ${advice}` };
   }
 
+  // A hint when the cover shows an image that fit: 'cover' cuts at its edges,
+  // which can cut off words or a face in the thumbnail. `T` is the cover's
+  // time, or null for the time the page works out.
+  coverCropIssue(T = null) {
+    const at = T === null ? this.coverMoment() : T;
+    const i = this.sceneAt(at);
+    const sc = this.timeline.scenes[i];
+    const scratch = (this._framedCanvas ??= Object.assign(document.createElement('canvas'), { width: 16, height: 16 }));
+    const saved = { textLog: this.textLog, drawLog: this.drawLog, recorder: this.recorder, cropLog: this.cropLog };
+    this.textLog = [];
+    this.drawLog = drawLog();
+    this.recorder = null;
+    this.cropLog = [];
+    let crops;
+    try {
+      this.drawScene(scratch.getContext('2d'), i, at - sc.start);
+      crops = this.cropLog;
+    } catch {
+      return null;
+    } finally {
+      Object.assign(this, saved);
+    }
+    const most = crops.sort((a, b) => b.part - a.part)[0];
+    if (!most) return null;
+    const label = `${sc.id}@${(at - sc.start).toFixed(1)}`;
+    const name = most.id === null ? `the image ${most.src}` : `the image "${most.id}" (${most.src})`;
+    return { level: 'hint', scene: sc.id, t: Math.round((at - sc.start) * 100) / 100, message: `the cover at ${label} shows ${name} with fit: 'cover', which cuts ${Math.round(most.part * 100)}% of it off at the ${most.sides}; look at the cover for words or faces cut at its edge, and give the image the shape of the picture or fit: 'contain' if they are` };
+  }
+
   // A hint when the cover shows only text on an empty background, or when the
   // frame "auto" picked has no picture, which means no frame of the first scene
   // has one. `T` is the cover's time, or null for the time the page works out,
@@ -781,7 +811,8 @@ export class Engine {
       if (gap <= SHORT_CHANGE + 0.05) continue;
       const sc = scenes.findLast((x) => x.start <= points[i - 1] + 1e-6) ?? scenes[0];
       const from = points[i - 1] - sc.start;
-      add('hint', sc.id, from, `the picture doesn't change for ${gap.toFixed(1)}s, from ${from.toFixed(1)}s, and a short changes it at least every ${SHORT_CHANGE} seconds; show something new on a word in that stretch, or move the camera with s.short.punch`);
+      const words = stretchWords(scenes, points[i - 1], points[i], sc);
+      add('hint', sc.id, from, `the picture doesn't change for ${gap.toFixed(1)}s, from ${from.toFixed(1)}s, and a short changes it at least every ${SHORT_CHANGE} seconds; show something new on a word in that stretch${words ? `, like ${words}` : ''}, or move the camera with s.short.punch`);
     }
   }
 
@@ -890,6 +921,7 @@ export class Engine {
         this.recorder = { push: (e) => entrances.push(e) };
         this.textLog = [];
         this.drawLog = drawLog();
+        this.sceneCamera = null;
         try {
           this.drawScene(ctx, sc.index, t);
         } catch (e) {
@@ -912,7 +944,7 @@ export class Engine {
           } else if (this.appArea) {
             // On Shorts, TikTok and Reels: outside the content area, s.safe.
             const message = framed ? contentMessage(`"${label}"`, tx, areas, { verb: 'is', band: inBand(tx, this.captionBand) }) : null;
-            if (message) once(`app:${sc.id}:${tx.text}`, () => add('warn', sc.id, t, message));
+            if (message) once(`app:${sc.id}:${tx.text}`, () => add('warn', sc.id, t, message + zoomCause(tx, this.sceneCamera, areas, inBand(tx, this.captionBand))));
           } else if (framed && (tx.x0 < margin || tx.y0 < margin || tx.x1 > W - margin || tx.y1 > H - margin)) {
             once(`edge:${sc.id}:${tx.text}`, () => add('warn', sc.id, t, `"${label}" sits closer than ${margin}px to the edge`));
           }
@@ -1137,7 +1169,9 @@ export class Engine {
       } else if (!times.length) {
         add('warn', sc.id, null, 'nothing enters in this scene; add at least one element with an "at" time');
       } else {
-        const marks = [0, ...times.filter((x) => x >= 0 && x <= sc.dur), sc.dur];
+        // The hold that targetSeconds adds may stay still.
+        const end = sc.dur - (sc.added ?? 0);
+        const marks = [0, ...times.filter((x) => x >= 0 && x <= end), end];
         for (let i = 1; i < marks.length; i++) {
           const gap = marks[i] - marks[i - 1];
           // The empty start already has its hint.
@@ -1225,6 +1259,51 @@ function contentMessage(name, b, { app, safe, format }, { verb = 'reaches', band
   const area = `the ${format} content area (${R(safe.left)},${R(safe.top)} to ${R(safe.right)},${R(safe.bottom)}, ${R(safe.right - safe.left)}x${R(safe.bottom - safe.top)})`;
   if (out(app)) return `${name} ${verb} outside ${area}, where the app's buttons and post text can cover it`;
   return `${name} ${verb} outside ${area}, ${b.y0 < safe.top - 2 ? 'in the strip at the top that the watermark takes' : 'right next to the captions'}`;
+}
+
+// Why a box is outside the content area when the scene's own camera zooms in
+// and it fits there without the zoom: the text that check adds, or ''.
+function zoomCause(b, cam, areas, band) {
+  if (!cam || cam.zoom <= 1.001 || cam.rotate) return '';
+  const back = (x, y) => [cam.x + (x - cam.cx) / cam.zoom, cam.y + (y - cam.cy) / cam.zoom];
+  const [x0, y0] = back(b.x0, b.y0);
+  const [x1, y1] = back(b.x1, b.y1);
+  if (contentMessage('', { x0, y0, x1, y1 }, areas, { band })) return '';
+  const zoom = Math.round(cam.zoom * 100) / 100;
+  return `. The camera's zoom of ${zoom}x pushes it there, and without the zoom it fits: zoom less, or move it toward the point the camera zooms onto`;
+}
+
+// The first two words spoken between `from` and `to` in the video, as cues
+// with their times in their scene, like "twitch" at 1.6s. A word said more than
+// once in its scene is named with its number, like "fills#2". A word of
+// another scene than `sc` names its scene.
+function stretchWords(scenes, from, to, sc) {
+  const found = [];
+  for (const scene of scenes) {
+    const count = new Map();
+    for (const w of scene.words ?? []) {
+      const key = bareCue(w.text);
+      count.set(key, (count.get(key) ?? 0) + 1);
+    }
+    const seen = new Map();
+    for (const w of scene.words ?? []) {
+      const key = bareCue(w.text);
+      seen.set(key, (seen.get(key) ?? 0) + 1);
+      const at = scene.start + w.start;
+      if (!key || at <= from + 0.05 || at >= to - 0.05 || found.length >= 2) continue;
+      const word = bareCue(w.text, false);
+      const cue = count.get(key) > 1 ? `${word}#${seen.get(key)}` : word;
+      found.push(`"${cue}" at ${scene === sc ? '' : `${scene.id}@`}${w.start.toFixed(1)}s`);
+    }
+  }
+  return found.join(' or ');
+}
+
+// A word as a cue names it: without the marks around it, and to compare, in
+// lower case.
+function bareCue(text, lower = true) {
+  const bare = String(text).trim().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}%]+$/gu, '');
+  return lower ? bare.toLowerCase() : bare;
 }
 
 // What check says about a box that runs off the frame, or null.
