@@ -15,7 +15,7 @@ import { ffmpeg, probe } from './ffmpeg.js';
 import { selfCommand } from './history.js';
 import { dropClipFrames } from './clips.js';
 import { ease, suggest } from '../engine/util.js';
-import { ZOOM_SECONDS, ZOOM_SCALES } from '../engine/recording.js';
+import { ZOOM_ALIGNS, ZOOM_SECONDS, ZOOM_SCALES } from '../engine/recording.js';
 
 export const STEP_KINDS = ['open', 'click', 'type', 'hover', 'scroll', 'wait', 'zoom', 'mark'];
 // The keys each kind of step takes, besides do, cue, before and the element.
@@ -26,7 +26,7 @@ const STEP_KEYS = {
   hover: ['duration'],
   scroll: ['y', 'duration'],
   wait: ['seconds'],
-  zoom: ['scale'],
+  zoom: ['scale', 'align'],
   mark: ['name'],
 };
 const ELEMENT = { click: 'needs', type: 'needs', hover: 'needs', scroll: 'may', wait: 'may', zoom: 'may', open: 'no', mark: 'no' };
@@ -192,6 +192,11 @@ export function checkRecordingScript(script, rel = 'the recording script') {
       if (!has.length) bad('a zoom without an element goes back out, so it takes no scale');
       if (typeof raw.scale !== 'number' || !(raw.scale >= ZOOM_SCALES[0] && raw.scale <= ZOOM_SCALES[1])) bad(`scale must be how many times closer the zoom goes, from ${ZOOM_SCALES[0]} to ${ZOOM_SCALES[1]}`);
       step.scale = raw.scale;
+    }
+    if (raw.align !== undefined) {
+      if (!has.length) bad('a zoom without an element goes back out, so it takes no align');
+      if (!ZOOM_ALIGNS.includes(raw.align)) bad(`align must be one of ${ZOOM_ALIGNS.join(', ')}: the side of the element the zoom holds in view, like "left" for a row whose words start at the left`);
+      if (raw.align !== 'center') step.align = raw.align;
     }
     if (raw.do === 'mark') {
       if (!isRecordingName(raw.name)) bad('a mark step needs a "name" with letters, digits and hyphens, like "saved"');

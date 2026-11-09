@@ -296,6 +296,32 @@ test('record says in one line what each step found', () => {
   assert.equal(stepLine('step 4 (mark "a")', {}), 'step 4 (mark "a")');
 });
 
+test('a zoom holds the side of its element that align names', () => {
+  const base = coverRect(1280, 720, 16 / 9);
+  // A wide row whose words start at its left, like a result in a list.
+  const box = { x: 640, y: 300, w: 1200, h: 80 };
+  const middle = focusRect(box, base, 1280, 720, 2);
+  const left = focusRect(box, base, 1280, 720, 2, 'left');
+  const right = focusRect(box, base, 1280, 720, 2, 'right');
+  assert.equal(middle.x, 320);
+  assert.equal(left.x, 40 - 640 * 0.04);
+  assert.equal(right.x + right.w, 1240 + 640 * 0.04);
+  assert.equal(left.y, middle.y);
+  // top and bottom hold its edge, and the view stays inside the video.
+  const tall = { x: 640, y: 400, w: 200, h: 500 };
+  assert.equal(focusRect(tall, base, 1280, 720, 2, 'top').y, 150 - 360 * 0.04);
+  assert.equal(focusRect(tall, base, 1280, 720, 2, 'bottom').y, 650 + 360 * 0.04 - 360);
+  assert.equal(focusRect({ x: 20, y: 300, w: 30, h: 30 }, base, 1280, 720, 2, 'left').x, 0);
+  // The log carries align to playback.
+  const log = { width: 1280, height: 720, steps: [{ do: 'zoom', t: 1, box, scale: 2, align: 'left' }] };
+  assert.equal(viewAt(log, 1 + ZOOM_SECONDS, 16 / 9).x, left.x);
+  const s = checkRecordingScript({ url: URL, steps: [{ do: 'zoom', selector: '.results', align: 'left' }, { do: 'zoom', text: 'Total', align: 'center' }] });
+  assert.deepEqual(s.steps, [{ do: 'zoom', selector: '.results', align: 'left' }, { do: 'zoom', text: 'Total' }]);
+  fails({ url: URL, steps: [{ do: 'zoom', text: 'Total', align: 'middle' }] }, /step 1: align must be one of center, left, right, top, bottom: the side of the element the zoom holds in view/);
+  fails({ url: URL, steps: [{ do: 'zoom', align: 'left' }] }, /step 1: a zoom without an element goes back out, so it takes no align/);
+  fails({ url: URL, steps: [{ do: 'click', text: 'Save', align: 'left' }] }, /step 1: a click step has no "align"/);
+});
+
 // Chrome sends the first frame of a recording a little after the page opens,
 // by an amount that depends on the browser and the load. record paints the
 // time as 24 black and white blocks before the app opens, and reads how far

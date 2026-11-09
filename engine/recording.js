@@ -149,13 +149,27 @@ export function zoomScale(box, base, scale) {
   return clamp(ZOOM_FIT * Math.min(base.w / Math.max(1, box.w), base.h / Math.max(1, box.h)), ZOOM_RANGE[0], ZOOM_RANGE[1]);
 }
 
+// The sides a zoom may hold its element by.
+export const ZOOM_ALIGNS = ['center', 'left', 'right', 'top', 'bottom'];
+// How much room a zoom held by one side leaves between that side and the edge
+// of the view, as a part of the view.
+const ALIGN_ROOM = 0.04;
+
 // The view a zoom on `box` (center and size in video pixels) moves to: in the
 // shape of `base`, zoomScale times closer, around the box and inside the video.
-export function focusRect(box, base, width, height, scale) {
+// `align` holds one side of the box in view instead of its middle, like
+// 'left' for a wide element whose words start at its left.
+export function focusRect(box, base, width, height, scale, align = 'center') {
   const aspect = base.w / base.h;
   const w = base.w / zoomScale(box, base, scale);
   const h = w / aspect;
-  return { x: clamp(box.x - w / 2, 0, width - w), y: clamp(box.y - h / 2, 0, height - h), w, h };
+  let x = box.x - w / 2;
+  let y = box.y - h / 2;
+  if (align === 'left') x = box.x - box.w / 2 - w * ALIGN_ROOM;
+  if (align === 'right') x = box.x + box.w / 2 + w * ALIGN_ROOM - w;
+  if (align === 'top') y = box.y - box.h / 2 - h * ALIGN_ROOM;
+  if (align === 'bottom') y = box.y + box.h / 2 + h * ALIGN_ROOM - h;
+  return { x: clamp(x, 0, width - w), y: clamp(y, 0, height - h), w, h };
 }
 
 const mix = (a, b, p) => ({ x: lerp(a.x, b.x, p), y: lerp(a.y, b.y, p), w: lerp(a.w, b.w, p), h: lerp(a.h, b.h, p) });
@@ -169,7 +183,7 @@ export function viewAt(log, v, aspect, { zoom = true } = {}) {
   for (let i = 0; i < zooms.length; i++) {
     const z = zooms[i];
     if (v < z.t) break;
-    const target = z.box ? focusRect(z.box, base, log.width, log.height, z.scale) : base;
+    const target = z.box ? focusRect(z.box, base, log.width, log.height, z.scale, z.align) : base;
     // A zoom that starts before this one ends takes over from where it is.
     const until = Math.min(v, zooms[i + 1]?.t ?? Infinity);
     const p = ease.inOut(clamp((until - z.t) / ZOOM_SECONDS));

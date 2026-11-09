@@ -367,7 +367,7 @@ test('record says what each step found, with a picture of it, and nth leaves out
     steps: [
       { do: 'click', text: 'Accept', before: true },
       // The closed cookie banner keeps its <p>, hidden, so "p" number 2 is the total.
-      { do: 'zoom', selector: 'p', nth: 2 },
+      { do: 'zoom', selector: 'p', nth: 2, align: 'left' },
       { do: 'click', selector: 'h1' },
       { do: 'click', text: 'New invoice' },
       { do: 'type', text: 'Amount', value: '75' },
@@ -379,6 +379,7 @@ test('record says what each step found, with a picture of it, and nth leaves out
   const log = JSON.parse(fs.readFileSync(path.join(dir, r.log), 'utf8'));
   const [, zoom, , click, type, mark] = log.steps;
   assert.deepEqual(zoom.match, { tag: 'p', text: 'Total $2,430', selector: 'p.total', hidden: 1 });
+  assert.equal(zoom.align, 'left');
   assert.deepEqual(click.match, { tag: 'button', text: 'New invoice', selector: '#new' });
   assert.deepEqual([type.match.tag, type.match.selector], ['input', '#amount']);
   assert.equal(mark.match, undefined);

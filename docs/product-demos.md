@@ -97,7 +97,10 @@ records.
   at the bottom of the window, scrolls it to the middle first. When it is
   still covered there, `record` stops and names what covers it.
 - A zoom fits its element into about 70% of the frame, from 1.4 to 2.5
-  times closer. `"scale": 2` on a zoom step sets how close it goes.
+  times closer. `"scale": 2` on a zoom step sets how close it goes. It
+  holds the middle of the element in view. `"align": "left"` holds its left
+  edge instead, for a wide row whose words start at the left, and `right`,
+  `top` and `bottom` work the same way.
 - A pointer move takes about 0.6 seconds, and a scroll of one window height
   about 1 second. `"pace": 1.5` in the script makes moves, scrolls and
   typing faster, from 0.5 to 2. `"duration": 1.2` on a step sets the seconds
