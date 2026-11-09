@@ -1,0 +1,18 @@
+{
+  "url": "http://127.0.0.1:4500/#/invoices",
+  "viewport": { "width": 1280, "height": 720 },
+  "steps": [
+    { "do": "click", "text": "Accept", "before": true },
+    { "do": "hover", "text": "Total", "cue": "#list" },
+    { "do": "click", "text": "New invoice", "cue": "#new" },
+    { "do": "type", "text": "Customer", "value": "Acme", "press": "Enter", "cue": "#customer" },
+    { "do": "type", "text": "Amount", "value": "2400", "cue": "#amount" },
+    { "do": "type", "text": "Note", "value": "Spring catalog", "cue": "#note" },
+    { "do": "zoom", "selector": "form", "cue": "#check" },
+    { "do": "click", "text": "Save invoice", "cue": "#save" },
+    { "do": "zoom" },
+    { "do": "hover", "text": "#1044", "cue": "#lands" },
+    { "do": "hover", "selector": "#total", "cue": "#total" }
+  ],
+  "blur": [{ "selector": ".email" }]
+}

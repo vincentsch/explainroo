@@ -15,6 +15,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GOOD_KEY, formFields, startFakeServices } from '../test/helpers/fake-services.js';
 import { BLOTATO_KEY, GOOGLE_CLIENT } from '../test/helpers/fake-publishing.js';
+import { serveDemoApp } from '../test/fixtures/demo-app/serve.js';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const GUARD = new URL('../test/helpers/guard.js', import.meta.url).href;
@@ -30,6 +31,8 @@ const PRICE_LIST = 'GET /api/v1/videos/models';
 const priceCache = ({ temp }) => ({ EXPLAINROO_CACHE: path.join(temp, 'cache') });
 // What a step saw before it ran, for the checks that compare.
 let before = {};
+// The small invoice app that record runs its steps in.
+let demoApp = null;
 
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
 const topics = fs.readdirSync(path.join(ROOT, 'docs')).filter((f) => f.endsWith('.md')).map((f) => f.slice(0, -3));
@@ -511,6 +514,28 @@ const steps = [
     },
   },
   {
+    // A recording of the local invoice app, with a browser profile in a cache of its own.
+    setup: async ({ temp }) => {
+      demoApp = await serveDemoApp();
+      fs.mkdirSync(path.join(temp, 'tiny/recordings'));
+      fs.writeFileSync(path.join(temp, 'tiny/recordings/ledger.json'), JSON.stringify({ url: `${demoApp.url}#/invoices`, viewport: { width: 1280, height: 720 },
+        steps: [{ do: 'click', text: 'Accept', before: true }, { do: 'click', text: 'New invoice' }, { do: 'type', text: 'Amount', value: '75' }, { do: 'mark', name: 'typed' }] }));
+    },
+    args: ['record', 'tiny', 'ledger', '--json'],
+    env: ({ temp }) => ({ EXPLAINROO_CACHE: path.join(temp, 'record-cache') }),
+    check: (r, { temp }) => {
+      expect(r.steps === 4 && r.width === 1280 && fs.statSync(path.join(temp, 'tiny', r.video)).size > 0 && fs.existsSync(path.join(temp, 'tiny', r.log)), `record says ${JSON.stringify(r)}`);
+      return `${r.duration.toFixed(1)}s`;
+    },
+  },
+  {
+    setup: ({ temp }) => fs.writeFileSync(path.join(temp, 'tiny/scenes.js'), "export default { hello(s) { const r = s.recording('ledger', { frame: 'browser', cues: { typed: 'TikTok' } }); s.text('Typed', { at: r.times.typed, y: s.safe.y + 60 }); } };\n"),
+    args: ['still', 'tiny', 'hello@end', '--json'],
+    check: (r) => {
+      expect(r.stills?.length === 1 && fs.statSync(r.stills[0].file).size > 0, `still says ${JSON.stringify(r)}`);
+    },
+  },
+  {
     args: ['connect', 'cartesia', '--key-stdin', '--json'],
     input: `${GOOD_KEY}\n`,
     check: (r, { settings, fake }, raw) => {
@@ -653,6 +678,7 @@ async function main() {
     return 1;
   } finally {
     await fake.close();
+    await demoApp?.close();
     fs.rmSync(temp, { recursive: true, force: true });
   }
 }
