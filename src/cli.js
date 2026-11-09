@@ -17,7 +17,7 @@ import { doctor, formatDoctor } from './doctor.js';
 import { generateImage, jobRequest, imageLog, imageSpend, oldImageLog, IMAGE_MODELS } from './images.js';
 import { buyClip, clipJobRequest, clipRequest, formatClip, quoteClip } from './ai-clips.js';
 import { capture } from './capture.js';
-import { formatRecord, record } from './record.js';
+import { formatInspect, formatRecord, inspect, record } from './record.js';
 import { clean, formatClean } from './clean.js';
 import { connect } from './connect.js';
 import { CONNECTORS } from './connectors/index.js';
@@ -108,7 +108,8 @@ Product demos
   record <project> <name>  run recordings/<name>.json in a browser of its own and save the video with a log
                         of every step in assets/recordings/, for s.recording in a scene. Every run starts
                         with an empty browser profile, and --keep-profile keeps cookies and stored data for
-                        the next run, for a site that needs a login
+                        the next run, for a site that needs a login. "record <project> --inspect <url>" lists
+                        what a step can click or type into, with a text and a selector for each (--viewport)
 
 Images (optional, costs money, needs an OpenRouter key from "explainroo connect openrouter")
   image [project] <name> "<what to draw>"   save an illustration as assets/<name>.png
@@ -279,7 +280,15 @@ export async function main(argv) {
         return 0;
       }
       case 'record': {
-        if (pos.length !== 2) throw new ProjectError('usage: explainroo record <project> <name> [--keep-profile] [--json]. The script is recordings/<name>.json in the project.');
+        if (flags.inspect !== undefined) {
+          const url = textFlag(flags, 'inspect');
+          if (pos.length !== 1) throw new ProjectError('usage: explainroo record <project> --inspect <url> [--viewport 1280x720] [--keep-profile] [--json]. It lists what a step can click or type into, and records nothing.');
+          const r = await inspect(pos[0], url, { viewport: viewportFlag(flags), keepProfile: !!flags['keep-profile'], log });
+          print(formatInspect(r), r);
+          return 0;
+        }
+        if (flags.viewport !== undefined) throw new ProjectError('--viewport goes with --inspect. A recording takes its viewport from recordings/<name>.json.');
+        if (pos.length !== 2) throw new ProjectError('usage: explainroo record <project> <name> [--keep-profile] [--json], or explainroo record <project> --inspect <url>. The script is recordings/<name>.json in the project.');
         const r = await record(pos[0], pos[1], { log, keepProfile: !!flags['keep-profile'] });
         print(formatRecord(r), r);
         return 0;
@@ -727,6 +736,15 @@ function formatWords(r) {
 }
 
 // --times 3,12.5,intro@2: the times that still takes, separated by commas.
+// --viewport 1280x720, as { width, height }.
+function viewportFlag(flags) {
+  const value = textFlag(flags, 'viewport');
+  if (value === undefined) return undefined;
+  const m = /^(\d+)x(\d+)$/.exec(value);
+  if (!m) throw new ProjectError('--viewport must be like 1280x720');
+  return { width: Number(m[1]), height: Number(m[2]) };
+}
+
 function timesFlag(flags) {
   const value = textFlag(flags, 'times');
   if (value === undefined) return undefined;

@@ -271,6 +271,17 @@ test('every command refuses a flag it does not take, and takes every flag it rea
   assert.equal(fs.readdirSync(dir).length, 0);
 });
 
+test('record --inspect takes a project and an address, and --viewport goes only with it', async (t) => {
+  const { tinyProject } = await import('./helpers/tiny-project.js');
+  const dir = tinyProject(t, {}, { narrated: false });
+  assert.match((await run(['record', dir, 'demo', '--inspect', 'http://127.0.0.1:9/'])).err, /usage: explainroo record <project> --inspect <url> \[--viewport 1280x720\]/);
+  assert.match((await run(['record', dir, '--inspect'])).err, /--inspect needs a value/);
+  assert.match((await run(['record', dir, '--inspect', 'ftp://example.com/'])).err, /--inspect must be an http:\/\/ or https:\/\/ address/);
+  assert.match((await run(['record', dir, '--inspect', 'http://127.0.0.1:9/', '--viewport', 'big'])).err, /--viewport must be like 1280x720/);
+  assert.match((await run(['record', dir, '--inspect', 'http://127.0.0.1:9/', '--viewport', '1281x720'])).err, /--viewport width must be an even number of pixels from 320 to 3840/);
+  assert.match((await run(['record', dir, 'demo', '--viewport', '1280x720'])).err, /--viewport goes with --inspect\. A recording takes its viewport from recordings\/<name>\.json\./);
+});
+
 test('words prints each spoken word of a scene with its start time, the cue of a word spoken twice, and the markers, also in JSON', async (t) => {
   const { tinyProject } = await import('./helpers/tiny-project.js');
   const { cachedVoice } = await import('./helpers/cached-voice.js');

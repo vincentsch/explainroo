@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { findChrome } from '../src/browser.js';
-import { record } from '../src/record.js';
+import { findChrome, launch } from '../src/browser.js';
+import { formatInspect, inspect, record } from '../src/record.js';
 import { loadProject } from '../src/project.js';
 import { withEngine } from '../src/pipeline.js';
 import { execFileSync } from 'node:child_process';
@@ -251,4 +251,59 @@ test('a new recording takes out the frames of the one it replaces, and s.recordi
   const made = fs.readdirSync(clips).filter((n) => n !== 'other');
   assert.equal(made.length, 1);
   assert.equal(JSON.parse(fs.readFileSync(path.join(clips, made[0], 'source.json'), 'utf8')).src, 'assets/recordings/invoice.webm');
+});
+
+test('inspect lists what a step can click or type into, and every text and selector it gives finds that element', { skip: !chrome }, async (t) => {
+  const app = await serveDemoApp();
+  t.after(app.close);
+  const dir = project(t, { url: app.url, steps: [{ do: 'mark', name: 'a' }] });
+  const r = await inspect(dir, `${app.url}#/notes`, { viewport: { width: 1280, height: 720 } });
+  assert.deepEqual(r.viewport, { width: 1280, height: 720 });
+  const byKind = (kind) => r.elements.filter((e) => e.kind === kind);
+  // The editor shows its placeholder as an element inside the field.
+  const [editor] = byKind('editor');
+  assert.equal(editor.aria_label, 'Note text');
+  assert.equal(editor.placeholder, 'Write the note here, or paste one.');
+  assert.equal(editor.text, 'Write the note here, or paste one.');
+  assert.equal(editor.selector, 'div[aria-label="Note text"]');
+  // A button that shows only an icon goes by its aria-label.
+  const clear = r.elements.find((e) => e.aria_label === 'Clear note');
+  assert.deepEqual([clear.kind, clear.words, clear.text, clear.selector], ['button', '×', 'Clear note', 'button[aria-label="Clear note"]']);
+  // A link whose class changes with the page is found by its address or its place.
+  const invoices = r.elements.find((e) => e.words === 'Invoices');
+  assert.equal(invoices.selector, 'a[href="#/invoices"]');
+  assert.ok(r.elements.every((e) => e.in_view && e.box.w > 0), 'the page fits the window');
+  const text = formatInspect(r);
+  assert.match(text, /^http:\/\/127\.0\.0\.1:\d+\/#\/notes at 1280x720: 7 elements to click or type into, from the top\n/);
+  assert.match(text, /\n {2}\d\. editor "Write the note here, or paste one\.", aria-label "Note text" {2}at \d+,\d+, 720x220\n {5}text "Write the note here, or paste one\.", or selector div\[aria-label="Note text"\]\n/);
+
+  // A form: a field goes by the words of its label, and each selector matches
+  // only its element.
+  const form = await inspect(dir, `${app.url}#/new-invoice`, { viewport: { width: 1280, height: 720 } });
+  const amount = form.elements.find((e) => e.selector === '#amount');
+  assert.deepEqual([amount.kind, amount.placeholder, amount.text], ['input text', '0', 'Amount']);
+  assert.equal(form.elements.find((e) => e.kind === 'select').text, 'Customer');
+  // "Cancel" is a button inside a link, one thing to click.
+  assert.equal(form.elements.filter((e) => e.words === 'Cancel').length, 1);
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  await page.goto(`${app.url}#/new-invoice`);
+  for (const e of form.elements) {
+    const boxes = await page.evaluate((sel) => [...document.querySelectorAll(sel)].map((el) => {
+      const b = el.getBoundingClientRect();
+      return [Math.round(b.left + b.width / 2), Math.round(b.top + b.height / 2)];
+    }), e.selector);
+    assert.deepEqual(boxes, [[e.box.x, e.box.y]], e.selector);
+  }
+
+  // A recording types into the editor by the start of its placeholder, and
+  // clicks the icon button by its aria-label.
+  fs.writeFileSync(path.join(dir, 'recordings/invoice.json'), JSON.stringify({ url: `${app.url}#/notes`, viewport: { width: 1280, height: 720 }, steps: [
+    { do: 'type', text: 'Write the note here', value: 'Thanks!' },
+    { do: 'click', text: 'Clear note' },
+  ] }));
+  const log = JSON.parse(fs.readFileSync(path.join(dir, (await record(dir, 'invoice')).log), 'utf8'));
+  assert.deepEqual(log.steps[0].box, editor.box);
+  assert.deepEqual(log.steps[1].box, clear.box);
 });

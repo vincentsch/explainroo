@@ -39,6 +39,20 @@ Write the steps of a recording in `recordings/<name>.json`:
 }
 ```
 
+To see what a step can use, run this before you write the steps:
+
+```bash
+explainroo record videos/<name> --inspect https://example.com --viewport 1280x720
+```
+
+It opens the page in the browser `record` uses, records nothing, and lists
+every visible element you can click or type into: its words, `aria-label`
+and placeholder, a `text` and a `selector` that find only it, and its box.
+Copy the text or the selector into the step as it is. Use the viewport of
+your script, because the page may lay itself out differently in another
+size. `--json` gives the same list as JSON, and `--keep-profile` opens the
+page with the kept profile, for a page behind a login.
+
 Then run `explainroo record videos/<name> <name>`. It runs the steps in a
 browser of its own and saves `assets/recordings/<name>.webm` and its step
 log, `assets/recordings/<name>.log.json`. The video shows only the page,
@@ -46,8 +60,12 @@ with no browser bars or pop-ups. `record` needs Playwright's own ffmpeg,
 which `explainroo doctor --fetch` downloads once.
 
 - A step finds its element by `text` or by a CSS `selector`. `text` is the
-  words the element shows, and its label or placeholder count too. `nth: 2`
-  takes the second match from the top.
+  words the element shows, and its `aria-label`, label or placeholder count
+  too. A long placeholder also matches its first part, up to a comma or a
+  full stop. An editor like CodeMirror shows its placeholder as an element
+  inside the field, and that counts as the field's placeholder: the step
+  clicks or types into the field. `nth: 2` takes the second match from the
+  top.
 - `open` goes to `url`, an address or a path. `click`, `hover` and `type`
   move the pointer to the element. `type` clicks the field and types
   `value`, and `press` presses a key after it. `scroll` takes `y` in pixels
@@ -82,8 +100,8 @@ and `w` and `h` its width and height.
 
 When a step can't find its element, `record` stops and names the step. It
 lists close words from the page and saves a picture of the page in
-`build/record/`. Fix the script from what the page shows, and never guess a
-button. Then play it with `s.recording`, which
+`build/record/`. Fix the script from what the page shows or what
+`--inspect` lists, and never guess a button. Then play it with `s.recording`, which
 `explainroo docs scene-api recordings` explains. `from` skips the first
 seconds of the video. Write the narration around what the video shows, and
 look at stills. You can also show any screen recording with `s.clip` in a

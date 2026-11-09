@@ -118,9 +118,9 @@ export const COMMAND_HELP = {
     example: 'capture videos/my-demo https://example.com',
   },
   record: {
-    usage: 'record <project> <name> [options]',
+    usage: 'record <project> <name> [options], or record <project> --inspect <url>',
     about: 'Runs the steps of recordings/<name>.json in a browser of its own and saves the video as assets/recordings/<name>.webm, with the time and the box of every step in assets/recordings/<name>.log.json. s.recording(\'<name>\') plays it in a scene with a cursor, click rings and zooms. When a step can\'t find its element, or something covers it, it stops with the step number and a picture of the page. Every run starts with an empty browser profile.',
-    options: [['--keep-profile', 'keep cookies and stored data for the next run, for a site that needs a login'], JSON_OUT],
+    options: [['--keep-profile', 'keep cookies and stored data for the next run, for a site that needs a login'], ['--inspect <url>', 'open the page and list every visible element to click or type into, with a text and a selector a step can use and its box. It records nothing'], ['--viewport <w>x<h>', 'with --inspect, the size of the window, 1920x1080 by default. Use the viewport of the script'], JSON_OUT],
     example: 'record videos/my-demo new-invoice',
   },
   image: {

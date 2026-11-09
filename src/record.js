@@ -105,16 +105,7 @@ export function checkRecordingScript(script, rel = 'the recording script') {
   const unknown = Object.keys(script).filter((k) => !['url', 'viewport', 'pace', 'steps', 'blur'].includes(k));
   if (unknown.length) fail(`unknown key ${quoted(unknown[0])}. The keys are url, viewport, pace, steps and blur`);
   const url = checkUrl(script.url, fail, 'url');
-  const viewport = { width: 1920, height: 1080 };
-  if (script.viewport !== undefined) {
-    const v = script.viewport;
-    if (!v || typeof v !== 'object' || Object.keys(v).some((k) => !['width', 'height'].includes(k))) fail('viewport must be like { "width": 1920, "height": 1080 }');
-    for (const k of ['width', 'height']) {
-      if (v[k] === undefined) continue;
-      if (!Number.isInteger(v[k]) || v[k] < 320 || v[k] > 3840 || v[k] % 2) fail(`viewport.${k} must be an even number of pixels from 320 to 3840`);
-      viewport[k] = v[k];
-    }
-  }
+  const viewport = checkViewport(script.viewport, fail);
   const pace = script.pace ?? 1;
   if (typeof pace !== 'number' || !(pace >= PACES[0] && pace <= PACES[1])) fail(`pace must be a number from ${PACES[0]} to ${PACES[1]}: 2 moves the pointer and scrolls twice as fast, 0.5 half as fast`);
   if (!Array.isArray(script.steps) || !script.steps.length) fail('steps must be a list with at least one step, like [{ "do": "click", "text": "New invoice" }]');
@@ -206,7 +197,20 @@ export function checkRecordingScript(script, rel = 'the recording script') {
   return { url: url.href, viewport, pace, steps, blur };
 }
 
-function checkUrl(value, fail, key, base) {
+// The window a recording or an inspection runs in, 1920 x 1080 by default.
+export function checkViewport(v, fail) {
+  const viewport = { width: 1920, height: 1080 };
+  if (v === undefined) return viewport;
+  if (!v || typeof v !== 'object' || Object.keys(v).some((k) => !['width', 'height'].includes(k))) fail('viewport must be like { "width": 1920, "height": 1080 }');
+  for (const k of ['width', 'height']) {
+    if (v[k] === undefined) continue;
+    if (!Number.isInteger(v[k]) || v[k] < 320 || v[k] > 3840 || v[k] % 2) fail(`viewport.${k} must be an even number of pixels from 320 to 3840`);
+    viewport[k] = v[k];
+  }
+  return viewport;
+}
+
+export function checkUrl(value, fail, key, base) {
   let url;
   try { url = base ? new URL(value, base) : new URL(value); } catch {}
   if (typeof value !== 'string' || !url || !['http:', 'https:'].includes(url.protocol)) fail(`${key} must be an http:// or https:// address${base ? ', or a path like "/settings"' : ''}, like "http://localhost:3000/"`);
@@ -269,20 +273,43 @@ function pageSetup(blur) {
 }
 
 // Finds the element of a step in the page. Returns its box in the viewport, or
-// the words the page shows, for the message when it isn't there.
-function findInPage({ text, selector, nth = 1, forTyping = false }) {
+// the words the page shows, for the message when it isn't there. With `all`,
+// it keeps every match in window.__explainrooHits and returns their number.
+function findInPage({ text, selector, nth = 1, forTyping = false, all = false }) {
   const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
   const visible = (el) => {
     const r = el.getBoundingClientRect();
     return r.width > 1 && r.height > 1 && el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true });
   };
-  const ACTIVE = 'button, a, input, select, textarea, summary, label, [role=button], [role=link], [role=tab], [role=menuitem], [role=option], [role=checkbox], [role=switch], [contenteditable=""], [contenteditable=true]';
-  const named = (el) => [el.getAttribute('aria-label'), el.getAttribute('title'), el.getAttribute('placeholder'), el.getAttribute('alt'), el.matches('input[type=submit], input[type=button]') ? el.value : null].map(norm).filter(Boolean);
+  const EDITABLE = '[contenteditable=""], [contenteditable=true], [contenteditable=plaintext-only]';
+  const ACTIVE = `button, a, input, select, textarea, summary, label, [role=button], [role=link], [role=tab], [role=menuitem], [role=option], [role=checkbox], [role=switch], ${EDITABLE}`;
+  // An editor like CodeMirror shows its placeholder as an element inside the
+  // field, like <span class="cm-placeholder">, and the field is what takes clicks.
+  const HOLDER = '[class*=placeholder], [data-placeholder]';
+  // A button inside the placeholder, like "browse files", stays itself.
+  const editorOf = (el) => {
+    const holder = el.closest(HOLDER);
+    const editor = holder?.parentElement?.closest(EDITABLE);
+    const active = el.closest(ACTIVE);
+    return !editor || (active && holder.contains(active)) ? null : editor;
+  };
+  const placeholders = (el) => {
+    const out = [el.getAttribute('placeholder'), el.getAttribute('aria-placeholder')];
+    if (el.matches(EDITABLE)) {
+      for (const h of el.querySelectorAll(HOLDER)) {
+        if (h.parentElement?.closest(EDITABLE) === el) out.push(h.getAttribute('data-placeholder') || h.innerText);
+      }
+    }
+    return out.map(norm).filter(Boolean);
+  };
+  const named = (el) => [el.getAttribute('aria-label'), el.getAttribute('title'), el.getAttribute('alt'), el.matches('input[type=submit], input[type=button]') ? el.value : null].map(norm).filter(Boolean);
+  // A long placeholder matches its first part, up to a comma or the end of a sentence.
+  const leads = (p, want, same) => same(p, want) || (p.length > want.length && same(p.slice(0, want.length), want) && /^\s*[,.;:!?(–—-]/.test(p.slice(want.length)));
   let hits = [];
   if (selector !== undefined) {
-    let all;
-    try { all = [...document.querySelectorAll(selector)]; } catch { return { error: 'selector' }; }
-    hits = all.filter(visible);
+    let found;
+    try { found = [...document.querySelectorAll(selector)]; } catch { return { error: 'selector' }; }
+    hits = found.filter(visible);
   } else {
     const want = norm(text);
     const pick = (same) => {
@@ -291,7 +318,7 @@ function findInPage({ text, selector, nth = 1, forTyping = false }) {
         if (!visible(el)) continue;
         // Its own words count too, like a label's around its field.
         const ownText = norm([...el.childNodes].filter((c) => c.nodeType === 3).map((c) => c.textContent).join(' '));
-        const own = named(el).some((n) => same(n, want)) || (ownText && same(ownText, want));
+        const own = named(el).some((n) => same(n, want)) || placeholders(el).some((p) => leads(p, want, same)) || (ownText && same(ownText, want));
         const words = !el.matches('input, textarea, select') && same(norm(el.innerText), want);
         if (!own && !words) continue;
         // The smallest element with these words, unless a button or link
@@ -304,6 +331,8 @@ function findInPage({ text, selector, nth = 1, forTyping = false }) {
     hits = pick((a, b) => a === b);
     if (!hits.length) hits = pick((a, b) => a.toLowerCase() === b.toLowerCase());
     hits = hits.map((el) => {
+      const editor = editorOf(el);
+      if (editor) return editor;
       const up = el.parentElement?.closest(ACTIVE);
       return !el.matches(ACTIVE) && up && norm(up.innerText) === norm(el.innerText) ? up : el;
     });
@@ -314,12 +343,16 @@ function findInPage({ text, selector, nth = 1, forTyping = false }) {
       return ra.top - rb.top || ra.left - rb.left;
     });
   }
+  if (all) {
+    window.__explainrooHits = hits;
+    return { found: hits.length };
+  }
   let el = hits[nth - 1];
   if (!el) {
     const words = new Set();
     for (const e of document.body.querySelectorAll(ACTIVE + ', h1, h2, h3, h4, th, [placeholder], [aria-label]')) {
       if (!visible(e)) continue;
-      for (const w of [norm(e.innerText), ...named(e)]) if (w && w.length <= 60) words.add(w);
+      for (const w of [norm(e.innerText), ...named(e), ...placeholders(e)]) if (w && w.length <= 60) words.add(w);
     }
     return { found: hits.length, words: [...words] };
   }
@@ -438,19 +471,26 @@ function shiftTimes(out, by) {
   }
 }
 
+// The browser profile of a run. Every run starts from an empty profile, so
+// nothing a site stored in an earlier run shows. --keep-profile keeps one
+// profile per project, so a login or a closed banner stays for the next run.
+function browserProfile(dir, keepProfile) {
+  const profiles = path.join(cacheRoot(), 'record', 'profiles');
+  fs.mkdirSync(profiles, { recursive: true });
+  const profile = keepProfile ? path.join(profiles, crypto.createHash('sha256').update(fs.realpathSync(dir)).digest('hex').slice(0, 16)) : fs.mkdtempSync(path.join(profiles, 'run-'));
+  fs.mkdirSync(profile, { recursive: true });
+  return profile;
+}
+
+const BROWSER_ARGS = ['--deny-permission-prompts', '--disable-notifications', '--no-first-run', '--no-default-browser-check', '--disable-smooth-scrolling'];
+
 export async function record(dirArg, name, { log = () => {}, keepProfile = false, findSeconds = FIND_SECONDS } = {}) {
   const dir = findProjectDir(dirArg);
   const script = readRecordingScript(dir, name);
   const outDir = path.join(dir, 'assets', 'recordings');
   const fetch = `"${selfCommand()} doctor --fetch"`;
   if (!(await recordEncoder()).ready) throw new ProjectError(`record needs Playwright's own ffmpeg to save the video, and it isn't there yet. Run ${fetch} once.`);
-  // Every run starts from an empty profile, so nothing a site stored in an
-  // earlier run shows. --keep-profile keeps one profile per project, so a
-  // login or a closed banner stays for the next run.
-  const profiles = path.join(cacheRoot(), 'record', 'profiles');
-  fs.mkdirSync(profiles, { recursive: true });
-  const profile = keepProfile ? path.join(profiles, crypto.createHash('sha256').update(fs.realpathSync(dir)).digest('hex').slice(0, 16)) : fs.mkdtempSync(path.join(profiles, 'run-'));
-  fs.mkdirSync(profile, { recursive: true });
+  const profile = browserProfile(dir, keepProfile);
   const videos = fs.mkdtempSync(path.join(cacheRoot(), 'record', 'video-'));
   const { width, height } = script.viewport;
   log(`recording ${script.url} at ${width}x${height}${keepProfile ? ', with the profile of earlier runs' : ''}`);
@@ -462,7 +502,7 @@ export async function record(dirArg, name, { log = () => {}, keepProfile = false
         deviceScaleFactor: 1,
         recordVideo: { dir: videos, size: { width, height } },
         acceptDownloads: false,
-      }, ['--deny-permission-prompts', '--disable-notifications', '--no-first-run', '--no-default-browser-check', '--disable-smooth-scrolling']);
+      }, BROWSER_ARGS);
     } catch (e) {
       if (/ProcessSingleton|profile.*in use|SingletonLock/i.test(e.message)) throw new ProjectError('another recording of this project is running and uses its browser profile. Wait for it to finish.');
       if (/ffmpeg/i.test(e.message)) throw new ProjectError(`record could not start Playwright's ffmpeg, which saves the video. Run ${fetch} once.`);
@@ -698,6 +738,185 @@ export async function record(dirArg, name, { log = () => {}, keepProfile = false
     fs.rmSync(videos, { recursive: true, force: true });
     if (!keepProfile) fs.rmSync(profile, { recursive: true, force: true });
   }
+}
+
+// --- inspect ---------------------------------------------------------------
+
+// Lists every visible element of the page a person can click or type into,
+// with what a step finds it by: a text that finds it, with nth when it is not
+// the first match, and a CSS selector that matches only it. findInPage has to
+// be in the page as window.__explainrooFind.
+function inspectInPage({ limit }) {
+  const find = window.__explainrooFind;
+  const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
+  const visible = (el) => {
+    const r = el.getBoundingClientRect();
+    return r.width > 1 && r.height > 1 && el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true });
+  };
+  const EDITABLE = '[contenteditable=""], [contenteditable=true], [contenteditable=plaintext-only]';
+  const CLICKABLE = `button, a[href], input:not([type=hidden]), select, textarea, summary, [role=button], [role=link], [role=tab], [role=menuitem], [role=menuitemcheckbox], [role=menuitemradio], [role=option], [role=checkbox], [role=radio], [role=switch], [role=textbox], [role=combobox], [role=searchbox], [role=slider], ${EDITABLE}`;
+  const HOLDER = '[class*=placeholder], [data-placeholder]';
+  const placeholder = (el) => {
+    const own = norm(el.getAttribute('placeholder') || el.getAttribute('aria-placeholder'));
+    if (own || !el.matches(EDITABLE)) return own;
+    const holder = [...el.querySelectorAll(HOLDER)].find((h) => h.parentElement?.closest(EDITABLE) === el);
+    return holder ? norm(holder.getAttribute('data-placeholder') || holder.innerText) : '';
+  };
+  const kind = (el) => {
+    if (el.matches(EDITABLE)) return 'editor';
+    const role = el.getAttribute('role');
+    if (role) return role;
+    const tag = el.tagName.toLowerCase();
+    if (tag === 'a') return 'link';
+    if (tag === 'input') return `input ${el.type}`;
+    return tag;
+  };
+  const quote = (v) => `"${v.replace(/["\\]/g, '\\$&')}"`;
+  // An id a script made up while it built the page, like "base-ui-_r_2_" or
+  // "radix-:r1:", which can be another one on the next visit.
+  const madeUp = (id) => /(^|[-_:])r[-_:]?[0-9a-z]{1,3}[-_:]|_r_|:r|^(radix|base-ui|headlessui|mui|react-aria|ember|ext-gen)|[0-9a-f]{8,}|\d{4,}/i.test(id);
+  const only = (sel, el) => {
+    try {
+      const all = document.querySelectorAll(sel);
+      return all.length === 1 && all[0] === el;
+    } catch { return false; }
+  };
+  const selectorOf = (el) => {
+    const tag = el.tagName.toLowerCase();
+    const tries = [];
+    if (el.id && !madeUp(el.id)) tries.push(`#${CSS.escape(el.id)}`);
+    for (const a of ['data-testid', 'data-test', 'aria-label', 'name', 'placeholder', 'title']) {
+      const v = el.getAttribute(a);
+      if (v && v.length <= 80) tries.push(`${tag}[${a}=${quote(v)}]`);
+    }
+    if (tag === 'a' && el.getAttribute('href') && el.getAttribute('href').length <= 80) tries.push(`a[href=${quote(el.getAttribute('href'))}]`);
+    // Classes that say a state, like "active", change while the video runs.
+    const classes = [...el.classList].filter((c) => /^[a-z][\w-]*$/i.test(c) && !/^(on|active|selected|current|open|focus|hover|checked|disabled|is-|has-)/i.test(c)).map((c) => `.${CSS.escape(c)}`);
+    for (const c of classes) tries.push(`${tag}${c}`);
+    if (classes.length > 1) tries.push(`${tag}${classes.join('')}`);
+    for (const a of ['aria-label', 'name', 'placeholder']) {
+      const v = el.getAttribute(a);
+      if (v && v.length <= 80 && classes.length) tries.push(`${tag}${classes[0]}[${a}=${quote(v)}]`);
+    }
+    const hit = tries.find((sel) => only(sel, el));
+    if (hit) return hit;
+    // The path from the nearest parent with an id, or from the body.
+    const parts = [];
+    for (let e = el; e && e !== document.body; e = e.parentElement) {
+      if (e !== el && e.id && !madeUp(e.id)) {
+        parts.unshift(`#${CSS.escape(e.id)}`);
+        break;
+      }
+      const same = [...(e.parentElement?.children ?? [])].filter((c) => c.tagName === e.tagName);
+      parts.unshift(same.length > 1 ? `${e.tagName.toLowerCase()}:nth-of-type(${same.indexOf(e) + 1})` : e.tagName.toLowerCase());
+      if (only(parts.join(' > '), el)) return parts.join(' > ');
+    }
+    return parts[0]?.startsWith('#') ? parts.join(' > ') : `body > ${parts.join(' > ')}`;
+  };
+  // A text that finds the element, as a step looks for it. A field also takes
+  // the words of its label.
+  const textOf = (el, words, aria, holder) => {
+    // A label's own words, without the options of a select inside it.
+    const labels = [...(el.labels ?? [])].map((l) => norm([...l.childNodes].filter((c) => c.nodeType === 3).map((c) => c.textContent).join(' ')) || norm(l.innerText));
+    // A long placeholder is found by its first part, up to a comma or a full stop.
+    const lead = holder.match(/^(.{3,}?)\s*[,.;:!?]/)?.[1];
+    // Words without two letters in a row, like "×", come after the other names.
+    const wordy = /\p{L}{2}|\p{N}/u.test(words);
+    const tries = [wordy ? words : '', aria, ...labels, lead, holder, norm(el.getAttribute('title')), words];
+    let best = null;
+    for (const text of tries) {
+      if (!text || text.length > 80) continue;
+      find({ text, all: true });
+      const at = window.__explainrooHits.findIndex((h) => h === el || (h.matches('label') && h.control === el));
+      if (at === 0) return { text };
+      if (at > 0 && (!best || at + 1 < best.nth)) best = { text, nth: at + 1 };
+    }
+    return best;
+  };
+  const found = [...document.body.querySelectorAll(CLICKABLE)].filter(visible);
+  // A link around a button with the same words is one thing to click.
+  const list = found.filter((el) => !found.some((o) => o !== el && el.contains(o) && norm(o.innerText) === norm(el.innerText)));
+  const top = (el) => el.getBoundingClientRect().top + scrollY;
+  list.sort((a, b) => top(a) - top(b) || a.getBoundingClientRect().left - b.getBoundingClientRect().left);
+  return {
+    title: document.title,
+    total: list.length,
+    elements: list.slice(0, limit).map((el) => {
+      const r = el.getBoundingClientRect();
+      const x = r.left + r.width / 2;
+      const y = r.top + r.height / 2;
+      const words = el.matches('input, textarea, select') ? '' : norm(el.innerText);
+      const aria = norm(el.getAttribute('aria-label'));
+      const holder = placeholder(el);
+      const text = textOf(el, words.length <= 80 ? words : '', aria, holder);
+      return {
+        kind: kind(el),
+        ...(words ? { words: words.length > 120 ? `${words.slice(0, 117)}...` : words } : {}),
+        ...(aria ? { aria_label: aria } : {}),
+        ...(holder ? { placeholder: holder } : {}),
+        ...(text ?? {}),
+        selector: selectorOf(el),
+        box: { x: Math.round(x), y: Math.round(y), w: Math.round(r.width), h: Math.round(r.height) },
+        in_view: x >= 0 && y >= 0 && x <= innerWidth && y <= innerHeight,
+      };
+    }),
+  };
+}
+
+// How many elements inspect reads at most, and how many of them it prints.
+const INSPECT_LIMIT = 1000;
+const INSPECT_PRINTED = 200;
+
+// Opens a page in the browser record uses and lists what a step can click or
+// type into, so a script never has to guess a button.
+export async function inspect(dirArg, url, { viewport, keepProfile = false, log = () => {} } = {}) {
+  const dir = findProjectDir(dirArg);
+  const fail = (m) => { throw new ProjectError(m); };
+  const address = checkUrl(url, fail, '--inspect').href;
+  const size = checkViewport(viewport, (m) => fail(m.replace('viewport must be like { "width": 1920, "height": 1080 }', '--viewport must be like 1280x720').replace(/^viewport\.(width|height)/, '--viewport $1')));
+  const profile = browserProfile(dir, keepProfile);
+  log(`opening ${address} at ${size.width}x${size.height}${keepProfile ? ', with the profile of earlier runs' : ''}`);
+  let context;
+  try {
+    try {
+      context = await launchProfile(profile, { viewport: size, deviceScaleFactor: 1, acceptDownloads: false }, BROWSER_ARGS);
+    } catch (e) {
+      if (/ProcessSingleton|profile.*in use|SingletonLock/i.test(e.message)) throw new ProjectError('a recording of this project is running and uses its browser profile. Wait for it to finish.');
+      throw e;
+    }
+    for (const p of context.pages().slice(1)) await p.close();
+    const page = context.pages()[0] ?? await context.newPage();
+    await page.addInitScript(pageSetup, []);
+    page.on('dialog', (d) => d.accept().catch(() => {}));
+    await page.goto(address, { waitUntil: 'load' }).catch((e) => { throw new ProjectError(`could not open ${address}: ${e.message.split('\n')[0]}. Start the app first, and check the address.`); });
+    // A page that builds itself with scripts gets a moment to finish.
+    await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
+    await page.evaluate(() => document.fonts?.ready.then(() => true)).catch(() => {});
+    await sleep(500);
+    await page.evaluate(`window.__explainrooFind = ${findInPage.toString()}`);
+    const r = await page.evaluate(inspectInPage, { limit: INSPECT_LIMIT });
+    return { url: page.url(), title: r.title, viewport: size, total: r.total, elements: r.elements };
+  } finally {
+    if (context) await context.close().catch(() => {});
+    if (!keepProfile) fs.rmSync(profile, { recursive: true, force: true });
+  }
+}
+
+export function formatInspect(r) {
+  const cut = (v) => (v.length > 60 ? `${v.slice(0, 57)}...` : v);
+  const lines = r.elements.slice(0, INSPECT_PRINTED).map((e, i) => {
+    const said = [e.words ? quoted(cut(e.words)) : '', e.aria_label && e.aria_label !== e.words ? `aria-label ${quoted(cut(e.aria_label))}` : '', e.placeholder && e.placeholder !== e.words ? `placeholder ${quoted(cut(e.placeholder))}` : ''].filter(Boolean).join(', ');
+    const where = `at ${e.box.x},${e.box.y}, ${e.box.w}x${e.box.h}${e.in_view ? '' : ', outside the window'}`;
+    const by = e.text !== undefined ? `text ${quoted(e.text)}${e.nth ? `, nth ${e.nth}` : ''}, or selector ${e.selector}` : `selector ${e.selector}`;
+    return `${String(i + 1).padStart(3)}. ${e.kind}${said ? ` ${said}` : ''}  ${where}\n     ${by}`;
+  });
+  const more = r.total > lines.length ? [`and ${r.total - lines.length} more${r.elements.length > lines.length ? ', which --json lists' : ''}`] : [];
+  return [
+    `${r.url} at ${r.viewport.width}x${r.viewport.height}: ${r.total} element${r.total === 1 ? '' : 's'} to click or type into, from the top`,
+    ...lines,
+    ...more,
+    'A step takes the text or the selector as it is, like { "do": "click", "text": "Save" }. An element outside the window needs a scroll step to it first.',
+  ].join('\n');
 }
 
 export function formatRecord(r) {
