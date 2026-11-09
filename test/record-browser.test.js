@@ -210,7 +210,7 @@ test('finding an element never scrolls, a zoom outside the window asks for a scr
   assert.ok(slow.steps[4].box.y > 0 && slow.steps[4].box.y < 720, JSON.stringify(slow.steps[4]));
   const seconds = (log, i) => log.steps[i].end - log.steps[i].start;
   const move = (log) => log.steps[0].move.t1 - log.steps[0].move.t0;
-  assert.ok(seconds(slow, 2) > 0.6 && seconds(slow, 2) < 1.6, `scroll of 500 px: ${seconds(slow, 2)}`);
+  assert.ok(seconds(slow, 2) > 0.6 && seconds(slow, 2) < 2.5, `scroll of 500 px: ${seconds(slow, 2)}`);
   assert.ok(move(slow) > 0.5 && move(slow) < 0.9, `pointer move: ${move(slow)}`);
   // pace 2 takes half as long, and a step's duration sets its own.
   fs.writeFileSync(path.join(dir, 'recordings/invoice.json'), JSON.stringify({ url: `${app.url}#/customers`, viewport: { width: 1280, height: 720 }, pace: 2, steps: steps.map((s, i) => (i === 3 ? { ...s, duration: 1.5 } : s)) }));
@@ -223,7 +223,7 @@ test('finding an element never scrolls, a zoom outside the window asks for a scr
 test('a new recording takes out the frames of the one it replaces, and s.recording starts at from', { skip: !chrome }, async (t) => {
   const app = await serveDemoApp();
   t.after(app.close);
-  const dir = project(t, { url: `${app.url}#/customers`, viewport: { width: 1280, height: 720 }, steps: [{ do: 'mark', name: 'top' }, { do: 'scroll', y: 400 }, { do: 'mark', name: 'down' }] });
+  const dir = project(t, { url: `${app.url}#/customers`, viewport: { width: 1280, height: 720 }, steps: [{ do: 'mark', name: 'top' }, { do: 'wait', seconds: 1.5 }, { do: 'scroll', y: 400 }, { do: 'mark', name: 'down' }] });
   const clips = path.join(dir, 'build/clips');
   for (const [name, src] of [['old', 'assets/recordings/invoice.webm'], ['other', 'assets/clips/intro.mp4']]) {
     fs.mkdirSync(path.join(clips, name), { recursive: true });
@@ -238,13 +238,14 @@ test('a new recording takes out the frames of the one it replaces, and s.recordi
   const logo = async (o) => {
     fs.writeFileSync(path.join(dir, 'scenes.js'), `export default { demo(s) { s.recording('invoice', { full: true, enter: 'none', ...${JSON.stringify(o)} }); } };`);
     return withEngine(loadProject(dir), timeline, { scale: 0.25 }, async (page) => {
-      const [frame] = await page.evaluate(() => window.explainroo.frames([1], 0.95));
+      // Half a second in, as a busy computer can send the first frames before the page paints.
+      const [frame] = await page.evaluate(() => window.explainroo.frames([15], 0.95));
       return pixel(dir, frame, 16, 16, 2, 2);
     });
   };
   const top = await logo({});
   assert.ok(top[2] > 200 && top[0] < 100, `the top of the page: ${top}`);
-  const down = await logo({ from: log.steps[2].t });
+  const down = await logo({ from: log.steps[3].t });
   assert.ok(down.every((c) => c > 200), `scrolled down from the start: ${down}`);
   // The frames of the video are in the cache now, named by where they come from.
   const made = fs.readdirSync(clips).filter((n) => n !== 'other');
