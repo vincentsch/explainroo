@@ -1,5 +1,10 @@
 # Things that break
 
+- `npx --yes explainroo` that prints nothing and stops. On Linux, installing
+  explainroo makes ONNX Runtime download its graphics card files from GitHub,
+  and when that download fails, `npx` says nothing. explainroo doesn't use
+  those files. Run the command again with `ONNXRUNTIME_NODE_INSTALL_CUDA=skip`
+  in front of it.
 - Calling an element only sometimes, like `if (s.t > 3) s.box(...)`. Always
   call it, and use `at` and `out` for the timing. The sound effects and the
   checks depend on this.

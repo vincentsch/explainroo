@@ -290,6 +290,16 @@ about 400 MB together. You don't have to clone anything. You need Node.js
 card. I develop explainroo on Linux, and its tests run on Linux, macOS and
 Windows for every change.
 
+On Linux, installing explainroo also makes ONNX Runtime, which the voice uses,
+download its graphics card files from GitHub. explainroo doesn't use them. When
+GitHub is slow, that download fails and `npx` stops without a word. Put
+`ONNXRUNTIME_NODE_INSTALL_CUDA=skip` in front of the command to leave the
+download out:
+
+```bash
+ONNXRUNTIME_NODE_INSTALL_CUDA=skip npx --yes explainroo doctor --fetch
+```
+
 For narration with Kokoro, the free voice, in Spanish, French, Italian,
 Portuguese or Hindi, also install
 [espeak-ng](https://github.com/espeak-ng/espeak-ng), for example with
