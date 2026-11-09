@@ -291,7 +291,7 @@ test('voice --estimate prints the estimate with the target advice and makes noth
   fs.writeFileSync(path.join(dir, 'scenes.js'), 'export default { a() {}, b() {} };');
   const r = await runAll(['voice', dir, '--estimate']);
   assert.equal(r.code, 0, r.err);
-  assert.match(r.out, /^about \d+ s: 21 words of speech at about \d+ a minute take \d+\.\d s\. The 2 scenes add 1\.05 s each for their lead and hold, and the pauses between sentences add 0\.3 s\. The end of the video adds 1\.4 s\. That is about \d+ s over targetSeconds 5, so cut about \d+ words\.\nNothing was made\.\n$/);
+  assert.match(r.out, /^about \d+ s \(\d+ to \d+ s\): 21 words of speech at about \d+ a minute take \d+\.\d s\. The 2 scenes add 1\.05 s each for their lead and hold, and the pauses between sentences add 0\.3 s\. The end of the video adds 1\.4 s\. That is about \d+ s over targetSeconds 5, so cut about \d+ words\.\nNothing was made\.\n$/);
   const json = JSON.parse((await runAll(['voice', dir, '--estimate', '--json'])).out);
   assert.deepEqual([json.estimate.words, json.estimate.scenes, json.estimate.targetSeconds], [21, 2, 5]);
   assert.equal(fs.existsSync(path.join(dir, 'build')), false, 'no voice was made');

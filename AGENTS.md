@@ -146,8 +146,8 @@ publishes nothing.
 3. **Write `script.md`.** The narration comes first, because it sets the
    timing for everything else (`explainroo docs writing`). When the user
    asks for a length, set it in `video.json`, like `"targetSeconds": 40`.
-   After `voice`, a shorter video gets longer holds at the scene ends to
-   reach it, and `voice` and `check` warn when the video is longer.
+   After `voice`, a shorter video gets longer holds at scene ends to
+   reach it, and `voice` and `check` warn when it is over by more than 0.5 s.
    `explainroo set videos/<name> targetSeconds 40` writes one setting, and a
    dotted key like `sizes.shorts.pace` sets one of a single size.
 4. **Make the voice** with `explainroo voice videos/<name>`. Fix a word the

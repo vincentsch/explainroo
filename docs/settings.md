@@ -46,7 +46,7 @@ the file keeps its order.
 | `camera` | `"auto"` | `"auto"` films each scene with a camera that follows the narration; `"still"` keeps every frame as written |
 | `motionBlur` | `true` | motion blur on moving frames in the final render; `render --quality fast` leaves it out for one run |
 | `lead`, `hold`, `end` | 0.35, 0.7, 1.4 | seconds before the voice, after it, and extra at the very end |
-| `targetSeconds` | none | the length the video should have, like `40`, also in a block under `"sizes"`. After `voice`, a shorter video gets the missing time spread over the scene holds, and `voice` and `check` warn when it is longer. See `explainroo docs writing` |
+| `targetSeconds` | none | the length the video should have, like `40`, also in a block under `"sizes"`. After `voice`, a shorter video gets the missing time spread over the scene holds, and `voice` and `check` warn when it is more than 0.5 s longer. See `explainroo docs writing` |
 | `sentenceGap`, `paragraphGap` | 0.3, 0.55 | pauses in generated narration; recordings keep their own pauses |
 | `loudness` | -14 | target loudness in LUFS |
 | `boil` | 0 | redraws per second of hand-drawn lines; 0 keeps them still |

@@ -32,10 +32,11 @@ something to a friend at a table.
   adds 1.4 seconds. So 105 words in 6 scenes make about 45 seconds, and a
   finished video has about 130 to 155 words a minute.
 - Before the narration exists, `voice` and `check` print an estimate, like
-  "about 45 s: 105 words of speech at about 180 a minute take 35.0 s. The 6
-  scenes add 1.05 s each for their lead and hold, and the pauses between
-  sentences add 2.1 s. The end of the video adds 1.4 s." The figures come from
-  the settings of your video. `explainroo voice videos/<name> --estimate`
+  "about 45 s (43 to 47 s): 105 words of speech at about 180 a minute take
+  35.0 s. The 6 scenes add 1.05 s each for their lead and hold, and the pauses
+  between sentences add 2.1 s. The end of the video adds 1.4 s." The figures
+  come from the settings of your video. The voice nearly always lands in the
+  range, so aim the middle a little under a target. `explainroo voice videos/<name> --estimate`
   prints only the estimate, with what it means for `targetSeconds`, and makes
   nothing. When it is too long, cut words before you make the voice.
 - For an exact length, set `"targetSeconds": 40` in `video.json`. It counts
@@ -43,8 +44,8 @@ something to a friend at a table.
   `"sizes"` sets its own, or `null` for none. When the video comes out
   shorter, the missing time goes evenly into the holds of its scenes, so it
   ends at 40 seconds. When that adds more than 3 seconds to each scene, or
-  when the video runs longer, `voice` and `check` say so and name the longest
-  scenes. Without `targetSeconds`, a video is as long as its narration.
+  when the video runs more than half a second longer, `voice` and `check` say
+  so and name the longest scenes. Without `targetSeconds`, a video is as long as its narration.
 - Start with the question or problem. Explain it in small steps. Give one
   concrete example, then sum up.
 - One idea per scene, usually 1 to 3 sentences (4 to 15 seconds).

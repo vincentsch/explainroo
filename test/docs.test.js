@@ -575,10 +575,10 @@ test('the writing topic has a part for other languages: the filler words are Eng
 
 test('the pace in the writing topic is the one the estimate uses: 13 letters a second, and the figures for Hindi, Japanese and Chinese', async () => {
   const { estimateLength } = await import('../src/timeline.js');
-  // A thousand words of five letters is about 5,000 letters, at 12.95 a second.
+  // A thousand words of five letters is about 5,000 letters, at 12.7 a second.
   const words = Array.from({ length: 1000 }, () => 'abcde').join(' ');
   const estimate = (language, text) => estimateLength({ config: { language, voice: 'af_heart', speed: 0.9, pace: 1, lead: 0, hold: 0, end: 0, sentenceGap: 0, paragraphGap: 0 }, script: { scenes: [{ attrs: {}, spoken: text, units: [{ type: 'word', display: text, spoken: text }] }] } });
-  assert.equal(estimate('es', words).perMinute, Math.round((12.95 * 60) / 5));
+  assert.equal(estimate('es', words).perMinute, Math.round((12.7 * 60) / 5));
   assert.equal(estimate('hi', words).perMinute, 150);
 });
 
