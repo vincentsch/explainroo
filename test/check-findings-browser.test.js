@@ -16,7 +16,7 @@ const skip = !chrome && 'no browser here';
 
 // A project whose scenes are { id: body }, each two seconds long unless `dur` says
 // otherwise, with `words` spoken in a scene when given.
-function project(t, settings, scenes, { words = {}, dur = 2 } = {}) {
+function project(t, settings, scenes, { words = {}, dur = 2, added = {} } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-findings-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ theme: 'clean', music: false, sfx: false, captions: false, ...settings }));
@@ -26,7 +26,7 @@ function project(t, settings, scenes, { words = {}, dur = 2 } = {}) {
   let start = 0;
   const list = Object.keys(scenes).map((id, index) => {
     const scene = { id, index, start, dur, marks: {}, voice: null, lead: 0, transition: 'none',
-      words: (words[id] ?? []).map((text, i) => ({ text, start: 0.2 + i * 0.2, end: 0.35 + i * 0.2 })) };
+      words: (words[id] ?? []).map((text, i) => ({ text, start: 0.2 + i * 0.2, end: 0.35 + i * 0.2 })), ...(added[id] ? { added: added[id] } : {}) };
     start += dur;
     return scene;
   });
@@ -410,4 +410,21 @@ test('when the scene\'s camera zoom pushes text out of the TikTok content area, 
   assert.match(said('zoomed')[0], /^"Wide words here" is outside the tiktok content area .*\. The camera's zoom of 1\.6x pushes it there, and without the zoom it fits: zoom less, or move it toward the point the camera zooms onto$/);
   assert.equal(said('plain').length, 1, JSON.stringify(issues));
   assert.doesNotMatch(said('plain')[0], /camera/);
+});
+
+test('the hint that a short\'s picture doesn\'t change names the next two words in that stretch, with their times', { skip }, async (t) => {
+  const issues = await check(project(t, { size: 'tiktok', captions: false }, {
+    still: `s.text('Purring', { x: s.cx, y: s.cy, size: 80, at: 0 });`,
+  }, { dur: 4, words: { still: ['Cats', 'purr,', 'and', 'purr.'] } }));
+  const hint = issues.find((i) => i.message.startsWith('the picture doesn\'t change'));
+  assert.ok(hint, JSON.stringify(issues));
+  assert.match(hint.message, /show something new on a word in that stretch, like "Cats" at 0\.2s or "purr#1" at 0\.4s, or move the camera with s\.short\.punch$/);
+});
+
+test('the hold that targetSeconds adds at the end of a scene doesn\'t count as a stretch with no new element', { skip }, async (t) => {
+  const scenes = { long: `s.title('One', { at: 0 }); s.text('Two', { y: 700, at: 1 });` };
+  const plain = await check(project(t, { size: '16:9' }, scenes, { dur: 10 }));
+  assert.ok(plain.some((i) => i.message.startsWith('no new element for 9.0s (from 1.0s)')), JSON.stringify(plain));
+  const held = await check(project(t, { size: '16:9' }, scenes, { dur: 10, added: { long: 6 } }));
+  assert.ok(!held.some((i) => i.message.startsWith('no new element')), JSON.stringify(held));
 });

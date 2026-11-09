@@ -1132,7 +1132,9 @@ export class Engine {
       } else if (!times.length) {
         add('warn', sc.id, null, 'nothing enters in this scene; add at least one element with an "at" time');
       } else {
-        const marks = [0, ...times.filter((x) => x >= 0 && x <= sc.dur), sc.dur];
+        // The hold that targetSeconds adds may stay still.
+        const end = sc.dur - (sc.added ?? 0);
+        const marks = [0, ...times.filter((x) => x >= 0 && x <= end), end];
         for (let i = 1; i < marks.length; i++) {
           const gap = marks[i] - marks[i - 1];
           // The empty start already has its hint.

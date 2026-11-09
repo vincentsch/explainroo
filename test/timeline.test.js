@@ -42,6 +42,9 @@ test('targetSeconds spreads the missing time evenly over the holds, so the video
   assert.equal(fitted.frames, 40 * 30);
   const added = fitted.scenes.map((s, k) => s.dur - plain.scenes[k].dur);
   assert.ok(Math.max(...added) - Math.min(...added) <= 1 / 30 + 1e-9, added.join(', '));
+  // Each scene carries the hold it got, for check, and a timeline without a target has none.
+  fitted.scenes.forEach((s, k) => assert.ok(Math.abs(s.added - added[k]) < 1e-3, `${s.added} ${added[k]}`));
+  assert.ok(plain.scenes.every((s) => !('added' in s)));
   // The narration and the words keep their place in each scene, and the scenes follow each other.
   fitted.scenes.forEach((s, k) => {
     assert.equal(s.lead, plain.scenes[k].lead);
