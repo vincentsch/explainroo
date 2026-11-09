@@ -3,7 +3,6 @@
 // ends above the bold captions and stays clear of the apps' buttons. The
 // pictures below it fill the rest of the tall frame from s.full.
 
-const BACK = '#111a33';
 // The zoom of each scene's punch(), so the words stay in s.safe at that zoom.
 const ZOOMS = new WeakMap();
 
@@ -37,29 +36,39 @@ function fitLine(s, text, size, weight, width) {
   return { size: fit, w: (w * fit) / size };
 }
 
+// The colors of the video: brand.background and brand.accent from video.json
+// when they are set, and the look's background and accent otherwise.
+export function colors(s) {
+  return { back: s.ui.colors.background, accent: s.ui.colors.accent };
+}
+
 // The background of every scene: one color for the whole video, with a glow
-// behind the subject. Call it first, right after s.camera.
-export function backdrop(s, { glow = '#4dabf7', pattern = 'dots' } = {}) {
-  s.short.backdrop({ color: BACK, glow, gy: s.safe.y + s.safe.h * 0.6, pattern });
+// behind the subject in the accent color. Call it first, right after s.camera.
+export function backdrop(s, { glow = colors(s).accent, pattern = 'dots' } = {}) {
+  s.short.backdrop({ color: colors(s).back, glow, gy: s.safe.y + s.safe.h * 0.6, pattern });
 }
 
 // A large, faint copy of the subject in the lower part of the frame, below the
 // captions. The apps put their buttons and post text there, so it carries
 // nothing the viewer must see: it fills the tall frame and changes with the
 // subject.
-export function echo(s, icon, { color = 'blue', at, out, exit } = {}) {
+export function echo(s, icon, { color = colors(s).accent, at, out, exit } = {}) {
   const size = s.full.w * 0.66;
   s.icon(icon, { x: s.full.x + s.full.w / 2, y: s.full.bottom - size * 0.56, size, color, opacity: 0.16, at, out, exit, sfx: false, camera: false });
 }
 
 // The first frame: the hook title and the subject, both there at 0 seconds, so
 // the frame says what the video is about. Feeds and apps show it as the cover.
-export function hookFrame(s, title, { icon, color = 'yellow', kicker } = {}) {
-  backdrop(s, { glow: '#f59f00' });
-  s.short.hook(title, { y: s.safe.y + s.safe.h * 0.2, kicker, at: 0 });
+// The title and its kicker stay in s.safe at the zoom of the scene's punch().
+export function hookFrame(s, title, { icon, color = colors(s).accent, kicker } = {}) {
+  backdrop(s);
+  const area = wordArea(s);
+  const box = s.short.hook(title, { y: s.safe.y + s.safe.h * 0.2, kicker, area, at: 0 });
   if (icon) {
+    // The subject fills the room below the title.
+    const room = area.bottom - box.bottom;
     echo(s, icon, { color, at: -1 });
-    s.icon(icon, { x: s.cx, y: s.safe.y + s.safe.h * 0.62, size: unit(s) * 48, color, at: -1 });
+    s.icon(icon, { x: s.cx, y: box.bottom + room / 2, size: Math.min(unit(s) * 48, room * 0.8), color, at: -1 });
   }
 }
 
@@ -77,7 +86,7 @@ export function beats(s, items, { y = s.safe.y + s.safe.h * 0.55 } = {}) {
     const label = it.label ? fitLine(s, it.label, u * 9, 600, area.w * 0.96).size : u * 9;
     const at = Math.min(y, area.bottom - size / 2 - label * 1.5);
     echo(s, it.icon, { color: it.color, at: it.at, out: next, exit });
-    s.icon(it.icon, { x: s.cx, y: at, size, color: it.color ?? 'blue', label: it.label, labelSize: label, labelColor: '#ffffff', at: it.at, out: next, exit, enter: 'pop' });
+    s.icon(it.icon, { x: s.cx, y: at, size, color: it.color ?? colors(s).accent, label: it.label, labelSize: label, labelColor: '#ffffff', at: it.at, out: next, exit, enter: 'pop' });
   });
 }
 
@@ -102,8 +111,8 @@ export function punch(s, at, { zoom = 1.25 } = {}) {
 }
 
 // The last frame: the one thing to remember, with up to three short lines.
-export function payoff(s, title, lines, { at = 0.2, tone = 'good', icon = 'circle-check', color = 'green' } = {}) {
-  backdrop(s, { glow: '#12a150', pattern: 'none' });
+export function payoff(s, title, lines, { at = 0.2, tone = 'good', icon = 'circle-check', color = colors(s).accent } = {}) {
+  backdrop(s, { pattern: 'none' });
   if (icon) echo(s, icon, { color, at });
   s.short.payoff({ title, lines, tone, at, y: s.safe.y + s.safe.h * 0.5 });
 }

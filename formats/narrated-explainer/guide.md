@@ -46,3 +46,7 @@ voice says it. Find icons with `explainroo icons <word>`, and read
 The format starts with the `paper` look, where shapes draw themselves like a
 marker on paper. `chalk`, `blueprint` and `editorial` suit it too. Run
 `explainroo themes` to see them all.
+
+The icon of `question` and the number of `bigNumber` are in `brand.accent`
+from `video.json` when it is set, and in the look's accent otherwise.
+`brand.background` is the background with `"defaults": "0.6"`.
