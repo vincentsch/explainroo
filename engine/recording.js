@@ -22,6 +22,20 @@ export const LATE_SECONDS = 0.15;
 // How much faster than its speed a recording plays to catch up with a cue.
 export const CATCH_UP = 2;
 
+// The steps that land on a cue, with the scene time of the cue: [{ step,
+// start, t, cueAt, cue }]. `cues` sets cues by mark name or step number, over
+// the steps' own. Steps that share a cue run in order, and the first one lands
+// on it. Steps before `from` are not played.
+export function cuedSteps(steps, { cues, from = 0, time }) {
+  const cued = [];
+  for (const st of steps) {
+    const cue = cues?.[st.name] ?? cues?.[st.step] ?? st.cue;
+    if (cue === undefined || st.t < from || cued.some((c) => c.cue === cue)) continue;
+    cued.push({ step: st.step, start: st.start, t: st.t, cueAt: time(cue), cue });
+  }
+  return cued;
+}
+
 // When the video plays: a list of parts, each from scene time `at` until
 // `until`, starting at second `v` of the video and playing at `speed`, 0 for a
 // hold. The video starts at `from` when the scene reaches `at`. A step with a

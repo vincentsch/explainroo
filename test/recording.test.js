@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { checkRecordingScript, readRecordingScript, scriptHash, stepLabel, videoOffset } from '../src/record.js';
 import { ffmpeg } from '../src/ffmpeg.js';
-import { recordingClock, videoTime, sceneTime, cursorAt, viewAt, focusRect, coverRect, zoomScale, ZOOM_SECONDS, ZOOM_RANGE, CATCH_UP } from '../engine/recording.js';
+import { cuedSteps, recordingClock, videoTime, sceneTime, cursorAt, viewAt, focusRect, coverRect, zoomScale, ZOOM_SECONDS, ZOOM_RANGE, CATCH_UP } from '../engine/recording.js';
 import { makeState } from '../src/pipeline.js';
 import { loadProject } from '../src/project.js';
 
@@ -45,6 +45,8 @@ test('a recording script gets its defaults and keeps what each step needs', () =
   assert.equal(quick.pace, 1.5);
   assert.deepEqual(quick.steps, [{ do: 'click', text: 'Save', duration: 0.3 }, { do: 'scroll', y: 400, duration: 2 }, { do: 'zoom', selector: 'form', scale: 3 }]);
   assert.equal(stepLabel(s.steps[11], 12), 'step 12 (mark "saved")');
+  // A type step takes how many characters it types a second.
+  assert.deepEqual(checkRecordingScript({ url: URL, steps: [{ do: 'type', text: 'Note', value: 'Hi', cps: 20 }] }).steps[0], { do: 'type', text: 'Note', value: 'Hi', cps: 20 });
 });
 
 test('a recording script names the step and what to write for each mistake', () => {
@@ -76,6 +78,8 @@ test('a recording script names the step and what to write for each mistake', () 
   fails({ url: URL, steps: [{ do: 'wait', seconds: 1, duration: 1 }] }, /a wait step has no "duration"/);
   fails({ url: URL, steps: [{ do: 'zoom', selector: 'form', scale: 6 }] }, /scale must be how many times closer the zoom goes, from 1 to 4/);
   fails({ url: URL, steps: [{ do: 'zoom', scale: 2 }] }, /a zoom without an element goes back out, so it takes no scale/);
+  fails({ url: URL, steps: [{ do: 'type', text: 'Note', value: 'Hi', cps: 100 }] }, /step 1: cps must be the characters it types a second, from 2 to 60\. 14 is the default, and the script's pace makes it faster or slower/);
+  fails({ url: URL, steps: [{ do: 'click', text: 'Save', cps: 10 }] }, /a click step has no "cps"/);
 });
 
 test('readRecordingScript says where the script goes and lists the ones there', (t) => {
@@ -119,6 +123,25 @@ test('a cued step holds the frame before it until its action lands on the cue', 
   assert.ok(Math.abs(late.late[0].by - 0.5) < 1e-9);
   // Steps before from are not played, so their cues don't count.
   assert.deepEqual(recordingClock([{ step: 1, start: 0.2, t: 0.5, cueAt: 5 }], { from: 1 }).parts, []);
+});
+
+test('steps that share a cue run in order, and the first one lands on it', () => {
+  const steps = [
+    { step: 1, do: 'click', start: 0.5, t: 1, cue: 'open' },
+    { step: 2, do: 'zoom', start: 2, t: 2, cue: '#type' },
+    { step: 3, do: 'type', start: 3.3, t: 4, cue: '#type' },
+    { step: 4, do: 'mark', name: 'done', start: 6, t: 6 },
+  ];
+  const time = (cue) => ({ open: 1.5, '#type': 5, '#done': 9 })[cue];
+  const cued = cuedSteps(steps, { time });
+  assert.deepEqual(cued.map((c) => [c.step, c.cueAt]), [[1, 1.5], [2, 5]]);
+  // The type step plays on after the zoom, at the speed of the recording, and nothing is late.
+  const clock = recordingClock(cued, { from: 0 });
+  assert.deepEqual(clock.late, []);
+  assert.equal(videoTime(clock, 5), 2);
+  assert.equal(videoTime(clock, 7), 4);
+  // cues by mark name or step number win, and steps before from don't count.
+  assert.deepEqual(cuedSteps(steps, { cues: { done: '#done', 3: 'open' }, from: 1.5, time }).map((c) => [c.step, c.cue]), [[2, '#type'], [3, 'open'], [4, '#done']]);
 });
 
 test('two cued steps hold one after the other, and video times map back to the scene', () => {

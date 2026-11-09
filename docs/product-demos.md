@@ -68,7 +68,8 @@ which `explainroo doctor --fetch` downloads once.
   top.
 - `open` goes to `url`, an address or a path. `click`, `hover` and `type`
   move the pointer to the element. `type` clicks the field and types
-  `value`, and `press` presses a key after it. `scroll` takes `y` in pixels
+  `value` at 14 characters a second, or at `cps`, and `press` presses a key
+  after it. `scroll` takes `y` in pixels
   or the element to scroll to the middle of the window. `wait` takes
   `seconds` or the element to wait for. `zoom` moves in on the element, and
   without one back out. `mark` names a moment with `name`.
@@ -80,10 +81,13 @@ which `explainroo doctor --fetch` downloads once.
 - A zoom fits its element into about 70% of the frame, from 1.4 to 2.5
   times closer. `"scale": 2` on a zoom step sets how close it goes.
 - A pointer move takes about 0.6 seconds, and a scroll of one window height
-  about 1 second. `"pace": 1.5` in the script makes both faster, from 0.5 to
-  2, and `"duration": 1.2` on a step sets the seconds of its own move or
-  scroll.
+  about 1 second. `"pace": 1.5` in the script makes moves, scrolls and
+  typing faster, from 0.5 to 2. `"duration": 1.2` on a step sets the seconds
+  of its own move or scroll, and `"cps": 20` on a `type` step the characters
+  it types a second, which the pace speeds up too.
 - `cue` is a spoken word or a `[#marker]` of the scene that plays it.
+  Several steps may share one cue, like a `zoom` and the `type` after it.
+  They run in order, and the first lands on the cue.
 - Steps with `"before": true` run before the video starts, like closing a
   cookie banner or logging in. Every run starts with an empty browser
   profile, so the site has no cookies or stored data from an earlier run.

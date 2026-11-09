@@ -7,7 +7,7 @@ import { colorOf, tintOf, fontString } from './themes.js';
 import { scalePath, quadD, polyD, pathLength, pointAt, parsePath, absolutize, samplePath } from './pathdata.js';
 import { layoutText, lineStartX } from './text.js';
 import { clipFrame, clipURL, soundURL, FIT_SPEEDS } from './clips.js';
-import { recordingClock, videoTime, sceneTime, cursorAt, viewAt, drawCursor, RING_SECONDS } from './recording.js';
+import { cuedSteps, recordingClock, videoTime, sceneTime, cursorAt, viewAt, drawCursor, RING_SECONDS } from './recording.js';
 import { highlightLine, codeTokens, matchTokens, resolveCodeSteps, codeMorphState } from './code.js';
 import { ring, bounds, along, rayThrough } from './geometry.js';
 
@@ -1658,12 +1658,7 @@ export class Stage {
         throw new SceneError(`recording "${name}" has no mark or step "${key}" for cues. ${names.length ? `Marks: ${names.join(', ')}. ` : ''}Steps go from ${steps[0].step} to ${steps.at(-1).step}`);
       }
     }
-    const cued = [];
-    for (const st of steps) {
-      const cue = o.cues?.[st.name] ?? o.cues?.[st.step] ?? st.cue;
-      if (cue === undefined || st.t < from) continue;
-      cued.push({ step: st.step, start: st.start, t: st.t, cueAt: this.time(cue), cue });
-    }
+    const cued = cuedSteps(steps, { cues: o.cues, from, time: (cue) => this.time(cue) });
     // 'fit' plays the recording at the speed that ends its last step with the
     // scene, or at out, with the holds for its cues, from half to twice its speed.
     const end = log.end ?? log.duration;

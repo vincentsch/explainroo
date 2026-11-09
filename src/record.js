@@ -22,7 +22,7 @@ export const STEP_KINDS = ['open', 'click', 'type', 'hover', 'scroll', 'wait', '
 const STEP_KEYS = {
   open: ['url'],
   click: ['duration'],
-  type: ['value', 'press', 'duration'],
+  type: ['value', 'press', 'cps', 'duration'],
   hover: ['duration'],
   scroll: ['y', 'duration'],
   wait: ['seconds'],
@@ -40,6 +40,10 @@ const TAIL_SECONDS = 1;
 // replaces them for that step.
 export const MOVE_SECONDS = 0.6;
 export const SCROLL_SECONDS = 1;
+// How many characters a second a type step types at pace 1, and the range a
+// step's cps may take.
+export const TYPE_CPS = 14;
+const CPS_RANGE = [2, 60];
 const PACES = [0.5, 2];
 
 const quoted = (v) => JSON.stringify(v);
@@ -107,7 +111,7 @@ export function checkRecordingScript(script, rel = 'the recording script') {
   const url = checkUrl(script.url, fail, 'url');
   const viewport = checkViewport(script.viewport, fail);
   const pace = script.pace ?? 1;
-  if (typeof pace !== 'number' || !(pace >= PACES[0] && pace <= PACES[1])) fail(`pace must be a number from ${PACES[0]} to ${PACES[1]}: 2 moves the pointer and scrolls twice as fast, 0.5 half as fast`);
+  if (typeof pace !== 'number' || !(pace >= PACES[0] && pace <= PACES[1])) fail(`pace must be a number from ${PACES[0]} to ${PACES[1]}: 2 moves the pointer, scrolls and types twice as fast, 0.5 half as fast`);
   if (!Array.isArray(script.steps) || !script.steps.length) fail('steps must be a list with at least one step, like [{ "do": "click", "text": "New invoice" }]');
   const names = new Set();
   const steps = script.steps.map((raw, i) => {
@@ -146,6 +150,10 @@ export function checkRecordingScript(script, rel = 'the recording script') {
     if (raw.do === 'type') {
       if (typeof raw.value !== 'string') bad('a type step needs "value", the words it types, like { "do": "type", "text": "Customer", "value": "Acme Inc." }');
       step.value = raw.value;
+      if (raw.cps !== undefined) {
+        if (typeof raw.cps !== 'number' || !(raw.cps >= CPS_RANGE[0] && raw.cps <= CPS_RANGE[1])) bad(`cps must be the characters it types a second, from ${CPS_RANGE[0]} to ${CPS_RANGE[1]}. ${TYPE_CPS} is the default, and the script's pace makes it faster or slower`);
+        step.cps = raw.cps;
+      }
       if (raw.press !== undefined) {
         if (typeof raw.press !== 'string' || !raw.press) bad('press must be a key name like "Enter" or "Tab"');
         step.press = raw.press;
@@ -655,7 +663,8 @@ export async function record(dirArg, name, { log = () => {}, keepProfile = false
           if (step.do === 'type') {
             await sleep(250);
             entry.t = round(now());
-            await page.keyboard.type(step.value, { delay: 55 });
+            // The script's pace makes typing faster or slower too.
+            await page.keyboard.type(step.value, { delay: 1000 / ((step.cps ?? TYPE_CPS) * script.pace) });
             if (step.press) {
               await sleep(250);
               await page.keyboard.press(step.press).catch((e) => fail(step, n, `can't press ${quoted(step.press)}: ${e.message.split('\n')[0]}. Key names are like Enter, Tab, Escape or ArrowDown.`));

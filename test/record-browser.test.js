@@ -307,3 +307,21 @@ test('inspect lists what a step can click or type into, and every text and selec
   assert.deepEqual(log.steps[0].box, editor.box);
   assert.deepEqual(log.steps[1].box, clear.box);
 });
+
+test('a type step types at 14 characters a second, at its cps, and faster at a higher pace', { skip: !chrome }, async (t) => {
+  const app = await serveDemoApp();
+  t.after(app.close);
+  const value = 'Design work for the spring issue';
+  const typing = async (step, pace) => {
+    const dir = project(t, { url: `${app.url}#/new-invoice`, viewport: { width: 1280, height: 720 }, ...(pace ? { pace } : {}), steps: [{ do: 'type', text: 'Note', value, ...step }, { do: 'mark', name: 'typed' }] });
+    const log = JSON.parse(fs.readFileSync(path.join(dir, (await record(dir, 'invoice')).log), 'utf8'));
+    // The step ends 0.7 s and a moment to settle after the last key.
+    return log.steps[0].end - log.steps[0].t;
+  };
+  const plain = await typing({});
+  const quick = await typing({ cps: 28 });
+  const paced = await typing({ cps: 28 }, 2);
+  // 32 characters take about 2.3 s at 14 a second, 1.1 s at 28, and 0.6 s at 28 with pace 2.
+  assert.ok(plain - quick > 0.6 && plain - quick < 2, `${plain} and ${quick}`);
+  assert.ok(quick - paced > 0.2 && quick - paced < 1.2, `${quick} and ${paced}`);
+});
