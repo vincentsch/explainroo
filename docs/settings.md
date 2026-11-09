@@ -94,8 +94,9 @@ because labels may move.
 
 `"0.6"` also changes these:
 
-- A title or subtitle that wraps breaks into lines of about the same length,
-  so no word is left alone on the last line.
+- A title, a subtitle, a box label or text on a card of its own (`bg`) that
+  wraps breaks into lines of about the same length, so no word is left alone
+  on the last line. `balance: false` keeps the old lines.
 - Text follows one size scale: words on a card 44 pixels, the labels of
   arrows and icons 40, chart labels 36, notes 34 and the values on bars 48.
   Before, an arrow's label was 48, larger than the card it points at, an
