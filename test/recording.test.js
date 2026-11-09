@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { checkRecordingScript, readRecordingScript, scriptHash, stepLabel, videoOffset } from '../src/record.js';
+import { checkRecordingScript, readRecordingScript, scriptHash, stepLabel, videoOffset, wholeHash } from '../src/record.js';
 import { ffmpeg } from '../src/ffmpeg.js';
 import { cuedSteps, recordingClock, videoTime, sceneTime, cursorAt, viewAt, focusRect, coverRect, zoomScale, ZOOM_SECONDS, ZOOM_RANGE, CATCH_UP } from '../engine/recording.js';
 import { makeState } from '../src/pipeline.js';
@@ -241,6 +241,53 @@ test('the page gets the step log of each recording, and a project without one ke
   // When both are there, the new one counts.
   fs.writeFileSync(path.join(dir, 'assets/recordings/demo.log.json'), JSON.stringify({ ...log, start: 0.7 }));
   assert.equal(makeState(loadProject(dir), timeline).recordings.demo.start, 0.7);
+});
+
+test('a new cue plays from the script without a new recording, and any other change asks for one', (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-record-cue-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ title: 'T' }));
+  fs.writeFileSync(path.join(dir, 'script.md'), '## a\nHello.\n');
+  fs.writeFileSync(path.join(dir, 'scenes.js'), 'export default { a(s) {} };');
+  const script = { url: URL, steps: [{ do: 'click', text: 'Accept', before: true }, { do: 'click', text: 'Save', cue: '#plot' }, { do: 'mark', name: 'done' }] };
+  const write = (s) => fs.writeFileSync(path.join(dir, 'recordings/demo.json'), JSON.stringify(s));
+  fs.mkdirSync(path.join(dir, 'recordings'));
+  fs.mkdirSync(path.join(dir, 'assets/recordings'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'assets/recordings/demo.webm'), '');
+  const steps = [
+    { step: 1, do: 'click', text: 'Accept', before: true, start: 0.1, t: 0.2, end: 0.3 },
+    { step: 2, do: 'click', text: 'Save', cue: '#plot', start: 1, t: 1.5, end: 2 },
+    { step: 3, do: 'mark', name: 'done', start: 2, t: 2, end: 2 },
+  ];
+  const log = { version: 1, width: 1920, height: 1080, duration: 3, start: 0.5, end: 2, cursor: { x: 960, y: 540 }, script: scriptHash(script), steps };
+  fs.writeFileSync(path.join(dir, 'assets/recordings/demo.log.json'), JSON.stringify(log));
+  const state = () => makeState(loadProject(dir), { scenes: [] }).recordings.demo;
+  // The cue is left out of what the recording is made from.
+  const moved = { ...script, steps: [script.steps[0], { do: 'click', text: 'Save', cue: 'plot' }, { do: 'mark', name: 'done', cue: 'end' }] };
+  assert.equal(scriptHash(moved), scriptHash(script));
+  assert.notEqual(wholeHash(moved), wholeHash(script));
+  write(moved);
+  const now = state();
+  assert.equal(now.changed, undefined);
+  assert.deepEqual(now.steps.map((st) => st.cue), [undefined, 'plot', 'end']);
+  // The steps keep the order of their keys, so the state stays the same for the same cues.
+  assert.deepEqual(Object.keys(now.steps[1]), Object.keys(steps[1]));
+  // A cue taken out goes from playback too.
+  write({ ...script, steps: [script.steps[0], { do: 'click', text: 'Save' }, script.steps[2]] });
+  assert.deepEqual(state().steps.map((st) => st.cue), [undefined, undefined, undefined]);
+  // Anything else is a new recording.
+  write({ ...script, steps: [script.steps[0], { do: 'click', text: 'Save it', cue: '#plot' }, script.steps[2]] });
+  assert.equal(state().changed, true);
+  assert.equal(state().steps[1].cue, '#plot');
+  // A cue that isn't valid asks to record again, which then names the mistake.
+  write({ ...script, steps: [script.steps[0], { do: 'click', text: 'Save', cue: '' }, script.steps[2]] });
+  assert.equal(state().changed, true);
+  // A log from before kept the hash of the whole script, cues too, and still plays.
+  fs.writeFileSync(path.join(dir, 'assets/recordings/demo.log.json'), JSON.stringify({ ...log, script: wholeHash(script) }));
+  write(script);
+  assert.equal(state().changed, undefined);
+  write(moved);
+  assert.equal(state().changed, true);
 });
 
 // Chrome sends the first frame of a recording a little after the page opens,

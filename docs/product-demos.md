@@ -89,7 +89,9 @@ which `explainroo doctor --fetch` downloads once.
   it types a second, which the pace speeds up too.
 - `cue` is a spoken word or a `[#marker]` of the scene that plays it.
   Several steps may share one cue, like a `zoom` and the `type` after it.
-  They run in order, and the first lands on the cue.
+  They run in order, and the first lands on the cue. A cue only changes
+  playback, so a new cue needs no new recording. Any other change to the
+  script does, and `check` says so.
 - Steps with `"before": true` run before the video starts, like closing a
   cookie banner or logging in. A step before the video that finds nothing
   is skipped, in every run, with or without `--keep-profile`, so it can

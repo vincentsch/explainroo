@@ -10,7 +10,7 @@ import { listAssets, loadProject } from './project.js';
 import { startServer, ROOT } from './server.js';
 import { launch, openEngine } from './browser.js';
 import { readVersions, sha256File } from './history.js';
-import { logPath, oldLogPath, readLog, scriptHash, scriptPath } from './record.js';
+import { checkRecordingScript, logPath, oldLogPath, readLog, scriptHash, scriptPath, wholeHash } from './record.js';
 
 export const VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
 
@@ -64,8 +64,27 @@ function recordingState(dir, assets) {
     const log = file && readLog(file);
     if (!log) continue;
     let changed = false;
-    try { changed = log.script !== scriptHash(JSON.parse(fs.readFileSync(scriptPath(dir, name), 'utf8'))); } catch {}
-    out[name] = { ...log, ...(changed ? { changed: true } : {}) };
+    let steps = log.steps;
+    try {
+      const raw = JSON.parse(fs.readFileSync(scriptPath(dir, name), 'utf8'));
+      changed = log.script !== scriptHash(raw) && log.script !== wholeHash(raw);
+      // The cues come from the script as it is now, as playback is where they
+      // count, so a new cue plays without a new recording.
+      if (!changed) {
+        let script = null;
+        try { script = checkRecordingScript(raw); } catch { changed = true; }
+        if (script) {
+          steps = log.steps.map((st) => {
+            const copy = { ...st };
+            const cue = script.steps[st.step - 1]?.cue;
+            if (cue === undefined) delete copy.cue;
+            else copy.cue = cue;
+            return copy;
+          });
+        }
+      }
+    } catch {}
+    out[name] = { ...log, steps, ...(changed ? { changed: true } : {}) };
   }
   return Object.keys(out).length ? out : null;
 }

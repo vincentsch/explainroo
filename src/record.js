@@ -226,9 +226,22 @@ export function checkUrl(value, fail, key, base) {
   return url;
 }
 
-// The hash of a script, kept in the log. check compares it, so a scene never
-// plays an old recording of a script that has changed.
+// The hash of what a script does, kept in the log. check compares it, so a
+// scene never plays an old recording of a script that has changed. A step's
+// cue only says when playback shows it, so it is left out, and a new cue
+// needs no new recording.
 export function scriptHash(script) {
+  const steps = Array.isArray(script?.steps) ? script.steps.map((st) => {
+    if (!st || typeof st !== 'object' || Array.isArray(st)) return st;
+    const { cue, ...rest } = st;
+    return rest;
+  }) : script?.steps;
+  return wholeHash(script && typeof script === 'object' && !Array.isArray(script) ? { ...script, steps } : script);
+}
+
+// The hash of the whole script, cues too, which logs kept before the cue
+// was left out.
+export function wholeHash(script) {
   return crypto.createHash('sha256').update(JSON.stringify(script)).digest('hex').slice(0, 16);
 }
 
