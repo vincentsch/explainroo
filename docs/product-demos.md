@@ -151,11 +151,14 @@ A demo is advertising, so everything in it has to be right.
 
 ## Set up the brand
 
-Set up the brand in `video.json`. Use the `clean` look.
+Set up the brand in `video.json`. Use the `studio` look for a product demo.
+When the video starts from a format, keep the format's own look: the product
+formats use `studio`, and `vertical-short` uses `midnight`, a dark look made
+for feeds, also for a product short.
 
 ```json
 {
-  "theme": "clean",
+  "theme": "studio",
   "brand": {
     "accent": "#245cff",
     "background": "#f8f6f1",
