@@ -41,8 +41,10 @@ test('the layouts in the pictures topic pass check in a wide and in a tall frame
   for (const scene of ['number', 'compare', 'steps', 'hub']) cachedVoice(dir, scene);
   for (const size of ['youtube', 'shorts']) {
     const { issues } = await check(loadProject(dir, { size }));
-    // The first scene is a number alone, so the cover hint is all there is.
-    assert.deepEqual(issues.filter((i) => !/"cover"/.test(i.message)), [], `${size}: ${JSON.stringify(issues)}`);
+    // The first scene is a number alone, so the cover hint is all there is. A
+    // layout is one scene, not a whole short, so the pace of a short is no
+    // finding here.
+    assert.deepEqual(issues.filter((i) => !/"cover"|the picture doesn't change/.test(i.message)), [], `${size}: ${JSON.stringify(issues)}`);
   }
 });
 

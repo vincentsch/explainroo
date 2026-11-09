@@ -704,7 +704,6 @@ export class Engine {
     return { level: 'hint', scene: sc.id, t: Math.round((at - sc.start) * 100) / 100, message: `${where}, which shows only text on an empty background; ${advice}` };
   }
 
-  // Samples every scene and reports layout problems.
   // A tall video of up to 3 minutes is a short: the kind of video that Shorts,
   // TikTok and Reels show to people who scroll.
   isShort() {
@@ -730,6 +729,7 @@ export class Engine {
     }
   }
 
+  // Samples every scene and reports layout problems.
   check(step = 0.25, viewWidth = null) {
     // check looks at the layout as written, and then at what the automatic
     // camera shows of it: text sizes, and what a held shot cuts at its edge.
@@ -803,6 +803,7 @@ export class Engine {
     // A short video: what changes the picture, in seconds of the video.
     const shortVideo = this.isShort();
     const changes = [];
+    let anyBroke = false;
     for (const sc of this.timeline.scenes) {
       const entrances = [];
       this.cameraKeys = new Set();
@@ -993,7 +994,9 @@ export class Engine {
       this.textLog = null;
       const times = [...new Set(entrances.map((e) => Math.round(e.at * 100) / 100))].sort((a, b) => a - b);
       // A new scene, an entrance and a camera move change the picture, and a
-      // clip changes it all the time it plays.
+      // clip changes it all the time it plays. A scene that stopped with an
+      // error has its error, and no hint is given about stretches.
+      if (broke) anyBroke = true;
       if (shortVideo && !broke) {
         changes.push(sc.start);
         for (const x of [...times, ...this.cameraKeys]) if (x >= 0 && x <= sc.dur) changes.push(sc.start + x);
@@ -1076,7 +1079,7 @@ export class Engine {
         }
       }
     }
-    if (shortVideo) this.shortHints(changes, add);
+    if (shortVideo && !anyBroke) this.shortHints(changes, add);
     const repeated = new Map();
     for (const c of this.cueNotes) repeated.set(`${c.scene}|${c.word.toLowerCase()}`, c);
     for (const c of repeated.values()) {
