@@ -410,8 +410,8 @@ test('the scene-api, troubleshooting, product-demos and commands topics and the 
   for (const words of ['--times 3,12.5,intro@2 makes out/sheet-times.jpg of just those moments, written like the times of still', '--name pricing saves to assets/capture/<site>/pricing/, so several pages of one site stay side by side']) assert.ok(help.includes(words), words);
 });
 
-test('the docs say that verify takes no --size, that German is a language, and that only Kokoro needs espeak-ng', () => {
-  assert.ok(oneLine(page('sizes')).includes('`verify` takes no `--size`, so check such a video with `verify --file out/video-tiktok.mp4`.'));
+test('the docs say that verify takes --size, that German is a language, and that only Kokoro needs espeak-ng', () => {
+  assert.ok(oneLine(page('sizes')).includes('Check such a video with `verify --size tiktok`, which finds `out/video-tiktok.mp4` and reads the scene times of that size\'s build.'));
   assert.ok(oneLine(page('sizes')).includes('Bold captions are one line, so their band is shorter and the content area taller.'));
   assert.match(page('settings'), /^\| `language` \| `en` \| .*and `de` with a paid voice or a recording/m);
   assert.ok(oneLine(read('README.md')).includes('For narration with Kokoro, the free voice, in Spanish, French, Italian, Portuguese or Hindi, also install'));

@@ -189,9 +189,8 @@ between sizes never makes narration again. A paid voice buys the narration at
 that pace once, and then uses it from `history/voice/`.
 `explainroo voice videos/<name> --size tiktok` makes or repairs the narration of
 that size. A command that continues a paid request at that pace has the
-`--size` in it. `verify` takes no `--size`, so check such a video with
-`verify --file out/video-tiktok.mp4`. It reads the scene times of the normal
-build, so it listens to the whole file at once instead of scene by scene.
+`--size` in it. Check such a video with `verify --size tiktok`, which finds
+`out/video-tiktok.mp4` and reads the scene times of that size's build.
 
 ## Pace
 

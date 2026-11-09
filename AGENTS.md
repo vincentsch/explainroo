@@ -25,8 +25,8 @@ https://www.explainroo.com/docs/.
 
 ## The hard limits
 
-Check these first. When a request runs into one, tell the user
-before you make anything.
+Check these first, and tell the user before you make anything that
+runs into one.
 
 **Languages.** Set `language` in `video.json` to one of these codes. No other
 language works yet, with any voice.
@@ -166,7 +166,7 @@ publishes nothing.
 9. **Look at the frames** with `explainroo still videos/<name>` and
    `explainroo sheet videos/<name>`. Open the images and judge them like a
    viewer would. For a platform's version, add `--platform tiktok` to
-   `check`, `still`, `sheet` and `render`.
+   `check`, `still`, `sheet`, `render` and `verify`.
 10. **Make the video** with `explainroo render videos/<name>`. Make a draft
     with `--draft` only when you will watch it, because `still` and `sheet`
     are the cheap way to see frames. Check the file with

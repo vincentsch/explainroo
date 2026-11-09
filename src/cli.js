@@ -155,7 +155,7 @@ Reference
 "explainroo <command> --help" prints the options of one command and an example.
 
 Options: --size <size> and --no-watermark override video.json for preview, still, sheet, check, render and export.
-         --platform <name> on check, still, sheet and render sets the size, its block and the watermark rule
+         --platform <name> on check, still, sheet, render and verify sets the size, its block and the watermark rule
          that "package --platform <name>" uses.
          Their outputs get a suffix, like video-tiktok.mp4, player-tiktok/ or video-no-watermark.mp4. --out still wins.
          "sizes" in video.json sets captions, cover, pace, watermark and targetSeconds for one size, see "docs sizes".
@@ -337,7 +337,8 @@ export async function main(argv) {
         return errors ? 1 : 0;
       }
       case 'render': {
-        const { project } = runProject(pos[0], flags, qualityOverride(flags));
+        const { project, watermarkNote } = runProject(pos[0], flags, qualityOverride(flags));
+        if (watermarkNote) notice(watermarkNote);
         const r = await render(project, { log, draft: !!flags.draft, transparent: !!flags.transparent, from: num(flags.from, 'from'), to: num(flags.to, 'to'), workers: num(flags.workers, 'workers'), scale: num(flags.scale, 'scale'), out: textFlag(flags, 'out'), format: textFlag(flags, 'format') });
         print([r.out, r.subtitles?.srt, r.subtitles?.vtt, r.chapters, r.cover].filter(Boolean).map((f) => path.relative(process.cwd(), f) || f).join('\n'), r);
         return 0;
@@ -384,8 +385,8 @@ export async function main(argv) {
       }
       case 'verify': {
         if (videoArg(pos[0])) return await videoFileCheck('verify', pos, flags, log, print);
-        const project = loadProject(pos[0], langOverride(flags));
-        const r = await verify(project, { file: flags.file, log });
+        const { project } = runProject(pos[0], flags);
+        const r = await verify(project, { file: textFlag(flags, 'file'), log });
         print(formatVerify(r), r);
         return r.issues.some((i) => i.level === 'error') ? 1 : 0;
       }
@@ -627,7 +628,10 @@ function runProject(dir, flags, extra = {}) {
   if (!Object.hasOwn(PLATFORMS, platform)) throw new ProjectError(`there is no platform "${platform}". The platforms are ${allOf(Object.keys(PLATFORMS))}.`);
   if (flags['no-watermark']) throw new ProjectError(`--platform ${platform} sets the watermark the way its package does, so leave out --no-watermark`);
   const own = loadProject(dir, langOverride(flags));
-  return { project: loadProject(own.dir, { ...packageOverrides(own, platform, textFlag(flags, 'size')), ...langOverride(flags), ...extra }), platform };
+  const overrides = packageOverrides(own, platform, textFlag(flags, 'size'));
+  // The platform's rule takes away a watermark the project has, so say why.
+  const watermarkNote = overrides.watermark === false && own.config.watermark !== false ? `no watermark: ${PLATFORMS[platform].name} asks apps not to add one` : null;
+  return { project: loadProject(own.dir, { ...overrides, ...langOverride(flags), ...extra }), platform, watermarkNote };
 }
 
 // The spoken words of the scenes, or of one, with their times in seconds into the
