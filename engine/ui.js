@@ -364,19 +364,22 @@ export class UI {
     const a = this.at(o.at ?? 0);
     if (s.t < a) return;
     if (o.out !== undefined && s.t >= this.at(o.out) + 0.4) return;
-    const size = o.size ?? 22;
-    const w = this.measure(label, size, 600) + (o.icon === false ? 64 : 100);
+    const size = o.size ?? this._badgeSize(22);
+    // With "defaults": "0.6", everything grows with the words, from 22.
+    const k = s._v6 ? size / 22 : 1;
+    const w = this.measure(label, size, 600) + (o.icon === false ? 64 : 100) * k;
+    const h = 72 * k;
     const x = (o.x ?? s.W / 2) - w / 2;
-    const y = o.y ?? s.H - 150;
+    const y = o.y ?? s.H - 78 - h;
     const tone = TONES[o.tone ?? 'green'] || TONES.green;
     this.covering(() => {
-      this.panel(x, y, w, 72, { at: a, out: o.out, r: 16, lift: 0.9, rise: 40, from: 0.9, sfx: o.sfx, _sfx: 'chime', _call: call }, () => {
-        let tx = x + 32;
+      this.panel(x, y, w, h, { at: a, out: o.out, r: 16 * k, lift: 0.9, rise: 40, from: 0.9, sfx: o.sfx, _sfx: 'chime', _call: call }, () => {
+        let tx = x + 32 * k;
         if (o.icon !== false) {
-          this.icon(o.icon ?? 'circle-check', x + 40, y + 36, 30, tone.fg, 2.2);
-          tx = x + 70;
+          this.icon(o.icon ?? 'circle-check', x + 40 * k, y + 36 * k, 30 * k, tone.fg, 2.2);
+          tx = x + 70 * k;
         }
-        this.text(label, tx, y + 37, { size, weight: 600 });
+        this.text(label, tx, y + 37 * k, { size, weight: 600, badge: true });
       });
     });
   }
@@ -448,11 +451,20 @@ export class UI {
 
   // ---------- text ----------
 
-  _log(str, x, y, w, size, align, base) {
+  // A badge's words (a pill, a chip, a toast) are checked for size like any
+  // text, where the rest of an app screen may be small on purpose.
+  _log(str, x, y, w, size, align, base, badge = false) {
     if (!str.trim() || this.hidden) return;
     const x0 = align === 'center' ? x - w / 2 : align === 'right' ? x - w : x;
     const [t, b] = base === 'top' ? [0, 1.2] : base === 'alphabetic' ? [-0.8, 0.22] : [-0.6, 0.6];
-    this.s._logText({ text: str, x0, y0: y + t * size, x1: x0 + w, y1: y + b * size, size, fg: null, bg: null, ui: this._layer + 1, zoomed: this.s._camMoved });
+    this.s._logText({ text: str, x0, y0: y + t * size, x1: x0 + w, y1: y + b * size, size, fg: null, bg: null, ui: this._layer + 1, zoomed: this.s._camMoved, ...(badge ? { badge: true } : {}) });
+  }
+
+  // The size of a badge's words: 40 in a tall frame with "defaults": "0.6",
+  // which reads on a phone, and the kit's own size otherwise.
+  _badgeSize(size) {
+    const s = this.s;
+    return s._v6 && s.H > s.W ? Math.max(40, size) : size;
   }
 
   text(str, x, y, o = {}) {
@@ -474,7 +486,7 @@ export class UI {
     }
     c.fillText(t, x, y);
     const w = c.measureText(t).width;
-    if (o.check !== false) this._log(t, x, y, w, size, align, base);
+    if (o.check !== false) this._log(t, x, y, w, size, align, base, o.badge);
     c.restore();
     return w;
   }
@@ -580,7 +592,7 @@ export class UI {
   pill(label, x, y, tone = 'gray', o = {}) {
     const T = tone === 'accent' ? { bg: this.colors.accentTint, fg: this.colors.accentDark, ring: this.colors.accentRing } : TONES[tone];
     if (!T) throw new SceneError(`pill tone must be one of ${Object.keys(TONES).join(', ')} or accent, not "${tone}"`);
-    const size = o.size ?? 17;
+    const size = o.size ?? this._badgeSize(17);
     const dot = o.dot ?? false;
     const padX = size * 0.75;
     const h = size * 1.75;
@@ -608,7 +620,7 @@ export class UI {
       c.restore();
       tx += size * 0.85;
     }
-    this.text(label, tx, y + 0.5, { size, weight: 600, color: T.fg });
+    this.text(label, tx, y + 0.5, { size, weight: 600, color: T.fg, badge: true });
     c.restore();
     return w;
   }
@@ -875,7 +887,7 @@ export class UI {
   chip(label, x, y, o = {}) {
     const c = this.c;
     const C = this.colors;
-    const size = o.size ?? 20;
+    const size = o.size ?? this._badgeSize(20);
     const sel = clamp(o.selected ?? 0);
     const h = size * 2.2;
     const w = this.measure(label, size, 500) + size * 1.6 + sel * size * 1.1;
@@ -896,13 +908,13 @@ export class UI {
       c.restore();
       tx += sel * size * 1.1;
     }
-    this.text(label, tx, y + 0.5, { size, weight: sel > 0.5 ? 600 : 500, color: mix(C.text, C.accent, sel) });
+    this.text(label, tx, y + 0.5, { size, weight: sel > 0.5 ? 600 : 500, color: mix(C.text, C.accent, sel), badge: true });
     c.restore();
     return w;
   }
 
   chipWidth(label, o = {}, selected = false) {
-    const size = o.size ?? 20;
+    const size = o.size ?? this._badgeSize(20);
     return this.measure(label, size, selected ? 600 : 500) + size * 1.6 + (selected ? size * 1.1 : 0);
   }
 

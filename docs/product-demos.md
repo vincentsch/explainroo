@@ -246,15 +246,15 @@ words or `"#markers"`, like everywhere else.
 | `u.card(x, y, w, h, o)` | a card without an entrance |
 | `u.browser(x, y, w, h, { url, at }, fn)` | a panel with a browser bar; `fn` gets the page area |
 | `u.modal(x, y, w, h, { at, out }, fn)`, `u.over(fn)` | a dialog over a dimmed frame, and a layer for your own menus or popups; `check` does not report text in one layer as overlapping text in another |
-| `u.toast(text, { at, out, icon, tone })` | a message that slides up, with a chime |
+| `u.toast(text, { at, out, icon, tone, size })` | a message that slides up, with a chime |
 | `u.headline(text, x, y, { size, at, out, align, weight, italic, color, accent, tracking })` | big text that blurs in word by word; `*stars*` mark words in the `accent` color |
 | `u.text(text, x, y, { size, weight, color, align, base, font, italic, tracking, alpha, maxW, check })`, `u.para(text, x, y, maxW, o)`, `u.eyebrow(text, x, y)` | text, wrapped text (`\n` starts a new line), and a small uppercase label; `font` is `'ui'`, `'headline'` or a family; `check: false` hides text from `check`; `u.measure(text, size, weight)` gives the width |
 | `u.button(label, x, y, w, h, { variant, press, icon, loading, color, caps })` | `primary`, `secondary` or `ghost` |
 | `u.input(x, y, w, h, { label, value, placeholder, focus, caret, icon })`, `u.textarea(x, y, w, h, o)` | a text field, and a taller one where the text wraps |
 | `u.select(x, y, w, h, { label, value, open, options, hover, selected })` | a dropdown; returns the y of each option row |
 | `u.toggle(x, y, on)`, `u.checkbox(x, y, on)`, `u.radio(x, y, on)` | `on` goes from 0 to 1, so it can animate |
-| `u.chip(label, x, y, { selected })`, `u.chipWidth(label, o, selected)` | option chips; a selected chip grows by its check mark, so leave room |
-| `u.pill(label, x, y, tone, { align, dot, pulse })` | a status badge: `gray`, `blue`, `yellow`, `green`, `red`, `purple` or `accent` |
+| `u.chip(label, x, y, { selected, size })`, `u.chipWidth(label, o, selected)` | option chips; a selected chip grows by its check mark, so leave room |
+| `u.pill(label, x, y, tone, { align, dot, pulse, size })` | a status badge: `gray`, `blue`, `yellow`, `green`, `red`, `purple` or `accent` |
 | `u.spinner(x, y, r)`, `u.progress(x, y, w, p)`, `u.avatar(x, y, r, initials, { image })`, `u.icon(name, x, y, size, color)`, `u.lines(x, y, w, n)`, `u.logo(x, y, w)` | small parts; `lines` draws grey bars in place of body text |
 | `u.pop(at, cx, cy, fn, { sfx })` | pops anything in around a point |
 | `u.wipe(at, { color })` | the accent color spreads out until it fills the frame |
@@ -270,7 +270,10 @@ parts of the kit use their own default, like 1.4 for a dialog. A larger
 
 `check` sees the text of `s.ui` too. It reports text that runs off the frame
 (not while the camera zooms in), text that is too small and text that
-overlaps. A dropdown or dialog may cover what is under it. Look at stills at
+overlaps. It measures the words of pills, chips and toasts like any text,
+so they must read on a phone, where the rest of an app screen may be small.
+With `"defaults": "0.6"` they are 40 pixels or more in a tall frame, and
+`size` sets them. A dropdown or dialog may cover what is under it. Look at stills at
 the moments the camera is zoomed in, and check the cursor does not hide the
 word it points at.
 

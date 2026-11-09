@@ -420,10 +420,12 @@ export class Short {
   // with a dark outline) or 'plain' (the look's ink). o: x, y (the middle of the
   // block), size (the start size, which shrinks to fit), width, maxLines,
   // upper: false, color, keyColor, keyBg, slab, kicker (a small label above),
-  // kickerColor, kickerIcon, at, out, sfx, id, screen: true (drawn without the
-  // camera, so it stays put while the camera moves). Returns the block's box.
+  // kickerColor, kickerIcon, kickerSize, kickerY, area (the box the kicker
+  // stays in, s.safe by default), at, out, sfx, id, screen: true (drawn without
+  // the camera, so it stays put while the camera moves). Returns the block's box.
   hook(str, o = {}) {
     const s = this.s;
+    const v6 = s._v6;
     const style = o.style ?? 'slab';
     const width = o.width ?? s.safe.w;
     const maxLines = o.maxLines ?? 2;
@@ -447,7 +449,23 @@ export class Short {
     const gap = style === 'slab' ? size * 0.1 : 0;
     const blockH = lines.length * lh + (lines.length - 1) * gap;
     const x = o.x ?? s.cx;
-    const y = o.y ?? s.safe.top + (o.kicker ? 64 : 0) + blockH / 2 + 18;
+    let y;
+    let kickerY;
+    const kickerSize = o.kickerSize ?? this.kickerSize();
+    if (v6) {
+      // With "defaults": "0.6", the kicker stays inside s.safe, below the
+      // strip the watermark takes. When it would go above that, the kicker and
+      // the title move down together.
+      const area = o.area ?? s.safe;
+      const kh = kickerSize * 1.75;
+      const above = o.kicker && o.kickerY === undefined ? kh + 14 : 0;
+      y = o.y ?? area.top + (above ? 8 + above : 18) + blockH / 2;
+      if (above) y = Math.max(y, area.top + 8 + above + blockH / 2);
+      kickerY = o.kickerY ?? y - blockH / 2 - 14 - kh / 2;
+    } else {
+      y = o.y ?? s.safe.top + (o.kicker ? 64 : 0) + blockH / 2 + 18;
+      kickerY = o.kickerY ?? y - blockH / 2 - 44;
+    }
     const top = y - blockH / 2;
     const a = this.at(o.at ?? 0);
     const first = a <= 0;
@@ -458,7 +476,9 @@ export class Short {
     const place = (fn) => (o.screen ? this.screen(fn) : fn());
     // With "defaults": "0.5", a plain hook takes colors that read on what is behind it.
     const plain = style === 'plain' && newDefaults(s.engine.config) ? plainColors(s.theme, this.behind(y), size) : null;
-    if (o.kicker) place(() => this.kicker(o.kicker, { x, y: top - 44, color: o.kickerColor, icon: o.kickerIcon, at: first ? -1 : a, out: o.out }));
+    // With "defaults": "0.6", keywords take brand.accent where it reads.
+    const brand = v6 ? this.brandKey(style, y, size) : null;
+    if (o.kicker) place(() => this.kicker(o.kicker, { x, y: kickerY, size: kickerSize, color: o.kickerColor, icon: o.kickerIcon, at: first ? -1 : a, out: o.out }));
     if (!life) return geom(x, y, maxLineW, blockH);
     const c = this.c;
     place(() => this.s.ui.over(() => lines.forEach((line, li) => {
@@ -480,11 +500,12 @@ export class Short {
       let wx = -line.w / 2;
       for (const w of line.words) {
         const ww = this.measure(w.text, size, weight);
-        if (w.key && style === 'slab') this.roundRect(wx - size * 0.1, -lh / 2 + size * 0.1, ww + size * 0.2, lh - size * 0.2, size * 0.12, o.keyBg ?? '#e5233d');
-        const color = style === 'slab' ? (w.key ? o.keyColor ?? '#ffffff' : o.color ?? INK) : w.key ? o.keyColor ?? plain?.key ?? KEY : o.color ?? plain?.ink ?? (style === 'stroke' ? '#ffffff' : s.theme.ink);
+        const keyBg = o.keyBg ?? brand ?? '#e5233d';
+        if (w.key && style === 'slab') this.roundRect(wx - size * 0.1, -lh / 2 + size * 0.1, ww + size * 0.2, lh - size * 0.2, size * 0.12, keyBg);
+        const color = style === 'slab' ? (w.key ? o.keyColor ?? '#ffffff' : o.color ?? INK) : w.key ? o.keyColor ?? brand ?? plain?.key ?? KEY : o.color ?? plain?.ink ?? (style === 'stroke' ? '#ffffff' : s.theme.ink);
         // check measures a plain hook against what the scene painted behind it,
         // like a backdrop, or else the look's background.
-        const bg = style === 'slab' ? (w.key ? o.keyBg ?? '#e5233d' : o.slab ?? '#ffffff') : style === 'stroke' ? INK : null;
+        const bg = style === 'slab' ? (w.key ? keyBg : o.slab ?? '#ffffff') : style === 'stroke' ? INK : null;
         this.text(w.text, wx, size * 0.04, { size, weight, color, bg, option: w.key ? 'keyColor' : 'color', stroke: style === 'stroke' ? INK : undefined, strokeW: size * 0.2, shadow: style === 'stroke' ? 'rgba(0,0,0,0.45)' : undefined });
         wx += ww + line.space;
       }
@@ -511,11 +532,30 @@ export class Short {
     return lines;
   }
 
+  // brand.accent for the keywords of a hook, when it is set and reads: as the
+  // box behind white keywords on a slab, or as the keywords' own color on what
+  // is behind them. Null otherwise.
+  brandKey(style, y, size) {
+    const accent = cssColor(this.s.engine.config.brand?.accent ?? '');
+    if (!accent) return null;
+    const min = size >= 48 ? 3 : 4.5;
+    if (style === 'slab') return contrast('#ffffff', accent) >= min ? accent : null;
+    const behind = cssColor(style === 'stroke' ? INK : this.behind(y));
+    return behind && contrast(accent, behind) >= min ? accent : null;
+  }
+
+  // The kicker's size: 44 in a tall frame and 40 in others with
+  // "defaults": "0.6", which reads on a phone, and 34 before.
+  kickerSize() {
+    const s = this.s;
+    return s._v6 ? (s.H > s.W ? 44 : 40) : 34;
+  }
+
   // A small uppercase label, like "QUICK TIP" above a hook. o: x, y, size,
   // color, icon (an icon name), at, out, sfx. Returns its width.
   kicker(str, o = {}) {
     const s = this.s;
-    const size = o.size ?? 34;
+    const size = o.size ?? this.kickerSize();
     const label = String(str).toUpperCase();
     const icon = o.icon ?? null;
     const tw = this.measure(label, size, 800, 2);
