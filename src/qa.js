@@ -60,6 +60,17 @@ export function nearlyText(nearly) {
   ].join('; ');
 }
 
+// Up to this many words that only nearly matched are listed. More are counted,
+// and --verbose lists them.
+export const NEARLY_LISTED = 2;
+
+// The near matches as check and verify print them: the list with its advice,
+// or, for more than NEARLY_LISTED words without `verbose`, how many there are.
+export function nearlyLine(nearly, verbose = false) {
+  if (verbose || nearly.length <= NEARLY_LISTED) return `${nearlyText(nearly)}. ${nearlyAdvice(nearly)}`;
+  return `${nearly.length} words only nearly matched. No fix is needed unless one of them sounds wrong when you listen, and --verbose lists them with their times`;
+}
+
 // What to do about words that only nearly matched or sounded the same: nothing,
 // unless they sound wrong at the times the list gives.
 export function nearlyAdvice(nearly) {
@@ -208,7 +219,7 @@ export function speechFindings(project, voices, timeline = null) {
     if (v && v.duration) {
       const nearly = nearTimes(v.nearly ?? [], placed.get(sc.id));
       speech.push({ scene: sc.id, matchRate: v.matchRate, nearly });
-      if (nearly.length) issues.push({ level: 'hint', scene: sc.id, t: null, message: `understood ${Math.round(v.matchRate * 100)}%, ${nearlyText(nearly)}. ${nearlyAdvice(nearly)}` });
+      if (nearly.length) issues.push({ level: 'hint', scene: sc.id, t: null, key: 'nearly', words: nearly.length, message: `understood ${Math.round(v.matchRate * 100)}%, ${nearlyText(nearly)}. ${nearlyAdvice(nearly)}` });
     }
   }
   return { issues, speech };
@@ -494,8 +505,8 @@ export function verdictOf(issues) {
 
 // What verify prints: the file, the narration understood with the words that
 // only nearly matched, each finding, and the verdict last.
-export function formatVerify(r) {
-  const nearly = r.speech?.nearly?.length ? `, ${nearlyText(r.speech.nearly)}. ${nearlyAdvice(r.speech.nearly)}` : '';
+export function formatVerify(r, { verbose = false } = {}) {
+  const nearly = r.speech?.nearly?.length ? `, ${nearlyLine(r.speech.nearly, verbose)}` : '';
   return [
     `${r.file}: ${r.duration}s, ${r.video ? `${r.video.width}x${r.video.height}` : 'no video'}, loudness ${r.loudness?.integrated ?? '?'} LUFS, true peak ${dbtp(r.loudness?.truePeak)}`,
     r.speech ? `narration understood: ${Math.round(r.speech.matchRate * 100)}%${nearly}` : '',

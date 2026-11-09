@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { dbtp, ffmpeg, ffmpegPath, loudness, probe, PEAK_CEILING } from './ffmpeg.js';
-import { blackSegments, missedWords, nearlyAdvice, nearlyText, silentStretches, timedNear, unconfirmedText, verdictOf } from './qa.js';
+import { blackSegments, missedWords, nearlyLine, silentStretches, timedNear, unconfirmedText, verdictOf } from './qa.js';
 import { textLines } from './text-size.js';
 import { playbackTextIssue } from '../engine/readability.js';
 import { transcribeWords } from './models.js';
@@ -305,8 +305,8 @@ function textIssue(s) {
 
 // What check and verify print for a video file: the file, its frames and speech,
 // each finding, and the verdict last.
-export function formatVideoCheck(r) {
-  const nearly = r.speech?.nearly?.length ? `, ${nearlyText(r.speech.nearly)}. ${nearlyAdvice(r.speech.nearly)}` : '';
+export function formatVideoCheck(r, { verbose = false } = {}) {
+  const nearly = r.speech?.nearly?.length ? `, ${nearlyLine(r.speech.nearly, verbose)}` : '';
   return [
     `${r.file}: ${r.duration}s, ${r.video ? `${r.video.width}x${r.video.height}` : 'no video'}, ${r.loudness ? `loudness ${r.loudness.integrated ?? '?'} LUFS, true peak ${dbtp(r.loudness.truePeak)}` : 'no sound'}`,
     r.text ? `read ${r.text.frames} frame${r.text.frames === 1 ? '' : 's'}, ${r.text.step} s apart, for blank frames and small text` : '',

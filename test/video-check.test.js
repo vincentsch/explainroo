@@ -183,7 +183,7 @@ test('check and verify take a video file on the command line', { timeout: 120000
   assert.match(human.stdout, /clip\.mp4: 2s, 1280x720, loudness -[\d.]+ LUFS, true peak -[\d.]+ dBTP\nread 2 frames, 1 s apart, for blank frames and small text\nWARN  loudness is .*\nHINT  small text in the video from 0\.0s to 1\.0s: 2 lines, and the smallest .*\npassed with 1 warning\n$/);
   const flag = await runCli(['check', file, '--size', 'tiktok']);
   assert.equal(flag.code, 1);
-  assert.match(flag.stderr, /--size works with a project\. For a video file, check takes --script, --language, --view-width, --step, --json\./);
+  assert.match(flag.stderr, /--size works with a project\. For a video file, check takes --script, --language, --view-width, --step, --verbose, --json\./);
   const missing = await runCli(['verify', path.join(dir, 'nope.mp4')]);
   assert.equal(missing.code, 1);
   assert.match(missing.stderr, /nope\.mp4 does not exist/);

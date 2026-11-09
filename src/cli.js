@@ -8,7 +8,7 @@ import { normWord, ScriptError } from './script.js';
 import { prepare, makeState, outdatedLine, outdatedRenders, VERSION } from './pipeline.js';
 import { render } from './render.js';
 import { exportPlayer } from './export.js';
-import { check, formatVerify, stills, sheet, unconfirmedLine, unconfirmedWords, verify } from './qa.js';
+import { check, formatVerify, NEARLY_LISTED, stills, sheet, unconfirmedLine, unconfirmedWords, verify } from './qa.js';
 import { startServer, ROOT } from './server.js';
 import { VOICES, LANGUAGES, voiceLanguage, loadTTS, TTS_SAMPLE_RATE } from './models.js';
 import { phonemize, generateSpeech } from './phonemes.js';
@@ -179,7 +179,7 @@ function parseArgs(argv) {
   }
   return { pos, flags };
 }
-const BOOL = new Set(['json', 'fresh', 'apply', 'avatars', 'draft', 'estimate', 'transparent', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'mobile', 'list', 'sections', 'new', 'key-stdin', 'audio', 'dry-run', 'no-wait', 'no-watermark', 'yes', 'media-url-unchecked', ...LISTS_VOICES.map((c) => c.id)]);
+const BOOL = new Set(['json', 'verbose', 'fresh', 'apply', 'avatars', 'draft', 'estimate', 'transparent', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'mobile', 'list', 'sections', 'new', 'key-stdin', 'audio', 'dry-run', 'no-wait', 'no-watermark', 'yes', 'media-url-unchecked', ...LISTS_VOICES.map((c) => c.id)]);
 
 // publish refuses any other flag. A flag it ignored could change what a person
 // thinks is posted, like a time for a post, when it goes out right away.
@@ -330,8 +330,9 @@ export async function main(argv) {
         const { project, platform } = runProject(pos[0], flags);
         const r = await check(project, { log, step: num(flags.step, 'step') ?? 0.25, viewWidth: num(flags['view-width'], 'view-width') ?? null, platform });
         const errors = r.issues.filter((i) => i.level === 'error').length;
+        const shown = shownIssues(r.issues, !!flags.verbose);
         const human = r.issues.length
-          ? r.issues.map((i) => `${i.level.toUpperCase().padEnd(5)} ${i.scene ?? ''}${i.t !== null && i.t !== undefined ? ' @' + i.t + 's' : ''}: ${i.message}`).join('\n') + `\n${errors} error(s), ${r.issues.length - errors} other finding(s) in ${r.scenes} scenes (${r.duration.toFixed(1)}s)`
+          ? shown.map((i) => `${i.level.toUpperCase().padEnd(5)} ${i.scene ?? ''}${i.t !== null && i.t !== undefined ? ' @' + i.t + 's' : ''}: ${i.message}`).join('\n') + `\n${errors} error(s), ${shown.length - errors} other finding(s) in ${r.scenes} scenes (${r.duration.toFixed(1)}s)`
           : `no problems found in ${r.scenes} scenes (${r.duration.toFixed(1)}s)`;
         print(human, r);
         return errors ? 1 : 0;
@@ -387,7 +388,7 @@ export async function main(argv) {
         if (videoArg(pos[0])) return await videoFileCheck('verify', pos, flags, log, print);
         const { project } = runProject(pos[0], flags);
         const r = await verify(project, { file: textFlag(flags, 'file'), log });
-        print(formatVerify(r), r);
+        print(formatVerify(r, { verbose: !!flags.verbose }), r);
         return r.issues.some((i) => i.level === 'error') ? 1 : 0;
       }
       case 'image': {
@@ -597,7 +598,20 @@ function videoArg(arg) {
 }
 
 // The flags check and verify take for a video file without a project.
-const VIDEO_FLAGS = new Set(['script', 'language', 'view-width', 'step', 'json', 'quiet']);
+const VIDEO_FLAGS = new Set(['script', 'language', 'view-width', 'step', 'verbose', 'json', 'quiet']);
+
+// What check prints of its findings: the hints about words that only nearly
+// matched, one per scene, become one line when there are more than
+// NEARLY_LISTED words, unless --verbose. Its JSON has them all.
+export function shownIssues(issues, verbose) {
+  const near = issues.filter((i) => i.key === 'nearly');
+  const words = near.reduce((n, i) => n + i.words, 0);
+  if (verbose || words <= NEARLY_LISTED) return issues;
+  const at = issues.indexOf(near[0]);
+  const rest = issues.filter((i) => i.key !== 'nearly');
+  rest.splice(at, 0, { level: 'hint', scene: null, t: null, message: `${words} words only nearly matched in the speech check of ${near.length === 1 ? `scene ${near[0].scene}` : `${near.length} scenes`}. No fix is needed unless one of them sounds wrong when you listen, and --verbose lists them with their times` });
+  return rest;
+}
 
 // check and verify of any video file: the same findings, read from the file.
 async function videoFileCheck(cmd, pos, flags, log, print) {
@@ -605,7 +619,7 @@ async function videoFileCheck(cmd, pos, flags, log, print) {
   const other = Object.keys(flags).find((flag) => !VIDEO_FLAGS.has(flag));
   if (other) throw new ProjectError(`--${other} works with a project. For a video file, ${cmd} takes ${[...VIDEO_FLAGS].filter((f) => f !== 'quiet').map((f) => `--${f}`).join(', ')}.`);
   const r = await checkVideo(pos[0], { script: textFlag(flags, 'script') ?? null, language: textFlag(flags, 'language') ?? 'en', viewWidth: num(flags['view-width'], 'view-width') ?? null, step: num(flags.step, 'step') ?? null, log });
-  print(formatVideoCheck(r), r);
+  print(formatVideoCheck(r, { verbose: !!flags.verbose }), r);
   return r.passed ? 0 : 1;
 }
 

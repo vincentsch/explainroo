@@ -9,6 +9,7 @@ const VOICE_LISTS = CONNECTORS.filter((c) => c.voices).map((c) => c.id);
 const SIZE = ['--size <size>', 'another size than the one in video.json, like tiktok, 9:16 or 1080x1350'];
 const PLATFORM = ['--platform <name>', 'the size, its block in "sizes" and the watermark rule that "package --platform <name>" uses'];
 const WATERMARK = ['--no-watermark', 'leave out the watermark'];
+const VERBOSE = ['--verbose', 'list every word that only nearly matched, with its times, also when there are more than two'];
 const LANG = ['--lang <lang>', 'the version of the video in that language, from script.<lang>.md'];
 const JSON_OUT = ['--json', 'machine-readable output'];
 
@@ -58,7 +59,7 @@ export const COMMAND_HELP = {
   check: {
     usage: 'check [project] [options], or check <video.mp4> [options]',
     about: 'Finds layout, timing and pronunciation problems without rendering. It exits with 1 when it finds an error. With a video file in place of the project, it checks any video, made with explainroo or not: black, blank and frozen stretches, silence, loudness and true peak, and text too small to read in frames 1 second apart.',
-    options: [['--view-width <px>', 'also judge text at this player width'], ['--step <s>', 'seconds between the moments it looks at, 0.25 by default, and for a video file 1'], ['--script <file>', 'for a video file, compare the speech with this text'], ['--language <code>', 'for a video file, the language of the speech, en by default'], SIZE, PLATFORM, WATERMARK, LANG, JSON_OUT],
+    options: [['--view-width <px>', 'also judge text at this player width'], ['--step <s>', 'seconds between the moments it looks at, 0.25 by default, and for a video file 1'], ['--script <file>', 'for a video file, compare the speech with this text'], ['--language <code>', 'for a video file, the language of the speech, en by default'], SIZE, PLATFORM, WATERMARK, VERBOSE, LANG, JSON_OUT],
     example: 'check videos/how-dns-works --platform tiktok',
   },
   render: {
@@ -70,7 +71,7 @@ export const COMMAND_HELP = {
   verify: {
     usage: 'verify [project] [options], or verify <video.mp4> [options]',
     about: 'Checks a finished video: loudness, true peak, black frames, silence and how much of the narration the speech model understands. With a video file in place of the project, it checks any video, like check <video.mp4>.',
-    options: [['--file <file>', 'another video file than out/video.mp4'], [PLATFORM[0], 'check the file that render --platform <name> wrote'], [SIZE[0], 'check the file that render --size <size> wrote'], [WATERMARK[0], 'check the file that render --no-watermark wrote'], ['--script <file>', 'for a video file, compare the speech with this text'], ['--language <code>', 'for a video file, the language of the speech, en by default'], ['--view-width <px>', 'for a video file, also judge text at this player width'], LANG, JSON_OUT],
+    options: [['--file <file>', 'another video file than out/video.mp4'], [PLATFORM[0], 'check the file that render --platform <name> wrote'], [SIZE[0], 'check the file that render --size <size> wrote'], [WATERMARK[0], 'check the file that render --no-watermark wrote'], ['--script <file>', 'for a video file, compare the speech with this text'], ['--language <code>', 'for a video file, the language of the speech, en by default'], ['--view-width <px>', 'for a video file, also judge text at this player width'], VERBOSE, LANG, JSON_OUT],
     example: 'verify videos/how-dns-works',
   },
   cut: {

@@ -52,7 +52,8 @@ user. Read it first.
    lists words that sounded the same, like "peace" for "piece", and two words
    heard as one. They count as understood, and names the speech model doesn't
    know often end up there. `check` and `verify` give each one its time in the
-   video. No fix is needed unless it sounds wrong when you listen at that
+   video. When there are more than two, they only count them, and `--verbose`
+   lists them. No fix is needed unless one sounds wrong when you listen at its
    time.
    Before it makes the narration, `voice` prints how long the video will be
    about.
