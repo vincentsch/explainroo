@@ -7,6 +7,7 @@ import { colorOf, tintOf, fontString } from './themes.js';
 import { scalePath, quadD, polyD, pathLength, pointAt, parsePath, absolutize, samplePath } from './pathdata.js';
 import { layoutText, lineStartX } from './text.js';
 import { clipFrame, clipURL, soundURL, FIT_SPEEDS } from './clips.js';
+import { recordingClock, videoTime, sceneTime, cursorAt, viewAt, drawCursor, RING_SECONDS } from './recording.js';
 import { highlightLine, codeTokens, matchTokens, resolveCodeSteps, codeMorphState } from './code.js';
 import { ring, bounds, along, rayThrough } from './geometry.js';
 
@@ -1593,7 +1594,122 @@ export class Stage {
     return this._picture(src, () => frame === null ? null : this.engine.clipImage(clip, frame), clip.width, clip.height, o);
   }
 
-  _picture(src, source, naturalWidth, naturalHeight, o) {
+  // A recording from "explainroo record", played like a clip: the video with a
+  // cursor that moves between steps, a ring on each click and the zooms of its
+  // zoom steps, all from its step log. A step with a cue holds the frame before
+  // the step until its action lands on the cue.
+  recording(name, o = {}) {
+    if (o.full) o = { ...o, x: this.W / 2, y: this.H / 2, w: this.W, h: this.H, frame: 'none', shadow: false, radius: 0, enter: 'none' };
+    const { log, clip } = this.engine.recording(name);
+    // Its zoom steps are the camera of the scene, so the automatic one keeps out.
+    if (this.engine.planning) this.engine.manualCamera = true;
+    // Without a size it fills what the safe area holds, with the bar of a
+    // browser or window frame, which _picture puts on top.
+    if (o.w === undefined && o.h === undefined) {
+      const ratio = log.width / log.height;
+      const bar = o.frame === 'browser' || o.frame === 'window' ? 1.075 : o.frame === 'phone' ? 1.03 : 1;
+      const h = Math.min(this.safe.h / bar, this.safe.w / ratio) * 0.96;
+      o = { ...o, w: h * ratio, h, ...(o.x === undefined ? { x: this.safe.x + this.safe.w / 2 } : {}), ...(o.y === undefined ? { y: this.safe.y + this.safe.h / 2 } : {}) };
+    }
+    const from = o.from ?? log.start ?? 0;
+    const at = this.time(o.at ?? 0);
+    const out = o.out === undefined ? this.dur : Math.min(this.dur, this.time(o.out));
+    if (!Number.isFinite(from) || from < 0 || from > log.duration) throw new SceneError(`recording from must be seconds from 0 to ${log.duration.toFixed(1)}, the length of "${name}"`);
+    if (o.speed !== undefined && o.speed !== 'fit' && !(Number.isFinite(o.speed) && o.speed >= 0.25 && o.speed <= 4)) throw new SceneError("recording speed must be from 0.25 to 4, or 'fit'");
+    if (o.cues !== undefined && (typeof o.cues !== 'object' || o.cues === null || Array.isArray(o.cues))) throw new SceneError("recording cues must be an object like { saved: 'saved', 4: '#total' }: a mark name or a step number, and its cue");
+    const steps = log.steps.filter((st) => !st.before);
+    for (const key of Object.keys(o.cues ?? {})) {
+      if (!steps.some((st) => st.name === key || String(st.step) === key)) {
+        const names = steps.filter((st) => st.name).map((st) => st.name);
+        throw new SceneError(`recording "${name}" has no mark or step "${key}" for cues. ${names.length ? `Marks: ${names.join(', ')}. ` : ''}Steps go from ${steps[0].step} to ${steps.at(-1).step}`);
+      }
+    }
+    const cued = [];
+    for (const st of steps) {
+      const cue = o.cues?.[st.name] ?? o.cues?.[st.step] ?? st.cue;
+      if (cue === undefined || st.t < from) continue;
+      cued.push({ step: st.step, start: st.start, t: st.t, cueAt: this.time(cue), cue });
+    }
+    // 'fit' plays the recording at the speed that ends its last step with the
+    // scene, or at out, with the holds for its cues, from half to twice its speed.
+    const end = log.end ?? log.duration;
+    let speed = o.speed ?? 1;
+    if (speed === 'fit') {
+      speed = 1;
+      for (let i = 0; i < 8; i++) {
+        const c = recordingClock(cued, { at, from, speed });
+        const room = out - at - c.held;
+        speed = room > 0 ? clamp((end - from) / room, FIT_SPEEDS[0], FIT_SPEEDS[1]) : FIT_SPEEDS[1];
+      }
+    }
+    const clock = recordingClock(cued, { at, from, speed });
+    const v = videoTime(clock, this.t);
+    const clicks = steps.filter((st) => st.click !== undefined && st.click >= from).map((st) => ({ st, at: sceneTime(clock, st.click) }));
+    const rec = this.engine.recorder;
+    if (rec) {
+      const n = this._recordingSeq = (this._recordingSeq || 0) + 1;
+      const label = (step) => {
+        const st = log.steps.find((x) => x.step === step);
+        const target = st.text ?? st.selector ?? st.name;
+        return `step ${step} (${st.do}${target !== undefined ? ` "${target}"` : ''})`;
+      };
+      const after = steps.filter((st) => st.t >= from && sceneTime(clock, st.t) > out + 0.05);
+      rec.push({ kind: 'recording', key: `recording|${at}|${o.id ?? n}|${name}`, at, out, end: sceneTime(clock, end), name, changed: !!log.changed,
+        late: clock.late.map((l) => ({ ...l, label: label(l.step), cue: cued.find((c) => c.step === l.step).cue })),
+        cut: after.length ? { first: label(after[0].step), count: after.length, at: sceneTime(clock, after[0].t) } : null, fit: o.speed === 'fit', speed });
+      // Each step shows something new, for check's look at quiet stretches.
+      for (const st of steps) {
+        const T = st.t >= from ? sceneTime(clock, st.t) : -1;
+        if (T >= at && T < out) rec.push({ kind: 'recording-step', at: T, key: `recording-step|${n}|${st.step}` });
+      }
+      if (o.sound !== false) {
+        for (const c of clicks) if (c.at >= at && c.at < out) rec.push({ kind: 'sfx', at: c.at, dur: 0, sfx: 'click', gain: 0.5, key: `recording-click|${n}|${c.st.step}` });
+      }
+    }
+    const accent = colorOf(this.theme, o.color ?? 'accent');
+    const t = this.t;
+    const paint = (ctx, img, left, top, w, h) => {
+      const sx = clip.width / log.width;
+      const view = viewAt(log, v, w / h, { zoom: o.zoom !== false });
+      ctx.drawImage(img, view.x * sx, view.y * sx, view.w * sx, view.h * sx, left, top, w, h);
+      const k = w / view.w;
+      const place = (x, y) => [left + (x - view.x) * k, top + (y - view.y) * k];
+      const size = Math.max(26 * k, h * 0.035);
+      for (const c of clicks) {
+        const age = t - c.at;
+        if (age < 0 || age >= RING_SECONDS) continue;
+        const p = age / RING_SECONDS;
+        const [x, y] = place(c.st.box ? c.st.box.x : c.st.move?.x1 ?? 0, c.st.box ? c.st.box.y : c.st.move?.y1 ?? 0);
+        const r = size * (0.3 + 1.1 * ease.out(p));
+        ctx.save();
+        ctx.globalAlpha *= 1 - p;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fillStyle = withAlpha(accent, 0.22);
+        ctx.fill();
+        ctx.lineWidth = Math.max(2, size * 0.12);
+        ctx.strokeStyle = accent;
+        ctx.stroke();
+        ctx.restore();
+      }
+      if (o.cursor === false) return;
+      const pos = cursorAt(log, v);
+      const [x, y] = place(pos.x, pos.y);
+      drawCursor(ctx, x, y, size);
+    };
+    const g = this._picture(`assets/recordings/${name}.webm`, () => v === null ? null : this.engine.clipImage(clip, Math.max(0, Math.min(clip.frames - 1, Math.floor(v * clip.fps + 1e-8)))), log.width, log.height, o, paint);
+    // When the video reaches each step, in seconds of the scene, by step number
+    // and by mark name, so other elements can come in with a step.
+    g.times = {};
+    for (const st of steps) {
+      if (st.t < from) continue;
+      g.times[st.step] = sceneTime(clock, st.t);
+      if (st.name) g.times[st.name] = g.times[st.step];
+    }
+    return g;
+  }
+
+  _picture(src, source, naturalWidth, naturalHeight, o, paint) {
     const th = this.theme;
     const ratio = naturalWidth / naturalHeight;
     let w = o.w;
@@ -1669,7 +1785,8 @@ export class Stage {
     dw *= kb;
     dh *= kb;
     const img = typeof source === 'function' ? source() : source;
-    if (img) ctx.drawImage(img, -dw / 2, iy - dh / 2, dw, dh);
+    if (img && paint) paint(ctx, img, -w / 2, iy - h / 2, w, h);
+    else if (img) ctx.drawImage(img, -dw / 2, iy - dh / 2, dw, dh);
     else {
       ctx.fillStyle = th.surface;
       ctx.fillRect(-w / 2, iy - h / 2, w, h);

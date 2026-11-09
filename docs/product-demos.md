@@ -7,7 +7,9 @@ screens and types into the fields, and the camera zooms in on what the voice
 talks about.
 [examples/unspar-demo](https://github.com/vincentsch/explainroo/tree/main/examples/unspar-demo)
 is a complete one. The examples also come with the package, and
-`explainroo doctor` prints their folder.
+`explainroo doctor` prints their folder. When the app runs on this computer
+or on a site you can open, you can record the real app instead, see
+"Recording the real app".
 
 ## Capture the live site first
 
@@ -56,6 +58,62 @@ can't be `fonts`, because a capture without a name keeps its fonts there.
 
 You can also show a real screen recording with `s.clip` in a `browser`
 frame. Use `s.camera` to zoom in on the detail the voice mentions.
+
+## Recording the real app
+
+A recording shows the real app, so every button in it is a real one. Write
+its steps in `recordings/<name>.json`:
+
+```json
+{
+  "url": "http://localhost:3000/invoices",
+  "viewport": { "width": 1280, "height": 720 },
+  "steps": [
+    { "do": "click", "text": "Accept cookies", "before": true },
+    { "do": "click", "text": "New invoice", "cue": "#new" },
+    { "do": "type", "text": "Amount", "value": "2400", "press": "Tab" },
+    { "do": "zoom", "selector": "form", "cue": "#check" },
+    { "do": "click", "text": "Save invoice", "cue": "save" },
+    { "do": "zoom" },
+    { "do": "mark", "name": "saved" }
+  ],
+  "blur": [{ "selector": ".email" }, { "text": "jane@example.com" }]
+}
+```
+
+Then run `explainroo record videos/<name> <name>`. It runs the steps in a
+browser of its own, with a profile in explainroo's cache folder, and saves
+`assets/recordings/<name>.webm` and a log with the time and place of every
+step. The video shows only the page, with no browser bars or pop-ups.
+
+- A step finds its element by `text` or by a CSS `selector`. `text` is the
+  words the element shows, and its label or placeholder count too. `nth: 2`
+  takes the second match from the top. An element out of view scrolls into
+  view first.
+- `open` goes to `url`, an address or a path. `click`, `hover` and `type`
+  move the pointer to the element. `type` clicks the field and types
+  `value`, and `press` presses a key after it. `scroll` takes `y` in pixels
+  or the element to scroll to. `wait` takes `seconds` or the element to wait
+  for. `zoom` moves in on the element, and without one back out. `mark`
+  names a moment with `name`.
+- `cue` is a spoken word or a `[#marker]` of the scene that plays it.
+- Steps with `"before": true` run before the video starts, like closing a
+  cookie banner or logging in. The profile keeps cookies and logins for the
+  next run, so such a step that finds nothing is skipped. `--fresh` starts
+  with an empty profile.
+- `blur` blurs elements by CSS selector or exact text on every page, before
+  anything is recorded. Use it for real email addresses and keys.
+- `viewport` is 1920 x 1080 by default. 1280 x 720 makes the app's text
+  larger in the video.
+
+When a step can't find its element, `record` stops and names the step. It
+lists close words from the page and saves a picture of the page in
+`build/record/`. Fix the script from what the page shows, and never guess a
+button. Then play it with `s.recording`, which
+`explainroo docs scene-api recordings` explains. Write the narration around
+what the video shows, and look at stills.
+[examples/recording-demo](https://github.com/vincentsch/explainroo/tree/main/examples/recording-demo)
+is a complete one.
 
 ## Keep it true
 

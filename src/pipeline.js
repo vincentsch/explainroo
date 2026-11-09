@@ -10,6 +10,7 @@ import { listAssets, loadProject } from './project.js';
 import { startServer, ROOT } from './server.js';
 import { launch, openEngine } from './browser.js';
 import { readVersions, sha256File } from './history.js';
+import { scriptHash, scriptPath } from './record.js';
 
 export const VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
 
@@ -43,8 +44,28 @@ export function makeState(project, timeline) {
   // from the project, so it comes with the state. A video in one language
   // without strings keeps the state and version it always had.
   const text = textState(project);
-  const version = crypto.createHash('sha1').update(stamp + JSON.stringify(timeline) + JSON.stringify(project.config) + (text ? JSON.stringify(text) : '')).digest('hex').slice(0, 12);
-  return { config: project.config, timeline, assets, version, title: project.config.title, ...(text ? { text } : {}) };
+  // The step logs of the recordings, for s.recording. A project without
+  // recordings keeps the state it always had.
+  const recordings = recordingState(project.dir, assets);
+  const version = crypto.createHash('sha1').update(stamp + JSON.stringify(timeline) + JSON.stringify(project.config) + (text ? JSON.stringify(text) : '') + (recordings ? JSON.stringify(recordings) : '')).digest('hex').slice(0, 12);
+  return { config: project.config, timeline, assets, version, title: project.config.title, ...(text ? { text } : {}), ...(recordings ? { recordings } : {}) };
+}
+
+// Each recording with a video and a readable log. "changed" says that its
+// script in recordings/ is no longer the one it was recorded from.
+function recordingState(dir, assets) {
+  const out = {};
+  for (const rel of assets) {
+    const m = /^assets\/recordings\/([a-z0-9][a-z0-9-]*)\.json$/i.exec(rel);
+    if (!m || !assets.includes(`assets/recordings/${m[1]}.webm`)) continue;
+    let log;
+    try { log = JSON.parse(fs.readFileSync(path.join(dir, rel), 'utf8')); } catch { continue; }
+    if (log?.version !== 1 || !Array.isArray(log.steps)) continue;
+    let changed = false;
+    try { changed = log.script !== scriptHash(JSON.parse(fs.readFileSync(scriptPath(dir, m[1]), 'utf8'))); } catch {}
+    out[m[1]] = { ...log, ...(changed ? { changed: true } : {}) };
+  }
+  return Object.keys(out).length ? out : null;
 }
 
 function textState(project) {

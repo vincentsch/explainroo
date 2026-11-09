@@ -69,11 +69,12 @@ function hookExit() {
   }
 }
 
-export async function launch() {
-  const { chromium } = await import('playwright-core');
+const ARGS = ['--no-sandbox', '--disable-dev-shm-usage', '--hide-scrollbars', '--mute-audio', '--autoplay-policy=no-user-gesture-required', '--font-render-hinting=none'];
+
+// Closes a browser or a context when the process stops, and makes close safe
+// to call twice.
+function track(browser) {
   hookExit();
-  const args = ['--no-sandbox', '--disable-dev-shm-usage', '--hide-scrollbars', '--mute-audio', '--autoplay-policy=no-user-gesture-required', '--font-render-hinting=none'];
-  const browser = await chromium.launch({ executablePath: findChrome(), headless: true, args });
   open.add(browser);
   const origClose = browser.close.bind(browser);
   browser.close = async () => {
@@ -81,6 +82,18 @@ export async function launch() {
     await origClose().catch(() => {});
   };
   return browser;
+}
+
+export async function launch() {
+  const { chromium } = await import('playwright-core');
+  return track(await chromium.launch({ executablePath: findChrome(), headless: true, args: ARGS }));
+}
+
+// A browser with a profile folder of its own that keeps cookies and logins
+// between runs, for record. `options` go to Playwright, like recordVideo.
+export async function launchProfile(profile, options = {}, extraArgs = []) {
+  const { chromium } = await import('playwright-core');
+  return track(await chromium.launchPersistentContext(profile, { executablePath: findChrome(), headless: true, args: [...ARGS, ...extraArgs], ...options }));
 }
 
 // Opens the render page and waits until the engine has loaded fonts, icons,

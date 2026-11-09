@@ -209,7 +209,7 @@ step you are on. A long topic has sections:
 | `music` | the user wants their own music, a sound file or original music from Soundroo |
 | `sizes` | the video is for a platform: sizes, captions, pace and the watermark |
 | `short-video` | you make a Short, a TikTok or a Reel |
-| `product-demos` | the user wants a product demo of an app or a website |
+| `product-demos` | the user wants a product demo of an app or a website, also recorded from the real app with `explainroo record` |
 | `settings` | you change `video.json`, make a look of your own or set up a key |
 | `commands` | you need a command or a flag that this page doesn't show |
 | `publishing` | the user wants a package for a platform, a link or a post |

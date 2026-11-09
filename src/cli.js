@@ -17,6 +17,7 @@ import { doctor, formatDoctor } from './doctor.js';
 import { generateImage, jobRequest, imageLog, imageSpend, oldImageLog, IMAGE_MODELS } from './images.js';
 import { buyClip, clipJobRequest, clipRequest, formatClip, quoteClip } from './ai-clips.js';
 import { capture } from './capture.js';
+import { formatRecord, record } from './record.js';
 import { connect } from './connect.js';
 import { CONNECTORS } from './connectors/index.js';
 import { hideSecrets } from './errors.js';
@@ -86,6 +87,9 @@ Product demos
                         and a list of its images (--mobile).
                         --name pricing saves to assets/capture/<site>/pricing/, so several pages of one site
                         stay side by side
+  record <project> <name>  run recordings/<name>.json in a browser of its own and save the video with a log
+                        of every step in assets/recordings/, for s.recording in a scene (--fresh starts the
+                        browser profile empty, without the logins and cookies of earlier runs)
 
 Images (optional, costs money, needs an OpenRouter key from "explainroo connect openrouter")
   image [project] <name> "<what to draw>"   save an illustration as assets/<name>.png
@@ -154,7 +158,7 @@ function parseArgs(argv) {
   }
   return { pos, flags };
 }
-const BOOL = new Set(['json', 'draft', 'estimate', 'transparent', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'mobile', 'list', 'sections', 'new', 'key-stdin', 'audio', 'dry-run', 'no-wait', 'no-watermark', 'yes', 'media-url-unchecked', ...LISTS_VOICES.map((c) => c.id)]);
+const BOOL = new Set(['json', 'fresh', 'draft', 'estimate', 'transparent', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'mobile', 'list', 'sections', 'new', 'key-stdin', 'audio', 'dry-run', 'no-wait', 'no-watermark', 'yes', 'media-url-unchecked', ...LISTS_VOICES.map((c) => c.id)]);
 
 // publish refuses any other flag. A flag it ignored could change what a person
 // thinks is posted, like a time for a post, when it goes out right away.
@@ -207,6 +211,12 @@ export async function main(argv) {
         const onFirst = r.images.filter((i) => i.firstScreen).length;
         const page = `page: ${r.text.body.length.toLocaleString('en-US')} characters of text${r.text.bodyCut ? ', the first 30 KB,' : ''} and ${r.images.length} image${r.images.length === 1 ? '' : 's'} (${onFirst} on the first screen) in capture.json`;
         print(`saved:\n${r.files.map((f) => '  ' + f).join('\n')}\naccent: ${r.colors.accent || 'none found'}\nfonts: ${families}\nlogo: ${r.logo.picked || 'none found'}\n${page}\n${r.notes.join('\n')}\nPaste into video.json:\n${JSON.stringify(r.suggestion, null, 2)}\nOpen the screenshots and check them before you use them.`, r);
+        return 0;
+      }
+      case 'record': {
+        if (pos.length !== 2) throw new ProjectError('usage: explainroo record <project> <name> [--fresh] [--json]. The script is recordings/<name>.json in the project.');
+        const r = await record(pos[0], pos[1], { log, fresh: !!flags.fresh });
+        print(formatRecord(r), r);
         return 0;
       }
       case 'voice': {

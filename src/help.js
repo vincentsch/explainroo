@@ -103,6 +103,12 @@ export const COMMAND_HELP = {
     options: [['--name <name>', 'save to assets/capture/<site>/<name>/, for several pages of one site'], ['--mobile', 'a phone-sized page'], JSON_OUT],
     example: 'capture videos/my-demo https://example.com',
   },
+  record: {
+    usage: 'record <project> <name> [options]',
+    about: 'Runs the steps of recordings/<name>.json in a browser of its own and saves the video as assets/recordings/<name>.webm, with the time and the box of every step in assets/recordings/<name>.json. s.recording(\'<name>\') plays it in a scene with a cursor, click rings and zooms. When a step can\'t find its element, it stops with the step number, close words from the page and a picture of the page.',
+    options: [['--fresh', 'start the browser profile empty, without the logins and cookies of earlier runs'], JSON_OUT],
+    example: 'record videos/my-demo new-invoice',
+  },
   image: {
     usage: 'image [project] <name> "<what to draw>" [options]',
     about: 'Buys an illustration through OpenRouter and saves it as assets/<name>.png. This costs money. The same request returns the file it already bought.',

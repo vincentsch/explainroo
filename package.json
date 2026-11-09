@@ -38,6 +38,7 @@
     "examples/*/*.js",
     "examples/*/README.md",
     "examples/*/assets/**",
+    "!examples/*/assets/recordings/**",
     "AGENTS.md",
     "CLAUDE.md",
     "README.md",

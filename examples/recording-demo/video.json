@@ -1,0 +1,13 @@
+{
+  "title": "Send an invoice in Little Ledger",
+  "theme": "clean",
+  "size": "youtube",
+  "voice": "af_heart",
+  "music": true,
+  "captions": "auto",
+  "defaults": "0.5",
+  "brand": {
+    "accent": "#2f6fed"
+  },
+  "cover": "demo@11.2"
+}

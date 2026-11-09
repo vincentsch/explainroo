@@ -11,6 +11,7 @@ import { overlapDepth, holds, crosses, bounds, inside, toEdge, grow } from './ge
 import { layoutAreas } from './layout.js';
 import { loadClips, soundURL, ClipFrames, FREEZE_SECONDS, FIT_SPEEDS } from './clips.js';
 import { UI } from './ui.js';
+import { CATCH_UP } from './recording.js';
 import { Short } from './short.js';
 import { playbackTextIssue } from './readability.js';
 import { planCamera, cameraAt, cameraMoving, heldShot, continues, frameRect, backgroundShot } from './director.js';
@@ -158,6 +159,17 @@ export class Engine {
     const clip = this.clips.get(key) || this.clips.get('assets/' + key);
     if (!clip) throw new SceneError(`clip "${src}" not found. Put an MP4, MOV, WebM or M4V in the project's assets/ folder. Available: ${[...this.clips.keys()].join(', ') || 'none'}`);
     return clip;
+  }
+
+  // A recording that "explainroo record" made: its step log and its video.
+  recording(name) {
+    const have = Object.keys(this.state.recordings ?? {});
+    const log = this.state.recordings?.[name];
+    if (typeof name !== 'string' || !log) {
+      const close = typeof name === 'string' ? suggest(name, have, 3) : [];
+      throw new SceneError(`recording "${name}" not found. Write recordings/${name}.json and run "explainroo record <project> ${name}", which saves assets/recordings/${name}.webm and its step log. ${have.length ? `Recordings: ${have.join(', ')}${close.length ? `. Did you mean "${close[0]}"?` : ''}` : 'This project has no recordings yet.'}`);
+    }
+    return { log, clip: this.clip(`assets/recordings/${name}.webm`) };
   }
 
   soundFile(src) {
@@ -970,6 +982,11 @@ export class Engine {
           if (frozen > FREEZE_SECONDS) once(`clip-freeze:${sc.id}:${e.key}`, () => add('warn', sc.id, e.end, `clip "${e.src}" freezes on its last frame for ${frozen.toFixed(1)}s, from ${e.end.toFixed(2)}s until ${e.out.toFixed(2)}s. ${e.fit
             ? `speed: 'fit' goes no slower than ${FIT_SPEEDS[0]} times the clip's speed, and this one needs slower. Use loop: true, a longer clip or an earlier out`
             : "speed: 'fit' plays it slower, so it ends with the scene, and loop: true repeats it"}`));
+        }
+        if (e.kind === 'recording') {
+          if (e.changed) once(`recording-changed:${e.name}`, () => add('warn', sc.id, e.at, `recordings/${e.name}.json changed after recording "${e.name}" was made; run "explainroo record <project> ${e.name}" again`));
+          for (const l of e.late) once(`recording-late:${sc.id}:${e.key}:${l.step}`, () => add('warn', sc.id, l.cueAt, `recording "${e.name}" ${l.label} comes ${l.by.toFixed(1)}s after its cue "${l.cue}", because the steps before it take longer, also at ${CATCH_UP} times the speed; cue a later word, start the recording earlier with at, or record fewer or quicker steps`));
+          if (e.cut) once(`recording-cut:${sc.id}:${e.key}`, () => add('warn', sc.id, e.out, `recording "${e.name}" is cut off at ${e.out.toFixed(1)}s: ${e.cut.first}${e.cut.count > 1 ? ` and ${e.cut.count - 1} more step${e.cut.count > 2 ? 's' : ''}` : ''} would come at ${e.cut.at.toFixed(1)}s. ${e.fit ? `speed: 'fit' goes no faster than ${FIT_SPEEDS[1]} times; make the narration longer or record fewer steps` : "speed: 'fit' plays it faster, so it ends with the scene, or the narration can be longer"}`));
         }
         if (e.kind === 'sound' && !this.soundsPlayed.has(e.src)) this.soundsPlayed.set(e.src, { scene: sc.id, t: e.at });
         if (e.at > sc.dur) once(`late:${sc.id}:${e.key}`, () => add('error', sc.id, e.at, `a ${e.kind} is set to appear at ${e.at.toFixed(2)}s but the scene ends at ${sc.dur.toFixed(2)}s`));
