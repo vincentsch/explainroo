@@ -162,7 +162,7 @@ function pick(ways, other) {
 
 // A word as the tokens a voice says for it, like "2x²" as "2 x squared", or
 // null when it is no formula. `before` and `after` are the words around it: a
-// "2x" beside a formula is "2 x", and a lone "-" or "/" between numbers is a
+// "2x" beside a formula or a word like "squared" is "2 x", and a lone "-" or "/" between numbers is a
 // sign. `other` holds the words of the other side of the check, in order.
 export function mathReading(word, before, after, language, number, other = []) {
   const signs = SIGNS[language];
@@ -176,9 +176,12 @@ export function mathReading(word, before, after, language, number, other = []) {
     parts = parse(text);
     if (!parts) return null;
     if (!parts.some((p) => p.sign)) {
-      // A number with a letter, like "2x", is "2 x" only beside a formula.
+      // A number with a letter, like "2x", is "2 x" only beside a formula or
+      // a word for a sign, like "squared" in "2x squared".
       const coefficient = parts.length === 2 && parts[0].number && parts[1].letter;
-      if (!coefficient || !(isFormula(before ?? '') || isFormula(after ?? ''))) return null;
+      const words = signWords(language);
+      const maths = (w) => w !== null && w !== undefined && (isFormula(w) || words.has(plain(w).normalize('NFKD').replace(/[\u0300-\u036f]/g, '')));
+      if (!coefficient || !(maths(before) || maths(after))) return null;
     } else if (!formulaParts(parts)) return null;
   }
   return readings(parts, signs, number).flatMap((ways) => pick(ways, other));

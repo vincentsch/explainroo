@@ -134,6 +134,17 @@ test('a scene saved before near matches gets them from its transcript, and no vo
   assert.deepEqual(nearMatches({ ...voices.intro, nearly: undefined }, 'ja'), []);
 });
 
+test('a scene checked with older rules drops near matches that today\'s rules confirm fully, like "2x" for "two x" in a formula', async (t) => {
+  const dir = cachedProject(t, '# Maths\n\n## intro\nTake two x squared plus three x.\n', { intro: { transcript: 'Take 2x squared plus 3x.' } });
+  const project = loadProject(dir);
+  const file = voicePaths(project, 'intro').json;
+  const old = JSON.parse(fs.readFileSync(file, 'utf8'));
+  fs.writeFileSync(file, JSON.stringify({ ...old, check: 3, nearly: [{ word: 'two', heard: '2x', joined: true }, { word: 'x', heard: '2x', joined: true }] }));
+  const voices = await synthesize(project, { transcribe: () => { throw new Error('no voice should be made'); } });
+  assert.deepEqual(voices.intro.nearly, []);
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).nearly, []);
+});
+
 test('a new voice build saves the near matches of each scene, and the voice line says what its numbers are', async (t) => {
   const fake = await startFakeServices();
   t.after(fake.close);

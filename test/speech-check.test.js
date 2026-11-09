@@ -164,6 +164,9 @@ test('a fraction takes the reading the other side has, and words that only look 
   // A "2x" on its own is no formula, and neither is a hyphen or a date.
   for (const word of ['2x', 'B-52', 'T-5', 'COVID-19', 'x-ray', '9/11/2001', 'and/or', '-', '/']) assert.equal(mathReading(word, 'the', 'one', 'en', (n) => [n]), null, word);
   assert.deepEqual(state(alignWords(words('two x faster'), said('2x faster'), 1)), ['joined:2x', 'joined:2x', 'exact']);
+  // Beside a word for a sign, a "2x" is "2 x" too.
+  assert.deepEqual(state(alignWords(words('two x squared plus three x'), said('2x squared plus 3x'), 2)).filter((s) => s !== 'exact'), []);
+  assert.deepEqual(state(alignWords(words('2 x más 3 x'), said('2x más 3x'), 2, 'es')).filter((s) => s !== 'exact'), []);
   // Hindi, Japanese and Chinese have no readings for signs yet.
   assert.equal(mathReading('x=1', null, null, 'hi', (n) => [n]), null);
 });

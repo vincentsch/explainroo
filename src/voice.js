@@ -19,8 +19,8 @@ import { estimateLength, estimateLine, roughTime } from './timeline.js';
 const PIPELINE = 7;
 // The rules of the speech check that a scene was checked with. A scene checked
 // with older rules is looked at again from its transcript once, without new
-// speech, and the result is saved.
-export const CHECK = 3;
+// speech, and the result is saved. 4 reads maths written with signs.
+export const CHECK = 4;
 
 // The key of the narration itself: the spoken words, the gaps between them and
 // the voice settings. Markers and the shown text are not part of it.
@@ -132,7 +132,8 @@ function realign(info, language, accept = null) {
 // confirm. A word that the check confirms now counts as confirmed, with its old
 // time. No speech is made, and reviewed() saves the result.
 export async function reviewSpeech(info, language) {
-  const base = { ...info, nearly: nearMatches(info, language) };
+  // Older rules may have found near matches that today's rules confirm fully.
+  const base = { ...info, nearly: nearMatches(info.check === CHECK ? info : { ...info, nearly: undefined }, language) };
   if (info.check === CHECK || !Array.isArray(info.words) || info.words.every((w) => w.matched)) return base;
   const again = realign(info, language);
   if (!again) return base;
