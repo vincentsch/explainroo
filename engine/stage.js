@@ -1042,7 +1042,7 @@ export class Stage {
     const place = blank && (o.id === undefined || o.id === null) ? this._matrix().transformPoint(new DOMPoint(x, y)) : null;
     this._push(bx, by, life, o);
     const color = colorOf(th, o.color, 'ink');
-    const accent = colorOf(th, o.mark ?? 'accent');
+    const accent = colorOf(th, o.mark ?? this.engine.brandAccent ?? 'accent');
     if (o.bg) {
       const bgc = colorOf(th, o.bg === true ? 'surface' : o.bg);
       this.pen.draw(ctx, { kind: 'rect', w: g.w, h: g.h, r: o.radius ?? Math.min(th.radius, g.h / 2) }, { fill: bgc, stroke: o.border ? colorOf(th, o.border) : 'none', width: 2, shadow: this._shadow(), seed: this._seed('textbg', o, plain), rough: false }, { stroke: 1, fill: 1 });

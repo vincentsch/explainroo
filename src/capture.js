@@ -328,7 +328,9 @@ export async function capture(project, value, { mobile = false, name: pageName, 
     result.colors.accent = pickColors(buttonSamples).accent;
     result.colors.other = pickColors(samples, Object.values(result.colors).filter(Boolean)).other;
     result.brand = {};
-    for (const [key, val] of Object.entries({ accent: result.colors.accent, background: result.colors.background, ink: result.colors.text, font: result.fonts.body })) {
+    // The font of the first heading is the headline font, so u.headline doesn't
+    // fall back to the kit's serif on a site that has none.
+    for (const [key, val] of Object.entries({ accent: result.colors.accent, background: result.colors.background, ink: result.colors.text, font: result.fonts.body, headline: result.fonts.headings[0] ?? result.fonts.body })) {
       if (val) result.brand[key] = val;
     }
     result.notes = [];

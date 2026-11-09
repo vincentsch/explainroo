@@ -603,6 +603,14 @@ const steps = [
     },
   },
   {
+    // The frames that still took from the recording can be made again, and the narration stays.
+    args: ['clean', 'tiny', '--json'],
+    check: (r, { temp }) => {
+      expect(r.removed.some((p) => p.path === 'build/clips/') && !fs.existsSync(path.join(temp, 'tiny/build/clips')) && !r.removed.some((p) => /(^|\/)voice\//.test(p.path)), `clean says ${JSON.stringify(r)}`);
+      return `freed ${(r.bytes / 1e6).toFixed(1)} MB`;
+    },
+  },
+  {
     args: ['connect', 'cartesia', '--key-stdin', '--json'],
     input: `${GOOD_KEY}\n`,
     check: (r, { settings, fake }, raw) => {

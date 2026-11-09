@@ -100,6 +100,24 @@ test('moving a marker keeps the narration, makes no new speech and moves only th
   assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).words.at(-1).text, 'Models.');
 });
 
+// The change from a product demo that seemed to make the narration again: two
+// markers moved from the start of their sentences to inside them. The voice
+// run there kept the narration; the 100 s it reported was the first run.
+test('markers that move from the start of a sentence into it keep the narration', async (t) => {
+  const sentences = ['Curious how it sounds?', 'Ten example tracks come with it.', 'And on Explore, you can hear what people made.'];
+  const { dir, spoken } = await paidProject(t, `# Test\n\n## intro\n[#listen] Curious how it sounds? [#play] Ten example tracks come with it. [#explore] And on Explore, you can hear what people made.\n\n## outro\nThat is all.\n`);
+  await synthesize(loadProject(dir), { transcribe: echo([...sentences, 'That is all.']) });
+  assert.equal(spoken(), 4);
+  const before = JSON.parse(fs.readFileSync(path.join(dir, 'build/voice/intro.json'), 'utf8'));
+  fs.writeFileSync(path.join(dir, 'script.md'), '# Test\n\n## intro\n[#listen] Curious how it sounds? Ten example tracks [#play] come with it. And on [#explore] Explore, you can hear what people made.\n\n## outro\nThat is all.\n');
+  const lines = [];
+  const voices = await synthesize(loadProject(dir), { transcribe: noSpeech, log: (line) => lines.push(line) });
+  assert.equal(spoken(), 4, 'no new speech');
+  assert.deepEqual(lines, ['voice intro: kept the narration, updated the cues']);
+  const start = (text) => before.words.find((w) => w.text === text).start;
+  assert.deepEqual([voices.intro.marks.play, voices.intro.marks.explore], [start('come'), start('Explore,')]);
+});
+
 test('a scene made by an older version keeps its narration when a marker moves, on either side of a pause', async (t) => {
   // The marker moves to the word with this index.
   for (const [from, to, at] of [

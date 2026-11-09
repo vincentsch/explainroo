@@ -18,6 +18,7 @@ import { generateImage, jobRequest, imageLog, imageSpend, oldImageLog, IMAGE_MOD
 import { buyClip, clipJobRequest, clipRequest, formatClip, quoteClip } from './ai-clips.js';
 import { capture } from './capture.js';
 import { formatRecord, record } from './record.js';
+import { clean, formatClean } from './clean.js';
 import { connect } from './connect.js';
 import { CONNECTORS } from './connectors/index.js';
 import { hideSecrets } from './errors.js';
@@ -77,6 +78,8 @@ Make a video
   verify [project]      check the video: loudness, black frames, narration (--file). verify <video.mp4> checks
                         any video file, like check <video.mp4>
   export [project]      write a web player folder (--out dir, default: out/player/; --size, --no-watermark)
+  clean [project]       list and take out what build/ holds that the next run makes again, like the frames
+                        of clips and recordings, and say how much room that frees (--dry-run). The narration stays
 
 Edit your own recording
   cut <video>           write <name>.cut.md, the words of the recording with their times (--language, --force).
@@ -102,8 +105,9 @@ Product demos
                         --name pricing saves to assets/capture/<site>/pricing/, so several pages of one site
                         stay side by side
   record <project> <name>  run recordings/<name>.json in a browser of its own and save the video with a log
-                        of every step in assets/recordings/, for s.recording in a scene (--fresh starts the
-                        browser profile empty, without the logins and cookies of earlier runs)
+                        of every step in assets/recordings/, for s.recording in a scene. Every run starts
+                        with an empty browser profile, and --keep-profile keeps cookies and stored data for
+                        the next run, for a site that needs a login
 
 Images (optional, costs money, needs an OpenRouter key from "explainroo connect openrouter")
   image [project] <name> "<what to draw>"   save an illustration as assets/<name>.png
@@ -143,10 +147,11 @@ Reference
   sizes                 list sizes for YouTube, Shorts, TikTok, Reels, Instagram and LinkedIn. For each it
                         shows the content area with the watermark and without it, also with bold captions
   icons <word…>         search the 1,800+ built-in icons
-  doctor [project]      check ffmpeg, Chrome, espeak-ng, misaki and models: each is ready, not needed or missing.
-                        With a project, for its languages and voices. Before there is a project, --language es
-                        checks what that language needs (--fetch downloads the models it needs, and on Debian
-                        and Ubuntu it sets up espeak-ng without root when a language needs it)
+  doctor [project]      check ffmpeg, Chrome, Playwright's ffmpeg for record, espeak-ng, misaki and models: each is
+                        ready, not needed or missing. With a project, for its languages and voices. Before there
+                        is a project, --language es checks what that language needs (--fetch downloads the models
+                        it needs and Playwright's ffmpeg, and on Debian and Ubuntu it sets up espeak-ng without
+                        root when a language needs it)
   docs [topic] [section]  print the start page for coding agents, one topic, or one section of a topic by its
                         heading (--list shows the topics, --sections the sections of a topic with their size)
   version               print the version (--version works too)
@@ -178,7 +183,7 @@ function parseArgs(argv) {
   }
   return { pos, flags };
 }
-const BOOL = new Set(['json', 'fresh', 'apply', 'avatars', 'draft', 'estimate', 'transparent', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'mobile', 'list', 'sections', 'new', 'key-stdin', 'audio', 'dry-run', 'no-wait', 'no-watermark', 'yes', 'media-url-unchecked', ...LISTS_VOICES.map((c) => c.id)]);
+const BOOL = new Set(['json', 'keep-profile', 'apply', 'avatars', 'draft', 'estimate', 'transparent', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'mobile', 'list', 'sections', 'new', 'key-stdin', 'audio', 'dry-run', 'no-wait', 'no-watermark', 'yes', 'media-url-unchecked', ...LISTS_VOICES.map((c) => c.id)]);
 
 // publish refuses any other flag. A flag it ignored could change what a person
 // thinks is posted, like a time for a post, when it goes out right away.
@@ -250,8 +255,8 @@ export async function main(argv) {
         return 0;
       }
       case 'record': {
-        if (pos.length !== 2) throw new ProjectError('usage: explainroo record <project> <name> [--fresh] [--json]. The script is recordings/<name>.json in the project.');
-        const r = await record(pos[0], pos[1], { log, fresh: !!flags.fresh });
+        if (pos.length !== 2) throw new ProjectError('usage: explainroo record <project> <name> [--keep-profile] [--json]. The script is recordings/<name>.json in the project.');
+        const r = await record(pos[0], pos[1], { log, keepProfile: !!flags['keep-profile'] });
         print(formatRecord(r), r);
         return 0;
       }
@@ -372,6 +377,11 @@ export async function main(argv) {
           ? await applyCut(pos[0], { out: textFlag(flags, 'out') ?? null, log })
           : await writeCut(pos[0], { language: textFlag(flags, 'language') ?? 'en', force: !!flags.force, log });
         print(formatCut(r), r);
+        return 0;
+      }
+      case 'clean': {
+        const r = clean(pos[0], { dryRun: !!flags['dry-run'] });
+        print(formatClean(r), r);
         return 0;
       }
       case 'export': {

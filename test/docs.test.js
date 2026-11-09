@@ -573,3 +573,14 @@ test('the pace in the writing topic is the one the estimate uses: 13 letters a s
   assert.equal(estimate('es', words).perMinute, Math.round((12.95 * 60) / 5));
   assert.equal(estimate('hi', words).perMinute, 150);
 });
+
+test('product-demos puts recording the real app first and rebuilding screens with s.ui second, and says what a box in the step log is', () => {
+  const demos = page('product-demos');
+  const headings = demos.split('\n').filter((l) => l.startsWith('## '));
+  assert.ok(headings.indexOf('## Recording the real app') === 0, headings.join(' | '));
+  assert.ok(headings.indexOf('## Rebuilding the screens with s.ui') > 0);
+  const intro = oneLine(demos.slice(0, demos.indexOf('## ')));
+  assert.ok(intro.indexOf('record it') < intro.indexOf('rebuild its screens with `s.ui`'), intro);
+  const text = oneLine(demos);
+  for (const words of ['the `box` of its element in pixels of the video: `x` and `y` are its middle, and `w` and `h` its width and height.', 'A zoom fits its element into about 70% of the frame, from 1.4 to 2.5 times closer.', 'Every run starts with an empty browser profile', '`--keep-profile` keeps the profile', 'Only `scroll` steps move the page.', '`explainroo doctor --fetch` downloads once', '`assets/recordings/<name>.log.json`']) assert.ok(text.includes(words), words);
+});

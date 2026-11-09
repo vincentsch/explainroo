@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { execFile, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { setupNeeds, projectSetup } from '../src/doctor.js';
 import { ASR_MODEL, MULTILINGUAL_ASR_MODEL, TTS_MODEL } from '../src/models.js';
@@ -125,7 +125,7 @@ test('every row has ok, and every row but the keys file has one of three states'
   const settings = temp(t);
   const r = spawnSync(process.execPath, [bin, 'doctor', '--json'], { encoding: 'utf8', env: { ...process.env, EXPLAINROO_CONFIG: settings, EXPLAINROO_PYTHON: path.join(settings, 'none') } });
   const { checks } = JSON.parse(r.stdout);
-  assert.deepEqual(checks.map((c) => c.name), ['node', 'ffmpeg', 'chrome', 'espeak-ng', 'misaki ja', 'misaki zh', 'voice model', 'speech check model', 'language model', 'keys file', 'runs from', 'examples']);
+  assert.deepEqual(checks.map((c) => c.name), ['node', 'ffmpeg', 'chrome', 'playwright ffmpeg', 'espeak-ng', 'misaki ja', 'misaki zh', 'voice model', 'speech check model', 'language model', 'keys file', 'runs from', 'examples']);
   for (const check of checks) {
     assert.equal(typeof check.ok, 'boolean', check.name);
     if (check.info) continue;
@@ -381,4 +381,81 @@ test('the launcher gives espeak-ng a long data path from inside the folder, beca
     assert.ok(path.join(r.folder, 'root/usr/lib/fake-linux-gnu/espeak-ng-data').length > 150);
     assert.equal(r.version, 'eSpeak NG text-to-speech: 1.51 (fake) Data at: .');
   });
+});
+
+// A zip file with one file in it, stored without compression, as Playwright's downloads come.
+function zipOne(name, body) {
+  const crc = (buf) => {
+    let c = ~0;
+    for (const byte of buf) {
+      c ^= byte;
+      for (let k = 0; k < 8; k++) c = (c >>> 1) ^ (0xedb88320 & -(c & 1));
+    }
+    return ~c >>> 0;
+  };
+  const file = Buffer.from(name);
+  const sum = crc(body);
+  const local = Buffer.alloc(30);
+  local.writeUInt32LE(0x04034b50, 0);
+  local.writeUInt16LE(20, 4);
+  local.writeUInt32LE(sum, 14);
+  local.writeUInt32LE(body.length, 18);
+  local.writeUInt32LE(body.length, 22);
+  local.writeUInt16LE(file.length, 26);
+  const central = Buffer.alloc(46);
+  central.writeUInt32LE(0x02014b50, 0);
+  central.writeUInt16LE(0x0314, 4);
+  central.writeUInt16LE(20, 6);
+  central.writeUInt32LE(sum, 16);
+  central.writeUInt32LE(body.length, 20);
+  central.writeUInt32LE(body.length, 24);
+  central.writeUInt16LE(file.length, 28);
+  central.writeUInt32LE((0o100755 << 16) >>> 0, 38);
+  const start = 30 + file.length + body.length;
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(1, 8);
+  end.writeUInt16LE(1, 10);
+  end.writeUInt32LE(46 + file.length, 12);
+  end.writeUInt32LE(start, 16);
+  return Buffer.concat([local, file, body, central, file, end]);
+}
+
+test('doctor lists Playwright\'s ffmpeg for record, and --fetch gets it with Playwright\'s own installer', async (t) => {
+  const { default: http } = await import('node:http');
+  const browsers = temp(t);
+  const asked = [];
+  const name = { linux: 'ffmpeg-linux', darwin: 'ffmpeg-mac', win32: 'ffmpeg-win64.exe' }[process.platform];
+  const server = http.createServer((req, res) => {
+    asked.push(req.url);
+    res.writeHead(200, { 'Content-Type': 'application/zip' });
+    res.end(zipOne(name, Buffer.from('#!/bin/sh\necho fake ffmpeg\n')));
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const env = { ...process.env, EXPLAINROO_CACHE: cache(t, true), PLAYWRIGHT_BROWSERS_PATH: browsers, PLAYWRIGHT_DOWNLOAD_HOST: `http://127.0.0.1:${server.address().port}` };
+  const run = (args, file = bin, extra = []) => new Promise((resolve) => {
+    execFile(process.execPath, [...extra, file, ...args], { encoding: 'utf8', env }, (error, stdout, stderr) => resolve({ status: error ? error.code : 0, stdout, stderr }));
+  });
+  const row = async (args) => JSON.parse((await run(['doctor', ...args, '--json'])).stdout).checks.find((c) => c.name === 'playwright ffmpeg');
+  const missing = await row([]);
+  assert.deepEqual([missing.state, missing.ok], ['missing', false]);
+  assert.match(missing.detail, /^only "record" needs it\. ".* doctor --fetch" downloads it\.$/);
+  assert.deepEqual(asked, []);
+  // Only record needs it, so doctor passes without it, and record stops with one line.
+  assert.equal((await run(['doctor'])).status, 0);
+  const dir = project(t, { title: 'T' });
+  fs.mkdirSync(path.join(dir, 'recordings'));
+  fs.writeFileSync(path.join(dir, 'recordings/tour.json'), JSON.stringify({ url: 'http://127.0.0.1:9/', steps: [{ do: 'mark', name: 'a' }] }));
+  const record = await run(['record', dir, 'tour']);
+  assert.equal(record.status, 1);
+  assert.match(record.stderr, /^error: record needs Playwright's own ffmpeg to save the video, and it isn't there yet\. Run ".* doctor --fetch" once\.\n$/);
+  // The installer doctor --fetch runs gets it from Playwright's download address.
+  const fetched = await new Promise((resolve) => execFile(process.execPath, ['--input-type=module', '-e', `import { installRecordEncoder } from ${JSON.stringify(new URL('../src/browser.js', import.meta.url).href)}; const lines = []; console.log(JSON.stringify({ ...(await installRecordEncoder({ log: (l) => lines.push(l) })), lines }));`], { encoding: 'utf8', env }, (error, stdout, stderr) => resolve(error ? { error: stderr } : JSON.parse(stdout))));
+  assert.equal(fetched.ready, true, JSON.stringify(fetched));
+  assert.ok(fetched.file.startsWith(path.join(browsers, 'ffmpeg-')), fetched.file);
+  assert.match(fetched.lines[0], /^downloading Playwright's ffmpeg for record into /);
+  assert.match(asked[0], /\/builds\/ffmpeg\/\d+\/ffmpeg-[a-z0-9]+\.zip$/);
+  const ready = await row([]);
+  assert.deepEqual([ready.state, ready.detail], ['ready', `${fetched.file}, for the video of "record"`]);
 });

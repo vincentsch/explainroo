@@ -35,3 +35,5 @@ input, select { font: inherit; padding: 10px 12px; border: 1px solid #d5d9e0; bo
 .cookies { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); background: #fff; border: 1px solid #d5d9e0; border-radius: 12px; padding: 16px 22px; display: flex; gap: 24px; align-items: center; box-shadow: 0 8px 30px rgba(0,0,0,.12); }
 .cookies p { margin: 0; }
 .long { height: 900px; }
+.player { position: fixed; left: 0; right: 0; bottom: 0; height: 170px; background: #1d2433; color: #fff; display: grid; place-items: center; font-weight: 600; }
+.locked { position: fixed; inset: 0; background: rgba(245, 246, 248, 0.92); display: grid; place-items: center; font-size: 24px; }

@@ -64,7 +64,8 @@ test('record runs the steps in a clean window, logs each one and blurs what it n
   assert.equal(r.video, 'assets/recordings/invoice.webm');
   assert.deepEqual([r.width, r.height, r.steps], [1280, 720, 6]);
   assert.deepEqual(r.notes, ['blur 3 (text "Nobody here") matched nothing on any page. Check it, or take it out.']);
-  const log = JSON.parse(fs.readFileSync(path.join(dir, 'assets/recordings/invoice.json'), 'utf8'));
+  assert.equal(r.log, 'assets/recordings/invoice.log.json');
+  const log = JSON.parse(fs.readFileSync(path.join(dir, 'assets/recordings/invoice.log.json'), 'utf8'));
   assert.deepEqual(log.blur.map((b) => b.found), [true, true, false]);
   assert.equal(log.steps[0].before, true);
   assert.ok(log.start > log.steps[0].end, 'the video starts after the steps marked before');
@@ -89,15 +90,21 @@ test('record runs the steps in a clean window, logs each one and blurs what it n
   await ffmpeg(['-loglevel', 'error', '-ss', String(log.start + 0.2), '-i', path.join(dir, r.video), '-frames:v', '1', frame]);
   const page = rgbAt(frame, 640, 680);
   assert.ok(page.every((c) => c > 236 && c < 250), `page where the banner was: ${page}`);
-  // The run reuses its profile, where the banner was closed already, so the
-  // step before the video finds nothing and is skipped with a note.
+  // Every run starts with an empty profile, so the banner shows again and
+  // its step runs. With keepProfile the next run remembers the cookie, so
+  // the step finds nothing and is skipped with a note.
   fs.writeFileSync(path.join(dir, 'recordings/invoice.json'), JSON.stringify({ url: `${app.url}#/invoices`, viewport: { width: 1280, height: 720 }, steps: [{ do: 'click', text: 'Accept', before: true }, { do: 'mark', name: 'a' }] }));
   const again = await record(dir, 'invoice');
-  assert.deepEqual([again.steps, again.notes], [1, ['step 1 (click "Accept") found nothing and was skipped. That\'s fine when an earlier run did it already, and "record --fresh" starts without that.']]);
+  assert.deepEqual([again.steps, again.notes], [2, []]);
+  await record(dir, 'invoice', { keepProfile: true });
+  const kept1 = await record(dir, 'invoice', { keepProfile: true });
+  assert.deepEqual([kept1.steps, kept1.notes], [1, ['step 1 (click "Accept") found nothing and was skipped. That\'s fine when an earlier run did it already, and the kept profile remembers it.']]);
+  // The empty profiles of the runs are gone, and the kept one stays.
+  assert.equal(fs.readdirSync(path.join(dir, '.cache/record/profiles')).length, 1);
   fs.writeFileSync(path.join(dir, 'recordings/invoice.json'), JSON.stringify(script));
-  const good = await record(dir, 'invoice', { fresh: true });
+  const good = await record(dir, 'invoice');
   assert.deepEqual([good.steps, good.notes.length], [6, 1]);
-  const kept = JSON.parse(fs.readFileSync(path.join(dir, 'assets/recordings/invoice.json'), 'utf8'));
+  const kept = JSON.parse(fs.readFileSync(path.join(dir, 'assets/recordings/invoice.log.json'), 'utf8'));
   // A step that isn't there stops with its number, close words and a picture.
   fs.writeFileSync(path.join(dir, 'recordings/invoice.json'), JSON.stringify({ url: `${app.url}#/invoices`, viewport: { width: 1280, height: 720 }, steps: [{ do: 'mark', name: 'a' }, { do: 'click', text: 'New invoices' }] }));
   await assert.rejects(record(dir, 'invoice', { findSeconds: 1 }), (e) => {
@@ -107,7 +114,7 @@ test('record runs the steps in a clean window, logs each one and blurs what it n
   });
   assert.ok(fs.statSync(path.join(dir, 'build/record/invoice-step-2.png')).size > 1000);
   // The failed run left the last good recording in place.
-  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dir, 'assets/recordings/invoice.json'), 'utf8')), kept);
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dir, 'assets/recordings/invoice.log.json'), 'utf8')), kept);
 });
 
 test('s.recording holds the frame before a cued step until the cue, and draws the cursor', { skip: !chrome }, async (t) => {
@@ -119,7 +126,7 @@ test('s.recording holds the frame before a cued step until the cue, and draws th
     steps: [{ do: 'click', text: 'Accept', before: true }, { do: 'click', text: 'New invoice', cue: 'click' }, { do: 'mark', name: 'form' }],
   });
   await record(dir, 'invoice');
-  const log = JSON.parse(fs.readFileSync(path.join(dir, 'assets/recordings/invoice.json'), 'utf8'));
+  const log = JSON.parse(fs.readFileSync(path.join(dir, 'assets/recordings/invoice.log.json'), 'utf8'));
   const click = log.steps[1];
   const scene = (o) => `export default { demo(s) {
     const r = s.recording('invoice', { full: true, ...${JSON.stringify(o)} });
@@ -165,4 +172,83 @@ test('s.recording holds the frame before a cued step until the cue, and draws th
     const report = await page.evaluate(() => window.explainroo.check(0.25));
     assert.ok(report.some((i) => /recording "invoices" not found\. Write recordings\/invoices\.json and run "explainroo record <project> invoices".*Did you mean "invoice"\?/.test(i.message)), JSON.stringify(report));
   });
+});
+
+test('a click on an element under a bar scrolls it clear first, and one that stays covered stops with what covers it', { skip: !chrome }, async (t) => {
+  const app = await serveDemoApp();
+  t.after(app.close);
+  // The ninth Play button sits under the player bar at the bottom of the window.
+  const dir = project(t, { url: `${app.url}#/tracks`, viewport: { width: 1280, height: 720 }, steps: [{ do: 'click', text: 'Play', nth: 9 }, { do: 'mark', name: 'played' }] });
+  const r = await record(dir, 'invoice');
+  const log = JSON.parse(fs.readFileSync(path.join(dir, r.log), 'utf8'));
+  const click = log.steps[0];
+  // It scrolled the button to the middle of the window, clear of the bar, and clicked it there.
+  assert.ok(Math.abs(click.box.y - 360) < 40, JSON.stringify(click.box));
+  const frame = path.join(dir, 'played.png');
+  await ffmpeg(['-loglevel', 'error', '-ss', String(log.steps[1].t + 0.1), '-i', path.join(dir, r.video), '-frames:v', '1', frame]);
+  // The bar is dark, so its middle shows the white words "Playing Balance Due".
+  const bar = rgbAt(frame, 560, 630, 160, 30);
+  assert.ok(bar.some((c) => c > 200), 'the bar says what plays');
+  // A dialog over the whole page covers the button wherever it scrolls.
+  fs.writeFileSync(path.join(dir, 'recordings/invoice.json'), JSON.stringify({ url: `${app.url}#/reports`, viewport: { width: 1280, height: 720 }, steps: [{ do: 'click', text: 'Download report' }] }));
+  await assert.rejects(record(dir, 'invoice'), (e) => {
+    assert.match(e.message, /^recordings\/invoice\.json step 1 \(click "Download report"\): <div\.locked> with the words "Reports come with Little Ledger Pro\." covers the middle of the element at \d+,\d+, also after scrolling it to the middle of the window, so the click would land on that\./);
+    return true;
+  });
+});
+
+test('finding an element never scrolls, a zoom outside the window asks for a scroll step, and pace sets the speed', { skip: !chrome }, async (t) => {
+  const app = await serveDemoApp();
+  t.after(app.close);
+  const dir = project(t, { url: `${app.url}#/customers`, viewport: { width: 1280, height: 720 }, steps: [{ do: 'mark', name: 'a' }, { do: 'zoom', text: 'End of the list' }] });
+  await assert.rejects(record(dir, 'invoice', { findSeconds: 1 }), /step 2 \(zoom "End of the list"\): the element is outside the window, and finding it never scrolls the page\. Put a scroll step to it first, like \{ "do": "scroll", "text": "End of the list" \}\./);
+  // With the scroll step it zooms, and the scroll of 500 pixels in a window
+  // 720 tall takes about 0.7 s at pace 1.
+  const steps = [{ do: 'click', text: 'Settings' }, { do: 'open', url: '#/customers' }, { do: 'scroll', y: 500 }, { do: 'scroll', text: 'End of the list' }, { do: 'zoom', text: 'End of the list' }];
+  fs.writeFileSync(path.join(dir, 'recordings/invoice.json'), JSON.stringify({ url: `${app.url}#/customers`, viewport: { width: 1280, height: 720 }, steps }));
+  const slow = JSON.parse(fs.readFileSync(path.join(dir, (await record(dir, 'invoice')).log), 'utf8'));
+  assert.ok(slow.steps[4].box.y > 0 && slow.steps[4].box.y < 720, JSON.stringify(slow.steps[4]));
+  const seconds = (log, i) => log.steps[i].end - log.steps[i].start;
+  const move = (log) => log.steps[0].move.t1 - log.steps[0].move.t0;
+  assert.ok(seconds(slow, 2) > 0.6 && seconds(slow, 2) < 2.5, `scroll of 500 px: ${seconds(slow, 2)}`);
+  assert.ok(move(slow) > 0.5 && move(slow) < 0.9, `pointer move: ${move(slow)}`);
+  // pace 2 takes half as long, and a step's duration sets its own.
+  fs.writeFileSync(path.join(dir, 'recordings/invoice.json'), JSON.stringify({ url: `${app.url}#/customers`, viewport: { width: 1280, height: 720 }, pace: 2, steps: steps.map((s, i) => (i === 3 ? { ...s, duration: 1.5 } : s)) }));
+  const quick = JSON.parse(fs.readFileSync(path.join(dir, (await record(dir, 'invoice')).log), 'utf8'));
+  assert.ok(move(quick) > 0.25 && move(quick) < 0.55, `pointer move at pace 2: ${move(quick)}`);
+  assert.ok(seconds(quick, 2) < seconds(slow, 2), `scroll at pace 2: ${seconds(quick, 2)}`);
+  assert.ok(seconds(quick, 3) > 1.5, `scroll with its own duration: ${seconds(quick, 3)}`);
+});
+
+test('a new recording takes out the frames of the one it replaces, and s.recording starts at from', { skip: !chrome }, async (t) => {
+  const app = await serveDemoApp();
+  t.after(app.close);
+  const dir = project(t, { url: `${app.url}#/customers`, viewport: { width: 1280, height: 720 }, steps: [{ do: 'mark', name: 'top' }, { do: 'wait', seconds: 1.5 }, { do: 'scroll', y: 400 }, { do: 'mark', name: 'down' }] });
+  const clips = path.join(dir, 'build/clips');
+  for (const [name, src] of [['old', 'assets/recordings/invoice.webm'], ['other', 'assets/clips/intro.mp4']]) {
+    fs.mkdirSync(path.join(clips, name), { recursive: true });
+    fs.writeFileSync(path.join(clips, name, 'source.json'), JSON.stringify({ src, content: 'x' }));
+  }
+  await record(dir, 'invoice');
+  assert.deepEqual(fs.readdirSync(clips), ['other']);
+  const log = JSON.parse(fs.readFileSync(path.join(dir, 'assets/recordings/invoice.log.json'), 'utf8'));
+  const timeline = { pace: 1, duration: 3, frames: 90, fps: 30, width: 1920, height: 1080, transitionSeconds: 0,
+    scenes: [{ id: 'demo', index: 0, start: 0, dur: 3, words: [], marks: {}, voice: null, lead: 0, transition: 'none' }] };
+  // The blue logo at the top left of the app, 45,45 of the 1280x720 video, in the 480x270 frame.
+  const logo = async (o) => {
+    fs.writeFileSync(path.join(dir, 'scenes.js'), `export default { demo(s) { s.recording('invoice', { full: true, enter: 'none', ...${JSON.stringify(o)} }); } };`);
+    return withEngine(loadProject(dir), timeline, { scale: 0.25 }, async (page) => {
+      // Half a second in, as a busy computer can send the first frames before the page paints.
+      const [frame] = await page.evaluate(() => window.explainroo.frames([15], 0.95));
+      return pixel(dir, frame, 16, 16, 2, 2);
+    });
+  };
+  const top = await logo({});
+  assert.ok(top[2] > 200 && top[0] < 100, `the top of the page: ${top}`);
+  const down = await logo({ from: log.steps[3].t });
+  assert.ok(down.every((c) => c > 200), `scrolled down from the start: ${down}`);
+  // The frames of the video are in the cache now, named by where they come from.
+  const made = fs.readdirSync(clips).filter((n) => n !== 'other');
+  assert.equal(made.length, 1);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(clips, made[0], 'source.json'), 'utf8')).src, 'assets/recordings/invoice.webm');
 });

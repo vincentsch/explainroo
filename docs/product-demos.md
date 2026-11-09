@@ -1,17 +1,95 @@
 # Product demos
 
 A product demo is the kind of video software companies make to show their
-app. You rebuild the app's screens with `s.ui`, in the app's colors and fonts.
-The table at the end lists what it draws. A mouse pointer clicks through the
-screens and types into the fields, and the camera zooms in on what the voice
-talks about.
-[examples/unspar-demo](https://github.com/vincentsch/explainroo/tree/main/examples/unspar-demo)
-is a complete one. The examples also come with the package, and
-`explainroo doctor` prints their folder. When the app runs on this computer
-or on a site you can open, you can record the real app instead, see
-"Recording the real app".
+app. When the user asks to show the real site or app, and it runs on this
+computer or on a site you can open, record it: `explainroo record` clicks
+through the real app in a browser and saves the video, and `s.recording`
+plays it with a pointer, click rings and zooms on the words of the voice.
+Every button in it is a real one. See "Recording the real app".
 
-## Capture the live site first
+When the app can't be recorded, rebuild its screens with `s.ui`, in the
+app's colors and fonts. A mouse pointer clicks through the screens and
+types into the fields, and the camera zooms in on what the voice talks
+about. See "Rebuilding the screens with s.ui".
+[examples/recording-demo](https://github.com/vincentsch/explainroo/tree/main/examples/recording-demo)
+and
+[examples/unspar-demo](https://github.com/vincentsch/explainroo/tree/main/examples/unspar-demo)
+are complete ones. The examples also come with the package, and
+`explainroo doctor` prints their folder.
+
+## Recording the real app
+
+Write the steps of a recording in `recordings/<name>.json`:
+
+```json
+{
+  "url": "http://localhost:3000/invoices",
+  "viewport": { "width": 1280, "height": 720 },
+  "steps": [
+    { "do": "click", "text": "Accept cookies", "before": true },
+    { "do": "click", "text": "New invoice", "cue": "#new" },
+    { "do": "type", "text": "Amount", "value": "2400", "press": "Tab" },
+    { "do": "zoom", "selector": "form", "cue": "#check" },
+    { "do": "click", "text": "Save invoice", "cue": "save" },
+    { "do": "zoom" },
+    { "do": "scroll", "text": "Total" },
+    { "do": "mark", "name": "saved" }
+  ],
+  "blur": [{ "selector": ".email" }, { "text": "jane@example.com" }]
+}
+```
+
+Then run `explainroo record videos/<name> <name>`. It runs the steps in a
+browser of its own and saves `assets/recordings/<name>.webm` and its step
+log, `assets/recordings/<name>.log.json`. The video shows only the page,
+with no browser bars or pop-ups. `record` needs Playwright's own ffmpeg,
+which `explainroo doctor --fetch` downloads once.
+
+- A step finds its element by `text` or by a CSS `selector`. `text` is the
+  words the element shows, and its label or placeholder count too. `nth: 2`
+  takes the second match from the top.
+- `open` goes to `url`, an address or a path. `click`, `hover` and `type`
+  move the pointer to the element. `type` clicks the field and types
+  `value`, and `press` presses a key after it. `scroll` takes `y` in pixels
+  or the element to scroll to the middle of the window. `wait` takes
+  `seconds` or the element to wait for. `zoom` moves in on the element, and
+  without one back out. `mark` names a moment with `name`.
+- Only `scroll` steps move the page. A `zoom` or `wait` on an element
+  outside the window stops and asks for a `scroll` step first. A click,
+  hover or type on an element that something covers, like a bar that stays
+  at the bottom of the window, scrolls it to the middle first. When it is
+  still covered there, `record` stops and names what covers it.
+- A zoom fits its element into about 70% of the frame, from 1.4 to 2.5
+  times closer. `"scale": 2` on a zoom step sets how close it goes.
+- A pointer move takes about 0.6 seconds, and a scroll of one window height
+  about 1 second. `"pace": 1.5` in the script makes both faster, from 0.5 to
+  2, and `"duration": 1.2` on a step sets the seconds of its own move or
+  scroll.
+- `cue` is a spoken word or a `[#marker]` of the scene that plays it.
+- Steps with `"before": true` run before the video starts, like closing a
+  cookie banner or logging in. Every run starts with an empty browser
+  profile, so the site has no cookies or stored data from an earlier run.
+  For a site that needs a login, `--keep-profile` keeps the profile for the
+  next run, and a step before the video that finds nothing is skipped.
+- `blur` blurs elements by CSS selector or exact text on every page, before
+  anything is recorded. Use it for real email addresses and keys.
+- `viewport` is 1920 x 1080 by default. 1280 x 720 makes the app's text
+  larger in the video.
+
+The step log has the time of each step in seconds of the video, and the
+`box` of its element in pixels of the video: `x` and `y` are its middle,
+and `w` and `h` its width and height.
+
+When a step can't find its element, `record` stops and names the step. It
+lists close words from the page and saves a picture of the page in
+`build/record/`. Fix the script from what the page shows, and never guess a
+button. Then play it with `s.recording`, which
+`explainroo docs scene-api recordings` explains. `from` skips the first
+seconds of the video. Write the narration around what the video shows, and
+look at stills. You can also show any screen recording with `s.clip` in a
+`browser` frame.
+
+## Capture the live site
 
 ```bash
 explainroo capture videos/<name> https://example.com --mobile
@@ -56,65 +134,6 @@ without a name replaces its own files and keeps the named folders. A name
 uses letters, digits and hyphens and starts with a letter or a digit. It
 can't be `fonts`, because a capture without a name keeps its fonts there.
 
-You can also show a real screen recording with `s.clip` in a `browser`
-frame. Use `s.camera` to zoom in on the detail the voice mentions.
-
-## Recording the real app
-
-A recording shows the real app, so every button in it is a real one. Write
-its steps in `recordings/<name>.json`:
-
-```json
-{
-  "url": "http://localhost:3000/invoices",
-  "viewport": { "width": 1280, "height": 720 },
-  "steps": [
-    { "do": "click", "text": "Accept cookies", "before": true },
-    { "do": "click", "text": "New invoice", "cue": "#new" },
-    { "do": "type", "text": "Amount", "value": "2400", "press": "Tab" },
-    { "do": "zoom", "selector": "form", "cue": "#check" },
-    { "do": "click", "text": "Save invoice", "cue": "save" },
-    { "do": "zoom" },
-    { "do": "mark", "name": "saved" }
-  ],
-  "blur": [{ "selector": ".email" }, { "text": "jane@example.com" }]
-}
-```
-
-Then run `explainroo record videos/<name> <name>`. It runs the steps in a
-browser of its own, with a profile in explainroo's cache folder, and saves
-`assets/recordings/<name>.webm` and a log with the time and place of every
-step. The video shows only the page, with no browser bars or pop-ups.
-
-- A step finds its element by `text` or by a CSS `selector`. `text` is the
-  words the element shows, and its label or placeholder count too. `nth: 2`
-  takes the second match from the top. An element out of view scrolls into
-  view first.
-- `open` goes to `url`, an address or a path. `click`, `hover` and `type`
-  move the pointer to the element. `type` clicks the field and types
-  `value`, and `press` presses a key after it. `scroll` takes `y` in pixels
-  or the element to scroll to. `wait` takes `seconds` or the element to wait
-  for. `zoom` moves in on the element, and without one back out. `mark`
-  names a moment with `name`.
-- `cue` is a spoken word or a `[#marker]` of the scene that plays it.
-- Steps with `"before": true` run before the video starts, like closing a
-  cookie banner or logging in. The profile keeps cookies and logins for the
-  next run, so such a step that finds nothing is skipped. `--fresh` starts
-  with an empty profile.
-- `blur` blurs elements by CSS selector or exact text on every page, before
-  anything is recorded. Use it for real email addresses and keys.
-- `viewport` is 1920 x 1080 by default. 1280 x 720 makes the app's text
-  larger in the video.
-
-When a step can't find its element, `record` stops and names the step. It
-lists close words from the page and saves a picture of the page in
-`build/record/`. Fix the script from what the page shows, and never guess a
-button. Then play it with `s.recording`, which
-`explainroo docs scene-api recordings` explains. Write the narration around
-what the video shows, and look at stills.
-[examples/recording-demo](https://github.com/vincentsch/explainroo/tree/main/examples/recording-demo)
-is a complete one.
-
 ## Keep it true
 
 A demo is advertising, so everything in it has to be right.
@@ -152,7 +171,10 @@ Set up the brand in `video.json`. Use the `clean` look.
 
 - `accent` is the main button color. Find it in the app's Tailwind config or
   CSS. `background` is the color behind the screens, `ink` the color of text
-  drawn right on it.
+  drawn right on it. With `"defaults": "0.6"`, `accent` also colors the
+  `*starred*` words of `s.title` and `s.text`, and `background` is the
+  background of every scene. An accent that is hard to read there keeps its
+  hue and gets lighter or darker.
 - With captions on, `accent` also colors the word being spoken. A look file
   that sets `caption` colors decides instead. When the accent is hard to read
   on the caption background (a contrast below 3:1), with `"defaults": "0.5"`
@@ -165,12 +187,13 @@ Set up the brand in `video.json`. Use the `clean` look.
   `.woff2`, `.woff`, `.ttf` or `.otf`. A variable font takes
   `"weight": "100 900"`, and an italic file takes `"style": "italic"`. Copy
   the font's license file next to it.
-- `headline` is the font for big headlines. Instrument Serif is built in. If
-  the brand has no serif, use its own font and pass `{ weight: 700,
-  italic: false }` to `u.headline()`.
+- `headline` is the font for big headlines. Instrument Serif is built in.
+  `capture` suggests the font of the site's first heading. If the brand has
+  no serif, use its own font and pass `{ weight: 700, italic: false }` to
+  `u.headline()`.
 - `logo` is the product's logo from the app or website, best as SVG.
 
-## Build a scene
+## Rebuilding the screens with s.ui
 
 Build a scene in this order: background, camera, headline, screens, cursor
 last so it stays on top.

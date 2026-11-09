@@ -6,7 +6,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { findChrome } from './browser.js';
+import { findChrome, installRecordEncoder, recordEncoder } from './browser.js';
 import { saveKeys, settingValue, settingsEnvFile } from './env.js';
 import { ffmpegVersion } from './ffmpeg.js';
 import { projectWord, selfCommand } from './history.js';
@@ -180,6 +180,25 @@ export async function doctor({ project = null, language = null, fetch = false, l
     noChrome = e.message;
   }
   always('chrome', chrome, chrome, noChrome);
+  // The same setup, with --fetch.
+  const again = `${command} doctor --fetch${language !== null ? ` --language ${language}` : project ? ` ${projectWord(project.dir)}` : ''}`;
+  // Only record needs Playwright's ffmpeg, so a missing one doesn't fail the run.
+  let encoder = await recordEncoder();
+  let encoderFailed = null;
+  if (!encoder.ready && fetch && process.env.EXPLAINROO_OFFLINE !== '1') {
+    try {
+      encoder = await installRecordEncoder({ log });
+    } catch (e) {
+      encoderFailed = String(e.message).split('\n').map((l) => l.trim()).find(Boolean);
+    }
+  }
+  rows.push({
+    name: 'playwright ffmpeg',
+    state: encoder.ready ? 'ready' : 'missing',
+    ok: encoder.ready,
+    detail: encoder.ready ? `${encoder.file}, for the video of "record"` : `only "record" needs it. ${encoderFailed ? `The download failed: ${encoderFailed}` : `"${again}" downloads it.`}`,
+    fails: false,
+  });
 
   let espeak = espeakVersion();
   // --fetch sets up a copy that needs no root, where apt-get and dpkg can.
@@ -221,8 +240,6 @@ export async function doctor({ project = null, language = null, fetch = false, l
   }
   const models = path.join(cacheRoot(), 'models');
   const has = (model) => fs.existsSync(path.join(models, model));
-  // The same setup, with --fetch.
-  const again = `${command} doctor --fetch${language !== null ? ` --language ${language}` : project ? ` ${projectWord(project.dir)}` : ''}`;
   const fetched = (model) => `not downloaded yet. "${again}" or the first voice run fetches it, ${downloadSize(model)}.`;
   some(MODEL_NAMES[TTS_MODEL], {
     found: has(TTS_MODEL),

@@ -85,6 +85,12 @@ export const COMMAND_HELP = {
     options: [['--out <dir>', 'where to write it'], SIZE, WATERMARK, LANG, JSON_OUT],
     example: 'export videos/how-dns-works',
   },
+  clean: {
+    usage: 'clean [project] [options]',
+    about: 'Lists and takes out what build/ holds that the next run makes again by itself, like the frames of clips and recordings, and says how much room that frees. The narration in build/voice/ stays.',
+    options: [['--dry-run', 'list it and take out nothing'], JSON_OUT],
+    example: 'clean videos/how-dns-works',
+  },
   package: {
     usage: 'package [project] --platform <name> [options]',
     about: 'Writes out/package/<platform>/ with everything for one platform: the sized video, its words, captions, cover, AI label and credits. It checks the exact setup first and reuses a render that is this exact video.',
@@ -111,8 +117,8 @@ export const COMMAND_HELP = {
   },
   record: {
     usage: 'record <project> <name> [options]',
-    about: 'Runs the steps of recordings/<name>.json in a browser of its own and saves the video as assets/recordings/<name>.webm, with the time and the box of every step in assets/recordings/<name>.json. s.recording(\'<name>\') plays it in a scene with a cursor, click rings and zooms. When a step can\'t find its element, it stops with the step number, close words from the page and a picture of the page.',
-    options: [['--fresh', 'start the browser profile empty, without the logins and cookies of earlier runs'], JSON_OUT],
+    about: 'Runs the steps of recordings/<name>.json in a browser of its own and saves the video as assets/recordings/<name>.webm, with the time and the box of every step in assets/recordings/<name>.log.json. s.recording(\'<name>\') plays it in a scene with a cursor, click rings and zooms. When a step can\'t find its element, or something covers it, it stops with the step number and a picture of the page. Every run starts with an empty browser profile.',
+    options: [['--keep-profile', 'keep cookies and stored data for the next run, for a site that needs a login'], JSON_OUT],
     example: 'record videos/my-demo new-invoice',
   },
   image: {
@@ -180,8 +186,8 @@ export const COMMAND_HELP = {
   icons: { usage: 'icons <word…> [options]', about: 'Searches the built-in icons, one match per line.', options: [JSON_OUT], example: 'icons database' },
   doctor: {
     usage: 'doctor [project] [options]',
-    about: 'Checks ffmpeg, Chrome, espeak-ng, misaki and the models: each is ready, not needed or missing. It also prints the settings file and the folder explainroo runs from.',
-    options: [['--language <codes>', 'before there is a project, what these languages need, like es or es,fr'], ['--fetch', 'download the models that setup needs, and on Debian and Ubuntu set up espeak-ng without root when a language needs it'], JSON_OUT],
+    about: 'Checks ffmpeg, Chrome, Playwright\'s ffmpeg for record, espeak-ng, misaki and the models: each is ready, not needed or missing. It also prints the settings file and the folder explainroo runs from.',
+    options: [['--language <codes>', 'before there is a project, what these languages need, like es or es,fr'], ['--fetch', 'download the models that setup needs and Playwright\'s ffmpeg, and on Debian and Ubuntu set up espeak-ng without root when a language needs it'], JSON_OUT],
     example: 'doctor --fetch --language es',
   },
   docs: {

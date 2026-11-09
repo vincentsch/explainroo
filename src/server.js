@@ -6,7 +6,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { ensureFonts, languageFonts } from './fonts.js';
-import { extractClip, VIDEO_FILE } from './clips.js';
+import { CLIP_SOURCE, dropClipFrames, extractClip, VIDEO_FILE } from './clips.js';
 import { typesetMath, mathHash, MAX_TEX_LENGTH } from './math.js';
 import { decodeSound, SOUND_RATE } from './sounds.js';
 import { ProjectError } from './errors.js';
@@ -100,7 +100,11 @@ const clipJobs = new Map();
 
 async function cachedClip(projectDir, file, fps) {
   const hash = crypto.createHash('sha256').update(JSON.stringify({ fps, width: 1920, version: 1 }));
-  for await (const chunk of fs.createReadStream(file)) hash.update(chunk);
+  const content = crypto.createHash('sha256');
+  for await (const chunk of fs.createReadStream(file)) {
+    hash.update(chunk);
+    content.update(chunk);
+  }
   const rel = `build/clips/${hash.digest('hex')}`;
   const infoFile = clipCacheFile(projectDir, `${rel}/info.json`);
   if (!infoFile) throw new Error('clip cache must stay in build/. Remove symlinks from build/clips/.');
@@ -117,6 +121,11 @@ async function cachedClip(projectDir, file, fps) {
           fs.renameSync(path.join(temp, name), dest);
         }
         fs.writeFileSync(infoFile, JSON.stringify(info));
+        // Which file the frames come from, so the frames of a file that has
+        // been replaced since go now and "clean" can name them.
+        const src = path.relative(fs.realpathSync(projectDir), file).split(path.sep).join('/');
+        fs.writeFileSync(path.join(path.dirname(infoFile), CLIP_SOURCE), JSON.stringify({ src, content: content.digest('hex') }));
+        dropClipFrames(projectDir, src, path.basename(rel));
         return { rel, info };
       } finally {
         fs.rmSync(temp, { recursive: true, force: true });

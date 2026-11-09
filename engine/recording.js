@@ -7,8 +7,13 @@ import { clamp, lerp, ease } from './util.js';
 // How long a zoom takes, in seconds of the video. record waits as long, so the
 // next step starts once the view has arrived.
 export const ZOOM_SECONDS = 0.8;
-// How far a zoom goes at most, against the whole recording.
-export const MAX_ZOOM = 2;
+// How far a zoom goes: as close as fits the element into about ZOOM_FIT of the
+// view, but at least ZOOM_RANGE[0] and at most ZOOM_RANGE[1] times closer than
+// the whole recording, so every zoom shows. A step's scale sets its own, within
+// ZOOM_SCALES.
+export const ZOOM_FIT = 0.7;
+export const ZOOM_RANGE = [1.4, 2.5];
+export const ZOOM_SCALES = [1, 4];
 // How long a click ring grows and fades, in seconds of the scene.
 export const RING_SECONDS = 0.6;
 // A step that lands later than this after its cue gets a warning from check.
@@ -103,12 +108,17 @@ export function coverRect(width, height, aspect) {
   return { x: (width - w) / 2, y: (height - h) / 2, w, h };
 }
 
-// The view a zoom on `box` (center and size in video pixels) moves to: the box
-// with some room around it, in the shape of the view, inside the video, and at
-// most MAX_ZOOM times closer than `base`.
-export function focusRect(box, base, width, height) {
+// How many times closer than `base` a zoom on `box` goes.
+export function zoomScale(box, base, scale) {
+  if (scale !== undefined) return scale;
+  return clamp(ZOOM_FIT * Math.min(base.w / Math.max(1, box.w), base.h / Math.max(1, box.h)), ZOOM_RANGE[0], ZOOM_RANGE[1]);
+}
+
+// The view a zoom on `box` (center and size in video pixels) moves to: in the
+// shape of `base`, zoomScale times closer, around the box and inside the video.
+export function focusRect(box, base, width, height, scale) {
   const aspect = base.w / base.h;
-  const w = clamp(Math.max(box.w * 1.25, box.w + 96, box.h * 1.25 * aspect, (box.h + 96) * aspect, base.w / MAX_ZOOM), 1, base.w);
+  const w = base.w / zoomScale(box, base, scale);
   const h = w / aspect;
   return { x: clamp(box.x - w / 2, 0, width - w), y: clamp(box.y - h / 2, 0, height - h), w, h };
 }
@@ -124,7 +134,7 @@ export function viewAt(log, v, aspect, { zoom = true } = {}) {
   for (let i = 0; i < zooms.length; i++) {
     const z = zooms[i];
     if (v < z.t) break;
-    const target = z.box ? focusRect(z.box, base, log.width, log.height) : base;
+    const target = z.box ? focusRect(z.box, base, log.width, log.height, z.scale) : base;
     // A zoom that starts before this one ends takes over from where it is.
     const until = Math.min(v, zooms[i + 1]?.t ?? Infinity);
     const p = ease.inOut(clamp((until - z.t) / ZOOM_SECONDS));

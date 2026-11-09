@@ -31,6 +31,10 @@ const COLORS = {
   yellow: (r, g, b) => r > 220 && g > 180 && b < 110,
   // #94a9e8, the dark blue below made lighter.
   tinted: (r, g, b) => r > 135 && r < 160 && g > 158 && g < 182 && b > 220 && b < 245,
+  // #b8400a, a brand's dark orange.
+  rust: (r, g, b) => r > 170 && r < 200 && g > 50 && g < 80 && b < 30,
+  // #ffd23f made darker until it reads on white.
+  olive: (r, g, b) => r > 130 && r < 170 && g > 95 && g < 130 && b < 30,
 };
 // clean's own highlight, which the look counter above finds.
 assert.equal(THEMES.clean.caption.active, '#7aa2ff');
@@ -59,7 +63,7 @@ async function colorsIn(dir, spec = 'intro@0.9') {
   for (let y = 0; y < config.height; y++) {
     for (let x = 0; x < config.width; x++) {
       const i = (y * config.width + x) * 3;
-      for (const [name, is] of Object.entries(COLORS)) if (is(stdout[i], stdout[i + 1], stdout[i + 2])) counts[name][y >= band.top && y <= band.bottom ? 'band' : 'elsewhere']++;
+      for (const [name, is] of Object.entries(COLORS)) if (is(stdout[i], stdout[i + 1], stdout[i + 2])) counts[name][band && y >= band.top && y <= band.bottom ? 'band' : 'elsewhere']++;
     }
   }
   return counts;
@@ -151,4 +155,33 @@ test('a project without a brand, loaded after one with it in the same page, show
   assert.equal(seen.active, '#7aa2ff');
   assert.ok(seen.count.look > 30, `the look's highlight is drawn: ${JSON.stringify(seen.count)}`);
   assert.equal(seen.count.orange, 0);
+});
+
+// The color of one pixel of a still.
+async function pixelOf(dir, spec, x, y) {
+  const r = await cli(['still', dir, spec, '--json']);
+  assert.equal(r.code, 0, r.text);
+  const { stdout } = spawnSync(ffmpegPath(), ['-loglevel', 'error', '-i', JSON.parse(r.stdout).stills[0].file, '-vf', `crop=1:1:${x}:${y}`, '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-']);
+  return [...stdout];
+}
+
+test('with "defaults": "0.6" brand.accent colors starred words in s.title and s.text, and brand.background is the background', { skip, timeout: 240000 }, async (t) => {
+  const scene = "export default { intro(s) { s.title('Fresh *bread*', { y: 200, enter: 'none' }); s.text('Baked *today*', { y: 420, enter: 'none' }); } };";
+  const settings = { captions: false, brand: { accent: '#b8400a', background: '#f6e7c8' } };
+  const dir = bakery(t, { ...settings, defaults: '0.6' });
+  fs.writeFileSync(path.join(dir, 'scenes.js'), scene);
+  const counts = await colorsIn(dir);
+  assert.ok(counts.rust.elsewhere > 500, `the starred words are in the brand's color: ${JSON.stringify(counts)}`);
+  const [r, g, b] = await pixelOf(dir, 'intro@0.9', 20, 700);
+  assert.ok(Math.abs(r - 0xf6) < 6 && Math.abs(g - 0xe7) < 6 && Math.abs(b - 0xc8) < 6, `the brand's background: ${[r, g, b]}`);
+  // Before 0.6, the brand stays with s.ui and the captions, so the frames stay the same.
+  const old = bakery(t, { ...settings, defaults: '0.5' });
+  fs.writeFileSync(path.join(old, 'scenes.js'), scene);
+  assert.equal((await colorsIn(old)).rust.elsewhere, 0);
+  const [r0, g0, b0] = await pixelOf(old, 'intro@0.9', 20, 700);
+  assert.ok(Math.abs(r0 - g0) < 8 && Math.abs(g0 - b0) < 12, `the look's own background: ${[r0, g0, b0]}`);
+  // An accent that is hard to read on the background keeps its hue and gets darker.
+  fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ ...SETTINGS, ...settings, brand: { accent: '#ffd23f', background: '#ffffff' }, defaults: '0.6' }));
+  const pale = await colorsIn(dir);
+  assert.ok(pale.olive.elsewhere > 500 && pale.yellow.elsewhere < 100, `darker yellow words on white: ${JSON.stringify(pale)}`);
 });
