@@ -165,6 +165,33 @@ test('icons prints one match per line, and close names when nothing matches', ()
   assert.match(icons('arrow').stdout, /^\d+ icons match "arrow"\. These are the 40 best:\n/);
 });
 
+test('icons with several words lists the matches of each word, and words that name one icon stay one search', () => {
+  const bin = new URL('../bin/explainroo.js', import.meta.url).pathname;
+  const icons = (...args) => spawnSync(process.execPath, [bin, 'icons', ...args], { encoding: 'utf8' });
+  const r = icons('lock', 'key', 'zzqx');
+  assert.equal(r.status, 0);
+  const parts = r.stdout.trimEnd().split('\n\n');
+  assert.equal(parts.length, 3);
+  assert.match(parts[0], /^\d+ icons match "lock"\. These are the 10 best:\n {2}lock {2}\(exact name/);
+  assert.match(parts[1], /^\d+ icons match "key"\. These are the 10 best:\n {2}key {2}\(exact name/);
+  assert.match(parts[2], /^no icon matches "zzqx"\. Close names: /);
+  const json = JSON.parse(icons('lock', 'key', '--json').stdout);
+  assert.deepEqual(json.words.map((w) => [w.word, w.exact, w.icons.length]), [['lock', 'lock', 10], ['key', 'key', 10]]);
+  assert.equal(JSON.parse(icons('arrow', 'right', '--json').stdout).exact, 'arrow-right');
+});
+
+test('an unknown command names the docs topic of that name, or the closest command', () => {
+  const bin = new URL('../bin/explainroo.js', import.meta.url).pathname;
+  const run = (word) => spawnSync(process.execPath, [bin, word], { encoding: 'utf8' });
+  const topic = run('commands');
+  assert.equal(topic.status, 2);
+  assert.equal(topic.stderr, 'unknown command "commands". "commands" is a docs topic. Read it with: explainroo docs commands\n');
+  assert.equal(run('rendr').stderr, 'unknown command "rendr". Did you mean "explainroo render"?\n');
+  assert.equal(run('picture').stderr, 'unknown command "picture". Did you mean the docs topic "explainroo docs pictures"?\n');
+  // Nothing close: the list of commands.
+  assert.match(run('xyzzy').stderr, /^unknown command "xyzzy"\n\nexplainroo /);
+});
+
 // A new project starts neutral: the same scene names in script.md and scenes.js,
 // built on s.safe, the title and one placeholder line per scene, and the
 // defaults of this version. voice and check run on it as it is.

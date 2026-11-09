@@ -185,7 +185,7 @@ export const COMMAND_HELP = {
     example: 'formats add https://github.com/<user>/<repo>.git --commit 3f2a9c1',
   },
   sizes: { usage: 'sizes [options]', about: 'Lists the sizes, with the content area of each with and without the watermark, also with bold captions. The content area is s.safe, and the caption band is not part of it.', options: [JSON_OUT], example: 'sizes' },
-  icons: { usage: 'icons <word…> [options]', about: 'Searches the built-in icons, one match per line.', options: [JSON_OUT], example: 'icons database' },
+  icons: { usage: 'icons <word…> [options]', about: 'Searches the built-in icons, one match per line. Several words get the matches of each word, unless together they name one icon, like "arrow right".', options: [JSON_OUT], example: 'icons database lock cloud' },
   doctor: {
     usage: 'doctor [project] [options]',
     about: 'Checks ffmpeg, Chrome, Playwright\'s ffmpeg for record, espeak-ng, misaki and the models: each is ready, not needed or missing. It also prints the settings file and the folder explainroo runs from.',
