@@ -16,6 +16,27 @@ export function chapterHints(chapters) {
   return issues;
 }
 
+// A frame for YouTube's wide player, where chapters show: any 16:9 landscape
+// frame, like "youtube", "16:9" or "1280x720".
+export const youtubeFrame = ({ width, height }) => width > height && width * 9 === height * 16;
+
+// Chapters that will likely last under 10 seconds, from the length estimate
+// before any narration is made, as hints. `estimate` comes from estimateLength.
+export function estimatedChapterHints(project, estimate) {
+  if (!estimate?.sceneSeconds || !youtubeFrame(project.config)) return [];
+  let start = 0;
+  const scenes = project.script.scenes.map((sc) => {
+    const scene = { id: sc.id, attrs: sc.attrs, start };
+    start += estimate.sceneSeconds[sc.id] ?? 0;
+    return scene;
+  });
+  const chapters = buildChapters({ scenes, duration: start }, project.script.title || project.config.title);
+  return chapters.filter((c) => c.end - c.start < 10).map((c) => ({
+    level: 'hint', scene: c.scene, t: null,
+    message: `chapter "${c.title}" will likely last about ${(c.end - c.start).toFixed(0)}s, and YouTube shows chapters only when each lasts at least 10 seconds. Start it at another scene or join it with the next one.`,
+  }));
+}
+
 export function toChaptersText(chapters) {
   return chapters.map((c) => {
     const seconds = Math.floor(c.start);

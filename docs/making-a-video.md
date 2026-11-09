@@ -137,7 +137,10 @@ user. Read it first.
     the video. More than two are listed by name, and `--verbose` adds their
     times. Each word it could not confirm is a warning with its time in
     the video. When the narration alone confirmed the word, the music may
-    cover it, and the warning gives a `music.volume` 3 dB lower. Its last
+    cover it, and the warning gives a `music.volume` 3 dB lower. It doesn't
+    for number and maths words, which the check often hears written another
+    way, or when the music is already under 0.5. Then listen at those times.
+    Its last
     line is the verdict: "passed", "passed with 2 warnings" or "failed: 1
     problem", and `--json` has it as `verdict`, with `passed` true or false.
 

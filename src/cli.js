@@ -8,7 +8,7 @@ import { normWord, ScriptError } from './script.js';
 import { prepare, makeState, outdatedLine, outdatedRenders, VERSION } from './pipeline.js';
 import { render } from './render.js';
 import { exportPlayer } from './export.js';
-import { check, formatVerify, NEARLY_LISTED, NEARLY_SHORT, nearlyText, untimed, stills, sheet, unconfirmedLine, unconfirmedWords, verify } from './qa.js';
+import { check, formatVerify, heardEveryTime, NEARLY_LISTED, NEARLY_SHORT, nearlyText, untimed, stills, sheet, unconfirmedLine, unconfirmedWords, verify } from './qa.js';
 import { startServer, ROOT } from './server.js';
 import { VOICES, LANGUAGES, voiceLanguage, loadTTS, TTS_SAMPLE_RATE } from './models.js';
 import { phonemize, generateSpeech } from './phonemes.js';
@@ -28,6 +28,7 @@ import { allOf, formatServices, findService, findStep, needsKey, SERVICES, STEPS
 import { clipPricesToday, showsClipPrices } from './price-list.js';
 import { narrationTime, speechKeys } from './voice.js';
 import { estimateLength, estimateLine, targetNotes } from './timeline.js';
+import { estimatedChapterHints } from './chapters.js';
 import { formatSet, setSetting } from './set.js';
 import { findEnv } from './env.js';
 import { formatPackage, packageOverrides, packageVideo } from './package.js';
@@ -186,7 +187,7 @@ function parseArgs(argv) {
   }
   return { pos, flags };
 }
-const BOOL = new Set(['json', 'keep-profile', 'all', 'record', 'apply', 'avatars', 'draft', 'estimate', 'transparent', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'mobile', 'list', 'sections', 'new', 'key-stdin', 'audio', 'dry-run', 'no-wait', 'no-watermark', 'yes', 'media-url-unchecked', ...LISTS_VOICES.map((c) => c.id), 'verbose']);
+const BOOL = new Set(['json', 'keep-profile', 'all', 'record', 'apply', 'avatars', 'draft', 'estimate', 'transparent', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'mobile', 'list', 'sections', 'new', 'key-stdin', 'audio', 'dry-run', 'no-wait', 'no-watermark', 'yes', 'media-url-unchecked', '...LISTS_VOICES.map((c) => c.id)', 'verbose', 'large']);
 
 // What a command adds when it refuses a flag. A flag publish ignored could
 // change what a person thinks is posted, like a time for a post, when it goes
@@ -303,7 +304,9 @@ export async function main(argv) {
         if (flags.estimate) {
           const e = estimateLength(project);
           const none = project.config.voice.provider === 'recording' ? 'A recording has its own length, so there is no estimate.' : `${scriptName(project)} has no narration yet, so there is no estimate.`;
-          print(e ? `${estimateLine(e)}\nNothing was made.` : none, { estimate: e });
+          const hints = estimatedChapterHints(project, e);
+          const lines = hints.map((h) => `\n${h.level.toUpperCase().padEnd(5)} ${h.message}`).join('');
+          print(e ? `${estimateLine(e)}${lines}\nNothing was made.` : none, { estimate: e, ...(hints.length ? { notes: hints } : {}) });
           return 0;
         }
         const paid = speechConnector(project.config);
@@ -312,9 +315,10 @@ export async function main(argv) {
         const { voices, timeline } = await prepare(project, { log, notice, force: !!flags.force, fresh: !!flags.new, onEstimate: (e) => { estimate = e; } });
         const characters = paid ? boughtCharacters(project.dir) - before : 0;
         const recorded = project.config.voice.provider === 'recording';
+        const every = heardEveryTime(project, voices);
         const rows = project.script.scenes.map((s) => {
           const v = voices[s.id];
-          return { scene: s.id, voice: v.duration, narration: narrationTime(v), confirmed: v.matchRate, unconfirmed: v.unmatched, heard: unconfirmedWords(project, v), marks: v.marks,
+          return { scene: s.id, voice: v.duration, narration: narrationTime(v), confirmed: v.matchRate, unconfirmed: v.unmatched, heard: unconfirmedWords(project, v, every), marks: v.marks,
             ...(recorded && v.matchRate < 0.85 ? { message: `The recording does not match ${scriptName(project)} here. Make ${scriptName(project)} say what was actually said.` } : {}) };
         });
         // How long the voice speaks, and the narration with its pauses. A recording has its pauses in it.
@@ -360,7 +364,7 @@ export async function main(argv) {
       }
       case 'sheet': {
         const { project } = runProject(pos[0], flags);
-        const r = await sheet(project, { scene: flags.scene, every: num(flags.every, 'every'), times: timesFlag(flags), cols: num(flags.cols, 'cols'), log });
+        const r = await sheet(project, { scene: flags.scene, every: num(flags.every, 'every'), times: timesFlag(flags), cols: num(flags.cols, 'cols'), large: !!flags.large, log });
         const marked = r.marked.length ? `, ${r.marked.length} marked "camera moving" or "drawing in" under the frame` : '';
         print(`${r.file} (${r.frames} frames${marked})`, r);
         return 0;
@@ -562,9 +566,11 @@ export async function main(argv) {
         print(formatHistory(report), report);
         return 0;
       }
-      default:
-        process.stderr.write(`unknown command "${cmd}"\n\n${HELP}\n`);
+      default: {
+        const hint = unknownCommandHint(cmd);
+        process.stderr.write(hint ? `unknown command "${cmd}". ${hint}\n` : `unknown command "${cmd}"\n\n${HELP}\n`);
         return 2;
+      }
     }
   } catch (e) {
     const message = hideSecrets(e.message);
@@ -928,16 +934,33 @@ async function say(text, flags, log, print) {
   return 0;
 }
 
+// Several words that are no icon name together, like "lock key cloud", get
+// their matches word by word. Words that name one icon, like "arrow right",
+// stay one search.
 function icons(words, print) {
   const all = JSON.parse(fs.readFileSync(path.join(ROOT, 'engine', 'icons', 'lucide-tags.json'), 'utf8'));
   const { aliases = {} } = JSON.parse(fs.readFileSync(path.join(ROOT, 'engine', 'icons', 'lucide.json'), 'utf8'));
   for (const [alias, target] of Object.entries(aliases)) all[target] = [...(all[target] || []), alias.replace(/-/g, ' ')];
   const q = words.map((w) => w.toLowerCase());
-  const wanted = q.join('-');
   if (!q.length) {
     print(`${Object.keys(all).length} icons. Search with: explainroo icons <word…>`, { count: Object.keys(all).length });
     return 0;
   }
+  if (q.length === 1 || all[q.join('-')]) {
+    const r = iconSearch(all, q);
+    print(r.text, r.json);
+    return 0;
+  }
+  // Ten each, so several words stay short to read.
+  const each = q.map((w) => ({ word: w, ...iconSearch(all, [w], 10) }));
+  print(each.map((r) => r.text).join('\n\n'), { words: each.map((r) => ({ word: r.word, ...r.json })) });
+  return 0;
+}
+
+// The icons that match the words `q` together, best first and at most `limit`,
+// as the text icons prints and its JSON.
+function iconSearch(all, q, limit = 40) {
+  const wanted = q.join('-');
   const scored = Object.entries(all)
     .map(([name, tags]) => {
       let score = 0;
@@ -954,8 +977,8 @@ function icons(words, print) {
     // An icon whose name is exactly the words comes first.
     .sort((a, b) => (b.name === wanted) - (a.name === wanted) || b.score - a.score || a.name.localeCompare(b.name));
   const total = scored.length;
-  scored.splice(40);
-  const asked = words.join(' ');
+  scored.splice(limit);
+  const asked = q.join(' ');
   // A word that is a name, a part of one, a tag or a word of a tag. "bee" is only
   // inside "beef" and "beer", which is no match.
   const whole = (name, tags) => q.some((w) => name === w || name.split('-').includes(w) || tags.some((t) => t === w || t.split(/[\s-]+/).includes(w)));
@@ -963,8 +986,7 @@ function icons(words, print) {
     // The names that have the word inside them, or else close spellings.
     const close = scored.length ? scored.slice(0, 5).map((x) => x.name) : suggest(q.join('-'), Object.keys(all), 5);
     const instead = 'No icon shows it. Draw it with s.draw, or make a picture with "explainroo image", which costs money.';
-    print(`no icon matches "${asked}". Close names: ${close.join(', ')}\n${instead}`, { icons: [], close, instead });
-    return 0;
+    return { text: `no icon matches "${asked}". Close names: ${close.join(', ')}\n${instead}`, json: { icons: [], close, instead } };
   }
   // One icon per line, and the words it is also found by after it, so the tags
   // don't read as more icons.
@@ -974,8 +996,22 @@ function icons(words, print) {
   });
   const head = total === 1 ? `1 icon matches "${asked}":` : total > scored.length ? `${total} icons match "${asked}". These are the ${scored.length} best:` : `${total} icons match "${asked}", best first:`;
   const exact = scored[0]?.name === wanted ? wanted : null;
-  print([head, ...lines].join('\n'), { icons: scored.map((x) => x.name), exact });
-  return 0;
+  return { text: [head, ...lines].join('\n'), json: { icons: scored.map((x) => x.name), exact } };
+}
+
+// What to run instead of an unknown command: "docs <topic>" when the word is a
+// docs topic, like "commands", or the closest command, like "render" for
+// "rendr". Null when nothing is close.
+function unknownCommandHint(word) {
+  const name = String(word ?? '').toLowerCase();
+  const topics = fs.readdirSync(path.join(ROOT, 'docs')).filter((f) => f.endsWith('.md')).map((f) => f.slice(0, -3));
+  if (topics.includes(name)) return `"${name}" is a docs topic. Read it with: explainroo docs ${name}`;
+  const commands = Object.keys(COMMAND_HELP);
+  const [best] = commands.map((c) => ({ c, d: levenshtein(name, c) })).sort((a, b) => a.d - b.d);
+  if (best && best.d <= Math.max(1, Math.floor(best.c.length / 3))) return `Did you mean "explainroo ${best.c}"?`;
+  const topic = topics.map((t) => ({ t, d: levenshtein(name, t) })).sort((a, b) => a.d - b.d)[0];
+  if (topic && topic.d <= Math.max(1, Math.floor(topic.t.length / 3))) return `Did you mean the docs topic "explainroo docs ${topic.t}"?`;
+  return null;
 }
 
 // The instructions ship with the package, so an agent that runs the tool

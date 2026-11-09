@@ -39,3 +39,32 @@ test('chapter text uses m:ss below an hour and h:mm:ss from an hour', () => {
 test('ffmetadata keeps millisecond boundaries and escapes special title characters', () => {
   assert.equal(toChapterMetadata([{ start: 0, end: 12.345, title: 'A=B; #C\\D' }]), ';FFMETADATA1\n[CHAPTER]\nTIMEBASE=1/1000\nSTART=0\nEND=12345\ntitle=A\\=B\\; \\#C\\\\D\n');
 });
+
+test('voice, also when check makes the narration, says before the voice which chapters will likely be under 10 seconds', async (t) => {
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const { loadProject } = await import('../src/project.js');
+  const { synthesize } = await import('../src/voice.js');
+  const { GOOD_KEY, startFakeServices } = await import('./helpers/fake-services.js');
+  const fake = await startFakeServices();
+  t.after(fake.close);
+  for (const [name, value] of Object.entries({ EXPLAINROO_ELEVENLABS_URL: fake.env.EXPLAINROO_ELEVENLABS_URL, ELEVENLABS_API_KEY: GOOD_KEY })) {
+    const previous = process.env[name];
+    process.env[name] = value;
+    t.after(() => (previous === undefined ? delete process.env[name] : (process.env[name] = previous)));
+  }
+  t.mock.method(process.stderr, 'write', () => true);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-chapters-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ size: '16:9', music: false, voice: { provider: 'elevenlabs', id: 'fake-voice' } }));
+  fs.writeFileSync(path.join(dir, 'script.md'), '# DNS\n\n## a {chapter="The question"}\nYou type a name.\n');
+  fs.writeFileSync(path.join(dir, 'scenes.js'), 'export default { a() {} };');
+  const said = 'You type a name.';
+  const transcribe = async () => ({ text: said, words: said.split(' ').map((text, i) => ({ text, start: i * 0.3, end: i * 0.3 + 0.25 })) });
+  const lines = [];
+  await synthesize(loadProject(dir), { transcribe, log: (m) => lines.push(m) });
+  const estimate = lines.findIndex((l) => /^voice: about \d+ s/.test(l));
+  assert.ok(estimate !== -1, lines.join('\n'));
+  assert.match(lines[estimate + 1], /^voice: chapter "The question" will likely last about \d+s, and YouTube shows chapters only when each lasts at least 10 seconds\./);
+});

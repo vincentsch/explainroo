@@ -513,12 +513,15 @@ function settingsOf(raw, input, dir, block = null) {
 
   if (lookPath(cfg.theme)) cfg.look = loadLook(dir, cfg.theme, cfg.fonts);
   let music = cfg.music;
-  if (music === true) music = { style: cfg.look ? (cfg.look.music ?? THEME_MUSIC[cfg.look.extends]) : THEME_MUSIC[cfg.theme] };
+  const lookMusic = cfg.look ? (cfg.look.music ?? THEME_MUSIC[cfg.look.extends]) : THEME_MUSIC[cfg.theme];
+  if (music === true) music = { style: lookMusic };
   else if (typeof music === 'string') music = { style: music };
   if (music?.src !== undefined) music = musicFileSetting(music);
   else if (music) {
-    // A faster pace plays the music a little faster too.
+    // A faster pace plays the music a little faster too. A block without a
+    // style, like { "volume": 0.35 }, keeps the look's own music.
     music = { volume: 0.5, seed: cfg.seed, tempo: Math.sqrt(cfg.pace), ...music };
+    if (music.style === undefined) music.style = lookMusic;
     if (!MUSIC_STYLES.includes(music.style)) fail(`music style must be one of ${MUSIC_STYLES.join(', ')}, not "${music.style}"`);
     if (!(music.volume >= 0 && music.volume <= 1)) fail('music.volume must be between 0 and 1');
   }

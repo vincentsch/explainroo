@@ -3,7 +3,7 @@
 //   # Title                      (optional, not spoken)
 //   ## scene-id {hold=1 min=4}   (starts a scene; attributes are optional)
 //   Narration text. [#mark] Markers name a moment, [pause 0.6] adds silence,
-//   and {DNS|D N S} shows "DNS" on screen but speaks "D N S". *Stars* mark
+//   and {DNS|D, N, S} shows "DNS" on screen but speaks "D, N, S". *Stars* mark
 //   keywords for bold captions, and nobody hears them.
 //   > director notes and <!-- comments --> are ignored.
 import { periodGoesOn } from './german.js';

@@ -9,10 +9,12 @@
 // block. A scene that wants a move sets s.camera with punch() or drift().
 
 import { fontStack, colorOf } from './themes.js';
-import { contrast, cssColor, opaque, suggestColor, newDefaults, mixColor } from './util.js';
+import { contrast, cssColor, opaque, suggestColor, newDefaults, mixColor, accentNote } from './util.js';
 
 const INK = '#0b0b10';
 const KEY = '#ffd43b';
+// The box behind the keywords of a slab hook.
+const KEY_BOX = '#e5233d';
 const TONES = {
   good: { bg: '#12a150', icon: 'circle-check' },
   bad: { bg: '#e5233d', icon: 'circle-x' },
@@ -200,7 +202,7 @@ export class Short {
     c.fillStyle = color;
     c.fillText(t, x, y);
     const w = c.measureText(t).width;
-    this.log(t, x, y, w, size, c.textAlign, { fg: color, bg: o.bg ?? null, option: o.option });
+    this.log(t, x, y, w, size, c.textAlign, { fg: color, bg: o.bg ?? null, option: o.option, role: o.role });
     c.restore();
     return w;
   }
@@ -208,11 +210,12 @@ export class Short {
   // Tells check where text was drawn, in local units. Each layer of the UI kit is
   // checked for overlaps on its own, and text on the base layer gets the size
   // rule of slides.
-  log(str, x, y, w, size, align, { fg = null, bg = null, option = null } = {}) {
+  // `role` is 'title' for the words of a hook, which stickers must not cover.
+  log(str, x, y, w, size, align, { fg = null, bg = null, option = null, role = null } = {}) {
     if (!String(str).trim() || this.hidden) return;
     const x0 = align === 'center' ? x - w / 2 : align === 'right' ? x - w : x;
     const layer = this.s.ui._layer + 1;
-    this.s._logText({ text: String(str), x0, y0: y - 0.58 * size, x1: x0 + w, y1: y + 0.58 * size, size, fg: /^#/.test(fg) ? fg : null, bg, ui: layer === 1 ? 0 : layer, zoomed: this.s._camMoved, option });
+    this.s._logText({ text: String(str), x0, y0: y - 0.58 * size, x1: x0 + w, y1: y + 0.58 * size, size, fg: /^#/.test(fg) ? fg : null, bg, ui: layer === 1 ? 0 : layer, zoomed: this.s._camMoved, option, role });
   }
 
   // The color behind text at height y of the frame: what the backdrop or s.bg
@@ -473,11 +476,14 @@ export class Short {
     const life = this.life(first ? -1 : a, o.out, 0.45, 0.3);
     const maxLineW = Math.max(...lines.map((l) => l.w)) + pad * 2;
     this.reg(o.id, x - maxLineW / 2, top, maxLineW, blockH);
+    // Where the title is and while it shows, so stickers keep clear of it.
+    if (!o.screen) this.title = { x0: x - maxLineW / 2, y0: top, x1: x + maxLineW / 2, y1: top + blockH, from: first ? -1 : a, until: o.out === undefined ? Infinity : this.at(o.out) };
     const place = (fn) => (o.screen ? this.screen(fn) : fn());
     // With "defaults": "0.5", a plain hook takes colors that read on what is behind it.
     const plain = style === 'plain' && newDefaults(s.engine.config) ? plainColors(s.theme, this.behind(y), size) : null;
     // With "defaults": "0.6", keywords take brand.accent where it reads.
     const brand = v6 ? this.brandKey(style, y, size) : null;
+    if (v6 && !brand && lines.some((l) => l.words.some((w) => w.key))) this.brandKeyNote(style, y, size, o, plain);
     if (o.kicker) place(() => this.kicker(o.kicker, { x, y: kickerY, size: kickerSize, color: o.kickerColor, icon: o.kickerIcon, at: first ? -1 : a, out: o.out }));
     if (!life) return geom(x, y, maxLineW, blockH);
     const c = this.c;
@@ -500,13 +506,13 @@ export class Short {
       let wx = -line.w / 2;
       for (const w of line.words) {
         const ww = this.measure(w.text, size, weight);
-        const keyBg = o.keyBg ?? brand ?? '#e5233d';
+        const keyBg = o.keyBg ?? brand ?? KEY_BOX;
         if (w.key && style === 'slab') this.roundRect(wx - size * 0.1, -lh / 2 + size * 0.1, ww + size * 0.2, lh - size * 0.2, size * 0.12, keyBg);
         const color = style === 'slab' ? (w.key ? o.keyColor ?? '#ffffff' : o.color ?? INK) : w.key ? o.keyColor ?? brand ?? plain?.key ?? KEY : o.color ?? plain?.ink ?? (style === 'stroke' ? '#ffffff' : s.theme.ink);
         // check measures a plain hook against what the scene painted behind it,
         // like a backdrop, or else the look's background.
         const bg = style === 'slab' ? (w.key ? keyBg : o.slab ?? '#ffffff') : style === 'stroke' ? INK : null;
-        this.text(w.text, wx, size * 0.04, { size, weight, color, bg, option: w.key ? 'keyColor' : 'color', stroke: style === 'stroke' ? INK : undefined, strokeW: size * 0.2, shadow: style === 'stroke' ? 'rgba(0,0,0,0.45)' : undefined });
+        this.text(w.text, wx, size * 0.04, { size, weight, color, bg, option: w.key ? 'keyColor' : 'color', role: 'title', stroke: style === 'stroke' ? INK : undefined, strokeW: size * 0.2, shadow: style === 'stroke' ? 'rgba(0,0,0,0.45)' : undefined });
         wx += ww + line.space;
       }
       c.restore();
@@ -542,6 +548,23 @@ export class Short {
     if (style === 'slab') return contrast('#ffffff', accent) >= min ? accent : null;
     const behind = cssColor(style === 'stroke' ? INK : this.behind(y));
     return behind && contrast(accent, behind) >= min ? accent : null;
+  }
+
+  // A hint for check when brand.accent is set and the hook's keywords don't
+  // use it, because it reads too poorly: the color, its contrast and the color
+  // used instead. Keywords with their own keyBg or keyColor need none.
+  brandKeyNote(style, y, size, o, plain) {
+    const accent = cssColor(this.s.engine.config.brand?.accent ?? '');
+    if (!accent || (style === 'slab' ? o.keyBg : o.keyColor)) return;
+    const min = size >= 48 ? 3 : 4.5;
+    const name = this.s.engine.config.brand.accent;
+    if (style === 'slab') {
+      this.s._hint(accentNote(name, contrast('#ffffff', accent), min, 'as the box behind white keywords in the hook', `their box uses ${KEY_BOX}`), `brand accent hook ${style}`);
+      return;
+    }
+    const behind = cssColor(style === 'stroke' ? INK : this.behind(y));
+    if (!behind) return;
+    this.s._hint(accentNote(name, contrast(accent, behind), min, `on what is behind the hook's keywords`, `they use ${plain?.key ?? KEY}`), `brand accent hook ${style}`);
   }
 
   // The kicker's size: 44 in a tall frame and 40 in others with
@@ -583,7 +606,9 @@ export class Short {
 
   // A tilted sticker: a solid box with bold text, for one key fact. *Keywords*
   // get their own color. o: x, y, size, color (the box), textColor, keyColor,
-  // rotate (degrees), border, at, out, sfx, id.
+  // rotate (degrees), border, at, out, sfx, id, area (where it may move to).
+  // With "defaults": "0.6", a sticker that would cover the hook title while
+  // both show moves below it, inside `area`, which is s.safe by default.
   sticker(str, o = {}) {
     const s = this.s;
     const size = o.size ?? 56;
@@ -592,9 +617,9 @@ export class Short {
     const w = tw + size * 0.9;
     const h = size * 1.5;
     const x = o.x ?? s.cx;
-    const y = o.y ?? s.cy;
-    this.reg(o.id, x - w / 2, y - h / 2, w, h);
     const at = o.at ?? 0;
+    const y = s._v6 ? this.clearOfTitle(x, o.y ?? s.cy, w, h, o.rotate ?? -4, this.at(at), o.out === undefined ? Infinity : this.at(o.out), o.area ?? s.safe) : o.y ?? s.cy;
+    this.reg(o.id, x - w / 2, y - h / 2, w, h);
     if (this.at(at) >= 0) this.enter(at, 0.35, o.sfx === undefined ? 'pop' : o.sfx, { label: words.map((wd) => wd.text).join(' ').slice(0, 20), chosen: o.sfx !== undefined, usual: 'pop' });
     const life = this.life(at, o.out, 0.38);
     if (!life) return geom(x, y, w, h);
@@ -612,6 +637,21 @@ export class Short {
       }
     }, { rotate: o.rotate ?? -4, from: 0.4 }));
     return geom(x, y, w, h);
+  }
+
+  // The height of a sticker that keeps it clear of the hook title: its own when
+  // it doesn't touch the title, or just below the title when that fits in
+  // `area`. The tilt makes the sticker a little taller.
+  clearOfTitle(x, y, w, h, rotate, from, until, area) {
+    const t = this.title;
+    if (!t || from >= t.until || until <= t.from) return y;
+    const turn = Math.abs(Math.sin((rotate * Math.PI) / 180));
+    const half = { w: (w * Math.cos((rotate * Math.PI) / 180) + h * turn) / 2, h: (h + w * turn) / 2 };
+    const gap = 16;
+    const touches = x + half.w > t.x0 - gap && x - half.w < t.x1 + gap && y + half.h > t.y0 - gap && y - half.h < t.y1 + gap;
+    if (!touches) return y;
+    const below = t.y1 + gap + half.h;
+    return below + half.h <= area.bottom ? below : y;
   }
 
   // ---------- camera keys ----------

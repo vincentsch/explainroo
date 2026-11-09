@@ -1,6 +1,6 @@
 // The rules of the speech check: spelling hints heard as written, words that
-// sound the same, two words heard as one, units and symbols in each language,
-// and numbers compared by value.
+// sound the same, two words heard as one, units, symbols and maths in each
+// language, and numbers compared by value.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -8,6 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { alignSpeech, alignWords, nearList } from '../src/align.js';
 import { numberValue, unitReading } from '../src/units.js';
+import { mathReading } from '../src/math-words.js';
 import { soundsOf } from '../src/phonemes.js';
 import { nearlyText } from '../src/qa.js';
 
@@ -129,6 +130,50 @@ for (const [language, [script, transcript]] of Object.entries(UNIT_CASES)) {
     assert.equal(alignWords(words(transcript), said(script), 30, language).matchRate, 1);
   });
 }
+
+// The voice says the formula, and Whisper wrote it with signs.
+const MATH_CASES = {
+  en: ['like two x squared plus three x minus five equals zero, so x equals minus five halves, three times four, one half and a third.',
+    'like 2x^2 + 3x-5 = 0, so x = −5/2, 3×4, 1/2 and 1/3.'],
+  de: ['wie 2 x hoch 2 plus 3 x minus 5 gleich 0, also x gleich minus 5 Halbe, 3 mal 4 und ein Drittel.',
+    'wie 2x² + 3x - 5 = 0, also x = −5/2, 3 × 4 und 1/3.'],
+  es: ['como 2 x al cuadrado más 3 x menos 5 igual a 0, así que x igual a menos 5 medios, 3 por 4 y un tercio.',
+    'como 2x² + 3x - 5 = 0, así que x = −5/2, 3 × 4 y 1/3.'],
+  fr: ['comme 2 x au carré plus 3 x moins 5 égal 0, donc x égale moins 5 demis, 3 fois 4 et un tiers.',
+    'comme 2x² + 3x − 5 = 0, donc x = −5/2, 3 × 4 et 1/3.'],
+  it: ['come 2 x al quadrato più 3 x meno 5 uguale a 0, quindi x uguale a meno 5 mezzi, 3 per 4 e un terzo.',
+    'come 2x² + 3x - 5 = 0, quindi x = −5/2, 3 × 4 e 1/3.'],
+  'pt-br': ['como 2 x ao quadrado mais 3 x menos 5 igual a 0, então x igual a menos 5 meios, 3 vezes 4 e um terço.',
+    'como 2x² + 3x - 5 = 0, então x = −5/2, 3 × 4 e 1/3.'],
+};
+
+for (const [language, [script, transcript]] of Object.entries(MATH_CASES)) {
+  test(`maths that Whisper writes with signs is read the way a voice says it: ${language}`, () => {
+    const r = alignWords(words(script), said(transcript), 30, language);
+    assert.deepEqual(missed(script, r), []);
+    assert.deepEqual(state(r).filter((s) => s !== 'exact'), [], 'no word only nearly matched');
+    assert.equal(alignWords(words(transcript), said(script), 30, language).matchRate, 1);
+  });
+}
+
+test('a fraction takes the reading the other side has, and words that only look like maths stay words', () => {
+  assert.equal(alignWords(words('three divided by four'), said('3/4'), 1).matchRate, 1);
+  assert.equal(alignWords(words('open twenty four seven'), said('open 24/7'), 1).matchRate, 1);
+  assert.equal(alignWords(words('x to the power of five'), said('x^5'), 1).matchRate, 1);
+  assert.deepEqual(mathReading('x^5', null, null, 'en', (n) => [n]), ['x', 'to', 'the', 'power', 'of', '5']);
+  // A "2x" on its own is no formula, and neither is a hyphen or a date.
+  for (const word of ['2x', 'B-52', 'T-5', 'COVID-19', 'x-ray', '9/11/2001', 'and/or', '-', '/']) assert.equal(mathReading(word, 'the', 'one', 'en', (n) => [n]), null, word);
+  assert.deepEqual(state(alignWords(words('two x faster'), said('2x faster'), 1)), ['joined:2x', 'joined:2x', 'exact']);
+  // Whisper may split a fraction or a power after its number.
+  const pieces = (list) => list.map((text, i) => ({ text, start: i * 0.3, end: i * 0.3 + 0.25 }));
+  assert.equal(alignWords(words('x equals minus five halves'), pieces(['x', '=', '-5', '/2']), 2).matchRate, 1);
+  assert.equal(alignWords(words('two x squared'), pieces(['2x', '^2']), 1).matchRate, 1);
+  // Beside a word for a sign, a "2x" is "2 x" too.
+  assert.deepEqual(state(alignWords(words('two x squared plus three x'), said('2x squared plus 3x'), 2)).filter((s) => s !== 'exact'), []);
+  assert.deepEqual(state(alignWords(words('2 x más 3 x'), said('2x más 3x'), 2, 'es')).filter((s) => s !== 'exact'), []);
+  // Hindi, Japanese and Chinese have no readings for signs yet.
+  assert.equal(mathReading('x=1', null, null, 'hi', (n) => [n]), null);
+});
 
 test('a unit takes the reading that the other side has, and singular and plural agree', () => {
   assert.equal(alignWords(words('à 90 kilomètres par heure'), said('à 90 km/h'), 2, 'fr').matchRate, 1);

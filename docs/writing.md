@@ -91,7 +91,7 @@ Narration for this scene. [#marker] A marker names a moment you can animate on.
   and the markers between them, so you can pick a word as a cue. Add a scene's
   name to list only that scene.
 - Use `{shown|spoken}` for anything the voice may misread: acronyms
-  (`{CLI|C L I}`), versions (`{v2.1|version two point one}`), symbols and
+  spelled out letter by letter, with commas (`{CLI|C, L, I}`), versions (`{v2.1|version two point one}`), symbols and
   domains (`{example.com|example dot com}`, otherwise the voice says "example
   comm"). The speech check counts the word when it hears either form, so
   "example.com" confirms `{example.com|example dot com}`. It also counts what
@@ -102,9 +102,10 @@ Narration for this scene. [#marker] A marker names a moment you can animate on.
   like "Reg X 101" for regex101, accept that form in `video.json`:
   `"heard": { "regex101": ["reg x 101", "regex 101"] }`. A transcript with one
   of the forms where the script has the word confirms it fully, in `voice`,
-  `check` and `verify`, without making the voice again. When a word with
-  `{shown|spoken}` is heard the same way twice in a row, `voice` prints the
-  line to add.
+  `check` and `verify`, without making the voice again. When `voice` hears a
+  word the same way twice in a row, it prints the line to add. When a word
+  comes up several times and is heard as the same other spelling each time,
+  `voice` and `check` print it too.
 - The speech check also counts a word heard as another word with the same
   sound, like "peace" for "piece", and two words heard as one, like
   "Seacosts" for "See costs". A word with hyphens counts when its parts are
@@ -127,4 +128,6 @@ Narration for this scene. [#marker] A marker names a moment you can animate on.
   the video title. YouTube shows chapters only when there are at least 3
   and each lasts 10 seconds or more. `check` gives hints about that for a
   16:9 landscape frame, like `16:9`, `youtube` or `1280x720`, and for a
-  YouTube package.
+  YouTube package. `voice --estimate`, and `voice` or `check` before they
+  make the narration, say from the length estimate which chapters will likely
+  be under 10 seconds.

@@ -15,12 +15,13 @@ import { openSpeech, speechConnector, speechKey } from './paid-speech.js';
 import { recordingFiles, decodeRecording, saveRecording, recordingCuts } from './recordings.js';
 import { scriptName } from './project.js';
 import { estimateLength, estimateLine, roughTime } from './timeline.js';
+import { estimatedChapterHints } from './chapters.js';
 
 const PIPELINE = 7;
 // The rules of the speech check that a scene was checked with. A scene checked
 // with older rules is looked at again from its transcript once, without new
-// speech, and the result is saved.
-export const CHECK = 3;
+// speech, and the result is saved. 4 reads maths written with signs.
+export const CHECK = 4;
 
 // The key of the narration itself: the spoken words, the gaps between them and
 // the voice settings. Markers and the shown text are not part of it.
@@ -132,7 +133,8 @@ function realign(info, language, accept = null) {
 // confirm. A word that the check confirms now counts as confirmed, with its old
 // time. No speech is made, and reviewed() saves the result.
 export async function reviewSpeech(info, language) {
-  const base = { ...info, nearly: nearMatches(info, language) };
+  // Older rules may have found near matches that today's rules confirm fully.
+  const base = { ...info, nearly: nearMatches(info.check === CHECK ? info : { ...info, nearly: undefined }, language) };
   if (info.check === CHECK || !Array.isArray(info.words) || info.words.every((w) => w.matched)) return base;
   const again = realign(info, language);
   if (!again) return base;
@@ -187,36 +189,45 @@ export function withHeard(info, language, accept) {
   };
 }
 
-// What each word with a {shown|spoken} override was heard as when the check
-// didn't confirm it, or only nearly: { [shown word]: heard }.
-function overridesHeard(info, language) {
+// What each word was heard as when the check didn't confirm it, and each word
+// with a {shown|spoken} override also when it only nearly matched:
+// { [shown word]: heard }.
+function wordsHeard(info, language) {
   if (!Array.isArray(info?.words)) return {};
   const instead = heardInstead(info, language);
   const near = new Map((info.nearly ?? []).map((n) => [n.word, n.heard]));
   const out = {};
   info.words.forEach((w, k) => {
-    if (w.spoken === undefined || w.spoken === w.text || w.text in out) return;
-    const heard = w.matched ? near.get(w.text) : instead[k];
+    if (w.text in out) return;
+    const override = w.spoken !== undefined && w.spoken !== w.text;
+    const heard = w.matched ? (override ? near.get(w.text) : null) : instead[k];
     if (heard) out[w.text] = heard;
   });
   return out;
 }
 
-// The words with a {shown|spoken} override that the scene before and the
-// scene made now both heard the same way, as [{ word, heard }]. That is likely
-// how the word is said, so "heard" in video.json can accept it.
+// Two heard spellings that are the same apart from case and punctuation.
+export const sameHeard = (a, b) => a.split(/\s+/).map(normWord).join(' ') === b.split(/\s+/).map(normWord).join(' ');
+
+// The words that the scene before and the scene made now both heard the same
+// way, as [{ word, heard }]. That is likely how the word is said, so "heard"
+// in video.json can accept it.
 export function heardTwice(before, after, language) {
-  const then = overridesHeard(before, language);
-  const now = overridesHeard(after, language);
-  const same = (a, b) => a.split(/\s+/).map(normWord).join(' ') === b.split(/\s+/).map(normWord).join(' ');
-  return Object.entries(now).filter(([word, heard]) => then[word] && same(then[word], heard)).map(([word, heard]) => ({ word, heard }));
+  const then = wordsHeard(before, language);
+  const now = wordsHeard(after, language);
+  return Object.entries(now).filter(([word, heard]) => then[word] && sameHeard(then[word], heard)).map(([word, heard]) => ({ word, heard }));
+}
+
+// The "heard" block for video.json that accepts these words as heard.
+export function heardEntry(list) {
+  const map = Object.fromEntries(list.map(({ word, heard }) => [bareWord(word), [heard]]));
+  return `"heard": ${JSON.stringify(map).replace(/":/g, '": ').replace(/,"/g, ', "')}`;
 }
 
 // The line voice prints for words heard the same way twice in a row.
 export function heardLine(list) {
-  const map = Object.fromEntries(list.map(({ word, heard }) => [bareWord(word), [heard]]));
   const names = list.map(({ word, heard }) => `"${bareWord(word)}" as "${heard}"`).join(', ');
-  return `the speech check heard ${names} twice in a row. If that is how ${list.length > 1 ? 'they are' : 'it is'} said, add this to video.json, and the check accepts it: "heard": ${JSON.stringify(map).replace(/":/g, '": ').replace(/,"/g, ', "')}`;
+  return `the speech check heard ${names} twice in a row. If that is how ${list.length > 1 ? 'they are' : 'it is'} said, add this to video.json, and the check accepts it: ${heardEntry(list)}`;
 }
 
 // A cached scene with today's speech check. A scene checked with older rules is
@@ -484,6 +495,8 @@ export async function synthesize(project, { force = false, fresh = false, log = 
     const estimate = estimateLength(project);
     if (estimate) {
       log(`voice: ${estimateLine(estimate)}`);
+      // Chapters that will likely be too short for YouTube, before the voice takes its time.
+      for (const h of estimatedChapterHints(project, estimate)) log(`voice: ${h.message}`);
       onEstimate(estimate);
     }
   }

@@ -4,6 +4,31 @@ Every video gets music made on your computer, and each look has its own style. T
 music is free. This page is for when you want your own file or your own original
 music. `explainroo services music --json` lists the choices.
 
+## The built-in music
+
+`"music": true` plays the look's own style. These are the styles of the looks:
+
+| Look | Style |
+| --- | --- |
+| `paper` | `warm` |
+| `clean` | `upbeat` |
+| `chalk` | `calm` |
+| `blueprint` | `tech` |
+| `midnight` | `tech` |
+| `editorial` | `calm` |
+| `studio` | `upbeat` |
+
+To change only the volume, write a block without a style. It keeps the look's
+music:
+
+```json
+"music": { "volume": 0.35 }
+```
+
+`explainroo set videos/<name> music.volume 0.35` writes that block for you. A
+block can also name a style, like `{ "style": "calm", "volume": 0.35 }`. `volume`
+goes from 0 to 1, and 0.5 is the default.
+
 ## Your own music file
 
 ```json

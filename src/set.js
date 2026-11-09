@@ -50,6 +50,10 @@ export function setSetting(arg, key, text) {
     if (block[part] === undefined || block[part] === null) {
       if (value === null) return { file, key, value: null, removed: false, changed: false };
       block[part] = {};
+    } else if (here === 'music' && (block[part] === true || typeof block[part] === 'string')) {
+      // "music": true is the look's own music, and "music": "calm" a style.
+      // Both become a block that keeps the same music.
+      block[part] = block[part] === true ? {} : { style: block[part] };
     } else if (typeof block[part] !== 'object' || Array.isArray(block[part])) {
       fail(`${here} is ${Array.isArray(block[part]) ? 'a list' : `${JSON.stringify(block[part])}`}, not a block of settings, so it has no ${parts[i + 1]}. Set ${here} as a whole instead.`);
     }

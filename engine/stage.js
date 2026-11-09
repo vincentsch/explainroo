@@ -716,6 +716,8 @@ export class Stage {
       partial: entry.partial ?? null,
       group: this._groups[0] ?? null,
       overlap: entry.overlap === true,
+      // 'title' for the words of a hook.
+      role: entry.role ?? null,
       order: drawn ? drawn.order++ : 0,
       scene: this.id,
       t: this.t,
@@ -750,6 +752,13 @@ export class Stage {
   _warn(message, key = message) {
     const log = this.engine.textLog;
     if (log) log.push({ scene: this.id, t: this.t, problem: message, level: 'warn', key });
+  }
+
+  // A hint for `check` that holds for the whole video, like a brand color that
+  // was replaced. It shows once, however often it is found.
+  _hint(message, key = message) {
+    const log = this.engine.textLog;
+    if (log) log.push({ scene: this.id, t: this.t, problem: message, level: 'hint', key, video: true });
   }
 
   _autoTextColor(fill, fallback) {
@@ -1000,7 +1009,8 @@ export class Stage {
     try {
       const maxWidth = o.maxWidth ?? o.width ?? this._w(0.8);
       lay = layoutText(ctx, { str: String(str), font, size, maxWidth, lineHeight: o.lineHeight ?? 1.24 });
-      if (o.balance && lay.lines.length > 1) lay = balanced(ctx, lay, { str: String(str), font, size, maxWidth, lineHeight: o.lineHeight ?? 1.24 });
+      // With "defaults": "0.6", text on a card of its own (bg) is balanced too.
+      if ((o.balance ?? (this._v6 && !!o.bg)) && lay.lines.length > 1) lay = balanced(ctx, lay, { str: String(str), font, size, maxWidth, lineHeight: o.lineHeight ?? 1.24 });
     } finally {
       ctx.restore();
     }
@@ -1120,6 +1130,9 @@ export class Stage {
         for (const w of line.words) drawWord(w, lx0 + w.x, oy + line.y, a);
       });
     }
+    // brand.accent replaced by a color that reads, on starred words that use it.
+    const note = o.mark === undefined && this.engine.brandAccentNote;
+    if (note && lay.lines.some((line) => line.words.some((w) => w.accent))) this._hint(note, 'brand accent text');
     const marked = o.bg && lay.lines.some((line) => line.words.some((w) => w.accent));
     const label = plain.length > 40 ? plain.slice(0, 37) + '...' : plain;
     const partial = this._partial(o._counting ?? (['type', 'write', 'words', 'sync'].includes(life.enter) && life.p < 1 ? { name: `"${label}"`, doing: life.enter === 'type' ? 'still typing' : 'still writing itself' } : null));
@@ -1202,7 +1215,10 @@ export class Stage {
     const font = fontString(th, role, size, o.weight ?? BOLD[role]);
     const pad = o.padding ?? size * 0.62;
     const maxW = o.w ? o.w - pad * 2 : o.maxWidth ?? 560;
-    const lay = label !== undefined && label !== null && label !== '' ? layoutText(ctx, { str: String(label), font, size, maxWidth: maxW, lineHeight: 1.15 }) : null;
+    let lay = label !== undefined && label !== null && label !== '' ? layoutText(ctx, { str: String(label), font, size, maxWidth: maxW, lineHeight: 1.15 }) : null;
+    // With "defaults": "0.6", a label that wraps gets lines of about the same
+    // length, so no word sits alone on the last line, as in titles.
+    if (lay && lay.lines.length > 1 && (o.balance ?? this._v6)) lay = balanced(ctx, lay, { str: String(label), font, size, maxWidth: maxW, lineHeight: 1.15 });
     const iconSize = o.icon ? o.iconSize ?? size * 1.55 : 0;
     const gapIL = lay && o.icon ? size * 0.35 : 0;
     const contentH = (lay ? lay.height : 0) + iconSize + gapIL;

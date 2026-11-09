@@ -10,7 +10,7 @@ import { alignWords, nearList } from '../src/align.js';
 import { loadProject } from '../src/project.js';
 import { speechChunks } from '../src/script.js';
 import { nearMatches, sceneHash, synthesize, voiceLine, voicePaths } from '../src/voice.js';
-import { formatVerify, nearlyAdvice, nearlyText, speechFindings, verify } from '../src/qa.js';
+import { formatVerify, nearlyAdvice, nearlyText, speechFindings, unconfirmedWords, verify } from '../src/qa.js';
 import { ffmpeg } from '../src/ffmpeg.js';
 import { writeWav } from '../src/wav.js';
 import { main } from '../src/cli.js';
@@ -134,6 +134,17 @@ test('a scene saved before near matches gets them from its transcript, and no vo
   assert.deepEqual(nearMatches({ ...voices.intro, nearly: undefined }, 'ja'), []);
 });
 
+test('a scene checked with older rules drops near matches that today\'s rules confirm fully, like "2x" for "two x" in a formula', async (t) => {
+  const dir = cachedProject(t, '# Maths\n\n## intro\nTake two x squared plus three x.\n', { intro: { transcript: 'Take 2x squared plus 3x.' } });
+  const project = loadProject(dir);
+  const file = voicePaths(project, 'intro').json;
+  const old = JSON.parse(fs.readFileSync(file, 'utf8'));
+  fs.writeFileSync(file, JSON.stringify({ ...old, check: 3, nearly: [{ word: 'two', heard: '2x', joined: true }, { word: 'x', heard: '2x', joined: true }] }));
+  const voices = await synthesize(project, { transcribe: () => { throw new Error('no voice should be made'); } });
+  assert.deepEqual(voices.intro.nearly, []);
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).nearly, []);
+});
+
 test('a new voice build saves the near matches of each scene, and the voice line says what its numbers are', async (t) => {
   const fake = await startFakeServices();
   t.after(fake.close);
@@ -230,6 +241,20 @@ test('an override of any length that did not help is told so, and other words ke
   // A short override that didn't help is reported also when the rest of the scene was heard.
   assert.match(warning('long'), /^the voice check could not confirm "SQL"\. .*\{SQL\|sequel\} was heard as "xylophone", so the override didn't help\./);
   assert.deepEqual(speech.map((s) => s.scene), ['short', 'mixed', 'plain', 'long']);
+});
+
+test('a spelled-out acronym with spaces that did not help is told to use commas', async (t) => {
+  const dir = cachedProject(t, '# Test\n\n## vault\nThe vault uses {AES|A E S} encryption.\n', {
+    vault: { transcript: 'The vault uses an ES encryption.', unmatched: ['AES'], matchRate: 0.8 },
+  });
+  const project = loadProject(dir);
+  const voices = await synthesize(project, { transcribe: () => { throw new Error('no voice should be made'); } });
+  const warning = speechFindings(project, voices).issues.find((i) => i.level === 'warn').message;
+  assert.match(warning, /\{AES\|A E S\} was not heard as written, so the override didn't help\. Write the letters with commas, like \{AES\|A, E, S\}, or reword the sentence\.$/);
+  // voice gives the same advice for the word.
+  assert.match(unconfirmedWords(project, voices.vault)[0].advice, /Write the letters with commas, like \{AES\|A, E, S\}, or reword the sentence\.$/);
+  // The docs use the comma form.
+  for (const doc of ['writing', 'troubleshooting']) assert.doesNotMatch(fs.readFileSync(new URL(`../docs/${doc}.md`, import.meta.url), 'utf8'), /\{[A-Z]+\|[A-Z](?: [A-Z])+\}/, doc);
 });
 
 test('near matches with their times give each time, and say no fix is needed unless one sounds wrong at that time', () => {

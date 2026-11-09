@@ -201,7 +201,9 @@ in, like the part of `s.safe` that a zoom keeps on screen.
 
 Keywords are yellow by default, and with `"defaults": "0.6"` they take
 `brand.accent` from `video.json` when it reads: as the box behind the white
-keywords of a slab, or as their color on what is behind them. With
+keywords of a slab, or as their color on what is behind them. When it doesn't
+read, `check` gives a hint with the color, its contrast and the color used
+instead. With
 `"defaults": "0.5"`, a `'plain'` hook
 picks colors that read on what is behind it. On a light look the keywords take
 the look's accent, made darker if it needs that. When the look's ink is too
@@ -219,9 +221,12 @@ tall frame and 40 in others with `"defaults": "0.6"`, and 34 before), `color`,
 A tilted box with bold text for one fact, like "*2* days". `x`, `y`,
 `size`, `color` (the box), `textColor`, `keyColor` (red, made to read at
 4.5:1 on the box's color with `"defaults": "0.5"`), `rotate` (degrees, -4 by default), `border`,
-`at`, `out`, `sfx`, `id`, `overlap`. `check` measures the text and the
+`at`, `out`, `sfx`, `id`, `overlap`, `area`. `check` measures the text and the
 keywords against the box's color, and warns when the sticker partly covers
-another shape. `overlap: true` says that is meant.
+another shape. `overlap: true` says that is meant. It covers pictures and
+backgrounds only: `check` always warns when a sticker covers words of the hook
+title. With `"defaults": "0.6"`, a sticker that would cover the title while both
+show moves below it, when that fits in `area` (`s.safe` by default).
 
 ### `step(n, total, options)`
 

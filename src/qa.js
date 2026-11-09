@@ -6,12 +6,13 @@ import { prepare, withEngine } from './pipeline.js';
 import { dbtp, probe, loudness, ffmpeg, PEAK_CEILING } from './ffmpeg.js';
 import { transcribeWords } from './models.js';
 import { readWav } from './wav.js';
-import { alignSpeech, bareWord, editDistance, nearList, similar } from './align.js';
+import { alignSpeech, bareWord, editDistance, expand, nearList, similar } from './align.js';
+import { signWords } from './math-words.js';
 import { hasPhonemizer } from './phonemes.js';
 import { normWord } from './script.js';
-import { heardInstead, heardQuote, readVoice, withHeard } from './voice.js';
+import { heardEntry, heardInstead, heardQuote, readVoice, sameHeard, withHeard } from './voice.js';
 import { estimateLength, targetNotes } from './timeline.js';
-import { buildChapters, chapterHints } from './chapters.js';
+import { buildChapters, chapterHints, youtubeFrame } from './chapters.js';
 import { coverTime } from './render.js';
 import { languageIssues, outputPath, ProjectError, scriptName } from './project.js';
 import { recordVersion, relativeFile, sha256File } from './history.js';
@@ -118,16 +119,46 @@ function confirmedAlone(project, id, words) {
   return info.words.map((w, k) => !!w.matched && w.text === words[k].display);
 }
 
+// The music's volume when video.json gives none, and the lowest volume the
+// advice goes to.
+const MUSIC_VOLUME = 0.5;
+const QUIETEST = 0.2;
+
+// A number, sign or maths word, like "two", "minus" or "halves". Whisper often
+// writes such words in another way in the final mix, so quieter music may not
+// bring them back.
+export function mathWord(word, language = 'en') {
+  const signs = signWords(language);
+  const tokens = expand(word, language);
+  return tokens.length > 0 && tokens.every((t) => /^\d+(?:[.,]\d+)?$/.test(t) || signs.has(t));
+}
+
+// Whether verify may tell the user to lower the music: it is at the default
+// volume or above, and not yet at the quietest the advice goes to.
+const canLower = (music) => Boolean(music) && (music.volume ?? MUSIC_VOLUME) >= MUSIC_VOLUME && (music.volume ?? MUSIC_VOLUME) > QUIETEST;
+
 // The advice for words that the narration alone confirmed and the final mix
-// didn't: music.volume 3 dB lower, which is 0.71 times the volume.
-export function mixAdvice(list, music) {
+// didn't: music.volume 3 dB lower, which is 0.71 times the volume, and never
+// under 0.2. Number and maths words don't count, and music that is already
+// quieter than the default gets no lower volume: listening comes next.
+export function mixAdvice(list, music, language = 'en') {
   const covered = list.filter((u) => u.mix);
   if (!covered.length || !music) return '';
-  const now = music.volume ?? 0.5;
-  const lower = Math.floor(now * Math.pow(10, -3 / 20) * 100) / 100;
   const which = covered.length === list.length ? (list.length === 1 ? 'it' : 'them') : covered.slice(0, 3).map((u) => `"${u.word}"`).join(', ');
-  return `. The narration alone confirmed ${which}, so the music may cover ${covered.length === 1 ? 'it' : 'them'}: set music.volume in video.json to ${lower}, from ${now}, which is 3 dB quieter`;
+  const one = covered.length === 1;
+  const masked = covered.filter((u) => !mathWord(u.word, language));
+  if (!masked.length) {
+    return `. The narration alone confirmed ${which}. ${one ? 'It is a number or maths word' : 'They are number or maths words'}, which the speech check often hears written another way in the final mix, so quieter music may not help. Listen at ${one ? 'that time' : 'those times'} to be sure`;
+  }
+  const now = music.volume ?? MUSIC_VOLUME;
+  if (!canLower(music)) {
+    return `. The narration alone confirmed ${which}. The music is already at ${now}, quieter than the default ${MUSIC_VOLUME}, so listen at ${one ? 'that time' : 'those times'} before you lower it more`;
+  }
+  const lower = Math.max(QUIETEST, Math.floor(now * Math.pow(10, -3 / 20) * 100) / 100);
+  return `. The narration alone confirmed ${which}, so the music may cover ${one ? 'it' : 'them'}: set music.volume in video.json to ${lower}, from ${now}, which is ${dbQuieter(now, lower)} dB quieter`;
 }
+
+const dbQuieter = (from, to) => Math.round(20 * Math.log10(from / to));
 
 // The near matches of a transcribed piece of the video, with their times in it.
 // `offset` is where the piece starts.
@@ -162,7 +193,13 @@ function unconfirmedAdvice(overridden, others, script) {
     return `{${shown}|${spoken}} was ${heard ? `heard as "${heard}"` : 'not heard as written'}`;
   });
   const one = overridden.length === 1;
-  const ask = `${said.join(', and ')}, so ${one ? 'the override' : 'the overrides'} didn't help. Try a different spoken spelling, like {${override(overridden[0].word).shown}|another spelling}, or reword the sentence.`;
+  // Letters with spaces, like {AES|A E S}, are often read as a word. With commas
+  // the voice says each letter.
+  const spaced = overridden.map(({ word }) => override(word)).find(({ spoken }) => /^\p{L}(?: \p{L})+$/u.test(spoken.trim()));
+  const instead = spaced
+    ? `Write the letters with commas, like {${spaced.shown}|${spaced.spoken.trim().split(' ').join(', ')}}, or reword the sentence.`
+    : `Try a different spoken spelling, like {${override(overridden[0].word).shown}|another spelling}, or reword the sentence.`;
+  const ask = `${said.join(', and ')}, so ${one ? 'the override' : 'the overrides'} didn't help. ${instead}`;
   return others ? `${ask} If the voice says another word wrong, write it as {shown|spoken} in ${script}.` : ask;
 }
 
@@ -186,7 +223,7 @@ const hasOverride = (word) => word.spoken !== undefined && word.spoken.replace(/
 // compare sounds, and else both: a spelling hint if the voice says it wrong, and
 // rewording if it is said right and only heard wrong. Empty for a recording,
 // which has advice of its own.
-export function unconfirmedWords(project, v) {
+export function unconfirmedWords(project, v, every = new Map()) {
   if (project.config.voice.provider === 'recording' || !Array.isArray(v?.words)) return [];
   const { language } = project.config;
   const missed = v.words.map((word, k) => ({ word, k })).filter(({ word }) => !word.matched);
@@ -200,9 +237,46 @@ export function unconfirmedWords(project, v) {
     if (hasOverride(word)) advice = unconfirmedAdvice([{ word, heard }], false, script);
     else if (heard && !hasPhonemizer(language) && soundsAlike(normWord(heard), normWord(word.text))) advice = `"${heard}" may sound the same, and in this language the speech check can't compare sounds, so {shown|spoken} can't help. Reword the sentence.`;
     else if (shortWord(word.text)) advice = `"${bareWord(word.text)}" is a short, common word, so a spelling hint can't change how it sounds. Reword the sentence.`;
+    else if (every.has(normWord(word.text))) advice = `If the voice says it wrong, write it as {${bareWord(word.text)}|spoken spelling} in ${script}. ${everyTimeAdvice(every.get(normWord(word.text)))}`;
     else advice = `If the voice says it wrong, write it as {${bareWord(word.text)}|spoken spelling} in ${script}. If it is said right and only heard wrong, reword the sentence.`;
     return { word: word.text, heard, quote, advice };
   });
+}
+
+// The words of the narration that the speech check heard as the same other
+// spelling each time they come up, at least twice, like "Tabslip" as "Tap Lip", as
+// a map from the word to { word, heard }. A short everyday word is left out:
+// "heard" would accept its other spelling anywhere.
+export function heardEveryTime(project, voices) {
+  const { language } = project.config;
+  const seen = new Map();
+  for (const sc of project.script.scenes) {
+    const v = voices[sc.id];
+    if (!Array.isArray(v?.words)) continue;
+    const instead = v.words.some((w) => !w.matched) ? heardInstead(v, language) : {};
+    v.words.forEach((w, k) => {
+      const key = normWord(w.text);
+      if (!key) return;
+      const entry = seen.get(key) ?? { word: bareWord(w.text), heard: [], times: 0 };
+      entry.times++;
+      if (!w.matched && instead[k]) entry.heard.push(instead[k]);
+      seen.set(key, entry);
+    });
+  }
+  return new Map([...seen].filter(([key, e]) => e.times >= 2 && e.heard.length === e.times && !shortWord(e.word) && e.heard.every((h) => sameHeard(h, e.heard[0])) && spelling(key, e.heard[0]))
+    .map(([key, e]) => [key, { word: e.word, heard: e.heard[0] }]));
+}
+
+// Whether what was heard is another way to write the word: close to it, like
+// "Tap Lip" for "Tabslip", or written with digits or signs, like "5/2" for
+// "halves". A different word, like "station" for "Gravitation", is none.
+function spelling(word, heard) {
+  return /[\p{N}\p{S}/]/u.test(heard) || soundsAlike(heard.split(/\s+/).map(normWord).join(''), word);
+}
+
+// What to do about a word heard as the same other spelling each time.
+function everyTimeAdvice({ word, heard }) {
+  return `It was heard as "${heard}" each time. If it is said right, add this to video.json, and the check accepts it: ${heardEntry([{ word, heard }])}`;
 }
 
 // Two spellings close enough to sound alike, also when they are short, like "Rad" and "Rat".
@@ -222,6 +296,7 @@ export function speechFindings(project, voices, timeline = null) {
   const speech = [];
   const script = scriptName(project);
   const recording = project.config.voice.provider === 'recording';
+  const every = recording ? new Map() : heardEveryTime(project, voices);
   for (const sc of project.script.scenes) {
     const v = voices[sc.id];
     const suspicious = v ? v.unmatched.filter((w) => w.replace(/[^\p{L}\p{M}\p{N}]/gu, '').length > 3) : [];
@@ -240,9 +315,11 @@ export function speechFindings(project, voices, timeline = null) {
       // The transcript where the named words should be, four words on each side.
       const named = listed ?? unconfirmed.filter(({ word }) => suspicious.includes(word.text)).slice(0, 8);
       const quote = heardQuote(v, project.config.language, (named.length ? named : unconfirmed.slice(0, 3)).map(({ k }) => k)) ?? cutTranscript(v.transcript);
+      // Words without an override heard as the same other spelling each time get the line for "heard".
+      const same = recording ? [] : [...new Map(missed.filter(({ word }) => !hasOverride(word) && every.has(normWord(word.text))).map(({ word }) => [normWord(word.text), every.get(normWord(word.text))])).values()];
       const advice = recording
         ? `The recording does not match ${script} here. Make ${script} say what was actually said.`
-        : unconfirmedAdvice(shown.map(({ word, k }) => ({ word, heard: instead[k] })), missed.some(({ word }) => !hasOverride(word)), script);
+        : unconfirmedAdvice(shown.map(({ word, k }) => ({ word, heard: instead[k] })), missed.some(({ word }) => !hasOverride(word)), script) + same.map((e) => ` "${e.word}" ${everyTimeAdvice(e).replace(/^It /, '')}`).join('');
       issues.push({ level: 'warn', scene: sc.id, t: null, message: `the voice check could not confirm ${names.length ? names.map((w) => `"${w}"`).join(', ') : `${Math.round((1 - v.matchRate) * 100)}% of the words`}. It heard: ${quote}. ${advice}` });
     }
     if (v && v.duration > 40) issues.push({ level: 'hint', scene: sc.id, t: null, message: `the narration runs ${v.duration.toFixed(0)}s; long scenes are easier to follow when split` });
@@ -254,10 +331,6 @@ export function speechFindings(project, voices, timeline = null) {
   }
   return { issues, speech };
 }
-
-// A frame for YouTube's wide player, where chapters show: any 16:9 landscape
-// frame, like "youtube", "16:9" or "1280x720".
-const youtubeFrame = ({ width, height }) => width > height && width * 9 === height * 16;
 
 // `platform` is the platform of a package being made. Chapter hints are about
 // YouTube, so they show for a YouTube package, or without a package for a
@@ -336,7 +409,10 @@ export async function stills(project, specs, { log = () => {}, scale = 1, transp
 
 // `times` takes what still takes, like ["3", "intro@2"], and shows just those
 // moments, in that order, in a sheet of its own.
-export async function sheet(project, { scene = null, every = null, times: moments = null, cols = null, log = () => {} } = {}) {
+const LARGE_FRAME = 640;
+
+// `large` makes frames 640 pixels wide, 3 to a row, big enough to read labels.
+export async function sheet(project, { scene = null, every = null, times: moments = null, cols = null, large = false, log = () => {} } = {}) {
   if (moments && (scene || (every !== null && every !== undefined))) throw new ProjectError(`--times picks the moments itself, so it can't go with --${scene ? 'scene' : 'every'}. Leave out one of them.`);
   const { timeline } = await prepare(project, { log });
   let times = [];
@@ -364,9 +440,11 @@ export async function sheet(project, { scene = null, every = null, times: moment
       labels.push(`${sc.id} ${(T - sc.start).toFixed(1)}s`);
     }
   }
-  const c = cols ?? Math.min(times.length, times.length > 20 ? 6 : times.length > 9 ? 5 : 4);
-  const thumb = timeline.width >= timeline.height ? 320 : 200;
-  const { notes } = await withEngine(project, timeline, { scale: 0.5, log }, (page) => page.evaluate((o) => window.explainroo.sheet(o), { times, labels, cols: c, thumb, path: file }));
+  const c = cols ?? Math.min(times.length, large ? 3 : times.length > 20 ? 6 : times.length > 9 ? 5 : 4);
+  const thumb = large ? LARGE_FRAME : timeline.width >= timeline.height ? 320 : 200;
+  // The page draws at half size, or larger when a large frame needs it.
+  const scale = large ? Math.min(1, Math.max(0.5, LARGE_FRAME / timeline.width)) : 0.5;
+  const { notes } = await withEngine(project, timeline, { scale, log }, (page) => page.evaluate((o) => window.explainroo.sheet(o), { times, labels, cols: c, thumb, path: file }));
   // The frames caught in a camera move, or while something draws itself in.
   const marked = notes.flatMap((note, i) => (note ? [{ time: Math.round(times[i] * 100) / 100, label: labels[i], note }] : []));
   return { file: path.join(project.dir, file), frames: times.length, ...(moments ? { times: times.map((T, i) => ({ time: Math.round(T * 100) / 100, label: labels[i] })) } : {}), marked };
@@ -467,8 +545,8 @@ export async function verify(project, { file = null, report: reportFile = null, 
       const aligned = await alignSpeech(script, heard.words, duration, project.config.language, { accept: project.heard });
       speech = { matchRate: Math.round(aligned.matchRate * 1000) / 1000, transcript: heard.text, nearly: timedNear(script, aligned, 0), unconfirmed: missedWords(script, aligned, 0, null) };
     }
-    if (speech.unconfirmed.length) issues.push({ level: 'warn', message: unconfirmedText(speech.unconfirmed) + mixAdvice(speech.unconfirmed, project.config.music) });
-    if (speech.matchRate < 0.85) issues.push({ level: 'warn', message: `only ${Math.round(speech.matchRate * 100)}% of the script was understood in the final mix; lower music.volume or check pronunciation` });
+    if (speech.unconfirmed.length) issues.push({ level: 'warn', message: unconfirmedText(speech.unconfirmed) + mixAdvice(speech.unconfirmed, project.config.music, project.config.language) });
+    if (speech.matchRate < 0.85) issues.push({ level: 'warn', message: `only ${Math.round(speech.matchRate * 100)}% of the script was understood in the final mix; ${canLower(project.config.music) ? 'lower music.volume or check pronunciation' : 'listen to it and check pronunciation'}` });
     fs.rmSync(wav, { force: true });
   }
   const sha256 = sha256File(video);

@@ -38,7 +38,7 @@ the file keeps its order.
 | `sizes` | none | `captions`, `cover`, `pace`, `watermark` and `targetSeconds` for one size, like `{ "tiktok": { "captions": "bold", "pace": 1.2 } }`; see `explainroo docs sizes` |
 | `speed` | 0.9 for Kokoro, 1 otherwise | voice speed only, 0.6 to 1.6; paid voices limit speed times pace, see `explainroo docs voices` |
 | `pace` | 1 | speed of the whole video (voice, pauses, animations), 0.7 to 1.6; see `explainroo docs sizes` |
-| `music` | `true` | `true` (the look's style), `warm`, `upbeat`, `calm`, `tech`, `playful`, `{ "style", "volume" }`, `false`, or your own file as `{ "src", "volume", "credit", "loop" }`, see `explainroo docs music` |
+| `music` | `true` | `true` (the look's style), `warm`, `upbeat`, `calm`, `tech`, `playful`, `{ "style", "volume" }` where `style` defaults to the look's, `false`, or your own file as `{ "src", "volume", "credit", "loop" }`, see `explainroo docs music` |
 | `sfx` | `true` | sound effects: `true`, `"minimal"` or `false` |
 | `captions` | `"auto"` | text of the narration at the bottom; `"auto"` turns it on for vertical, 4:5 and square videos, and leaves it off for 16:9; `"bold"` shows 2 to 4 big words at a time, with numbers, money and `*starred*` words in color |
 | `cover` | `"auto"` | full-size JPEG, without captions. With `"defaults": "0.5"`, `"auto"` takes the frame of the first scene with the most elements fully arrived, a frame with a shape, icon, image or clip first. Code still typing and a number still counting have not arrived. Without it, `"auto"` is the end of the first scene, or 1.0 second into it on Shorts, TikTok and Reels. Or a still spec: `12.5`, `"intro"`, `"intro@2.4"`, `"intro@end"`. A new cover needs no new render |
@@ -54,7 +54,7 @@ the file keeps its order.
 | `images` | none | `{ "model": "best" or "cheap", "style": "..." }` |
 | `clipBudget` | none | the most all AI clips of the project may cost together, in US dollars, like `0.40`. `clip` stops before a clip that would go over it; see `explainroo docs clips` |
 | `heard` | none | forms the speech check accepts for a word, like `{ "regex101": ["reg x 101"] }`; see `explainroo docs writing` |
-| `brand` | none | colors, fonts and logo for `s.ui`; its `accent` also colors the spoken word in captions. With `"defaults": "0.6"`, `accent` also colors the `*starred*` words of `s.title` and `s.text`, and `background` is the background of every scene; see `explainroo docs product-demos` |
+| `brand` | none | colors, fonts and logo for `s.ui`; its `accent` also colors the spoken word in captions. With `"defaults": "0.6"`, `accent` also colors the `*starred*` words of `s.title` and `s.text`, made lighter or darker when it is hard to read, with a hint from `check`. With it, `background` is the background of every scene; see `explainroo docs product-demos` |
 | `fonts` | none | the video's own font files, see `explainroo docs product-demos` |
 | `defaults` | none | `"0.6"` gives the project the defaults of explainroo 0.6, which include those of 0.5, see below. `init` writes it |
 
@@ -94,8 +94,9 @@ because labels may move.
 
 `"0.6"` also changes these:
 
-- A title or subtitle that wraps breaks into lines of about the same length,
-  so no word is left alone on the last line.
+- A title, a subtitle, a box label or text on a card of its own (`bg`) that
+  wraps breaks into lines of about the same length, so no word is left alone
+  on the last line. `balance: false` keeps the old lines.
 - Text follows one size scale: words on a card 44 pixels, the labels of
   arrows and icons 40, chart labels 36, notes 34 and the values on bars 48.
   Before, an arrow's label was 48, larger than the card it points at, an

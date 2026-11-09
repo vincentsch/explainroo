@@ -54,7 +54,7 @@ export const COMMAND_HELP = {
   sheet: {
     usage: 'sheet [project] [options]',
     about: 'Writes a contact sheet of the whole video, or of one scene, as a JPEG.',
-    options: [['--scene <id>', 'one scene'], ['--every <s>', 'seconds between frames'], ['--times <list>', 'only these moments, like 3,12.5,intro@2'], ['--cols <n>', 'frames in a row'], SIZE, PLATFORM, WATERMARK, LANG, JSON_OUT],
+    options: [['--scene <id>', 'one scene'], ['--every <s>', 'seconds between frames'], ['--times <list>', 'only these moments, like 3,12.5,intro@2'], ['--cols <n>', 'frames in a row'], ['--large', 'frames 640 pixels wide, 3 to a row, to read labels'], SIZE, PLATFORM, WATERMARK, LANG, JSON_OUT],
     example: 'sheet videos/how-dns-works --scene intro',
   },
   check: {
@@ -185,7 +185,7 @@ export const COMMAND_HELP = {
     example: 'formats add https://github.com/<user>/<repo>.git --commit 3f2a9c1',
   },
   sizes: { usage: 'sizes [options]', about: 'Lists the sizes, with the content area of each with and without the watermark, also with bold captions. The content area is s.safe, and the caption band is not part of it.', options: [JSON_OUT], example: 'sizes' },
-  icons: { usage: 'icons <word…> [options]', about: 'Searches the built-in icons, one match per line.', options: [JSON_OUT], example: 'icons database' },
+  icons: { usage: 'icons <word…> [options]', about: 'Searches the built-in icons, one match per line. Several words get the matches of each word, unless together they name one icon, like "arrow right".', options: [JSON_OUT], example: 'icons database lock cloud' },
   doctor: {
     usage: 'doctor [project] [options]',
     about: 'Checks ffmpeg, Chrome, Playwright\'s ffmpeg for record, espeak-ng, misaki and the models: each is ready, not needed or missing. It also prints the settings file and the folder explainroo runs from.',

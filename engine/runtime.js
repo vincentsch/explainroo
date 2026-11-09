@@ -6,7 +6,7 @@ import { getTheme, makeBackground, fontString, colorOf } from './themes.js';
 import { Pen } from './pen.js';
 import { drawTransition } from './transitions.js';
 import { buildPhrases, drawCaptions, buildChunks, drawBoldCaptions, captionHighlight } from './captions.js';
-import { AUDIO_FILE, clamp, hashStr, mulberry32, suggest, suggestColor, contrast, luminance, opaque, withAlpha, parseColor, mixColor, rgba, cssColor, newDefaults } from './util.js';
+import { AUDIO_FILE, clamp, hashStr, mulberry32, suggest, suggestColor, contrast, luminance, opaque, withAlpha, parseColor, mixColor, rgba, cssColor, newDefaults, accentNote } from './util.js';
 import { overlapDepth, holds, crosses, bounds, inside, toEdge, grow } from './geometry.js';
 import { layoutAreas } from './layout.js';
 import { loadClips, soundURL, ClipFrames, FREEZE_SECONDS, FIT_SPEEDS } from './clips.js';
@@ -109,6 +109,8 @@ export class Engine {
     // background where it is hard to read, below 3:1, it keeps its hue and
     // gets lighter or darker until it reads, as in captions.
     this.brandAccent = brand.accent ? (contrast(brand.accent, this.theme.bg) >= 3 ? brand.accent : suggestColor(brand.accent, this.theme.bg, 0)?.color ?? null) : null;
+    // check names the color used instead when a starred word shows it.
+    this.brandAccentNote = brand.accent && this.brandAccent !== brand.accent ? accentNote(brand.accent, contrast(brand.accent, this.theme.bg), 3, 'on the background', `*starred* words use ${this.brandAccent ?? `the look's accent ${this.theme.colors?.[this.theme.accent] ?? this.theme.accent}`}${this.brandAccent ? `, the same hue made ${contrast(this.brandAccent, '#ffffff') < contrast(brand.accent, '#ffffff') ? 'lighter' : 'darker'}` : ''}`) : null;
     this.pen = new Pen({ rough, theme: this.theme });
     this.icons = icons;
     this.iconCache = new Map();
@@ -942,7 +944,7 @@ export class Engine {
           break;
         }
         const laid = { texts: this.textLog.filter((x) => !x.problem), draw: this.drawLog };
-        for (const pr of this.textLog.filter((x) => x.problem)) once(`problem:${sc.id}:${pr.key ?? pr.problem}`, () => add(pr.level ?? 'error', sc.id, t, pr.problem));
+        for (const pr of this.textLog.filter((x) => x.problem)) once(pr.video ? `problem:${pr.key}` : `problem:${sc.id}:${pr.key ?? pr.problem}`, () => add(pr.level ?? 'error', sc.id, t, pr.problem));
         if (shownAt === null && laid.draw.shown > 0) shownAt = t;
         filled.push({ t, shown: laid.draw.shown > 0 });
         const texts = laid.texts.filter((x) => x.alpha > 0.5);
@@ -995,6 +997,7 @@ export class Engine {
             }
           }
         }
+        for (const f of stickersOverTitles(laid.draw.shapes, solid)) once(`sticker:${sc.id}:${f.key}`, () => add('warn', sc.id, t, f.message));
         for (const f of shapeOverlaps(laid.draw.shapes)) once(`shapes:${sc.id}:${f.key}`, () => add('warn', sc.id, t, f.message));
         for (const f of textsIntoShapes(solid, laid.draw.shapes)) once(`shapes:${sc.id}:${f.key}`, () => add('warn', sc.id, t, f.message));
         for (const f of linesOverText(laid.draw.strokes, solid)) once(`line:${sc.id}:${f.key}`, () => add('warn', sc.id, t, f.message));
@@ -1396,6 +1399,22 @@ function shapeName(sh) {
 
 function shapeKey(sh) {
   return `${sh.kind}|${sh.name}|${Math.round((sh.box.x0 + sh.box.x1) / 8)}|${Math.round((sh.box.y0 + sh.box.y1) / 8)}`;
+}
+
+// Stickers that cover words of a hook title. A sticker's overlap: true lets it
+// sit on pictures and backgrounds, never on the title, so this ignores it.
+function stickersOverTitles(shapes, texts) {
+  const found = [];
+  const titles = texts.filter((tx) => tx.role === 'title');
+  if (!titles.length) return found;
+  for (const sh of shapes) {
+    if (sh.kind !== 'sticker' || !sh.settled || sh.alpha <= 0.95) continue;
+    const covered = titles.filter((tx) => Math.min(sh.box.x1, tx.x1) - Math.max(sh.box.x0, tx.x0) > 4 && Math.min(sh.box.y1, tx.y1) - Math.max(sh.box.y0, tx.y0) > 4 && overlapDepth(sh.poly, [[tx.x0, tx.y0], [tx.x1, tx.y0], [tx.x1, tx.y1], [tx.x0, tx.y1]]) > 4);
+    if (!covered.length) continue;
+    const words = covered.map((tx) => tx.text).join(' ');
+    found.push({ key: `${sh.serial}/${words}`, message: `the sticker "${sh.name.slice(0, 30)}" covers "${words.slice(0, 40)}" of the hook title; move the sticker with x and y, or give it a later at` });
+  }
+  return found;
 }
 
 // Shapes that partly overlap: they reach more than 4 pixels into each other

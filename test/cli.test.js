@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { main } from '../src/cli.js';
+import { loadProject, THEME_MUSIC } from '../src/project.js';
 import { ASR_MODEL, TTS_MODEL, cacheRoot } from '../src/models.js';
 
 // Run the CLI in-process and collect what it wrote to stderr.
@@ -162,6 +163,33 @@ test('icons prints one match per line, and close names when nothing matches', ()
   assert.match(icons('ship').stdout, /^\d+ icons? match(es)? "ship"/);
   // More than 40 matches name how many there are.
   assert.match(icons('arrow').stdout, /^\d+ icons match "arrow"\. These are the 40 best:\n/);
+});
+
+test('icons with several words lists the matches of each word, and words that name one icon stay one search', () => {
+  const bin = new URL('../bin/explainroo.js', import.meta.url).pathname;
+  const icons = (...args) => spawnSync(process.execPath, [bin, 'icons', ...args], { encoding: 'utf8' });
+  const r = icons('lock', 'key', 'zzqx');
+  assert.equal(r.status, 0);
+  const parts = r.stdout.trimEnd().split('\n\n');
+  assert.equal(parts.length, 3);
+  assert.match(parts[0], /^\d+ icons match "lock"\. These are the 10 best:\n {2}lock {2}\(exact name/);
+  assert.match(parts[1], /^\d+ icons match "key"\. These are the 10 best:\n {2}key {2}\(exact name/);
+  assert.match(parts[2], /^no icon matches "zzqx"\. Close names: /);
+  const json = JSON.parse(icons('lock', 'key', '--json').stdout);
+  assert.deepEqual(json.words.map((w) => [w.word, w.exact, w.icons.length]), [['lock', 'lock', 10], ['key', 'key', 10]]);
+  assert.equal(JSON.parse(icons('arrow', 'right', '--json').stdout).exact, 'arrow-right');
+});
+
+test('an unknown command names the docs topic of that name, or the closest command', () => {
+  const bin = new URL('../bin/explainroo.js', import.meta.url).pathname;
+  const run = (word) => spawnSync(process.execPath, [bin, word], { encoding: 'utf8' });
+  const topic = run('commands');
+  assert.equal(topic.status, 2);
+  assert.equal(topic.stderr, 'unknown command "commands". "commands" is a docs topic. Read it with: explainroo docs commands\n');
+  assert.equal(run('rendr').stderr, 'unknown command "rendr". Did you mean "explainroo render"?\n');
+  assert.equal(run('picture').stderr, 'unknown command "picture". Did you mean the docs topic "explainroo docs pictures"?\n');
+  // Nothing close: the list of commands.
+  assert.match(run('xyzzy').stderr, /^unknown command "xyzzy"\n\nexplainroo /);
 });
 
 // A new project starts neutral: the same scene names in script.md and scenes.js,
@@ -351,6 +379,25 @@ test('voice --estimate prints the estimate with the target advice and makes noth
   assert.equal(r.err, '', 'no model was loaded');
 });
 
+test('voice --estimate gives a hint for chapters that will likely be under 10 seconds in a video for YouTube', async (t) => {
+  const dir = tempDir();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const long = 'The resolver asks the root servers where the name lives, and then it asks the servers of the top level domain, and then the servers of the domain itself. '.repeat(2);
+  fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ size: '16:9' }));
+  fs.writeFileSync(path.join(dir, 'script.md'), `# DNS\n\n## a {chapter="The question"}\nYou type a name.\n\n## b {chapter="The answer"}\n${long}\n\n## c {chapter="The cache"}\n${long}\n`);
+  fs.writeFileSync(path.join(dir, 'scenes.js'), 'export default { a() {}, b() {}, c() {} };');
+  const r = await runAll(['voice', dir, '--estimate']);
+  assert.equal(r.code, 0, r.err);
+  assert.match(r.out, /\nHINT  chapter "The question" will likely last about \d+s, and YouTube shows chapters only when each lasts at least 10 seconds\. Start it at another scene or join it with the next one\.\nNothing was made\.\n$/);
+  assert.doesNotMatch(r.out, /"The answer"|"The cache"/);
+  const json = JSON.parse((await runAll(['voice', dir, '--estimate', '--json'])).out);
+  assert.deepEqual(json.notes.map((n) => [n.level, n.scene]), [['hint', 'a']]);
+  assert.deepEqual(Object.keys(json.estimate.sceneSeconds), ['a', 'b', 'c']);
+  // A tall video has no YouTube chapters, so it gets no hint.
+  fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ size: 'shorts' }));
+  assert.doesNotMatch((await runAll(['voice', dir, '--estimate'])).out, /HINT/);
+});
+
 test('set writes one setting into video.json, dotted keys reach into blocks, null takes a key out, and the rest of the file stays as it was', async (t) => {
   const dir = tempDir();
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
@@ -384,6 +431,28 @@ test('set writes one setting into video.json, dotted keys reach into blocks, nul
   fs.writeFileSync(file, '{\n\t"theme": "paper"\n}\n');
   await set('fps', '25');
   assert.equal(fs.readFileSync(file, 'utf8'), '{\n\t"theme": "paper",\n\t"fps": 25\n}\n');
+});
+
+test('music.volume works without a style: set turns "music": true into a block, and the look keeps its own music', async (t) => {
+  const dir = tempDir();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(dir, 'script.md'), '# Test\n\n## a\nHello there.\n');
+  fs.writeFileSync(path.join(dir, 'scenes.js'), 'export default { a() {} };');
+  const file = path.join(dir, 'video.json');
+  fs.writeFileSync(file, '{\n  "theme": "midnight",\n  "music": true\n}\n');
+  const r = await runAll(['set', dir, 'music.volume', '0.35']);
+  assert.equal(r.code, 0, r.err);
+  assert.equal(r.out, 'set music.volume to 0.35 in video.json\n');
+  assert.equal(fs.readFileSync(file, 'utf8'), '{\n  "theme": "midnight",\n  "music": {\n    "volume": 0.35\n  }\n}\n');
+  const { config } = loadProject(dir);
+  assert.deepEqual([config.music.style, config.music.volume], [THEME_MUSIC.midnight, 0.35]);
+  // A style written as text stays that style.
+  fs.writeFileSync(file, '{\n  "theme": "midnight",\n  "music": "calm"\n}\n');
+  assert.equal((await runAll(['set', dir, 'music.volume', '0.3'])).code, 0);
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).music, { style: 'calm', volume: 0.3 });
+  // The docs name each look's own music.
+  const docs = fs.readFileSync(new URL('../docs/music.md', import.meta.url), 'utf8');
+  for (const [look, style] of Object.entries(THEME_MUSIC)) assert.match(docs, new RegExp(`\\| \`${look}\` \\| \`${style}\` \\|`), look);
 });
 
 test('set refuses an unknown key or a bad value with the check every command runs, and writes nothing', async (t) => {
