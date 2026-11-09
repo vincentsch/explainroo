@@ -16,6 +16,10 @@ import { ring, bounds, along, rayThrough } from './geometry.js';
 export const TEXT_SIZE = 48;
 // The size of an arrow's label, and its distance from the arrow, without it.
 const OLD_LABEL_SIZE = 34;
+// The sizes of text with "defaults": "0.6", one scale from the title down to
+// the labels of a chart: a card's words are smaller than body text, and the
+// label of an arrow or an icon smaller than a card's.
+export const SCALE = { title: 104, subtitle: 46, body: TEXT_SIZE, card: 44, label: 40, axis: 36, note: 34, value: 48 };
 const DEFAULT_DUR = { draw: 0.9, write: 0.8, pop: 0.6, rise: 0.75, fade: 0.6, zoom: 0.75, drop: 0.75, grow: 1.0, none: 0.001, 'slide-left': 0.75, 'slide-right': 0.75, 'slide-up': 0.75, 'slide-down': 0.75 };
 const ENTERS = ['draw', 'write', 'type', 'words', 'sync', 'pop', 'rise', 'fade', 'zoom', 'drop', 'grow', 'none', 'slide-left', 'slide-right', 'slide-up', 'slide-down'];
 const EXITS = ['fade', 'pop', 'rise', 'drop', 'slide-left', 'slide-right', 'none'];
@@ -44,6 +48,10 @@ export class Stage {
     // Platform formats (tiktok, reels, shorts...) keep content inside the part
     // of the frame the app leaves free, so the center moves with it.
     this.safe = engine.safeArea;
+    // The whole frame, for pictures and backgrounds that may fill it. On
+    // Shorts, TikTok and Reels with "defaults": "0.6", check lets pictures run
+    // into the parts the app covers; text stays in s.safe.
+    this.full = { x: 0, y: 0, w: this.W, h: this.H, left: 0, top: 0, right: this.W, bottom: this.H };
     this.platform = Boolean(engine.config.safe);
     this.cx = this.platform ? this.safe.x + this.safe.w / 2 : this.W / 2;
     this.cy = this.platform ? this.safe.y + this.safe.h / 2 : this.H / 2;
@@ -89,6 +97,8 @@ export class Stage {
     this._cover = 0;
     // s.quiet() turns off the entrance sounds of the rest of the scene.
     this._quiet = false;
+    // The defaults of 0.6, which "defaults": "0.6" in video.json asks for.
+    this._v6 = newDefaults(engine.config, '0.6');
   }
 
   // The UI kit for product demos (engine/ui.js): app cards, fields, buttons,
@@ -947,16 +957,18 @@ export class Stage {
     return this.platform ? this.safe.y + this.safe.h * f : this.H * f;
   }
 
+  // With "defaults": "0.6", a title or subtitle that wraps breaks into lines of
+  // about the same length, so no word is left alone on the last line.
   title(str, o = {}) {
-    return this._text(str, { font: 'display', size: 104, y: this._y(0.44), maxWidth: this._w(0.82), lineHeight: 1.12, ...o }, 'title', this._call('title'));
+    return this._text(str, { font: 'display', size: 104, y: this._y(0.44), maxWidth: this._w(0.82), lineHeight: 1.12, balance: this._v6, ...o }, 'title', this._call('title'));
   }
 
   subtitle(str, o = {}) {
-    return this._text(str, { font: 'body', size: 46, color: 'muted', y: this._y(0.6), maxWidth: this._w(0.7), ...o }, 'text', this._call('subtitle'));
+    return this._text(str, { font: 'body', size: 46, color: 'muted', y: this._y(0.6), maxWidth: this._w(0.7), balance: this._v6, ...o }, 'text', this._call('subtitle'));
   }
 
   note(str, o = {}) {
-    return this._text(str, { size: 32, color: 'muted', ...o }, 'text', this._call('note'));
+    return this._text(str, { size: this._v6 ? SCALE.note : 32, color: 'muted', ...o }, 'text', this._call('note'));
   }
 
   // `method` is the call that drew it, like "2nd s.text", for check.
@@ -979,7 +991,9 @@ export class Stage {
     ctx.letterSpacing = `${tracking}px`;
     let lay;
     try {
-      lay = layoutText(ctx, { str: String(str), font, size, maxWidth: o.maxWidth ?? o.width ?? this._w(0.8), lineHeight: o.lineHeight ?? 1.24 });
+      const maxWidth = o.maxWidth ?? o.width ?? this._w(0.8);
+      lay = layoutText(ctx, { str: String(str), font, size, maxWidth, lineHeight: o.lineHeight ?? 1.24 });
+      if (o.balance && lay.lines.length > 1) lay = balanced(ctx, lay, { str: String(str), font, size, maxWidth, lineHeight: o.lineHeight ?? 1.24 });
     } finally {
       ctx.restore();
     }
@@ -1185,11 +1199,16 @@ export class Stage {
     const iconSize = o.icon ? o.iconSize ?? size * 1.55 : 0;
     const gapIL = lay && o.icon ? size * 0.35 : 0;
     const contentH = (lay ? lay.height : 0) + iconSize + gapIL;
+    const shape = o.shape ?? 'rect';
+    // A look with "card": "strip", like studio, draws a white card with a fine
+    // outline, and a card with a color gets a band of it along the top, with
+    // room for it above the words.
+    const strip = th.card === 'strip' && !th.stroke.rough && shape === 'rect' && o.fill === undefined && o.color && o.color !== 'none';
+    const band = strip ? Math.round(clamp(size * 0.2, 6, 16)) : 0;
     const w = o.w ?? Math.max(o.minW ?? 0, (lay ? lay.width : 0) + pad * 2, iconSize + pad * 2);
-    const h = o.h ?? Math.max(o.minH ?? 0, contentH + pad * 1.4);
+    const h = o.h ?? Math.max(o.minH ?? 0, contentH + pad * 1.4 + band);
     const x = o.x ?? this.cx;
     const y = o.y ?? this.cy;
-    const shape = o.shape ?? 'rect';
     this._register(o.id, x, y, w, h, shape === 'ellipse' || shape === 'circle' ? 'ellipse' : 'rect');
     // A shape without words has no detail for the camera to move in on.
     if (this.engine.layoutLog && !lay) this._pendingInfo = { bare: true };
@@ -1201,12 +1220,21 @@ export class Stage {
     const settled = this._settled(life);
     const own = this._logShape('box', { w, h, round: shape === 'ellipse' || shape === 'circle' }, settled, o, plain || o.id, { border: o.border === false ? 0 : o.width ?? th.stroke.width, call });
     const prog = this._drawProgress(life);
-    const stroke = colorOf(th, o.stroke ?? o.color, 'ink');
-    const fill = o.fill !== undefined ? colorOf(th, o.fill) : o.color ? tintOf(th, o.color) : th.surface;
     const spec = shape === 'ellipse' || shape === 'circle' ? { kind: 'ellipse', w, h } : { kind: 'rect', w, h, r: o.radius ?? th.radius };
-    this.pen.draw(ctx, spec, { stroke: o.border === false ? 'none' : stroke, width: o.width ?? th.stroke.width, fill, fillStyle: o.fillStyle, dashed: o.dashed, seed: this._seed('box', o, plain), shadow: this._shadow(), glow: o.glow ?? (th.stroke.glow && o.color ? th.stroke.glow : 0) }, prog);
+    const fine = th.card === 'strip' && o.stroke === undefined && o.width === undefined;
+    const stroke = fine ? mixColor(th.surface, o.color ? colorOf(th, o.color) : th.ink, o.color ? 0.4 : 0.14) : colorOf(th, o.stroke ?? o.color, 'ink');
+    const fill = o.fill !== undefined ? colorOf(th, o.fill) : strip ? th.surface : o.color ? tintOf(th, o.color) : th.surface;
+    this.pen.draw(ctx, spec, { stroke: o.border === false ? 'none' : stroke, width: o.width ?? (fine ? 2 : th.stroke.width), fill, fillStyle: o.fillStyle, dashed: o.dashed, seed: this._seed('box', o, plain), shadow: this._shadow(), glow: o.glow ?? (th.stroke.glow && o.color ? th.stroke.glow : 0) }, prog);
+    if (strip) {
+      ctx.save();
+      ctx.clip(this.pen.prepared(this.pen.specD(spec)).full);
+      ctx.globalAlpha *= prog.fill;
+      ctx.fillStyle = colorOf(th, o.color);
+      ctx.fillRect(-w / 2, -h / 2, w, band);
+      ctx.restore();
+    }
     const textColor = o.textColor ? colorOf(th, o.textColor) : this._autoTextColor(fill, th.ink);
-    const top = -contentH / 2;
+    const top = -contentH / 2 + band / 2;
     const prevA = ctx.globalAlpha;
     ctx.globalAlpha = prevA * prog.text;
     if (o.icon) this._iconAt(o.icon, 0, top + iconSize / 2, iconSize, colorOf(th, o.iconColor ?? o.color, 'ink'), 1, this._seed('boxicon', o, o.icon), o.iconWeight);
@@ -1439,9 +1467,10 @@ export class Stage {
     }
     // With "defaults": "0.5" a label is body size and sits further out as it
     // grows: 34 pixels out for a 34 pixel label, and 44 for 48. Before, it was
-    // 34 pixels and 34 pixels out.
+    // 34 pixels and 34 pixels out. With "0.6" it is a label of the scale, 40
+    // pixels, a little smaller than the words on a card.
     const fresh = newDefaults(this.engine.config);
-    const size = o.labelSize ?? (fresh ? TEXT_SIZE : OLD_LABEL_SIZE);
+    const size = o.labelSize ?? (this._v6 ? SCALE.label : fresh ? TEXT_SIZE : OLD_LABEL_SIZE);
     const off = o.labelOffset ?? (fresh ? Math.round(size * 0.7 + 10) : OLD_LABEL_SIZE);
     const font = fontString(this.theme, o.labelFont ?? 'hand', size);
     this.ctx.save();
@@ -1511,7 +1540,7 @@ export class Stage {
     if (this.engine.layoutLog && !o.label) this._pendingInfo = { bare: true };
     let labelBox = null;
     if (o.label) {
-      const ls = o.labelSize ?? 36;
+      const ls = o.labelSize ?? (this._v6 ? SCALE.label : 36);
       this.ctx.save();
       this.ctx.font = fontString(th, o.labelFont ?? 'body', ls, BOLD[o.labelFont ?? 'body']);
       const lw = this.ctx.measureText(String(o.label)).width;
@@ -1547,7 +1576,7 @@ export class Stage {
     }
     this._iconAt(name, 0, 0, size, color, prog.stroke, this._seed('icon', o, name), o.weight);
     if (o.label) {
-      const ls = o.labelSize ?? 36;
+      const ls = o.labelSize ?? (this._v6 ? SCALE.label : 36);
       const ctx = this.ctx;
       ctx.save();
       ctx.globalAlpha *= life.enter === 'draw' ? prog.text : 1;
@@ -1903,23 +1932,38 @@ export class Stage {
   list(items, o = {}) {
     const th = this.theme;
     const ctx = this.ctx;
-    const size = o.size ?? 50;
+    const size = o.size ?? (this._v6 ? SCALE.body : 50);
     const x = o.x ?? (this.platform ? this.safe.x + this.safe.w * 0.06 : this.W * 0.2);
     let y = o.y ?? this._y(0.3);
     const width = o.width ?? this._w(0.62);
-    const gap = o.gap ?? size * 0.55;
-    const bullet = o.bullet ?? 'dot';
+    // A look with "list": "cards", like studio, puts each item on a card of
+    // its own, numbered unless the list has a bullet. card: false leaves them out.
+    // With "defaults": "0.6" the items get more room between them.
+    const gap = o.gap ?? size * (th.list === 'cards' && o.card !== false ? 1.05 : this._v6 ? 0.8 : 0.55);
+    // The cards keep a little room between them, and a gap too small for that
+    // leaves them out, as does a list of one item, often one of several lists
+    // placed close together.
+    const padV = clamp((gap - size * 0.2) / 2, 0, size * 0.42);
+    const cards = th.list === 'cards' && o.card !== false && padV >= size * 0.15 && items.length > 1;
+    const bullet = o.bullet ?? (cards ? 'badge' : 'dot');
     const indent = size * 1.25;
     const base = this.time(o.at ?? 0);
     const stagger = (o.stagger ?? 0.7) / this.pace;
     const role = o.font ?? 'body';
     const font = fontString(th, role, size, o.weight);
     const out = [];
-    items.forEach((raw, i) => {
-      const it = typeof raw === 'string' ? { text: raw } : raw;
+    const all = items.map((raw) => (typeof raw === 'string' ? { text: raw } : raw));
+    // The cards are as wide as the widest item.
+    const lays = all.map((it) => layoutText(ctx, { str: it.text, font, size, maxWidth: width - indent, lineHeight: 1.2 }));
+    const padH = size * 0.45;
+    const cardW = indent + Math.max(0, ...lays.map((l) => l.width)) + padH * 2;
+    all.forEach((it, i) => {
       const at = it.at !== undefined ? this.time(it.at) : Array.isArray(o.at) ? this.time(o.at[i]) : base + i * stagger;
-      const lay = layoutText(ctx, { str: it.text, font, size, maxWidth: width - indent, lineHeight: 1.2 });
-      const cy = y + lay.height / 2;
+      const lay = lays[i];
+      if (cards) {
+        const ch = lay.height + padV * 2;
+        this._box(null, { x: x - padH + cardW / 2, y: y + lay.height / 2, w: cardW, h: ch, radius: Math.min(th.radius, ch / 2), at, out: it.out ?? o.out, enter: o.enter ?? th.enter.list, sfx: null }, 'list');
+      }
       const color = colorOf(th, it.color ?? o.color, 'ink');
       const bcolor = colorOf(th, it.bulletColor ?? o.bulletColor ?? 'accent');
       this._record('list', at, 0.4, { sfx: o.sfx }, { pitch: i, label: it.text.slice(0, 30) });
@@ -1942,6 +1986,16 @@ export class Stage {
     const th = this.theme;
     const r = size * 0.16;
     switch (kind) {
+      case 'badge': {
+        // A number on a disc of the color, for lists on cards.
+        this.pen.draw(ctx, { kind: 'ellipse', w: size * 1.04, h: size * 1.04 }, { fill: color, stroke: 'none', width: 0, seed: 21 + i, fillStyle: 'solid', rough: false }, { stroke: 1, fill: 1 });
+        ctx.font = fontString(th, 'display', size * 0.6);
+        ctx.fillStyle = this._autoTextColor(color, th.surface);
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(String(i + 1), 0, size * 0.02);
+        break;
+      }
       case 'dot':
         this.pen.draw(ctx, { kind: 'ellipse', w: r * 2.2, h: r * 2.2 }, { fill: color, stroke: color, width: 2, seed: 11 + i, fillStyle: 'solid' }, { stroke: 1, fill: 1 });
         break;
@@ -2017,8 +2071,8 @@ export class Stage {
       // The labels under the bars and the values on top count for the
       // camera, not for arrows.
       const format = o.format ?? ((v) => (Number.isInteger(v) ? String(Math.round(v)) : v.toFixed(1)));
-      const ls = o.labelSize ?? 34;
-      const vs = o.valueSize ?? 40;
+      const ls = o.labelSize ?? (this._v6 ? SCALE.axis : 34);
+      const vs = o.valueSize ?? (this._v6 ? SCALE.value : 40);
       const text = this._textExtent(items.flatMap((d, i) => {
         const cx = x - w / 2 + slot * i + slot / 2;
         const labels = d.label !== undefined ? [{ text: String(d.label), x: cx, y: base + 16, font: fontString(th, 'body', ls), base: 'top' }] : [];
@@ -2037,12 +2091,16 @@ export class Stage {
     const alpha = axisLife.q > 0 ? 1 - ease.in(axisLife.q) : 1;
     ctx.save();
     ctx.globalAlpha *= alpha;
-    this.pen.draw(ctx, { kind: 'poly', points: [[x - w / 2 - 20, base], [x + w / 2 + 20, base]] }, { stroke: colorOf(th, 'ink'), width: th.stroke.width, seed: this._seed('axis', o), single: true }, { stroke: ease.inOut(axisLife.p), fill: 1 });
+    // With "defaults": "0.6" a clean look draws the axis as a thin muted line,
+    // so the bars stand out.
+    const fine = this._v6 && !th.stroke.rough;
+    this.pen.draw(ctx, { kind: 'poly', points: [[x - w / 2 - 20, base], [x + w / 2 + 20, base]] }, { stroke: colorOf(th, fine ? 'muted' : 'ink'), width: fine ? Math.max(2, th.stroke.width * 0.6) : th.stroke.width, seed: this._seed('axis', o), single: true }, { stroke: ease.inOut(axisLife.p), fill: 1 });
     items.forEach((d, i) => {
       const t0 = barAt[i];
       const g = ease.out(clamp((this.t - t0) / ((o.growDur ?? 0.9) / this.pace)));
       const cx = x - w / 2 + slot * i + slot / 2;
-      const bh = (d.value / max) * h;
+      // With "defaults": "0.6" a small value keeps a bar you can see.
+      const bh = this._v6 && d.value > 0 ? Math.max((d.value / max) * h, 8) : (d.value / max) * h;
       if (g > 0) {
         ctx.save();
         ctx.beginPath();
@@ -2055,7 +2113,7 @@ export class Stage {
         if (o.values !== false) {
           ctx.save();
           ctx.globalAlpha *= g;
-          const vs = o.valueSize ?? 40;
+          const vs = o.valueSize ?? (this._v6 ? SCALE.value : 40);
           ctx.font = fontString(th, 'display', vs);
           ctx.fillStyle = colorOf(th, 'ink');
           ctx.textAlign = 'center';
@@ -2067,7 +2125,7 @@ export class Stage {
         }
       }
       if (d.label !== undefined) {
-        const ls = o.labelSize ?? 34;
+        const ls = o.labelSize ?? (this._v6 ? SCALE.axis : 34);
         ctx.save();
         ctx.globalAlpha *= clamp((this.t - at) / (0.4 / this.pace));
         ctx.font = fontString(th, 'body', ls);
@@ -2100,7 +2158,7 @@ export class Stage {
       // for the camera, not for arrows.
       const pad = 12 + th.stroke.width * 1.3;
       const around = this._designBox(x, y, w + pad * 2, h + pad * 2);
-      const ls = o.labelSize ?? 30;
+      const ls = o.labelSize ?? (this._v6 ? SCALE.axis : 30);
       const text = o.labels && this._textExtent(o.labels.slice(0, pts.length).map((l, i) => ({ text: String(l), x: pts[i][0], y: y + h / 2 + 14, font: fontString(th, 'body', ls), base: 'top' })));
       this._pendingExtra = text ? unionBox(around, text) : around;
     }
@@ -2139,7 +2197,7 @@ export class Stage {
       });
     }
     if (o.labels) {
-      ctx.font = fontString(th, 'body', o.labelSize ?? 30);
+      ctx.font = fontString(th, 'body', o.labelSize ?? (this._v6 ? SCALE.axis : 30));
       ctx.fillStyle = colorOf(th, 'muted');
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
@@ -2165,7 +2223,7 @@ export class Stage {
       // The outline of the slices and the labels around the pie count for
       // the camera, not for arrows.
       const ring = this._designBox(x, y, r * 2 + th.stroke.width * 4, r * 2 + th.stroke.width * 4);
-      const ls = o.labelSize ?? 32;
+      const ls = o.labelSize ?? (this._v6 ? SCALE.axis : 32);
       const lr = r + (o.labelOffset ?? 56);
       let a0 = -Math.PI / 2;
       const text = o.labels !== false && this._textExtent(items.map((d) => {
@@ -2195,7 +2253,7 @@ export class Stage {
         if (o.labels !== false && a1 - a0 >= full - 0.001) {
           const mid = (a0 + a1) / 2;
           const lr = r + (o.labelOffset ?? 56);
-          const ls = o.labelSize ?? 32;
+          const ls = o.labelSize ?? (this._v6 ? SCALE.axis : 32);
           const txt = d.label !== undefined ? `${d.label} ${Math.round((d.value / total) * 100)}%` : `${Math.round((d.value / total) * 100)}%`;
           ctx.font = fontString(th, 'body', ls, BOLD.body);
           ctx.fillStyle = colorOf(th, 'ink');
@@ -2311,13 +2369,23 @@ export class Stage {
         ctx.fillText(String(o.title), 0, -h / 2 + barH / 2 + 4);
       }
     }
+    // A highlighted line. With "defaults": "0.6" it also gets a bar in the
+    // accent color at its left edge.
+    const markLine = (n) => {
+      ctx.fillRect(-w / 2 + 6, top + (n - 1) * lh - lh * 0.22, w - 12, lh);
+      if (!this._v6) return;
+      const fill = ctx.fillStyle;
+      ctx.fillStyle = colorOf(th, 'accent');
+      ctx.fillRect(-w / 2 + 6, top + (n - 1) * lh - lh * 0.22, 6, lh);
+      ctx.fillStyle = fill;
+    };
     if (steps && morph.to) {
       const drawHighlight = (step, alpha) => {
         const hl = Array.isArray(step.highlight) ? step.highlight : step.highlight ? [step.highlight] : [];
         ctx.save();
         ctx.globalAlpha *= alpha;
         ctx.fillStyle = C.highlight;
-        for (const n of hl) ctx.fillRect(-w / 2 + 6, top + (n - 1) * lh - lh * 0.22, w - 12, lh);
+        for (const n of hl) markLine(n);
         ctx.restore();
       };
       drawHighlight(steps[morph.from], 1 - morph.p);
@@ -2330,7 +2398,7 @@ export class Stage {
         ctx.save();
         ctx.globalAlpha *= ha;
         ctx.fillStyle = C.highlight;
-        for (const n of hl) ctx.fillRect(-w / 2 + 6, top + (n - 1) * lh - lh * 0.22, w - 12, lh);
+        for (const n of hl) markLine(n);
         ctx.restore();
       }
     }
@@ -2623,6 +2691,24 @@ function iconSuggest(name, icons, tags = {}) {
   };
   const ranked = names.map((n) => ({ n, sc: score(n) })).filter((x) => x.sc > 0.5).sort((a, b) => b.sc - a.sc).slice(0, 8).map((x) => x.n);
   return ranked.length ? ranked : suggest(name, names, 8);
+}
+
+// The narrowest layout of a text with as many lines as `lay`, so the lines come
+// out about the same length.
+function balanced(ctx, lay, spec) {
+  let lo = spec.maxWidth / lay.lines.length;
+  let hi = spec.maxWidth;
+  let best = lay;
+  for (let k = 0; k < 12 && hi - lo > 2; k++) {
+    const mid = (lo + hi) / 2;
+    const next = layoutText(ctx, { ...spec, maxWidth: mid });
+    if (next.lines.length > lay.lines.length) lo = mid;
+    else {
+      hi = mid;
+      best = next;
+    }
+  }
+  return best;
 }
 
 function geom(x, y, w, h, shape = 'rect') {

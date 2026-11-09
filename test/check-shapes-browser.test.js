@@ -192,7 +192,7 @@ const KIT = {
   ...Object.fromEntries(['good', 'bad', 'info', 'dark'].map((tone) => [`payoff${tone[0].toUpperCase()}${tone.slice(1)}`, `s.short.payoff({ tone: '${tone}', title: 'Fresh for weeks', lines: ['Paper bag for two days', 'Freezer for longer'] });`])),
 };
 const KIT_SCENES = { ...KIT, ...Object.fromEntries(Object.entries(KIT).map(([id, body]) => [`${id}OnBackdrop`, `s.short.backdrop(); ${body}`])) };
-const LOOKS = ['paper', 'clean', 'chalk', 'blueprint', 'midnight', 'editorial'];
+const LOOKS = ['paper', 'clean', 'chalk', 'blueprint', 'midnight', 'editorial', 'studio'];
 
 for (const theme of LOOKS) {
   test(`with "defaults": "0.5", every part of s.short reads in the ${theme} look with its own colors, so check gives no contrast warning`, { skip }, async (t) => {
@@ -397,4 +397,38 @@ test('an icon with a label returns the label\'s box and an outer box with both, 
   assert.equal('label' in plain || 'outer' in plain, false);
   // Text below outer clears the label, as check sees it.
   assert.deepEqual(issues.filter((i) => i.level !== 'hint'), []);
+});
+
+test('with "defaults": "0.6" pictures in a tall frame may fill s.full, past the content area, and text keeps to s.safe', { skip }, async (t) => {
+  const scenes = {
+    // A wave of the whole frame's width below the captions, a box at the
+    // bottom of the frame, and a label in the same place.
+    picture: `globalThis.full = s.full;
+    s.draw({ x: s.full.w / 2, y: s.full.bottom - 300, at: 0, box: { x: 0, y: 0, w: s.full.w, h: 120 } }, (ctx) => { ctx.fillRect(-s.full.w / 2, -60, s.full.w, 120); });
+    s.box({ x: s.full.w / 2, y: s.full.bottom - 120, w: 600, h: 160, color: 'blue', at: 0 });`,
+    words: `s.text('Below the captions', { x: s.full.w / 2, y: s.full.bottom - 500, at: 0 });`,
+    off: `s.draw({ x: s.full.w / 2, y: s.full.bottom, at: 0, box: { x: 0, y: 0, w: 400, h: 200 } }, (ctx) => { ctx.fillRect(-200, -100, 400, 200); });`,
+  };
+  const outside = (issues, scene) => messages(issues, scene, 'content area').length + messages(issues, scene, 'caption band').length;
+  const { issues: now, more: full } = await check(project(t, { size: 'tiktok', captions: 'bold', defaults: '0.6' }, scenes), (page) => page.evaluate(() => globalThis.full));
+  assert.deepEqual(full, { x: 0, y: 0, w: 1080, h: 1920, left: 0, top: 0, right: 1080, bottom: 1920 });
+  assert.equal(outside(now, 'picture'), 0, JSON.stringify(now));
+  assert.ok(outside(now, 'words') > 0, 'text below the content area still gets a warning');
+  assert.match(messages(now, 'off', 'runs off the frame')[0] ?? '', /the 1st s\.draw at 540,1920 runs off the frame/);
+  const before = await check(project(t, { size: 'tiktok', captions: 'bold', defaults: '0.5' }, scenes));
+  assert.ok(outside(before, 'picture') >= 2, 'with "0.5" the pictures get warnings');
+});
+
+test('check gives a hint when the first frame shows only the background or elements still coming in, and names one to show from the start', { skip }, async (t) => {
+  const first = (scenes) => check(project(t, {}, scenes), (page) => page.evaluate(() => window.explainroo.firstFrameIssue())).then((r) => r.more);
+  const empty = await first({
+    intro: `s.text('example.com', { y: 300, at: 1 });
+    s.icon('laptop', { id: 'a', x: 620, y: 660, size: 170, at: 1.5 });`,
+    next: `s.circle({ at: 0, enter: 'none' });`,
+  });
+  assert.deepEqual(empty, { level: 'hint', scene: 'intro', t: 0, message: 'the first frame of the video shows only the background, and Buffer, LinkedIn and other services use it as the thumbnail; give the icon "laptop" (id "a") at: -1, so it is there from the first frame' });
+  const coming = await first({ intro: `s.title('How a cache works', { at: 0 });` });
+  assert.equal(coming.message, 'the first frame of the video shows only elements that are still on their way in, and Buffer, LinkedIn and other services use it as the thumbnail; give the text "How a cache works" at: -1, so it is there from the first frame');
+  assert.equal(await first({ intro: `s.title('How a cache works', { at: 0, enter: 'none' }); s.icon('laptop', { y: 800, at: 1 });` }), null);
+  assert.equal(await first({ intro: `s.title('How a cache works', { at: -1 });` }), null);
 });

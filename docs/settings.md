@@ -29,7 +29,7 @@ the file keeps its order.
 | Setting | Default | What it does |
 |---|---|---|
 | `title` | from the script | shown in the preview |
-| `theme` | `paper` | a built-in look, or a relative path to a `.json` look file (see Custom looks) |
+| `theme` | `paper`, and `studio` in a project from `init` | a built-in look, or a relative path to a `.json` look file (see Custom looks) |
 | `size` | `16:9` | a platform (`youtube`, `shorts`, `tiktok`, `reels`, `vertical`, `instagram`, `linkedin`, `square`), `16:9`, `9:16`, `1:1`, `4:5` or `WIDTHxHEIGHT`; see `explainroo docs sizes` |
 | `fps` | 30 | 24, 25, 30, 50 or 60 |
 | `language` | `en` | narration language: `en`, `es`, `fr`, `it`, `pt-br`, `hi`, `ja` or `zh`, and `de` with a paid voice or a recording; see `explainroo docs languages` |
@@ -55,16 +55,19 @@ the file keeps its order.
 | `clipBudget` | none | the most all AI clips of the project may cost together, in US dollars, like `0.40`. `clip` stops before a clip that would go over it; see `explainroo docs clips` |
 | `brand` | none | colors, fonts and logo for `s.ui`; its `accent` also colors the spoken word in captions; see `explainroo docs product-demos` |
 | `fonts` | none | the video's own font files, see `explainroo docs product-demos` |
-| `defaults` | none | `"0.5"` gives the project the defaults of explainroo 0.5, see below. `init` writes it |
+| `defaults` | none | `"0.6"` gives the project the defaults of explainroo 0.6, which include those of 0.5, see below. `init` writes it |
 
 ### The defaults of a version
 
 Some defaults change how a video looks. So that a finished video comes out
-the same after an update, they apply only to a project with `"defaults":
-"0.5"` in `video.json`. `init` writes that line. A project without it keeps
-the look it had, frame for frame, also its cover. To give an older project
-the new look, add the line, then look at `still` and `sheet` again, because
-labels may move. The line changes these:
+the same after an update, they apply only to a project with `"defaults"` in
+`video.json`. `init` writes `"defaults": "0.6"`. A project without the line
+keeps the look it had, frame for frame, also its cover, and a project with
+`"0.5"` keeps the look of explainroo 0.5. To give an older project the new
+look, set the line to `"0.6"`, then look at `still` and `sheet` again,
+because labels may move.
+
+`"0.5"` changes these, and `"0.6"` has them too:
 
 - Arrow labels are body size, 48 pixels, and sit 44 pixels from the arrow.
   Before, they were 34 pixels, 34 pixels from it.
@@ -88,6 +91,23 @@ labels may move. The line changes these:
   look's highlight.
 - `"cover": "auto"` takes the fullest frame of the first scene, as above.
 
+`"0.6"` also changes these:
+
+- A title or subtitle that wraps breaks into lines of about the same length,
+  so no word is left alone on the last line.
+- Text follows one size scale: words on a card 44 pixels, the labels of
+  arrows and icons 40, chart labels 36, notes 34 and the values on bars 48.
+  Before, an arrow's label was 48, larger than the card it points at, an
+  icon's label 36 and a note 32.
+- A list is 48 pixels, and its items sit further apart.
+- A bar for a small value stays at least 8 pixels tall, so it doesn't vanish
+  into the axis. In looks with clean lines, the axis under the bars is a thin
+  muted line.
+- A highlighted line of code gets a bar in the accent color at its left edge.
+- On Shorts, TikTok and Reels, pictures and backgrounds may fill `s.full`,
+  past the content area, and `check` warns only about text outside `s.safe`
+  and pictures that run off the frame. See `explainroo docs short-video`.
+
 `check` finds the same problems with or without the line.
 
 The looks:
@@ -100,6 +120,14 @@ The looks:
 | `blueprint` | white drawings on blueprint blue | wipe | tech |
 | `midnight` | dark background with glowing colors | zoom | tech |
 | `editorial` | serif headlines and fine lines on warm paper, like a magazine | fade | calm |
+| `studio` | white cards on a soft light background, a band of color on a card with a color, list items on cards | fade | upbeat |
+
+`studio` is the look `init` picks when you don't name one. Its cards, labels
+and notes follow one size scale with `"defaults": "0.6"`, see above. A card
+with a `color` gets a band of that color along its top instead of a tinted
+fill. A list of two or more items puts each item on a card, numbered unless the
+list has a `bullet`. `card: false` on `s.list` leaves the cards out, and so
+does a `gap` too small for them.
 
 ## Custom looks
 
@@ -140,8 +168,9 @@ green, teal, blue, purple, pink, gray or ink.
 or listed in `video.json` under `fonts`. The look file does not load fonts.
 
 `background` picks a texture: `paper` (paper grain), `dots` (a dot grid),
-`chalk` (board smudges), `grid` (drafting lines), `glow` (two glows) or
-`plain` (one flat color). Each uses your `bg`. Leave it out to keep the base
+`chalk` (board smudges), `grid` (drafting lines), `glow` (two glows),
+`studio` (a soft light from the top left) or `plain` (one flat color). Each
+uses your `bg`. Leave it out to keep the base
 texture. `transition` and `music` set the look's defaults. Settings in
 `video.json` still win. `preview` picks up look edits, and `check` warns
 when `ink` or `muted` has too little contrast against `bg`.

@@ -13,12 +13,13 @@ user. Read it first.
 2. **Create the project.**
 
    ```bash
-   explainroo init videos/<name> --theme paper --size 16:9 --title "..."
+   explainroo init videos/<name> --theme studio --size 16:9 --title "..."
    ```
 
    A project can go in any folder. The examples here use `videos/<name>`. Each
    project's `.gitignore` covers its own output. Pick the look that fits the
-   audience: `paper` (friendly, hand drawn, the default), `clean`
+   audience: `studio` (light and calm, for products and most topics, the
+   default), `paper` (friendly, hand drawn), `clean`
    (products and business), `chalk` (teaching), `blueprint` (engineering),
    `midnight` (developer tools) or `editorial` (essays, history, money and
    other thoughtful topics). Pick the size for the place the video goes,

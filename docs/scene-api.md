@@ -93,6 +93,7 @@ there for your own math.
 | `s.W`, `s.H`, `s.cx`, `s.cy` | canvas size and its center (on Shorts, TikTok and Reels the center of `s.safe`) |
 | `s.portrait` | true when the frame is taller than wide |
 | `s.safe` | `{ x, y, w, h, left, top, right, bottom }`: the area for content (a 7% margin, or the part a platform leaves free) |
+| `s.full` | the same for the whole frame, for pictures that fill it, see `explainroo docs short-video` |
 | `s.row(n, { width, x })` | n x positions spread over a width |
 | `s.col(n, { height, y })` | n y positions spread over a height, centered in `s.safe` |
 | `s.grid(cols, rows, { x, y, w, h, gap })` | cells `{ x, y, w, h }`, row by row, filling `s.safe` |
@@ -124,7 +125,8 @@ one `exit: 'none'` and the new one the same time as its `at`.
 
 In `paper`, `chalk` and `blueprint`, shapes are drawn line by line and text
 is written out. In `clean` and `midnight`, shapes pop and text rises. In
-`editorial`, shapes fade in and text rises. Use
+`editorial`, shapes fade in and text rises. In `studio`, shapes and text
+rise. Use
 `at: -1` for things that were already on screen in the previous scene. They
 are there from the start and make no sound.
 
@@ -211,11 +213,11 @@ is 0 unless you set it. So `gap: 20` between two points leaves 20 pixels free
 at both ends.
 
 A label sits above a straight arrow, left of a vertical one and on the outer
-side of a curve, `labelOffset` away from the arrow's middle: 44 for a label of
-48 pixels, and 34 for one of 34. These are the defaults of `"defaults":
-"0.5"`, which `init` writes into `video.json`. A project without it keeps its
-old look: labels of 34 pixels, arrows that start at an icon's edge, and no
-`gap` at a point end. `explainroo docs settings` lists what the line changes.
+side of a curve, `labelOffset` away from the arrow's middle: 38 for a label of
+40 pixels with `"defaults": "0.6"`, which `init` writes, and 44 for 48
+with `"0.5"`. A project without the line keeps labels of 34
+pixels, 34 out, arrows that start at an icon's edge, and no `gap` at a point
+end. `explainroo docs settings` lists what the line changes.
 `labelSide: 'left'`, `'right'`, `'above'` or `'below'` puts it on that side
 instead. The third arrow above is vertical, and its label goes to the right,
 for example because the left side is near the edge or full. `check` treats
@@ -327,7 +329,8 @@ s.pie([{ label: 'Images', value: 55 }, { label: 'Other', value: 45 }], { donut: 
 
 - `s.list(items, options)`: items are text or `{ text, at, icon, color, out }`.
   `x` is the left edge and `y` the top. Options: `size` (50), `width`, `gap`,
-  `bullet` (`dot`, `dash`, `number`, `check`, `arrow` or an icon name),
+  `bullet` (`dot`, `dash`, `number`, `badge`, `check`, `arrow` or an icon
+  name), `card: false` (no cards in `studio`),
   `bulletColor`, `at` (a start time or a list of times), `stagger` (0.7),
   `enter`.
 - `s.number(value, options)` counts up with ticking sounds. Options: `from`,

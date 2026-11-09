@@ -194,7 +194,44 @@ const EDITORIAL = {
   caption: { bg: 'rgba(28,26,23,0.86)', fg: '#fffdf9', active: '#e3b866' },
 };
 
-export const THEMES = { paper: PAPER, clean: CLEAN, chalk: CHALK, blueprint: BLUEPRINT, midnight: MIDNIGHT, editorial: EDITORIAL };
+// Light and calm, for products and most topics: one sans-serif in three
+// weights, so arrow labels match the cards, white cards on a soft studio light,
+// and one size scale for cards, labels and notes in `type`.
+const STUDIO = {
+  name: 'studio',
+  background: 'studio',
+  music: 'upbeat',
+  dark: false,
+  bg: '#f3f4f7',
+  ink: '#10131f',
+  muted: '#596074',
+  surface: '#ffffff',
+  accent: 'blue',
+  colors: {
+    red: '#e5484d', orange: '#f2711c', yellow: '#f0b21b', green: '#2f9e66', teal: '#0f9d8f',
+    blue: '#3d5bf5', purple: '#7650d8', pink: '#d6409f', gray: '#8b90a0', ink: '#10131f',
+  },
+  fonts: {
+    display: { family: 'Inter', weight: 700, tracking: -0.03 },
+    body: { family: 'Inter', weight: 400 },
+    hand: { family: 'Inter', weight: 500 },
+    mono: { family: 'JetBrains Mono', weight: 400 },
+  },
+  stroke: { rough: false, width: 3 },
+  radius: 20,
+  tintStrength: 0.09,
+  shadow: { color: 'rgba(16,19,31,0.10)', blur: 44, y: 16 },
+  enter: { shape: 'rise', text: 'rise', title: 'rise', icon: 'pop', image: 'rise', list: 'rise', code: 'rise', chart: 'grow', number: 'rise', arrow: 'draw', line: 'draw' },
+  transition: 'fade',
+  sfx: { shape: 'pop', arrow: 'whoosh', line: 'whoosh', icon: 'pop', image: 'pop', text: null, title: null, list: 'blip', number: 'tick', annotate: 'whoosh', chart: 'whoosh', code: 'type', terminal: 'type', burst: 'sparkle', transition: 'swipe' },
+  code: { bg: '#12151f', fg: '#e6e8f0', comment: '#6b7286', keyword: '#b69cff', string: '#8fdcb0', number: '#ffc069', fn: '#82b4ff', punct: '#9aa1b5', lineNo: '#4a5064', highlight: 'rgba(61,91,245,0.24)', border: '#12151f' },
+  terminal: { bg: '#12151f', fg: '#e6e8f0', prompt: '#8fdcb0', muted: '#9aa1b5', bar: '#1d2130' },
+  caption: { bg: 'rgba(16,19,31,0.84)', fg: '#ffffff', active: '#9fb2ff' },
+  card: 'strip',
+  list: 'cards',
+};
+
+export const THEMES = { paper: PAPER, clean: CLEAN, chalk: CHALK, blueprint: BLUEPRINT, midnight: MIDNIGHT, editorial: EDITORIAL, studio: STUDIO };
 
 export function getTheme(name, look = null) {
   const t = THEMES[look ? look.extends : name];
@@ -360,6 +397,28 @@ export function makeBackground(theme, W, H, seed = 1) {
       glow(W * 0.12, H * 0.08, Math.max(W, H) * 0.6, tone('rgba(34,211,238,0.10)'));
       glow(W * 0.92, H * 0.95, Math.max(W, H) * 0.55, tone('rgba(167,139,250,0.10)'));
       noise(Math.round(W * H * 0.01), 0.05, tone('#ffffff'));
+      break;
+    }
+    case 'studio': {
+      // A soft light from the top left, like a photo studio's backdrop, with a
+      // faint cool and a faint warm wash at two corners.
+      const gr = g.createLinearGradient(0, 0, 0, H);
+      gr.addColorStop(0, tone('#f7f8fa'));
+      gr.addColorStop(1, tone('#eceef3'));
+      g.fillStyle = gr;
+      g.fillRect(0, 0, W, H);
+      const wash = (x, y, r, color) => {
+        const s = g.createRadialGradient(x, y, 0, x, y, r);
+        s.addColorStop(0, color);
+        s.addColorStop(1, withAlpha(color, 0));
+        g.fillStyle = s;
+        g.fillRect(0, 0, W, H);
+      };
+      const big = Math.max(W, H);
+      wash(W * 0.3, H * 0.18, big * 0.55, tone('rgba(255,255,255,0.85)'));
+      wash(W * 0.02, H * 0.02, big * 0.42, tone('rgba(110,134,255,0.10)'));
+      wash(W * 1.0, H * 1.0, big * 0.5, tone('rgba(255,170,120,0.09)'));
+      noise(Math.round(W * H * 0.006), 0.035, tone('#10131f'), 1);
       break;
     }
     default:

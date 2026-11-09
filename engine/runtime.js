@@ -677,6 +677,43 @@ export class Engine {
     return best.T;
   }
 
+  // A hint when the first frame of the video shows only the background, or
+  // only elements still on their way in, while the first scene's fullest frame
+  // shows something. Buffer, LinkedIn and other services take the first frame
+  // as the thumbnail. It names an element of that fuller frame to show from the
+  // start, a picture first.
+  firstFrameIssue() {
+    const sc = this.timeline.scenes[0];
+    if (!sc || this.framed(sc.index, 0).count > 0) return null;
+    const T = this.coverMoment();
+    const t = T - sc.start;
+    if (!(this.framed(sc.index, t).count > 0)) return null;
+    // What that frame shows, without the camera, in the order it was drawn.
+    const scratch = (this._framedCanvas ??= Object.assign(document.createElement('canvas'), { width: 16, height: 16 }));
+    const saved = { textLog: this.textLog, drawLog: this.drawLog, recorder: this.recorder, cameraOff: this.cameraOff };
+    this.textLog = [];
+    this.drawLog = drawLog();
+    this.recorder = null;
+    this.cameraOff = true;
+    let shapes;
+    let texts;
+    try {
+      this.drawScene(scratch.getContext('2d'), sc.index, t);
+      shapes = this.drawLog.shapes.filter((x) => x.settled && x.alpha > 0.95);
+      texts = this.textLog.filter((x) => !x.problem && x.settled && x.alpha > 0.95 && x.text !== 'code');
+    } catch {
+      return null;
+    } finally {
+      Object.assign(this, saved);
+    }
+    const shown = this.shownAt(sc.index, 0);
+    const what = shown ? 'shows only elements that are still on their way in' : 'shows only the background';
+    const picture = shapes.sort((a, b) => a.order - b.order)[0];
+    const name = picture ? shapeName(picture) : texts[0] ? `the text "${texts[0].text.length > 40 ? texts[0].text.slice(0, 37) + '...' : texts[0].text}"` : null;
+    const advice = name ? `give ${name} at: -1, so it is there from the first frame` : 'show one element from the start with at: -1';
+    return { level: 'hint', scene: sc.id, t: 0, message: `the first frame of the video ${what}, and Buffer, LinkedIn and other services use it as the thumbnail; ${advice}` };
+  }
+
   // A hint when the cover shows only text on an empty background, or when the
   // frame "auto" picked has no picture, which means no frame of the first scene
   // has one. `T` is the cover's time, or null for the time the page works out,
@@ -756,6 +793,10 @@ export class Engine {
     // Where content may go: the frame, its margin, the content area of a
     // platform size and the caption band.
     const areas = { W, H, margin, app: this.appArea, band: this.captionBand, format: this.config.format, safe: this.safeArea };
+    // With "defaults": "0.6", pictures in a tall frame of Shorts, TikTok or
+    // Reels may run into the parts the app covers and behind the captions, as
+    // long as they stay on the frame. Text keeps to s.safe.
+    const roomy = this.appArea && H > W && newDefaults(this.config, '0.6');
     const colors = Object.fromEntries(['ink', 'accent', ...Object.keys(this.theme.colors)].map(name => [name, colorOf(this.theme, name)]));
     let colorCtx;
     const pixelColor = color => {
@@ -887,7 +928,8 @@ export class Engine {
           if (!sh.settled || sh.alpha <= 0.95) continue;
           const drawing = sh.kind === 'drawing';
           if (!drawing && (fillsFrame(sh.box, W, H) || (sh.ui && sh.zoomed))) continue;
-          const message = edgeMessage(shapeName(sh), sh.box, areas, { edge: drawing });
+          if (roomy && !drawing) continue;
+          const message = roomy ? offFrame(shapeName(sh), sh.box, W, H) : edgeMessage(shapeName(sh), sh.box, areas, { edge: drawing });
           if (message) once(`drawing-edge:${sc.id}:${shapeKey(sh)}`, () => add('warn', sc.id, t, message));
         }
         // The line of an arrow counts in the frame like its label: off the frame,
@@ -901,6 +943,7 @@ export class Engine {
           const banded = !!band && line.points.some(([x, y]) => y > band.top + 2 && y < band.bottom - 2 && x > band.left && x < band.right);
           const near = !this.appArea && (b.x0 < margin || b.y0 < margin || b.x1 > W - margin || b.y1 > H - margin);
           const message = !inFrame(b) ? `${line.name} runs off the frame (${where} in a ${W}x${H} frame); move its ends inside`
+            : roomy ? null
             : contentMessage(line.name, b, areas, { band: banded })
               ?? (near ? `${line.name} comes closer than ${margin}px to the edge (${where})` : null)
               ?? (banded ? `${line.name} runs into the caption band (y ${Math.round(band.top)} to ${Math.round(band.bottom)}), where captions can cover it; keep it above s.safe.bottom (${Math.round(this.safeArea.bottom)})` : null);
@@ -1131,6 +1174,12 @@ function contentMessage(name, b, { app, safe, format }, { verb = 'reaches', band
   const area = `the ${format} content area (${R(safe.left)},${R(safe.top)} to ${R(safe.right)},${R(safe.bottom)}, ${R(safe.right - safe.left)}x${R(safe.bottom - safe.top)})`;
   if (out(app)) return `${name} ${verb} outside ${area}, where the app's buttons and post text can cover it`;
   return `${name} ${verb} outside ${area}, ${b.y0 < safe.top - 2 ? 'in the strip at the top that the watermark takes' : 'right next to the captions'}`;
+}
+
+// What check says about a box that runs off the frame, or null.
+function offFrame(name, b, W, H) {
+  if (b.x0 >= -1 && b.y0 >= -1 && b.x1 <= W + 1 && b.y1 <= H + 1) return null;
+  return `${name} runs off the frame (${Math.round(b.x0)},${Math.round(b.y0)} to ${Math.round(b.x1)},${Math.round(b.y1)} in a ${W}x${H} frame)`;
 }
 
 // What check says about a box that runs off the frame, outside the content area

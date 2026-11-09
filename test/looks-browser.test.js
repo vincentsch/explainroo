@@ -85,12 +85,12 @@ test('check warns about the custom look palette at the ink and muted thresholds'
   });
 });
 
-test('all six textures follow bg and render deterministically regardless of the base look', { skip: !chrome }, async t => {
+test('all seven textures follow bg and render deterministically regardless of the base look', { skip: !chrome }, async t => {
   const { project, timeline } = fixture(t, { extends: 'clean' });
   await withEngine(project, timeline, {}, async page => {
     const results = await page.evaluate(async () => {
       const { getTheme, makeBackground } = await import('/engine/themes.js');
-      return ['paper', 'dots', 'chalk', 'grid', 'glow', 'plain'].map(background => {
+      return ['paper', 'dots', 'chalk', 'grid', 'glow', 'studio', 'plain'].map(background => {
         const draw = (base, bg) => makeBackground(getTheme('', { extends: base, name: 'custom', background, bg }), 160, 90, 4);
         const a = draw('clean', '#9b5c32');
         const b = draw('paper', '#9b5c32');

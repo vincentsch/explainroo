@@ -243,6 +243,7 @@ export async function check(project, { log = () => {}, step = 0.25, viewWidth = 
     ...(await page.evaluate(([s, w]) => window.explainroo.check(s, w), [step, viewWidth])),
     ...(await page.evaluate(() => window.explainroo.soundFileIssues())),
     ...(cover ? [await page.evaluate(([T, auto]) => window.explainroo.coverIssue(T, auto), [cover.T, !!cover.auto])].filter(Boolean) : []),
+    ...[await page.evaluate(() => window.explainroo.firstFrameIssue())].filter(Boolean),
   ]);
   issues.push(...pageIssues);
   const order = { error: 0, warn: 1, hint: 2 };

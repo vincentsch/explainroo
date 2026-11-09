@@ -43,13 +43,47 @@ hook(s) {
 Both layouts share the narration and its cues, so the cue words and markers
 work in both.
 
+## Fill the whole frame
+
+On Shorts, TikTok and Reels, `s.safe` ends above the captions, so a scene
+placed only from it leaves the lower 40% of the frame empty. With
+`"defaults": "0.6"`, pictures and backgrounds may run into the parts the app
+covers with its buttons and post text. Only words and the details the viewer
+must see stay in `s.safe`. `s.full` is the whole frame, `{ x, y, w, h, left,
+top, right, bottom }`, for the pictures that fill it:
+
+```js
+problem(s) {
+  const { top, h, bottom } = s.safe;
+  const u = Math.min(s.safe.w, h) / 100;
+  s.short.hook('How *noise-cancelling* headphones work', { y: top + h * 0.15 });
+  s.icon('plane', { y: top + h * 0.47, size: u * 22, label: 'Plane engines', at: 0.1 });
+  s.icon('headphones', { y: top + h * 0.8, size: u * 22, label: 'Noise-cancelling', at: 'headphones' });
+  // A band fills the bottom of the frame, edge to edge, behind the captions,
+  // with the hum drawn on it.
+  const band = s.full.bottom - bottom;
+  s.box({ x: s.full.w / 2, y: bottom + band / 2, w: s.full.w, h: band, fill: s.tint('blue'), border: false, radius: 0, at: 'hum' });
+  for (let i = 0; i < 4; i++) {
+    const y = bottom + (s.full.bottom - bottom) * (0.2 + i * 0.22);
+    s.line([[s.full.left, y], [s.full.right, y]], { color: 'blue', width: 8 - i * 2, at: 'hum' });
+  }
+},
+```
+
+`check` still warns about text outside `s.safe`, and about any picture that
+runs off the frame. Look at the frame with `still --platform tiktok`: the
+app's buttons may cover part of a picture down there, so keep what matters
+higher up.
+
 ## The first frame
 
 Feeds often show the first frame before anyone presses play, and many apps use
 it as the cover. A title that draws itself in leaves that frame empty.
 `s.short.hook` is there on the first frame by default, with no entrance, so the
 frame says what the video is about. Give it a later `at` only when the scene
-starts with something else to look at.
+starts with something else to look at. `check` gives a hint when the first frame of
+the video shows only the background, or only elements still on their way in,
+and names one to give `at: -1`.
 
 The cover that `render` and `package` write shows the hook too. With
 `"cover": "auto"` and `"defaults": "0.5"` it is the frame of the first scene
