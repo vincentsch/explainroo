@@ -51,6 +51,8 @@ watermark, and the other platforms, Reels too, keep the one in `video.json`.
 `--no-watermark`, or off by the platform's rule, like "watermark: off, because
 TikTok asks apps that post to it not to add one".
 
+## Render files and speed
+
 The extra files share the video's name, also with `--out`: `video.srt`,
 `video.vtt`, `video.cover.jpg` and `video.chapters.txt`. A GIF has no sound,
 runs at 15 frames per second and is at most 960 pixels on its long side.
