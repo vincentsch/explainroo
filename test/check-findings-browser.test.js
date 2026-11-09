@@ -398,3 +398,16 @@ test('check gives a hint for text below 40 pixels in a tall or square frame, whi
   const wide = await check(project(t, { camera: 'still' }, scenes));
   assert.deepEqual(wide.filter((i) => /small on a phone/.test(i.message)), []);
 });
+
+test('when the scene\'s camera zoom pushes text out of the TikTok content area, check names the zoom', { skip }, async (t) => {
+  const issues = await check(project(t, { size: 'tiktok', captions: false }, {
+    zoomed: `s.camera([{ at: 0.5, zoom: 1.6, dur: 0.2 }]);
+    s.text('Wide words here', { x: s.cx, y: s.cy, size: 60, at: 0 });`,
+    plain: `s.text('Out anyway', { x: 900, y: s.cy, size: 40, at: 0 });`,
+  }));
+  const said = (scene) => issues.filter((i) => i.scene === scene && /content area/.test(i.message)).map((i) => i.message);
+  assert.equal(said('zoomed').length, 1, JSON.stringify(issues));
+  assert.match(said('zoomed')[0], /^"Wide words here" is outside the tiktok content area .*\. The camera's zoom of 1\.6x pushes it there, and without the zoom it fits: zoom less, or move it toward the point the camera zooms onto$/);
+  assert.equal(said('plain').length, 1, JSON.stringify(issues));
+  assert.doesNotMatch(said('plain')[0], /camera/);
+});

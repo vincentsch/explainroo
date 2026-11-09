@@ -828,6 +828,9 @@ export class Stage {
     }
     const ctx = this.ctx;
     this._camMoved = cur.zoom !== 1 || cur.x !== this.cx || cur.y !== this.cy || Boolean(cur.rotate) || Boolean(o.shake);
+    // check undoes the camera on a box outside the content area, to tell
+    // whether the zoom is what put it there.
+    if (this.engine.drawLog) this.engine.sceneCamera = { ...cur, cx: this.cx, cy: this.cy };
     ctx.translate(this.cx, this.cy);
     if (cur.rotate) ctx.rotate((cur.rotate * Math.PI) / 180);
     ctx.scale(cur.zoom, cur.zoom);

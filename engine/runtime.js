@@ -883,6 +883,7 @@ export class Engine {
         this.recorder = { push: (e) => entrances.push(e) };
         this.textLog = [];
         this.drawLog = drawLog();
+        this.sceneCamera = null;
         try {
           this.drawScene(ctx, sc.index, t);
         } catch (e) {
@@ -905,7 +906,7 @@ export class Engine {
           } else if (this.appArea) {
             // On Shorts, TikTok and Reels: outside the content area, s.safe.
             const message = framed ? contentMessage(`"${label}"`, tx, areas, { verb: 'is', band: inBand(tx, this.captionBand) }) : null;
-            if (message) once(`app:${sc.id}:${tx.text}`, () => add('warn', sc.id, t, message));
+            if (message) once(`app:${sc.id}:${tx.text}`, () => add('warn', sc.id, t, message + zoomCause(tx, this.sceneCamera, areas, inBand(tx, this.captionBand))));
           } else if (framed && (tx.x0 < margin || tx.y0 < margin || tx.x1 > W - margin || tx.y1 > H - margin)) {
             once(`edge:${sc.id}:${tx.text}`, () => add('warn', sc.id, t, `"${label}" sits closer than ${margin}px to the edge`));
           }
@@ -1218,6 +1219,18 @@ function contentMessage(name, b, { app, safe, format }, { verb = 'reaches', band
   const area = `the ${format} content area (${R(safe.left)},${R(safe.top)} to ${R(safe.right)},${R(safe.bottom)}, ${R(safe.right - safe.left)}x${R(safe.bottom - safe.top)})`;
   if (out(app)) return `${name} ${verb} outside ${area}, where the app's buttons and post text can cover it`;
   return `${name} ${verb} outside ${area}, ${b.y0 < safe.top - 2 ? 'in the strip at the top that the watermark takes' : 'right next to the captions'}`;
+}
+
+// Why a box is outside the content area when the scene's own camera zooms in
+// and it fits there without the zoom: the text that check adds, or ''.
+function zoomCause(b, cam, areas, band) {
+  if (!cam || cam.zoom <= 1.001 || cam.rotate) return '';
+  const back = (x, y) => [cam.x + (x - cam.cx) / cam.zoom, cam.y + (y - cam.cy) / cam.zoom];
+  const [x0, y0] = back(b.x0, b.y0);
+  const [x1, y1] = back(b.x1, b.y1);
+  if (contentMessage('', { x0, y0, x1, y1 }, areas, { band })) return '';
+  const zoom = Math.round(cam.zoom * 100) / 100;
+  return `. The camera's zoom of ${zoom}x pushes it there, and without the zoom it fits: zoom less, or move it toward the point the camera zooms onto`;
 }
 
 // What check says about a box that runs off the frame, or null.

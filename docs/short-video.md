@@ -228,7 +228,9 @@ marks. `tone` (`'good'`, `'bad'`, `'info'` or `'dark'`), `icon`, `title`,
 Camera keys to spread into `s.camera([...])`. `punch` zooms fast onto `x`, `y`
 at `at`, holds for `hold` seconds and goes back, unless `back: false`. Also
 `zoom` (1.35) and `dur`. `drift` pushes in slowly over the rest of the scene:
-`from`, `x`, `y`, `zoom` (1.06) and `dur`.
+`from`, `x`, `y`, `zoom` (1.06) and `dur`. A zoom makes everything bigger
+around the point it zooms onto, so text near the edge of `s.safe` can leave it.
+When the zoom is what puts text outside the content area, `check` says so.
 
 ### `jolt(at, options)`, `flash(at, options)` and `interrupt(at, options)`
 

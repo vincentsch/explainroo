@@ -51,6 +51,17 @@ test('vertical-short draws pictures below the captions, and keeps its words insi
   for (const scene of loadProject(dir).script.scenes) cachedVoice(dir, scene.id);
   const { issues } = JSON.parse((await runCli(['check', dir, '--json'])).stdout);
   assert.deepEqual(issues.filter((i) => /content area|caption band|off the frame/.test(i.message)), []);
+  // At an app's size, long words in fact() and beats() stay in the content
+  // area, also at the zoom of the scene's punch().
+  const tiktok = path.join(root, 'tiktok');
+  assert.equal((await runCli(['init', tiktok, '--format', 'vertical-short', '--size', 'tiktok'])).code, 0);
+  const file = path.join(tiktok, 'scenes.js');
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8')
+    .replace("label: 'It comes back'", "label: 'It may come back after all'")
+    .replace("fact(s, '*20%*', { at: '#twenty' });", "fact(s, 'Only *20%* left in the cold', { at: '#twenty' });"));
+  for (const scene of loadProject(tiktok).script.scenes) cachedVoice(tiktok, scene.id);
+  const long = JSON.parse((await runCli(['check', tiktok, '--json'])).stdout).issues;
+  assert.deepEqual(long.filter((i) => /content area|caption band|off the frame/.test(i.message)), []);
   // "why" starts on the background alone, and its first beat comes on "still".
   assert.equal((await runCli(['still', dir, 'why@0.1', 'why@end', '--no-watermark'])).code, 0);
   const stills = path.join(dir, 'out', 'stills-no-watermark');
