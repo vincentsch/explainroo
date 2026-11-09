@@ -1,6 +1,6 @@
 # Sizes for each platform
 
-Set `size` to the place the video goes. `explainroo formats` lists the sizes.
+Set `size` to the place the video goes. `explainroo sizes` lists the sizes.
 
 | Size | Pixels | For |
 |---|---|---|
@@ -40,7 +40,7 @@ band is shorter and the content area taller. Without captions, the content
 area reaches down to the app's own text.
 
 These are the content areas of the tall app sizes in pixels, as width x height
-at the top left corner, with the watermark and without it. `explainroo formats`
+at the top left corner, with the watermark and without it. `explainroo sizes`
 prints the same numbers, and `check` names the area in its warnings, like
 "outside the tiktok content area (119,240 to 864,1103, 745x863)".
 

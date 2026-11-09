@@ -16,7 +16,7 @@ export const COMMAND_HELP = {
   init: {
     usage: 'init <dir> [options]',
     about: 'Creates a project: video.json, a script.md and a scenes.js with the same scene names, and an assets folder.',
-    options: [['--title "<title>"', 'the title of the video'], ['--theme <look>', 'paper, clean, chalk, blueprint, midnight or editorial'], ['--size <size>', 'like 16:9, tiktok or linkedin'], ['--pace <n>', 'speed of the whole video, 0.7 to 1.6'], ['--language <code>', 'en, es, fr, it, pt-br, hi, ja or zh'], ['--voice <id>', 'a Kokoro voice, see "explainroo voices"']],
+    options: [['--format <format>', 'start from a format: its settings, its example script and scenes, its scene helpers in format.js and its guide in format.md. "explainroo formats" lists them'], ['--title "<title>"', 'the title of the video'], ['--theme <look>', 'paper, clean, chalk, blueprint, midnight or editorial'], ['--size <size>', 'like 16:9, tiktok or linkedin'], ['--pace <n>', 'speed of the whole video, 0.7 to 1.6'], ['--language <code>', 'en, es, fr, it, pt-br, hi, ja or zh'], ['--voice <id>', 'a Kokoro voice, see "explainroo voices"']],
     example: 'init videos/how-dns-works --theme chalk --title "How DNS works"',
   },
   set: {
@@ -152,7 +152,13 @@ export const COMMAND_HELP = {
     example: 'say "Hello there" --voice am_michael',
   },
   themes: { usage: 'themes [options]', about: 'Lists the looks and the music styles.', options: [JSON_OUT], example: 'themes' },
-  formats: { usage: 'formats [options]', about: 'Lists the sizes, with the content area of each with and without the watermark, also with bold captions. The content area is s.safe, and the caption band is not part of it.', options: [JSON_OUT], example: 'formats' },
+  formats: {
+    usage: 'formats [format] [options], or formats add <git address> [options]',
+    about: 'Lists the formats, built in and installed, or prints the guide of one. A format is a ready way of making one kind of video. "formats add" prints the git commands it will run and installs nothing without --yes. Installing runs no code from the format.',
+    options: [['--commit <id>', 'with add: install the format as it is at this commit'], ['--yes', 'with add: install it'], JSON_OUT],
+    example: 'formats add https://github.com/<user>/<repo>.git --commit 3f2a9c1',
+  },
+  sizes: { usage: 'sizes [options]', about: 'Lists the sizes, with the content area of each with and without the watermark, also with bold captions. The content area is s.safe, and the caption band is not part of it.', options: [JSON_OUT], example: 'sizes' },
   icons: { usage: 'icons <word…> [options]', about: 'Searches the built-in icons, one match per line.', options: [JSON_OUT], example: 'icons database' },
   doctor: {
     usage: 'doctor [project] [options]',

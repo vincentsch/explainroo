@@ -213,10 +213,10 @@ test('with "defaults": "0.5" an automatic cover is worked out in the page at eve
   assert.ok(planExtras(p, tl).coverTime.T < 1);
 });
 
-test('formats prints the content area with and without the watermark, the same areas check uses', (t) => {
-  const r = spawnSync(process.execPath, [bin, 'formats', '--json'], { encoding: 'utf8' });
+test('sizes prints the content area with and without the watermark, the same areas check uses', (t) => {
+  const r = spawnSync(process.execPath, [bin, 'sizes', '--json'], { encoding: 'utf8' });
   assert.equal(r.status, 0, r.stderr);
-  const { formats } = JSON.parse(r.stdout);
+  const { sizes: formats } = JSON.parse(r.stdout);
   assert.deepEqual(formats.map((f) => f.name), Object.keys(FORMATS));
   // check hands the page the project's settings, and the page measures its areas with layoutAreas.
   const dir = project(t);
@@ -232,7 +232,7 @@ test('formats prints the content area with and without the watermark, the same a
   const tiktok = formats.find((f) => f.name === 'tiktok');
   assert.ok(tiktok.content_without_watermark.y < tiktok.content.y, 'the watermark moves the top down on TikTok');
   assert.equal(tiktok.content_without_watermark.y + tiktok.content_without_watermark.h, tiktok.content.y + tiktok.content.h);
-  const text = spawnSync(process.execPath, [bin, 'formats'], { encoding: 'utf8' }).stdout;
+  const text = spawnSync(process.execPath, [bin, 'sizes'], { encoding: 'utf8' }).stdout;
   const { content: on, content_without_watermark: off } = tiktok;
   assert.ok(text.includes(`content area ${on.w}x${on.h} at ${on.x},${on.y} with the watermark, ${off.w}x${off.h} at ${off.x},${off.y} without it, captions below it`), text);
   assert.match(text, /"check --size <name> --no-watermark" the one without it/);
