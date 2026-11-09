@@ -13,7 +13,8 @@ export default {
   intro(s) {
     const { top, h, w } = s.safe;
     const u = Math.min(w, h) / 100;
-    s.title('{{title}}', { y: top + h * (s.portrait ? 0.3 : 0.38), size: u * 11, at: 0 });
+    // at: -1 puts the title on the first frame, which many apps show as the thumbnail.
+    s.title('{{title}}', { y: top + h * (s.portrait ? 0.3 : 0.38), size: u * 11, at: -1 });
     s.box('The picture for the intro goes here', { y: top + h * (s.portrait ? 0.6 : 0.7), size: u * 5.5, at: 0.4 });
   },
 
