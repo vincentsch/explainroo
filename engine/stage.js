@@ -752,6 +752,13 @@ export class Stage {
     if (log) log.push({ scene: this.id, t: this.t, problem: message, level: 'warn', key });
   }
 
+  // A hint for `check` that holds for the whole video, like a brand color that
+  // was replaced. It shows once, however often it is found.
+  _hint(message, key = message) {
+    const log = this.engine.textLog;
+    if (log) log.push({ scene: this.id, t: this.t, problem: message, level: 'hint', key, video: true });
+  }
+
   _autoTextColor(fill, fallback) {
     if (!fill || fill === 'none') return fallback;
     fill = opaque(fill, this.theme.bg);
@@ -1120,6 +1127,9 @@ export class Stage {
         for (const w of line.words) drawWord(w, lx0 + w.x, oy + line.y, a);
       });
     }
+    // brand.accent replaced by a color that reads, on starred words that use it.
+    const note = o.mark === undefined && this.engine.brandAccentNote;
+    if (note && lay.lines.some((line) => line.words.some((w) => w.accent))) this._hint(note, 'brand accent text');
     const marked = o.bg && lay.lines.some((line) => line.words.some((w) => w.accent));
     const label = plain.length > 40 ? plain.slice(0, 37) + '...' : plain;
     const partial = this._partial(o._counting ?? (['type', 'write', 'words', 'sync'].includes(life.enter) && life.p < 1 ? { name: `"${label}"`, doing: life.enter === 'type' ? 'still typing' : 'still writing itself' } : null));

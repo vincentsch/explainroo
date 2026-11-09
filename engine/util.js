@@ -161,6 +161,13 @@ function hslHex({ h, s, l }) {
   return '#' + channel(0) + channel(8) + channel(4);
 }
 
+// What check says when brand.accent gives way to a color that reads, like
+// "brand.accent #f96932 is hard to read behind white keywords (2.9:1, below
+// 3:1), so their box uses #e5233d".
+export function accentNote(accent, ratio, min, where, instead) {
+  return `brand.accent ${accent} is hard to read ${where} (${(Math.floor(ratio * 10) / 10).toFixed(1)}:1, below ${min}:1), so ${instead}`;
+}
+
 export function suggestColor(fg, bg, size = 0, colors = {}) {
   if (!parseColor(fg) || !parseColor(bg)) return null;
   const min = size >= 48 ? 3 : 4.5;

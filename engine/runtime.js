@@ -6,7 +6,7 @@ import { getTheme, makeBackground, fontString, colorOf } from './themes.js';
 import { Pen } from './pen.js';
 import { drawTransition } from './transitions.js';
 import { buildPhrases, drawCaptions, buildChunks, drawBoldCaptions, captionHighlight } from './captions.js';
-import { AUDIO_FILE, clamp, hashStr, mulberry32, suggest, suggestColor, contrast, luminance, opaque, withAlpha, parseColor, mixColor, rgba, cssColor, newDefaults } from './util.js';
+import { AUDIO_FILE, clamp, hashStr, mulberry32, suggest, suggestColor, contrast, luminance, opaque, withAlpha, parseColor, mixColor, rgba, cssColor, newDefaults, accentNote } from './util.js';
 import { overlapDepth, holds, crosses, bounds, inside, toEdge, grow } from './geometry.js';
 import { layoutAreas } from './layout.js';
 import { loadClips, soundURL, ClipFrames, FREEZE_SECONDS, FIT_SPEEDS } from './clips.js';
@@ -109,6 +109,8 @@ export class Engine {
     // background where it is hard to read, below 3:1, it keeps its hue and
     // gets lighter or darker until it reads, as in captions.
     this.brandAccent = brand.accent ? (contrast(brand.accent, this.theme.bg) >= 3 ? brand.accent : suggestColor(brand.accent, this.theme.bg, 0)?.color ?? null) : null;
+    // check names the color used instead when a starred word shows it.
+    this.brandAccentNote = brand.accent && this.brandAccent !== brand.accent ? accentNote(brand.accent, contrast(brand.accent, this.theme.bg), 3, 'on the background', `*starred* words use ${this.brandAccent ?? `the look's accent ${this.theme.colors?.[this.theme.accent] ?? this.theme.accent}`}${this.brandAccent ? `, the same hue made ${contrast(this.brandAccent, '#ffffff') < contrast(brand.accent, '#ffffff') ? 'lighter' : 'darker'}` : ''}`) : null;
     this.pen = new Pen({ rough, theme: this.theme });
     this.icons = icons;
     this.iconCache = new Map();
@@ -942,7 +944,7 @@ export class Engine {
           break;
         }
         const laid = { texts: this.textLog.filter((x) => !x.problem), draw: this.drawLog };
-        for (const pr of this.textLog.filter((x) => x.problem)) once(`problem:${sc.id}:${pr.key ?? pr.problem}`, () => add(pr.level ?? 'error', sc.id, t, pr.problem));
+        for (const pr of this.textLog.filter((x) => x.problem)) once(pr.video ? `problem:${pr.key}` : `problem:${sc.id}:${pr.key ?? pr.problem}`, () => add(pr.level ?? 'error', sc.id, t, pr.problem));
         if (shownAt === null && laid.draw.shown > 0) shownAt = t;
         filled.push({ t, shown: laid.draw.shown > 0 });
         const texts = laid.texts.filter((x) => x.alpha > 0.5);

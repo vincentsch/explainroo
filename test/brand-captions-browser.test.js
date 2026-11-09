@@ -185,3 +185,22 @@ test('with "defaults": "0.6" brand.accent colors starred words in s.title and s.
   const pale = await colorsIn(dir);
   assert.ok(pale.olive.elsewhere > 500 && pale.yellow.elsewhere < 100, `darker yellow words on white: ${JSON.stringify(pale)}`);
 });
+
+test('check names brand.accent, its contrast and the color used instead when starred words or hook keywords can\'t use it', { skip, timeout: 240000 }, async (t) => {
+  const dir = bakery(t, { captions: false, defaults: '0.6', brand: { accent: '#ffd23f', background: '#ffffff' } });
+  fs.writeFileSync(path.join(dir, 'scenes.js'), "export default { intro(s) { s.title('Fresh *bread*', { y: 200, enter: 'none' }); s.text('Baked *today*', { y: 420, enter: 'none' }); } };");
+  const accentHints = async () => JSON.parse((await cli(['check', dir, '--json'])).stdout).issues.filter((i) => i.message.startsWith('brand.accent'));
+  const [starred, ...more] = await accentHints();
+  assert.deepEqual(more, [], 'one hint for the whole video');
+  assert.equal(starred.level, 'hint');
+  assert.match(starred.message, /^brand\.accent #ffd23f is hard to read on the background \(1\.\d:1, below 3:1\), so \*starred\* words use #[0-9a-f]{6}, the same hue made darker$/);
+  // A slab hook in a short: white keywords on the accent read poorly, so the box keeps its red.
+  fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ ...SETTINGS, size: 'shorts', captions: false, defaults: '0.6', brand: { accent: '#f96932' } }));
+  fs.writeFileSync(path.join(dir, 'scenes.js'), "export default { intro(s) { s.short.hook('Solve it in *seconds*', { style: 'slab' }); } };");
+  cachedVoice(dir, 'intro');
+  assert.deepEqual((await accentHints()).map((i) => [i.level, i.message]), [['hint', 'brand.accent #f96932 is hard to read as the box behind white keywords in the hook (2.9:1, below 3:1), so their box uses #e5233d']]);
+  // An accent that reads gives no hint.
+  fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ ...SETTINGS, size: 'shorts', captions: false, defaults: '0.6', brand: { accent: '#b8400a' } }));
+  cachedVoice(dir, 'intro');
+  assert.deepEqual(await accentHints(), []);
+});

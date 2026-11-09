@@ -9,10 +9,12 @@
 // block. A scene that wants a move sets s.camera with punch() or drift().
 
 import { fontStack, colorOf } from './themes.js';
-import { contrast, cssColor, opaque, suggestColor, newDefaults, mixColor } from './util.js';
+import { contrast, cssColor, opaque, suggestColor, newDefaults, mixColor, accentNote } from './util.js';
 
 const INK = '#0b0b10';
 const KEY = '#ffd43b';
+// The box behind the keywords of a slab hook.
+const KEY_BOX = '#e5233d';
 const TONES = {
   good: { bg: '#12a150', icon: 'circle-check' },
   bad: { bg: '#e5233d', icon: 'circle-x' },
@@ -478,6 +480,7 @@ export class Short {
     const plain = style === 'plain' && newDefaults(s.engine.config) ? plainColors(s.theme, this.behind(y), size) : null;
     // With "defaults": "0.6", keywords take brand.accent where it reads.
     const brand = v6 ? this.brandKey(style, y, size) : null;
+    if (v6 && !brand && lines.some((l) => l.words.some((w) => w.key))) this.brandKeyNote(style, y, size, o, plain);
     if (o.kicker) place(() => this.kicker(o.kicker, { x, y: kickerY, size: kickerSize, color: o.kickerColor, icon: o.kickerIcon, at: first ? -1 : a, out: o.out }));
     if (!life) return geom(x, y, maxLineW, blockH);
     const c = this.c;
@@ -500,7 +503,7 @@ export class Short {
       let wx = -line.w / 2;
       for (const w of line.words) {
         const ww = this.measure(w.text, size, weight);
-        const keyBg = o.keyBg ?? brand ?? '#e5233d';
+        const keyBg = o.keyBg ?? brand ?? KEY_BOX;
         if (w.key && style === 'slab') this.roundRect(wx - size * 0.1, -lh / 2 + size * 0.1, ww + size * 0.2, lh - size * 0.2, size * 0.12, keyBg);
         const color = style === 'slab' ? (w.key ? o.keyColor ?? '#ffffff' : o.color ?? INK) : w.key ? o.keyColor ?? brand ?? plain?.key ?? KEY : o.color ?? plain?.ink ?? (style === 'stroke' ? '#ffffff' : s.theme.ink);
         // check measures a plain hook against what the scene painted behind it,
@@ -542,6 +545,23 @@ export class Short {
     if (style === 'slab') return contrast('#ffffff', accent) >= min ? accent : null;
     const behind = cssColor(style === 'stroke' ? INK : this.behind(y));
     return behind && contrast(accent, behind) >= min ? accent : null;
+  }
+
+  // A hint for check when brand.accent is set and the hook's keywords don't
+  // use it, because it reads too poorly: the color, its contrast and the color
+  // used instead. Keywords with their own keyBg or keyColor need none.
+  brandKeyNote(style, y, size, o, plain) {
+    const accent = cssColor(this.s.engine.config.brand?.accent ?? '');
+    if (!accent || (style === 'slab' ? o.keyBg : o.keyColor)) return;
+    const min = size >= 48 ? 3 : 4.5;
+    const name = this.s.engine.config.brand.accent;
+    if (style === 'slab') {
+      this.s._hint(accentNote(name, contrast('#ffffff', accent), min, 'as the box behind white keywords in the hook', `their box uses ${KEY_BOX}`), `brand accent hook ${style}`);
+      return;
+    }
+    const behind = cssColor(style === 'stroke' ? INK : this.behind(y));
+    if (!behind) return;
+    this.s._hint(accentNote(name, contrast(accent, behind), min, `on what is behind the hook's keywords`, `they use ${plain?.key ?? KEY}`), `brand accent hook ${style}`);
   }
 
   // The kicker's size: 44 in a tall frame and 40 in others with

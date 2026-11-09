@@ -199,7 +199,9 @@ in, like the part of `s.safe` that a zoom keeps on screen.
 
 Keywords are yellow by default, and with `"defaults": "0.6"` they take
 `brand.accent` from `video.json` when it reads: as the box behind the white
-keywords of a slab, or as their color on what is behind them. With
+keywords of a slab, or as their color on what is behind them. When it doesn't
+read, `check` gives a hint with the color, its contrast and the color used
+instead. With
 `"defaults": "0.5"`, a `'plain'` hook
 picks colors that read on what is behind it. On a light look the keywords take
 the look's accent, made darker if it needs that. When the look's ink is too
