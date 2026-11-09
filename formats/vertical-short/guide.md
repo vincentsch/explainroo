@@ -26,7 +26,8 @@ here serves that second and keeps the picture moving after it.
   change.
 - One promise per video, paid off before the end.
 - Short sentences of 6 to 14 words, spoken to one person.
-- Text at least 48 pixels, and the subject fills the content area.
+- Text at least 48 pixels, and the subject fills the content area. Words
+  stay in `s.safe`. The picture below the captions comes from `s.full`.
 - The payoff is the clearest frame of the video.
 
 ## The helpers in format.js
@@ -36,11 +37,16 @@ here serves that second and keeps the picture moving after it.
 - `beats(s, [{ at, icon, label, color }])` shows one big picture per cue, each
   one replacing the one before. Give each beat its own `[#marker]`, at most 2
   seconds apart.
+- `echo(s, icon, { color, at, out })` draws a large, faint copy of the
+  subject below the captions, edge to edge in `s.full`. `hookFrame`, `beats`
+  and `payoff` call it, so the tall frame is never empty at the bottom. The
+  apps cover part of it with their buttons, so nothing there must be read.
 - `fact(s, '*20%*', { at })` puts one fact on a tilted sticker.
 - `punch(s, at)` gives camera keys for a fast zoom. Use it as
   `s.camera(punch(s, '#back'))`, first in the scene.
 - `backdrop(s, { glow, pattern })` draws the background of a scene.
-- `payoff(s, title, lines)` is the closing card.
+- `payoff(s, title, lines, { icon })` is the closing card, with `icon` as
+  its echo.
 
 `explainroo docs short-video` has the whole `s.short` kit, and `s.safe` keeps
 text out of the apps' buttons.

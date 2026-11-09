@@ -9,10 +9,10 @@ pictures.
 
 | Format | For | Size and look |
 | --- | --- | --- |
-| `product-launch` | a launch video of about a minute: name and promise, the problem, the app at work, three features, where to get it | 16:9, `clean` |
+| `product-launch` | a launch video of about a minute: name and promise, the problem, the app at work, three features, where to get it | 16:9, `studio` |
 | `narrated-explainer` | one idea in about a minute: a question, how it works, one number, why it matters, what to remember | 16:9, `paper` |
 | `vertical-short` | a short of 20 to 60 seconds for Shorts, TikTok and Reels, with the hook in the first second | `vertical`, `midnight`, bold captions |
-| `product-ad` | an ad of 15 to 30 seconds for a feed: a question, the product, three benefits, one offer | square, `clean`, bold captions |
+| `product-ad` | an ad of 15 to 30 seconds for a feed: a question, the product, three benefits, one offer | square, `studio`, bold captions |
 
 `explainroo formats` lists them with the formats you installed, and
 `explainroo formats <format>` prints the guide of one.
@@ -37,8 +37,9 @@ names in `script.md` and `scenes.js` the same, and replace the example's words
 and pictures. A format never makes up facts for you. The example's product and
 its claims are made up, so none of them may stay in the user's video.
 
-The helpers place everything from `s.safe`, so most scenes also work in
-another size. Look at stills after you change the size.
+The helpers place words from `s.safe`, so most scenes also work in another
+size. In a tall frame, `vertical-short` also fills the part below the
+captions from `s.full`. Look at stills after you change the size.
 
 ## Install a format from Git
 
@@ -104,8 +105,9 @@ Some rules make a format work well for everyone:
 
 - Write the guide for an agent that has never seen the format. Say what each
   scene is for and how to use each helper. Keep it under 4 KB.
-- Place everything from `s.safe`, with sizes from a hundredth of its short
-  side, like the formats that come with explainroo.
+- Place words from `s.safe`, with sizes from a hundredth of its short side,
+  like the formats that come with explainroo. With `"defaults": "0.6"`,
+  pictures in a tall frame may fill the rest of `s.full`.
 - Show the subject on the first frame with `at: -1`, because feeds show the
   first frame as the cover.
 - Use the free voice in `video.json`. The user picks a paid service.

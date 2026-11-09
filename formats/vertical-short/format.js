@@ -1,6 +1,7 @@
 // Scene helpers of the vertical-short format. scenes.js imports them. They use
-// the short-video kit (s.short) and place everything from s.safe, which ends
-// above the bold captions and stays clear of the apps' buttons.
+// the short-video kit (s.short). Words and the subject stay in s.safe, which
+// ends above the bold captions and stays clear of the apps' buttons. The
+// pictures below it fill the rest of the tall frame from s.full.
 
 const BACK = '#111a33';
 
@@ -15,12 +16,24 @@ export function backdrop(s, { glow = '#4dabf7', pattern = 'dots' } = {}) {
   s.short.backdrop({ color: BACK, glow, gy: s.safe.y + s.safe.h * 0.6, pattern });
 }
 
+// A large, faint copy of the subject in the lower part of the frame, below the
+// captions. The apps put their buttons and post text there, so it carries
+// nothing the viewer must see: it fills the tall frame and changes with the
+// subject.
+export function echo(s, icon, { color = 'blue', at, out, exit } = {}) {
+  const size = s.full.w * 0.66;
+  s.icon(icon, { x: s.full.x + s.full.w / 2, y: s.full.bottom - size * 0.56, size, color, opacity: 0.16, at, out, exit, sfx: false, camera: false });
+}
+
 // The first frame: the hook title and the subject, both there at 0 seconds, so
 // the frame says what the video is about. Feeds and apps show it as the cover.
 export function hookFrame(s, title, { icon, color = 'yellow', kicker } = {}) {
   backdrop(s, { glow: '#f59f00' });
   s.short.hook(title, { y: s.safe.y + s.safe.h * 0.2, kicker, at: 0 });
-  if (icon) s.icon(icon, { x: s.cx, y: s.safe.y + s.safe.h * 0.62, size: unit(s) * 48, color, at: -1 });
+  if (icon) {
+    echo(s, icon, { color, at: -1 });
+    s.icon(icon, { x: s.cx, y: s.safe.y + s.safe.h * 0.62, size: unit(s) * 48, color, at: -1 });
+  }
 }
 
 // Pictures that take turns in the middle of the content area, one per cue, so
@@ -30,7 +43,9 @@ export function beats(s, items, { y = s.safe.y + s.safe.h * 0.55 } = {}) {
   const u = unit(s);
   items.forEach((it, i) => {
     const next = items[i + 1]?.at;
-    s.icon(it.icon, { x: s.cx, y, size: u * 44, color: it.color ?? 'blue', label: it.label, labelSize: u * 9, labelColor: '#ffffff', at: it.at, out: next, exit: next === undefined ? undefined : 'none', enter: 'pop' });
+    const exit = next === undefined ? undefined : 'none';
+    echo(s, it.icon, { color: it.color, at: it.at, out: next, exit });
+    s.icon(it.icon, { x: s.cx, y, size: u * 44, color: it.color ?? 'blue', label: it.label, labelSize: u * 9, labelColor: '#ffffff', at: it.at, out: next, exit, enter: 'pop' });
   });
 }
 
@@ -46,7 +61,8 @@ export function punch(s, at, { zoom = 1.25 } = {}) {
 }
 
 // The last frame: the one thing to remember, with up to three short lines.
-export function payoff(s, title, lines, { at = 0.2, tone = 'good' } = {}) {
+export function payoff(s, title, lines, { at = 0.2, tone = 'good', icon = 'circle-check', color = 'green' } = {}) {
   backdrop(s, { glow: '#12a150', pattern: 'none' });
+  if (icon) echo(s, icon, { color, at });
   s.short.payoff({ title, lines, tone, at, y: s.safe.y + s.safe.h * 0.5 });
 }
