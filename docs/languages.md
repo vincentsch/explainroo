@@ -265,6 +265,12 @@ text in `strings.json` and `strings.<lang>.json` and read it with `s.str('key')`
 Nested groups become dotted keys like `'intro.title'`. Word cues differ between
 languages, so give each script the same `[#markers]`.
 
+The words that the kits and the formats draw when a scene gives none, like
+"STEP" in `s.short.step()`, "New" and "Try it for free", come in the video's
+language with `"defaults": "0.6"`. `s.kitWord(key)` gives one, with the keys
+`step`, `new` and `try-free`. An option a scene sets wins, and `check` gives a
+hint when a video in another language shows one of these words in English.
+
 Add `--lang es` to the commands from `voice` to `publish`. Spanish builds in
 `build/es/` and writes to `out/es/`. `"languages": { "es": { ... } }` holds
 settings for one language, and a language without its own voice uses its

@@ -34,7 +34,7 @@ export function body(s) {
 // it is there on the first frame, which feeds and posting tools show as the cover.
 // `icon` puts the product's mark in a tile above the name, and `eyebrow` a small
 // label instead.
-export function nameCard(s, name, promise, { at = -1, promiseAt = at, icon, eyebrow = 'New' } = {}) {
+export function nameCard(s, name, promise, { at = -1, promiseAt = at, icon, eyebrow = s.kitWord('new') } = {}) {
   const ui = s.ui;
   const u = unit(s);
   const size = fitted(s, name, u * 17, s.safe.w * 0.86);
@@ -87,7 +87,7 @@ export function featureCards(s, items) {
 }
 
 // The closing frame: the name, a button with the action and the address.
-export function callToAction(s, { name, action = 'Try it free', url, at = 0.2, urlAt = at } = {}) {
+export function callToAction(s, { name, action = s.kitWord('try-free'), url, at = 0.2, urlAt = at } = {}) {
   const ui = s.ui;
   const u = unit(s);
   const y = s.safe.top + s.safe.h * 0.4;

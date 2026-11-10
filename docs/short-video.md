@@ -231,8 +231,9 @@ show moves below it, when that fits in `area` (`s.safe` by default).
 ### `step(n, total, options)`
 
 "STEP 2/4" with dots at the top of the content area, outside the camera. Step
-`n` fills at `at`. `word` replaces "STEP", like `word: s.str('step')` in a video
-in several languages. Also `label`, `x`, `y`, `size` (48 with
+`n` fills at `at`. With `"defaults": "0.6"`, the word is in the video's
+language, like "PASO 2/4" in Spanish. `word` sets another one, like
+`word: 'FASE'`. Also `label`, `x`, `y`, `size` (48 with
 `"defaults": "0.6"`, which reads well on a phone, and 34 before), `color`,
 `at`, `out`, `sfx`.
 

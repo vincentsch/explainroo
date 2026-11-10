@@ -745,7 +745,8 @@ export class Short {
     const x = o.x ?? s.cx;
     const y = o.y ?? s.safe.top + (s._v6 ? Math.max(40, size * 0.9) : 40);
     const color = o.color ?? KEY;
-    const label = `${String(o.word ?? 'STEP').toUpperCase()} ${n}/${total}`;
+    // The word comes from the video's language, with "defaults": "0.6".
+    const label = `${String(o.word ?? (s._v6 ? s.kitWord('step') : 'STEP')).toUpperCase()} ${n}/${total}`;
     const at = o.at ?? -1;
     const a = this.at(at);
     if (a >= 0) this.enter(a, 0.3, o.sfx === undefined ? 'blip' : o.sfx, { label, pitch: n, chosen: o.sfx !== undefined, usual: 'blip' });

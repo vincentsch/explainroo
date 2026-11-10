@@ -15,6 +15,7 @@ import { CATCH_UP, fitViewport, PAGE_TEXT, PLAYED_TEXT } from './recording.js';
 import { Short } from './short.js';
 import { playbackTextIssue } from './readability.js';
 import { planCamera, cameraAt, cameraMoving, heldShot, continues, frameRect, backgroundShot } from './director.js';
+import { englishKitWord, kitWordHint } from './words.js';
 
 Stage.UI = UI;
 Stage.Short = Short;
@@ -907,6 +908,7 @@ export class Engine {
     this.soundsPlayed = new Map();
     // A short video: what changes the picture, in seconds of the video.
     const shortVideo = this.isShort();
+    const language = this.config.language || 'en';
     const changes = [];
     let anyBroke = false;
     for (const sc of this.timeline.scenes) {
@@ -950,6 +952,8 @@ export class Engine {
         const texts = laid.texts.filter((x) => x.alpha > 0.5);
         for (const tx of texts) {
           const label = short(tx.text);
+          const english = language !== 'en' ? englishKitWord(tx.text) : null;
+          if (english) once(`kitword:${sc.id}:${tx.text}`, () => add('hint', sc.id, t, kitWordHint(english, language)));
           // UI kit text (s.ui) may leave the frame on purpose while the
           // camera zooms or pans; app screens use smaller text than slides.
           const framed = !(tx.ui && tx.zoomed);
