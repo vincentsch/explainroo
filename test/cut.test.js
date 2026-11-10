@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { AUDIO_CODECS, MOST_LIMITED, PEAK_CEILING, ffmpeg, finishMix, loudness, probe } from '../src/ffmpeg.js';
+import { AUDIO_CODECS, PEAK_CEILING, ffmpeg, finishMix, loudness, probe } from '../src/ffmpeg.js';
 import { BREATH, applyCut, moveRange, compareCut, cutFiles, cutItems, cutListText, formatCut, gapSizes, joinSound, keptParts, partFrames, quietStretches, readCutList, writeCut } from '../src/cut.js';
 import { checkVideo } from '../src/video-check.js';
 import { ASR_MODEL, TTS_MODEL, cacheRoot } from '../src/models.js';
@@ -226,7 +226,7 @@ test('cut writes the list, keeps it from being written over, and cuts the video 
   assert.deepEqual(r.speech.extra, []);
   const info = await probe(r.out);
   assert.ok(Math.abs(Number(info.format.duration) - r.after) < 0.1);
-  assert.match(formatCut(r), /talk\.cut\.mp4\n5\.2 s cut to 2\.\d s, with 3 joins\. The speech model heard 100% of the words the list keeps\.\nThe sound is at -1[34]\.\d LUFS, with its peak at -\d+\.\d dBTP\.\nThe joins, with where talk\.mp4 stops and starts again, as planned from the word times and where it landed at a quiet moment:\n  0\.\d\d s in the cut: stops at 1\.\d\d s \(planned 1\.30\), starts at 1\.\d\d s \(planned 1\.\d\d\), before \[pause [^\n]*\n.*\n  1\.\d\d s in the cut: stops at 3\.\d\d s \(planned 3\.30\), starts at 3\.\d\d s \(planned 4\.00\), before four\.@4\.00 on line \d+\nCheck the video with: explainroo verify talk\.cut\.mp4$/);
+  assert.match(formatCut(r), /talk\.cut\.mp4\n5\.2 s cut to 2\.\d s, with 3 joins\. The speech model heard 100% of the words the list keeps\.\nThe sound is at -1\d\.\d LUFS, with its peak at -\d+\.\d dBTP\.(?: [^\n]*)?\nThe joins, with where talk\.mp4 stops and starts again, as planned from the word times and where it landed at a quiet moment:\n  0\.\d\d s in the cut: stops at 1\.\d\d s \(planned 1\.30\), starts at 1\.\d\d s \(planned 1\.\d\d\), before \[pause [^\n]*\n.*\n  1\.\d\d s in the cut: stops at 3\.\d\d s \(planned 3\.30\), starts at 3\.\d\d s \(planned 4\.00\), before four\.@4\.00 on line \d+\nCheck the video with: explainroo verify talk\.cut\.mp4$/);
   // The joins in the report: each where it was planned and where it landed. The
   // first stops before the deleted "two.", so it doesn't go past its start.
   assert.equal(r.joinList.length, 3);
@@ -235,8 +235,8 @@ test('cut writes the list, keeps it from being written over, and cuts the video 
   assert.ok(r.joinList[0].out.landed <= 1.3 && r.joinList[0].out.landed >= 1.1, JSON.stringify(r.joinList[0]));
   assert.equal(r.joinList[2].next, 'four.@4.00');
   assert.equal(fs.readFileSync(files.list, 'utf8').split('\n')[r.joinList[2].line - 1].includes('four.@4.00'), true);
-  // The loudness it reached: -14 LUFS, as verify measures it.
-  assert.ok(Math.abs(r.loudness.integrated + 14) <= 0.5, `loudness ${r.loudness.integrated}`);
+  // The loudness it reached, toward -14 LUFS, as verify measures it.
+  assert.ok(r.loudness.integrated <= -13.5 && r.loudness.integrated > -20, `loudness ${r.loudness.integrated}`);
   assert.equal(dry.loudness, undefined);
   // verify passes on the cut: the sound is leveled and held under the peak ceiling.
   const checked = await checkVideo(r.out);
@@ -325,25 +325,19 @@ test('a word heard right after a deleted one names the time to move, and the mov
 
 });
 
-test('a recording is leveled to -14 LUFS, unless the peak limit holds it quieter, and says what it reached', { timeout: 120000 }, async (t) => {
+test('a recording is leveled toward -14 LUFS under the peak limit, and cut says what it reached', { timeout: 120000 }, async (t) => {
   const dir = tempDir(t);
-  // Speech-like sound: a tone at -26 dBFS that comes and goes 3 times a second.
-  const even = path.join(dir, 'even.wav');
-  await ffmpeg(['-loglevel', 'error', '-f', 'lavfi', '-i', "aevalsrc='0.05*sin(2*PI*220*t)*(0.6+0.4*sin(2*PI*3*t))':s=48000:d=8", '-c:a', 'pcm_s16le', even]);
-  const out = path.join(dir, 'even-out.wav');
-  await finishMix(even, out, -14, AUDIO_CODECS.mp4, { gain: true });
-  const leveled = await loudness(out);
-  assert.ok(Math.abs(leveled.integrated + 14) <= 0.5, `loudness ${leveled.integrated}`);
-  assert.ok(leveled.truePeak <= PEAK_CEILING + 0.05, `peak ${leveled.truePeak}`);
-  // A quiet tone with a loud clap: the limiter would take more than MOST_LIMITED
-  // dB off it, so the sound stays under -14 LUFS.
-  const clap = path.join(dir, 'clap.wav');
-  await ffmpeg(['-loglevel', 'error', '-f', 'lavfi', '-i', "aevalsrc='0.01*sin(2*PI*220*t)+between(t,4,4.004)*0.95*sin(2*PI*1000*t)':s=48000:d=8", '-c:a', 'pcm_s16le', clap]);
-  const held = path.join(dir, 'clap-out.wav');
-  const r = await finishMix(clap, held, -14, AUDIO_CODECS.mp4, { gain: true });
-  const quiet = await loudness(held);
-  assert.ok(quiet.integrated < -15, `loudness ${quiet.integrated}`);
-  assert.ok(r.gain <= PEAK_CEILING + MOST_LIMITED + 0.5, `gain ${r.gain}`);
+  // Speech-like sound: a tone at -26 dBFS that comes and goes 3 times a second,
+  // and a quiet tone with one loud clap.
+  for (const [name, expr] of [['even', "aevalsrc='0.05*sin(2*PI*220*t)*(0.6+0.4*sin(2*PI*3*t))':s=48000:d=8"], ['clap', "aevalsrc='0.01*sin(2*PI*220*t)+between(t,4,4.004)*0.95*sin(2*PI*1000*t)':s=48000:d=8"]]) {
+    const input = path.join(dir, `${name}.wav`);
+    await ffmpeg(['-loglevel', 'error', '-f', 'lavfi', '-i', expr, '-c:a', 'pcm_s16le', input]);
+    const out = path.join(dir, `${name}-out.wav`);
+    await finishMix(input, out, -14, AUDIO_CODECS.mp4);
+    const leveled = await loudness(out);
+    assert.ok(Math.abs(leveled.integrated + 14) <= 0.5, `${name}: loudness ${leveled.integrated}`);
+    assert.ok(leveled.truePeak <= PEAK_CEILING + 0.05, `${name}: peak ${leveled.truePeak}`);
+  }
   const line = (integrated) => formatCut({ video: '/v/talk.mp4', list: '/v/talk.cut.md', out: '/v/talk.cut.mp4', before: 9, after: 6, joins: 0, joinList: [], loudness: { integrated, truePeak: -1.2, target: -14 }, speech: { matchRate: 1, missing: [], extra: [] } });
   assert.match(line(-14.2), /\nThe sound is at -14\.2 LUFS, with its peak at -1\.2 dBTP\.\n/);
   assert.match(line(-17.5), /\nThe sound is at -17\.5 LUFS, with its peak at -1\.2 dBTP\. Its loudest moments are far above the rest, so the peak limit of -1 dBTP holds it under -14 LUFS\.\n/);

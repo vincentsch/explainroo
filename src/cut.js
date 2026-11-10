@@ -655,7 +655,7 @@ export async function applyCut(file, { out = null, dryRun = false, log = () => {
     writeFloatWav(joined, joinedSound, channels);
     if (!dryRun) {
       log('leveling the sound');
-      await finishMix(joined, mixed, DEFAULTS.loudness, AUDIO_CODECS.mp4, { log, gain: true });
+      await finishMix(joined, mixed, DEFAULTS.loudness, AUDIO_CODECS.mp4, { log });
       log(`writing ${path.basename(target)}`);
       const select = frames.map(([a, b]) => `between(n\\,${a}\\,${b - 1})`).join('+');
       await ffmpeg(['-loglevel', 'error', '-i', video, '-i', mixed,
