@@ -145,6 +145,21 @@ test('a scene checked with older rules drops near matches that today\'s rules co
   assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).nearly, []);
 });
 
+// Session h: "cem reais" heard as "R$100" before the check read amounts. The
+// scene is confirmed from its transcript, and the start of "reais", which was
+// shared out, is marked estimated. No voice is made.
+test('a scene checked before amounts were read confirms "reais" from its transcript and marks its estimated start', async (t) => {
+  const dir = cachedProject(t, '# Inflação\n\n## intro\nCom cem reais, você compra cinco pacotes.\n', { intro: { transcript: 'Com R$100, você compra 5 pacotes.', unmatched: ['reais,'], matchRate: 0.86 } }, { language: 'pt-br', voice: 'pf_dora' });
+  const project = loadProject(dir);
+  const file = voicePaths(project, 'intro').json;
+  fs.writeFileSync(file, JSON.stringify({ ...JSON.parse(fs.readFileSync(file, 'utf8')), check: 4, nearly: [] }));
+  const voices = await synthesize(project, { transcribe: () => { throw new Error('no voice should be made'); } });
+  assert.deepEqual(voices.intro.words.map((w) => `${w.text}${w.matched ? '' : ' no'}${w.estimated ? ' ~' : ''}`), ['Com', 'cem', 'reais, ~', 'você', 'compra', 'cinco', 'pacotes.']);
+  assert.deepEqual(voices.intro.unmatched, []);
+  assert.equal(voices.intro.matchRate, 1);
+  assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).words[2].estimated, true);
+});
+
 test('a new voice build saves the near matches of each scene, and the voice line says what its numbers are', async (t) => {
   const fake = await startFakeServices();
   t.after(fake.close);

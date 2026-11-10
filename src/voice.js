@@ -21,8 +21,11 @@ const PIPELINE = 7;
 // The rules of the speech check that a scene was checked with. A scene checked
 // with older rules is looked at again from its transcript once, without new
 // speech, and the result is saved. 4 reads maths written with signs, and 5
-// reads amounts with a currency symbol, like "R$ 100" for "cem reais".
+// reads amounts with a currency symbol, like "R$ 100" for "cem reais", and
+// marks word times that are estimated.
 export const CHECK = 5;
+// The first rules that mark estimated word times.
+const ESTIMATED = 5;
 
 // The key of the narration itself: the spoken words, the gaps between them and
 // the voice settings. Markers and the shown text are not part of it.
@@ -132,16 +135,21 @@ function realign(info, language, accept = null) {
 // A scene from the cache, with its near matches, looked at again with today's
 // speech check when it was made with older rules and has words it couldn't
 // confirm. A word that the check confirms now counts as confirmed, with its old
-// time. No speech is made, and reviewed() saves the result.
+// time. No speech is made, and reviewed() saves the result. A scene made before
+// the check marked estimated times gets them: a word it didn't confirm then has
+// a time shared out between its neighbours, and a word it did has the mark that
+// the transcript gives it today.
 export async function reviewSpeech(info, language) {
   // Older rules may have found near matches that today's rules confirm fully.
   const base = { ...info, nearly: nearMatches(info.check === CHECK ? info : { ...info, nearly: undefined }, language) };
-  if (info.check === CHECK || !Array.isArray(info.words) || info.words.every((w) => w.matched)) return base;
+  if (info.check === CHECK || !Array.isArray(info.words)) return base;
   const again = realign(info, language);
   if (!again) return base;
   const now = (await alignSpeech(again.words, again.heard, again.heard.length, language)).words;
+  const marked = info.check >= ESTIMATED ? info.words
+    : info.words.map((w, k) => (!w.matched || (now[k].matched && now[k].estimated) ? { ...w, estimated: true } : w));
   const newly = info.words.map((w, k) => !w.matched && now[k].matched);
-  if (!newly.some(Boolean)) return base;
+  if (!newly.some(Boolean)) return { ...base, words: marked };
   const tokens = (w) => Math.max(1, spokenWords(w.spoken ?? w.text).length);
   const total = info.words.reduce((n, w) => n + tokens(w), 0);
   const gained = info.words.reduce((n, w, k) => n + (newly[k] ? tokens(w) : 0), 0);
@@ -152,7 +160,7 @@ export async function reviewSpeech(info, language) {
   });
   return {
     ...base,
-    words: info.words.map((w, k) => (newly[k] ? { ...w, matched: true } : w)),
+    words: marked.map((w, k) => (newly[k] ? { ...w, matched: true } : w)),
     matchRate: Math.min(1, round((info.matchRate ?? 0) + gained / total)),
     unmatched,
     // In the order of the script, from the words confirmed then and now.
@@ -708,7 +716,7 @@ async function synthesizeScene(project, scene, chunks, hash, tts, speech, log, t
     const aligned = await alignSpeech(chunk.words, heard.words, dur, config.language, { accept: project.heard });
     chunk.words.forEach((w, k) => {
       const a = aligned.words[k];
-      wordTimes[w.unitIndex] = { start: start + a.start, end: start + a.end, matched: a.matched };
+      wordTimes[w.unitIndex] = { start: start + a.start, end: start + a.end, matched: a.matched, estimated: !!a.estimated };
       if (!a.matched) unmatched.push(w.display);
     });
     nearly.push(...nearList(chunk.words, aligned.words));
@@ -729,7 +737,7 @@ async function synthesizeScene(project, scene, chunks, hash, tts, speech, log, t
   const words = [];
   scene.units.forEach((u, i) => {
     if (u.type !== 'word' || !wordTimes[i]) return;
-    words.push({ text: u.display, spoken: u.spoken, start: round(wordTimes[i].start), end: round(wordTimes[i].end), matched: wordTimes[i].matched });
+    words.push({ text: u.display, spoken: u.spoken, start: round(wordTimes[i].start), end: round(wordTimes[i].end), matched: wordTimes[i].matched, ...(wordTimes[i].estimated ? { estimated: true } : {}) });
   });
   const info = {
     hash,
@@ -785,7 +793,7 @@ async function recordingScene(project, scene, hash, source, take, cut, heardTake
   await saveRecording(files.wav, samples, sr);
   const info = {
     hash, speech: speechHash(scene, null, config, key), check: CHECK, id: scene.id, duration: round(duration),
-    words: units.map((u, i) => ({ text: u.display, spoken: u.spoken, start: round(times[i].start), end: round(times[i].end), matched: aligned.words[i].matched })),
+    words: units.map((u, i) => ({ text: u.display, spoken: u.spoken, start: round(times[i].start), end: round(times[i].end), matched: aligned.words[i].matched, ...(!cut && aligned.words[i].estimated ? { estimated: true } : {}) })),
     marks: Object.fromEntries(Object.entries(resolveMarks(scene.units, wordTimes)).map(([k, v]) => [k, round(v)])),
     chunks: [{ start: 0, end: round(duration), text: scene.spoken }],
     transcript: heard.words.map((w) => w.text).join(' '),

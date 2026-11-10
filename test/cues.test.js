@@ -8,14 +8,25 @@ const WORDS = ['The', 'tank', 'fills', 'up.', 'Then', 'it', 'fills', 'up', 'agai
 
 function stage(words = WORDS, { marks = { pump: 2.5 }, language = 'en' } = {}) {
   const engine = {
-    theme: {}, pen: null, W: 1920, H: 1080, fps: 30, cueNotes: [],
+    theme: {}, pen: null, W: 1920, H: 1080, fps: 30, cueNotes: [], estimatedCues: [],
     config: { language }, safeArea: { x: 0, y: 0, w: 1920, h: 1080 },
     timeline: { pace: 1, duration: 6, frames: 180, fps: 30, width: 1920, height: 1080, scenes: [{}] },
   };
   const scene = { id: 'tank', index: 0, start: 0, dur: 6, marks, lead: 0, voice: null,
     words: words.map((text, i) => ({ text, start: i * 0.5, end: i * 0.5 + 0.4 })) };
-  return { s: new Stage(engine, null, scene, 0), notes: engine.cueNotes };
+  return { s: new Stage(engine, null, scene, 0), notes: engine.cueNotes, estimated: engine.estimatedCues };
 }
+
+test('a cue on an estimated start tells check, with the nearest word whose start was measured', () => {
+  const words = ['The', 'tank', 'fills', 'up.', 'Then', 'it', 'fills', 'up', 'again'];
+  const { s, estimated } = stage(words);
+  for (const k of [5, 7, 8]) s.words[k].estimated = true;
+  assert.equal(s.cue('it'), 2.5);
+  assert.equal(s.cueEnd('again'), 4.4);
+  assert.equal(s.cue('tank'), 0.5);
+  // "it" is nearest to "Then", and "again" to the second "fills", named with its #.
+  assert.deepEqual(estimated.map((c) => [c.word, c.t, c.near]), [['it', 2.5, { cue: 'Then', t: 2 }], ['again', 4, { cue: 'fills#2', t: 3 }]]);
+});
 
 test('a word spoken twice means its first time, and check hears about it', () => {
   const { s, notes } = stage();

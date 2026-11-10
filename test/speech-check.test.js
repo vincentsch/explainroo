@@ -163,6 +163,20 @@ test('"cem reais" heard as "R$ 100,00" is confirmed, and another amount is not',
   assert.deepEqual(missed('Com cem reais', alignWords(words('Com cem reais'), said('Com US$100'), 3, 'pt-br')), ['reais']);
 });
 
+// Whisper writes several spoken words as one, like "R$100" for "cem reais" or
+// "10%" for "dez por cento". The first word starts with it, and the words after
+// it get estimated starts, like a word that wasn't heard at all.
+test('words whose start was shared out from one heard word, or not heard, are marked estimated', () => {
+  const marks = (text, heardText, language = 'pt-br') => alignWords(words(text), said(heardText), 5, language).words.map((w) => (w.estimated ? '~' : '') + (w.matched ? 'ok' : 'no'));
+  assert.deepEqual(marks('nota de cem reais compra', 'nota de R $100 compra'), ['ok', 'ok', 'ok', '~ok', 'ok']);
+  assert.deepEqual(marks('de dez por cento em', 'de 10% em'), ['ok', 'ok', '~ok', '~ok', 'ok']);
+  assert.deepEqual(marks('custar vinte e dois reais.', 'custar R$ 22.'), ['ok', 'ok', '~ok', '~ok', '~ok']);
+  assert.deepEqual(marks('It costs five dollars today.', 'It costs $5 today.', 'en'), ['ok', 'ok', 'ok', '~ok', 'ok']);
+  assert.deepEqual(marks('See costs at noon.', 'Seacosts at noon.', 'en'), ['ok', '~ok', 'ok', 'ok']);
+  assert.deepEqual(marks('No API key needed.', 'No API can needed.', 'en'), ['ok', 'ok', '~no', 'ok']);
+  assert.deepEqual(marks('Imagine que um pacote custa', 'Imagine que um pacote custa'), ['ok', 'ok', 'ok', 'ok', 'ok']);
+});
+
 // The voice says the formula, and Whisper wrote it with signs.
 const MATH_CASES = {
   en: ['like two x squared plus three x minus five equals zero, so x equals minus five halves, three times four, one half and a third.',

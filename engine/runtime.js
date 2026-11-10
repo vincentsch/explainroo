@@ -999,6 +999,7 @@ export class Engine {
     const onScreen = (b) => b.x1 > 0 && b.y1 > 0 && b.x0 < W && b.y0 < H;
     const inFrame = (b) => b.x0 >= -1 && b.y0 >= -1 && b.x1 <= W + 1 && b.y1 <= H + 1;
     this.cueNotes = [];
+    this.estimatedCues = [];
     // A cue that isn't in the narration is an error, and the rest of its scene is
     // measured with the cue at the scene start.
     this.cueErrors = new Map();
@@ -1376,7 +1377,14 @@ export class Engine {
     for (const c of repeated.values()) {
       add('hint', c.scene, null, `cue "${c.word}" means the first of the ${c.count} times it is spoken in this scene; write "${c.word}#1" if you mean the first time, or "${c.word}#2" for a later one`);
     }
+    const estimated = new Map();
+    for (const c of this.estimatedCues) if (!estimated.has(`${c.scene}|${c.word}`)) estimated.set(`${c.scene}|${c.word}`, c);
+    for (const c of estimated.values()) {
+      const near = c.near ? ` "${c.near.cue}" at ${c.near.t.toFixed(2)} s has a measured time, so cue that word when the picture has to land exactly.` : '';
+      add('hint', c.scene, c.t, `cue "${c.word}" sits on an estimated time: the speech check heard no start of its own for this word, like when Whisper writes "one hundred dollars" as "$100".${near}`);
+    }
     this.cueNotes = null;
+    this.estimatedCues = null;
     this.cueErrors = null;
     for (const { scene, t, tex } of this.lateMath.values()) add('error', scene, t, `math "${tex}" was not collected at the start; keep TeX strings fixed and always call s.math with at and out for timing`);
     if (!anyBroke) for (const f of this.transitionOverlaps()) add('hint', f.scene, f.t, f.message);

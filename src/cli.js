@@ -818,7 +818,7 @@ async function spokenWords(project, only = [], { log, notice }) {
       // A word shown with a space in it, like "52,50 €" from {52,50 €|…}, is one
       // word to a cue, which reads its words between spaces.
       const cue = bareWord(w.text).replace(/\s+/g, '');
-      return { text: w.text, start: round(w.start), end: round(w.end), cue: total.get(key) > 1 ? `${cue}#${n}` : cue };
+      return { text: w.text, start: round(w.start), end: round(w.end), cue: total.get(key) > 1 ? `${cue}#${n}` : cue, ...(w.estimated ? { estimated: true } : {}) };
     });
     // A token without letters or digits, like "%" in "5 %", shares the cue of the
     // word or number it follows, or of the next one when it comes first.
@@ -840,9 +840,11 @@ function formatWords(r) {
     // A marker comes before the word it starts on.
     const rows = [
       ...Object.entries(s.marks).map(([name, t]) => ({ t, line: `${t.toFixed(2).padStart(7)}  [#${name}]` })),
-      ...s.words.map((w) => ({ t: w.start, line: `${w.start.toFixed(2).padStart(7)}  ${w.text}${w.cue.toLowerCase() !== w.text.toLowerCase() ? `  (cue "${w.cue}")` : ''}` })),
+      ...s.words.map((w) => ({ t: w.start, line: `${w.start.toFixed(2).padStart(7)}${w.estimated ? '~' : ' '} ${w.text}${w.cue.toLowerCase() !== w.text.toLowerCase() ? `  (cue "${w.cue}")` : ''}` })),
     ].sort((a, b) => a.t - b.t);
-    return [head, ...rows.map((x) => x.line)].join('\n');
+    // A time with ~ is estimated: Whisper wrote the word together with others, or didn't confirm it.
+    const note = s.words.some((w) => w.estimated) ? ['  ~ estimated: the speech check heard no start of its own for this word, so a cue on it may land a little early or late'] : [];
+    return [head, ...rows.map((x) => x.line), ...note].join('\n');
   }).join('\n\n');
 }
 
