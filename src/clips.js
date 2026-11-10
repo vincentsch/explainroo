@@ -41,5 +41,42 @@ export async function extractClip(file, dir, fps) {
   const { width, height } = frame.streams[0];
   const hasAudio = input.streams.some((s) => s.codec_type === 'audio');
   if (hasAudio) await ffmpeg(['-loglevel', 'error', '-i', file, '-map', '0:a:0', '-vn', '-ar', '48000', '-ac', '1', '-c:a', 'pcm_s16le', path.join(dir, 'audio.wav')]);
-  return { frames, fps, width, height, duration: frames / fps, hasAudio };
+  return { frames, fps, width, height, duration: frames / fps, hasAudio, still: await stillSpans(dir, fps, frames) };
 }
+
+// The stretches of half a second or more where the picture of the frames in
+// `dir` holds still, as [from, to] in seconds of the clip. check doesn't count
+// a clip as something happening while it shows a still picture. Each frame is
+// read as a grid of 32 by 18 cells. A frame shows something new when one of
+// its cells differs clearly from every frame of the last one and a half
+// seconds, and the picture before it doesn't come back in the one and a half
+// seconds after: a typed letter does, and a blinking cursor doesn't.
+export async function stillSpans(dir, fps, frames) {
+  const duration = frames / fps;
+  const ms = (t) => Math.round(t * 1000) / 1000;
+  if (frames <= 1) return [[0, ms(duration)]];
+  const [W, H] = [32, 18];
+  const { stdout } = await ffmpeg(['-loglevel', 'error', '-framerate', String(fps), '-start_number', '0', '-i', path.join(dir, '%08d.jpg'), '-vf', `scale=${W}:${H}:flags=area,format=gray`, '-f', 'rawvideo', '-'], { binary: true });
+  const n = Math.floor(stdout.length / (W * H));
+  const differs = (k, j) => {
+    for (let i = 0; i < W * H; i++) if (Math.abs(stdout[k * W * H + i] - stdout[j * W * H + i]) > STILL_STEP) return true;
+    return false;
+  };
+  const back = Math.max(1, Math.round(fps * 1.5));
+  const changed = (k) => {
+    for (let j = Math.max(0, k - back); j < k; j++) if (!differs(k, j)) return false;
+    for (let j = k + 1; j < Math.min(n, k + 1 + back); j++) if (!differs(k - 1, j)) return false;
+    return true;
+  };
+  const spans = [];
+  let from = 0;
+  for (let k = 1; k <= n; k++) {
+    if (k < n && !changed(k)) continue;
+    if ((k - from) / fps >= 0.5) spans.push([from / fps, k === n ? duration : k / fps]);
+    from = k;
+  }
+  return spans.map(([a, b]) => [ms(a), ms(Math.min(b, duration))]);
+}
+
+// How much a cell of the grid may change, of 255, while the picture holds still.
+const STILL_STEP = 8;

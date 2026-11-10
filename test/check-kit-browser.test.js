@@ -96,3 +96,26 @@ test('check gives a hint when s.camera comes after other elements of a scene', {
   assert.deepEqual(messages(issues, 'first', 's.camera'), []);
   assert.deepEqual(messages(issues, 'still', 's.camera'), []);
 });
+
+test('a clip that plays and changes is something happening, and a still one is not', { skip }, async (t) => {
+  const make = async (dir) => {
+    fs.mkdirSync(path.join(dir, 'assets'));
+    // A square that moves the whole time, one that moves for a second and
+    // then stays, and a still picture.
+    const clip = (name, x) => ffmpeg(['-loglevel', 'error', '-filter_complex', `color=white:s=320x180:r=30:d=10[bg];color=black:s=40x40:r=30:d=10[box];[bg][box]overlay=x='${x}':y=60,format=yuv420p`, '-c:v', 'libx264', '-threads', '1', path.join(dir, `assets/${name}.mp4`)]);
+    await clip('moving', 'mod(t*60,280)');
+    await clip('settles', 'min(t,3)*60');
+    await clip('still', '100');
+  };
+  const issues = await check(await project(t, {}, {
+    moving: `s.clip('assets/moving.mp4', { w: 1200, at: -1 });`,
+    settles: `s.clip('assets/settles.mp4', { w: 1200, at: -1 });`,
+    still: `s.clip('assets/still.mp4', { w: 1200, at: -1 });`,
+  }, { dur: 10, make }));
+  assert.deepEqual(issues.filter((i) => i.scene === 'moving' && /nothing enters|no new element/.test(i.message)), [], JSON.stringify(issues, null, 2));
+  assert.deepEqual(messages(issues, 'settles', 'nothing enters'), []);
+  const quiet = messages(issues, 'settles', 'no new element');
+  assert.equal(quiet.length, 1, JSON.stringify(issues, null, 2));
+  assert.match(quiet[0], /^no new element for 8\.\ds \(from [12]\.\ds\)/);
+  assert.deepEqual(messages(issues, 'still', 'no new element'), ['no new element for 10.0s (from 0.0s); consider revealing something on a cue in that stretch']);
+});

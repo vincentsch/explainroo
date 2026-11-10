@@ -870,6 +870,32 @@ export class Engine {
     return this.H / this.W >= 1.7 && this.timeline.duration <= SHORT_LONGEST;
   }
 
+  // The stretches of a scene where a clip or a recording plays and its
+  // picture changes, as { from, to } in seconds of the scene, from what the
+  // scene's elements recorded. A clip plays from its at to its end, except
+  // where it shows a still picture, and a recording moves where its steps
+  // type, scroll, zoom or change the page.
+  movingSpans(entrances, dur) {
+    const spans = [];
+    for (const e of entrances) {
+      if (e.kind === 'recording') spans.push(...e.moving);
+      if (e.kind !== 'clip') continue;
+      const info = this.clips?.get(e.src);
+      const still = info?.still ?? [];
+      const step = 0.1;
+      let open = null;
+      for (let t = Math.max(0, e.at); t < Math.min(e.end ?? e.at, dur); t += step) {
+        let at = e.from + (t - e.at) * e.speed;
+        if (e.loop && info?.duration > 0) at %= info.duration;
+        const moving = !still.some(([from, to]) => at >= from - 1e-6 && at < to);
+        if (moving && !open) spans.push((open = { from: t, to: t }));
+        if (moving) open.to = Math.min(t + step, e.end, dur);
+        else open = null;
+      }
+    }
+    return spans;
+  }
+
   // The rules of a short: the voice starts in the first second, and the picture
   // changes at least every SHORT_CHANGE seconds. The stretch after the last
   // words is the payoff's hold, which may stay still.
@@ -1207,8 +1233,15 @@ export class Engine {
       this.recorder = null;
       this.textLog = null;
       const times = [...new Set(entrances.map((e) => Math.round(e.at * 100) / 100))].sort((a, b) => a - b);
-      // A new scene, an entrance and a camera move change the picture, and a
-      // clip changes it all the time it plays. A scene that stopped with an
+      // While a clip or a recording plays and its picture changes, something
+      // happens: as points every half second, in seconds of the scene.
+      const playing = [];
+      for (const m of this.movingSpans(entrances, sc.dur)) {
+        for (let x = Math.max(0, m.from); x < Math.min(sc.dur, m.to); x += 0.5) playing.push(x);
+        if (m.to >= 0 && m.to <= sc.dur) playing.push(m.to);
+      }
+      // A new scene, an entrance and a camera move change the picture, and so
+      // does a clip or a recording that plays. A scene that stopped with an
       // error has its error, and no hint is given about stretches.
       if (broke) anyBroke = true;
       if (shortVideo && !broke) {
@@ -1216,14 +1249,7 @@ export class Engine {
         // A recording changes it where its steps type, scroll, zoom or change
         // the page, and not at a step that only marks a moment.
         const shown = entrances.filter((e) => e.kind !== 'recording-step').map((e) => e.at);
-        for (const x of [...shown, ...this.cameraKeys]) if (x >= 0 && x <= sc.dur) changes.push(sc.start + x);
-        for (const e of entrances) {
-          const spans = e.kind === 'clip' ? [{ from: e.at, to: e.end ?? e.at }] : e.kind === 'recording' ? e.moving : [];
-          for (const m of spans) {
-            for (let x = Math.max(0, m.from); x < Math.min(sc.dur, m.to); x += 0.5) changes.push(sc.start + x);
-            if (e.kind === 'recording' && m.to >= 0 && m.to <= sc.dur) changes.push(sc.start + m.to);
-          }
-        }
+        for (const x of [...shown, ...this.cameraKeys, ...playing]) if (x >= 0 && x <= sc.dur) changes.push(sc.start + x);
       }
       this.cameraKeys = null;
       for (const e of entrances) {
@@ -1327,12 +1353,12 @@ export class Engine {
       }
       if (broke) {
         // its error says it all
-      } else if (!times.length) {
+      } else if (!times.length && !playing.length) {
         add('warn', sc.id, null, 'nothing enters in this scene; add at least one element with an "at" time');
       } else {
         // The hold that targetSeconds adds may stay still.
         const end = sc.dur - (sc.added ?? 0);
-        const marks = [0, ...times.filter((x) => x >= 0 && x <= end), end];
+        const marks = [0, ...[...new Set([...times, ...playing])].filter((x) => x >= 0 && x <= end).sort((a, b) => a - b), end];
         for (let i = 1; i < marks.length; i++) {
           const gap = marks[i] - marks[i - 1];
           // The empty start already has its hint.
