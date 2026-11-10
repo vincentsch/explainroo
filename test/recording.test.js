@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { checkRecordingScript, readRecordingScript, scriptHash, stepLabel, stepLine, videoOffset, wholeHash, projectLocale, LOCALES } from '../src/record.js';
 import { ffmpeg } from '../src/ffmpeg.js';
-import { cuedSteps, recordingClock, videoTime, sceneTime, cursorAt, viewAt, focusRect, coverRect, zoomScale, fitViewport, smallPageText, movingSteps, ZOOM_SECONDS, ZOOM_RANGE, CATCH_UP } from '../engine/recording.js';
+import { cuedSteps, recordingClock, videoTime, sceneTime, cursorAt, viewAt, focusRect, coverRect, zoomScale, fitViewport, smallPageText, talkZoomed, movingSteps, ZOOM_SECONDS, ZOOM_RANGE, CATCH_UP } from '../engine/recording.js';
 import { makeState } from '../src/pipeline.js';
 import { loadProject } from '../src/project.js';
 
@@ -349,12 +349,15 @@ test('a zoom holds the side of its element that align names', () => {
 });
 
 test('a viewport fits the area a recording plays in, so 16 px page text plays at about 29 px', () => {
-  // The content areas of the docs' table.
+  // The docs' table: what a browser frame leaves of each content area, less
+  // the margin, and the viewport that fits it.
+  const room = (w, h) => [w * 0.96, (h / 1.075) * 0.96];
+  assert.deepEqual(fitViewport(...room(1768, 928)), { width: 942, height: 460 });
+  assert.deepEqual(fitViewport(...room(928, 977)), { width: 494, height: 484 });
+  assert.deepEqual(fitViewport(...room(885, 732)), { width: 472, height: 364 });
+  assert.deepEqual(fitViewport(...room(745, 863)), { width: 398, height: 428 });
+  assert.deepEqual(fitViewport(...room(896, 751)), { width: 478, height: 372 });
   assert.deepEqual(fitViewport(1768, 928), { width: 982, height: 516 });
-  assert.deepEqual(fitViewport(928, 977), { width: 516, height: 542 });
-  assert.deepEqual(fitViewport(885, 732), { width: 492, height: 406 });
-  assert.deepEqual(fitViewport(745, 863), { width: 414, height: 480 });
-  assert.deepEqual(fitViewport(896, 751), { width: 498, height: 418 });
   // A small area keeps its shape at 320 pixels or more.
   assert.deepEqual(fitViewport(400, 200), { width: 640, height: 320 });
   const log = { width: 1280, height: 720 };
@@ -362,6 +365,33 @@ test('a viewport fits the area a recording plays in, so 16 px page text plays at
   assert.equal(smallPageText(log, { w: 1920, h: 1080 }), null);
   const small = smallPageText({ width: 1920, height: 1080 }, { w: 1697, h: 955 });
   assert.equal(Math.round(small.px), 14);
+});
+
+test('small text matters less where every typed and cued step plays inside a zoom', () => {
+  const box = { x: 300, y: 200, w: 300, h: 60 };
+  const steps = [
+    { step: 1, do: 'mark', name: 'open', cue: '#open', t: 0 },
+    { step: 2, do: 'zoom', selector: '.row', cue: '#type', t: 2, box },
+    { step: 3, do: 'type', selector: '.field', t: 3, until: 5, box },
+    { step: 4, do: 'zoom', cue: '#wave', t: 6 },
+    { step: 5, do: 'wait', seconds: 1, t: 7 },
+    { step: 6, do: 'zoom', selector: '.row', cue: '#second', t: 9, box },
+    { step: 7, do: 'click', selector: '.next', cue: 'next', t: 10, box },
+    { step: 8, do: 'type', selector: '.field', t: 11, until: 12, box },
+    { step: 9, do: 'zoom', cue: '#tall', t: 13 },
+  ];
+  // A mark and a zoom out with a cue name no element, so the page plays whole there on purpose.
+  assert.deepEqual(talkZoomed(steps, { from: 0.5, end: 16 }), [{ from: 0.5, to: 2 }, { from: 6, to: 9 }, { from: 13, to: 16 }]);
+  // A cued click outside a zoom, or a type step outside one, keeps the warning.
+  const outside = steps.map((st) => (st.step === 6 ? { ...st, t: 10.5 } : st));
+  assert.equal(talkZoomed(outside, { from: 0, end: 16 }), null);
+  assert.equal(talkZoomed(steps.filter((st) => st.step !== 2), { from: 0, end: 16 }), null);
+  // cues from s.recording count too, by mark name or step number.
+  assert.equal(talkZoomed([{ step: 1, do: 'click', selector: '.a', t: 1, box }, { step: 2, do: 'zoom', selector: '.b', t: 2, box }], { from: 0, end: 3 }), null);
+  assert.equal(talkZoomed([{ step: 1, do: 'click', selector: '.a', t: 1, box }, { step: 2, do: 'zoom', selector: '.b', t: 2, box }], { cues: { 1: 'now' }, from: 0, end: 3 }), null);
+  assert.deepEqual(talkZoomed([{ step: 1, do: 'zoom', selector: '.b', t: 1, box }, { step: 2, do: 'click', selector: '.a', t: 2, box }], { cues: { 2: 'now' }, from: 0, end: 3 }), [{ from: 0, to: 1 }]);
+  // With nothing the narration talks about, there is nothing to excuse.
+  assert.equal(talkZoomed([{ step: 1, do: 'zoom', selector: '.b', t: 1, box }], { from: 0, end: 3 }), null);
 });
 
 test('the steps that move the picture are typing, scrolls, zooms and what changes the page', () => {

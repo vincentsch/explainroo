@@ -70,6 +70,28 @@ export function movingSteps(steps, { zoom = true, noted = true } = {}) {
   return out;
 }
 
+// Whether every step the narration talks about plays inside a zoom: each type
+// step, and each step on an element with a cue, from `cues` or its own. Then
+// the stretches of the video, in its seconds, where the page plays whole,
+// [{ from, to }], from `from` to `end`; else null.
+export function talkZoomed(steps, { cues, from = 0, end }) {
+  const zooms = steps.filter((st) => st.do === 'zoom').sort((a, b) => a.t - b.t);
+  const inside = (st) => zooms.filter((z) => z.t <= st.t).at(-1)?.box !== undefined;
+  const cueOf = (st) => cues?.[st.name] ?? cues?.[st.step] ?? st.cue;
+  const talked = steps.filter((st) => st.do === 'type' || (cueOf(st) !== undefined && (st.text !== undefined || st.selector !== undefined)));
+  if (!talked.length || !talked.every(inside)) return null;
+  const spans = [];
+  let whole = from;
+  for (const z of zooms) {
+    if (z.box && whole !== null) {
+      if (z.t > whole) spans.push({ from: whole, to: z.t });
+      whole = null;
+    } else if (!z.box && whole === null) whole = z.t;
+  }
+  if (whole !== null && end > whole) spans.push({ from: whole, to: end });
+  return spans;
+}
+
 // Whether a recording shown w x h plays at under SMALL_SHOWN of its size with
 // no zoom on its played steps: then { shown, before, step }, with a zoom step
 // to add before the first step that has an element, or on the whole page when

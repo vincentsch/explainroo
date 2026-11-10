@@ -148,24 +148,31 @@ records.
 - `blur` blurs elements by CSS selector or exact text on every page, before
   anything is recorded. Use it for real email addresses and keys.
 - `viewport` is 1920 x 1080 by default, which is too large for most
-  videos. Pick it from the content area the recording plays in: the same
-  shape, about 1.8 times smaller. Then the page's 16 px text plays at about
-  29 px. These are the numbers for a recording that fills the content area:
+  videos. Pick it from the size the page plays at: the content area, less
+  a small margin and the bar of the browser frame that `s.recording` draws.
+  The viewport has that shape and is about 1.8 times smaller, so the page's
+  16 px text plays at about 29 px. These are the numbers for a recording
+  that fills the content area in a `browser` frame:
 
-  | Size | Content area | Viewport |
-  | --- | --- | --- |
-  | 16:9 (`youtube`) | 1768 x 928 | 982 x 516 |
-  | 4:5 (`instagram`, `linkedin`) | 928 x 977 | 516 x 542 |
-  | `shorts` with bold captions | 885 x 732 | 492 x 406 |
-  | `tiktok`, its package with bold captions | 745 x 863 | 414 x 480 |
-  | `reels` with bold captions | 896 x 751 | 498 x 418 |
+  | Size | Content area | Played size | Viewport |
+  | --- | --- | --- | --- |
+  | 16:9 (`youtube`) | 1768 x 928 | 1697 x 829 | 942 x 460 |
+  | 4:5 (`instagram`, `linkedin`) | 928 x 977 | 891 x 872 | 494 x 484 |
+  | `shorts` with bold captions | 885 x 732 | 848 x 654 | 472 x 364 |
+  | `tiktok`, its package with bold captions | 745 x 863 | 715 x 769 | 398 x 428 |
+  | `reels` with bold captions | 896 x 751 | 860 x 669 | 478 x 372 |
 
   A page this narrow may lay itself out as on a phone, which often reads
-  best in a tall video. `check` warns when a recording's 16 px text would
-  play under 24 px, and names a viewport that fits where it plays. A zoom
-  makes the text larger only while it holds. A recording that plays at
-  under 60% of its size with no zoom step gets its own warning, which names
-  the zoom step to add.
+  best in a tall video. An app with a side panel or a canvas, like a
+  graphing calculator or a design tool, needs room: record it bigger, at
+  1280 wide or more, and zoom on the parts the narration names. `check`
+  warns when a recording's 16 px text would play under 24 px. It names the
+  content area, the size the page plays at, and a viewport that fits. A
+  zoom makes the text larger only while it holds. When every `type` step
+  and every step with a `cue` on an element plays inside a zoom, the
+  warning becomes a hint that says where the whole page plays small. A
+  recording that plays at under 60% of its size with no zoom step gets its
+  own warning, which names the zoom step to add.
 
 The step log has the time of each step in seconds of the video, and the
 `box` of its element in pixels of the video: `x` and `y` are its middle,
