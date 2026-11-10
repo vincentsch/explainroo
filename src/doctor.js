@@ -172,7 +172,8 @@ export async function doctor({ project = null, language = null, fetch = false, r
   const some = (name, { found, ready, missing, notNeeded, fails = false }) => {
     const languages = needs.get(name);
     const state = !languages ? 'not needed' : found ? 'ready' : 'missing';
-    const detail = state === 'ready' ? ready(languages) : state === 'missing' ? missing(languages) : `${notNeeded}${found ? '. It is installed.' : ''}`;
+    const unused = typeof notNeeded === 'function' ? notNeeded(found) : `${notNeeded}${found ? '. It is installed.' : ''}`;
+    const detail = state === 'ready' ? ready(languages) : state === 'missing' ? missing(languages) : unused;
     rows.push({ name, state, ok: state !== 'missing', detail, fails });
   };
 
@@ -266,7 +267,7 @@ export async function doctor({ project = null, language = null, fetch = false, r
     found: has(ASR_MODEL),
     ready: () => 'Whisper base.en, for English narration',
     missing: () => fetched(ASR_MODEL),
-    notNeeded: 'only needed for English narration',
+    notNeeded: (installed) => `Whisper base.en checks only English narration, so this setup doesn't need it${installed ? '. It can stay installed' : ''}`,
   });
   some(MODEL_NAMES[MULTILINGUAL_ASR_MODEL], {
     found: has(MULTILINGUAL_ASR_MODEL),

@@ -103,6 +103,9 @@ test('a Spanish project with a recording needs no espeak-ng, and its language mo
   assert.equal(r.status, 0);
   assert.deepEqual(r.json.setup, [{ language: 'es', voice: 'recording' }]);
   for (const name of ['espeak-ng', 'voice model', 'speech check model']) assert.equal(row(r, name).state, 'not needed', name);
+  assert.equal(row(r, 'speech check model').detail, "Whisper base.en checks only English narration, so this setup doesn't need it");
+  const installed = doctor([dir, '--json'], { models: true, t });
+  assert.equal(row(installed, 'speech check model').detail, "Whisper base.en checks only English narration, so this setup doesn't need it. It can stay installed");
   assert.equal(row(r, 'language model').state, 'missing');
   assert.equal(row(r, 'language model').ok, false);
   assert.match(row(r, 'language model').detail, /^not downloaded yet\. ".* doctor --fetch \S+" or the first voice run fetches it, 252 MB\.$/);
