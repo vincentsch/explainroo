@@ -195,7 +195,8 @@ export function cutListText(name, items, { sha256, language, minGap = null }) {
     'A [sound 0.50s @7.02] is sound without words, like "um" or a cough. Delete it to cut it out,',
     'or change its seconds to keep that much of it from the start. A sound that "may hold the',
     'end" of a word can be the last sound of that word, so listen before you delete it.',
-    'Leave the other words as they are. The cut only takes things out.',
+    'To fix where a word starts, change its time, between the end of the word before it',
+    'and its own end. Leave the rest as it is. The cut only takes things out.',
     `Then run: explainroo cut ${name} --apply`,
     `video: ${name}, sha256 ${sha256.slice(0, 16)}, language ${language}${minGap === null ? '' : `, min gap ${minGap}s`}`,
     '-->',
@@ -205,11 +206,23 @@ export function cutListText(name, items, { sha256, language, minGap = null }) {
   ].join('\n');
 }
 
-// What the cut list keeps: for each item, false for a word or sound that was
-// taken out, and for a pause the seconds it keeps. A sound with fewer seconds
-// than it has keeps that many from its start. `name` names the file in messages.
+// How far a word's time may move: from the end of the word before it, or from its
+// own time after a pause or a sound, to its own end.
+export function moveRange(items, i) {
+  const before = items[i - 1];
+  const lo = before?.type === 'word' ? Math.min(before.end, items[i].start) : items[i].start;
+  return { lo: Math.round(lo * 100) / 100, hi: Math.round(items[i].end * 100) / 100 };
+}
+
+// What the cut list keeps: `keep` has for each item false for a word or sound
+// that was taken out, and for a pause the seconds it keeps. A sound with fewer
+// seconds than it has keeps that many from its start. `moved` has the new start
+// of each word whose time was changed, by its index, and `lines` the line of each
+// item in the list. `name` names the file in messages.
 export function readCutList(text, items, name = 'the cut list') {
   const keep = items.map((item) => (item.type === 'pause' ? 0 : false));
+  const moved = new Map();
+  const lines = new Map();
   const byTime = new Map();
   items.forEach((item, i) => {
     const key = `${item.type}@${time(item.start)}`;
@@ -239,10 +252,26 @@ export function readCutList(text, items, name = 'the cut list') {
       const key = word === undefined ? `${type}@${time(Number(gapAt))}` : `word@${time(Number(at))}`;
       const list = (byTime.get(key) ?? []).filter((i) => !used.has(i));
       // Two words with one time: the one with this text, else the first.
-      const i = word === undefined ? list[0] : (list.find((k) => items[k].text === word) ?? list[0]);
-      if (i === undefined) throw new ProjectError(`${where}: "${whole}" is not in the recording. Leave the words, pauses and sounds as cut wrote them, and only delete them.`);
+      let i = word === undefined ? list[0] : (list.find((k) => items[k].text === word) ?? list[0]);
+      if (i === undefined && word === undefined) throw new ProjectError(`${where}: cut wrote no ${type} at ${time(Number(gapAt))} s. Leave the time of a ${type} as it is, and change only its seconds.`);
+      if (i === undefined) {
+        // A word with a new time: the next word with this text that isn't used
+        // yet, the one whose range holds the time, else the closest.
+        const t = Number(at);
+        const same = (k) => items[k].type === 'word' && !used.has(k) && k > last && (items[k].text === word || bareWord(items[k].text).toLowerCase() === bareWord(word).toLowerCase());
+        const options = items.flatMap((_, k) => (same(k) ? [k] : []));
+        const inRange = (k) => { const r = moveRange(items, k); return t >= r.lo - 1e-6 && t <= r.hi + 1e-6; };
+        i = options.find(inRange) ?? options.sort((a, b) => Math.abs(items[a].start - t) - Math.abs(items[b].start - t))[0];
+        if (i === undefined) throw new ProjectError(`${where}: "${whole}" is not a word that cut wrote. Leave the words as cut wrote them: delete them, or move a word's time to fix where it starts.`);
+        if (!inRange(i)) {
+          const r = moveRange(items, i);
+          throw new ProjectError(`${where}: "${whole}" can move between ${time(r.lo)} and ${time(r.hi)}, from the end of the word before it to its own end. cut wrote it as ${items[i].text}@${time(items[i].start)}.`);
+        }
+        moved.set(i, t);
+      }
       if (i < last) throw new ProjectError(`${where}: "${whole}" comes before a word that stands earlier in the list. The cut keeps the order of the recording, so it can't move words.`);
       used.add(i);
+      lines.set(i, n + 1);
       last = i;
       const s = Number(seconds);
       if (type !== undefined && !Number.isFinite(s)) throw new ProjectError(`${where}: "${whole}" needs the seconds to keep, like [${type} 0.5s @${time(Number(gapAt))}]`);
@@ -259,13 +288,17 @@ export function readCutList(text, items, name = 'the cut list') {
   items.forEach((item, i) => {
     if (item.type === 'pause' && !used.has(i)) keep[i] = Math.min(BREATH, item.end - item.start);
   });
-  return keep;
+  return { keep, moved, lines };
 }
 
 // The parts of the recording to keep, from the items and what the list keeps of
 // them. Each start and end is a join, with the times the join may move between to
 // find a quiet spot. The speech model often times a word a little late, so a
 // join at a word or a sound may move up to 0.2 s before it, and 0.03 s into it.
+// A join never reaches into a deleted word: after one it moves only between the
+// end of that word and the start of the kept one, and before one only up to its
+// start. A word whose time was moved has its join right there. Each join has
+// `i`, the item it is at.
 export function keptParts(items, keep, duration) {
   const parts = [];
   const add = (start, end, from, to) => {
@@ -275,13 +308,17 @@ export function keptParts(items, keep, duration) {
     else parts.push({ start: from, end: to });
   };
   const fixed = (t) => ({ t, lo: t, hi: t });
+  const deleted = (k) => items[k]?.type === 'word' && !keep[k];
   const join = (i) => {
     if (i >= items.length) return fixed(duration);
     const item = items[i];
     if (i === 0) return fixed(0);
-    if (item.type === 'pause') return fixed(item.start);
+    if (item.type === 'pause' || item.moved) return { ...fixed(item.start), i };
     const before = items[i - 1];
-    return { t: item.start, lo: Math.max(item.start - 0.2, before.start), hi: item.start + 0.03 };
+    const lo = Math.max(item.start - 0.2, before.start);
+    if (deleted(i - 1)) return { t: item.start, lo: Math.min(item.start, Math.max(lo, before.end)), hi: item.start, i };
+    if (deleted(i)) return { t: item.start, lo, hi: item.start, i };
+    return { t: item.start, lo, hi: item.start + 0.03, i };
   };
   items.forEach((item, i) => {
     const start = i === 0 ? 0 : item.start;
@@ -309,7 +346,7 @@ export function keptParts(items, keep, duration) {
 
 // The parts of the sound to keep, as [start, end] in samples. Each join goes to
 // the quietest 10 ms between its lo and hi, read in 5 ms steps. Parts that come
-// to touch are one.
+// to touch are one. Each part also has `planned`, the joins it was planned at.
 export function placeJoins(parts, samples, channels, duration) {
   const length = Math.min(samples.length / channels, Math.round(duration * RATE));
   const half = RATE / 200;
@@ -338,8 +375,9 @@ export function placeJoins(parts, samples, channels, duration) {
     const b = place(p.end);
     if (b <= a) continue;
     const prev = out.at(-1);
-    if (prev && a <= prev[1]) prev[1] = Math.max(prev[1], b);
-    else out.push([a, b]);
+    if (prev && a <= prev[1]) {
+      if (b > prev[1]) [prev[1], prev.planned[1]] = [b, p.end];
+    } else out.push(Object.assign([a, b], { planned: [p.start, p.end] }));
   }
   return out;
 }
@@ -523,9 +561,57 @@ function keepOld(list) {
 // a sound or word taken out right after the word, else right before it.
 function cutNextTo(items, keep, i) {
   const gone = (k) => items[k] && items[k].type !== 'pause' && (keep[k] === false || typeof keep[k] === 'number');
-  const name = (k) => (items[k].type === 'word' ? `${items[k].text}@${time(items[k].start)}` : gapToken(items[k]));
+  const name = (k) => token(items[k]);
   if (gone(i + 1)) return { item: name(i + 1), side: 'after', type: items[i + 1].type };
   if (gone(i - 1)) return { item: name(i - 1), side: 'before', type: items[i - 1].type };
+  return null;
+}
+
+// The token of an item as the cut list has it.
+const token = (item) => (item.type === 'word' ? `${item.text}@${time(item.start)}` : gapToken(item));
+
+// The joins of a cut, from the parts of the sound placeJoins gave: where each is
+// in the cut, and in the recording where the sound before it stops and the
+// sound after it starts, each as planned from the word times and as it landed.
+// `next` is the item the sound after it starts at, with its line in the list.
+export function cutJoins(items, sound, lines = new Map()) {
+  const r2 = (t) => Math.round(t * 100) / 100;
+  let pos = 0;
+  return sound.slice(1).map((part, k) => {
+    const prev = sound[k];
+    pos += prev[1] - prev[0];
+    const at = part.planned?.[0]?.i;
+    const before = prev.planned?.[1]?.i;
+    return {
+      at: r2(pos / RATE),
+      out: { planned: r2(prev.planned?.[1]?.t ?? prev[1] / RATE), landed: r2(prev[1] / RATE) },
+      in: { planned: r2(part.planned?.[0]?.t ?? part[0] / RATE), landed: r2(part[0] / RATE) },
+      ...(at !== undefined && items[at] ? { next: token(items[at]), ...(lines.has(at) ? { line: lines.get(at) } : {}), index: at } : {}),
+      ...(before !== undefined ? { outIndex: before } : {}),
+    };
+  });
+}
+
+// A word heard in the cut that the list doesn't keep, when a deleted word comes
+// right before or after a join next to it: the join may sit in that word. It is
+// that word when it sounds the same, or any word heard right after a join that
+// follows a deleted word, because a bit of a word can sound like another one.
+// Before a kept word, that word's time can move later, up to its own end.
+function deletedAt(items, keep, joins, heard) {
+  const gone = (k) => items[k]?.type === 'word' && !keep[k];
+  const same = (k) => gone(k) && bareWord(items[k].text).toLowerCase() === heard.word.toLowerCase();
+  for (const j of joins) {
+    if (Math.abs(j.at - heard.time) > 0.6) continue;
+    const i = j.index;
+    // Times heard are given to a tenth of a second.
+    const rightAfter = heard.time >= j.at - 0.1 && heard.time <= j.at + 0.4;
+    if (items[i]?.type === 'word' && (same(i - 1) || (rightAfter && gone(i - 1)))) {
+      const { hi } = moveRange(items, i);
+      return { word: bareWord(items[i - 1].text), side: 'before', kept: j.next, ...(j.line ? { line: j.line } : {}), upTo: hi, from: j.in.landed, at: j.at };
+    }
+    const after = j.outIndex;
+    if (after > 0 && same(after)) return { word: bareWord(items[after].text), side: 'after', kept: token(items[after - 1]) };
+  }
   return null;
 }
 
@@ -545,8 +631,9 @@ export async function applyCut(file, { out = null, dryRun = false, log = () => {
   const sha256 = sha256File(video);
   if (!sha256.startsWith(head[1])) throw new ProjectError(`${listName} was made from another version of ${name}. Run "explainroo cut ${file} --force" to write it again from this one.`);
   const { words, quiet, levels } = await transcript(video, sha256, head[2], { log, transcribe });
-  const items = cutItems(words, duration, quiet, { levels, ...gapSizes(head[3] === undefined ? null : Number(head[3])) });
-  const keep = readCutList(text, items, listName);
+  const listed = cutItems(words, duration, quiet, { levels, ...gapSizes(head[3] === undefined ? null : Number(head[3])) });
+  const { keep, moved, lines } = readCutList(text, listed, listName);
+  const items = listed.map((item, i) => (moved.has(i) ? { ...item, start: moved.get(i), moved: true } : item));
   const parts = keptParts(items, keep, duration);
   if (!parts.length) throw new ProjectError(`${listName} keeps nothing of ${name}`);
 
@@ -599,12 +686,26 @@ export async function applyCut(file, { out = null, dryRun = false, log = () => {
       if (next) m.next = next;
       delete m.index;
     }
-    for (const x of speech.extra) x.original = original(x.time);
+    const joinList = cutJoins(items, sound, lines);
+    for (const x of speech.extra) {
+      x.original = original(x.time);
+      const inWord = deletedAt(items, keep, joinList, x);
+      if (!inWord) continue;
+      // Heard right at the join, it is in the recording where the sound after it starts.
+      const { from, at, ...cut } = inWord;
+      if (from !== undefined && x.time <= at) x.original = from;
+      x.cut = cut;
+    }
+    for (const j of joinList) {
+      delete j.index;
+      delete j.outIndex;
+    }
     const level = dryRun ? null : await loudness(target);
     return {
       video, list: files.list, out: target, ...(dryRun ? { dryRun: true } : {}),
       before: Math.round(duration * 100) / 100, after: Math.round(kept * 100) / 100,
       joins: sound.length - 1,
+      joinList,
       parts: sound.map(([a, b]) => [Math.round((a / RATE) * 1000) / 1000, Math.round((b / RATE) * 1000) / 1000]),
       ...(level ? { loudness: { integrated: level.integrated, truePeak: level.truePeak, target: DEFAULTS.loudness } } : {}),
       speech,
@@ -645,16 +746,25 @@ export function formatCut(r) {
     const name = path.basename(r.video ?? 'the recording');
     const where = (w) => `"${w.word}" at ${w.time.toFixed(1)} s${w.original === undefined ? '' : ` (${w.original.toFixed(2)} s in ${name})`}`;
     const list = (l) => l.slice(0, 8).map(where).join(', ') + (l.length > 8 ? `, and ${l.length - 8} more` : '');
+    const listName = path.basename(r.list ?? 'the cut list');
     const { missing, extra } = r.speech;
     const plain = missing.filter((w) => !w.next);
     const near = (x) => missing.some((w) => Math.abs(w.time - x.time) < 0.6);
+    const inWord = extra.filter((x) => x.cut);
+    const rest = extra.filter((x) => !x.cut);
+    const s = (t) => `${t.toFixed(2)} s`;
     const lines = [
-      r.dryRun ? `Dry run of ${path.basename(r.list)}, nothing written.` : r.out,
+      r.dryRun ? `Dry run of ${listName}, nothing written.` : r.out,
       `${r.before.toFixed(1)} s ${r.dryRun ? 'would cut' : 'cut'} to ${r.after.toFixed(1)} s, with ${r.joins} join${r.joins === 1 ? '' : 's'}. The speech model heard ${Math.round(r.speech.matchRate * 100)}% of the words the list keeps.`,
       ...missing.filter((w) => w.next).slice(0, 8).map((w) => `It didn't hear ${where(w)}. You deleted ${w.next.item} right ${w.next.side} it, and that may hold the ${w.next.side === 'after' ? 'end' : 'start'} of the word. Keep it${w.next.type === 'sound' ? ', or give it fewer seconds to keep part of it,' : ''} and try again.`),
       plain.length ? `It didn't hear ${list(plain)}. A join may cut into ${plain.length === 1 ? 'that word' : 'those words'}, so listen there.` : '',
-      extra.length ? `It heard ${list(extra)}, which the list doesn't keep. ${extra.every(near) ? 'That may be what is left of a kept word it didn\'t hear, so listen there.' : 'That may be left from a word you cut, so listen there. If it is, delete the word next to it too.'}` : '',
+      ...inWord.slice(0, 8).map((x) => (x.cut.side === 'before'
+        ? `It heard ${where(x)}, which the list doesn't keep. The join before ${x.cut.kept} may sit in "${x.cut.word}", which you deleted, because the speech model can put a word's start too early. Move the time of ${x.cut.kept}${x.cut.line ? ` on line ${x.cut.line}` : ''} later, up to ${x.cut.upTo.toFixed(2)}, to where the word starts, and try again.`
+        : `It heard ${where(x)}, which the list doesn't keep. The join after ${x.cut.kept} may sit in "${x.cut.word}", which you deleted, so listen there.`)),
+      rest.length ? `It heard ${list(rest)}, which the list doesn't keep. ${rest.every(near) ? 'That may be what is left of a kept word it didn\'t hear, so listen there.' : 'That may be left from a word you cut, so listen there.'}` : '',
       r.loudness ? loudnessLine(r.loudness) : '',
+      ...(r.joinList?.length ? [`The joins, with where ${name} stops and starts again, as planned from the word times and where it landed at a quiet moment:`,
+        ...r.joinList.map((j) => `  ${s(j.at)} in the cut: stops at ${s(j.out.landed)} (planned ${j.out.planned.toFixed(2)}), starts at ${s(j.in.landed)} (planned ${j.in.planned.toFixed(2)})${j.next ? `, before ${j.next}${j.line ? ` on line ${j.line}` : ''}` : ''}`)] : []),
       r.dryRun ? `To write ${path.basename(cutFiles(r.video ?? 'video.mp4').out)}, run it again without --dry-run.` : `Check the video with: explainroo verify ${path.basename(r.out)}`,
     ];
     return lines.filter(Boolean).join('\n');

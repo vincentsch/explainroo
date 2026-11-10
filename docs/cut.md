@@ -47,9 +47,18 @@ there, and says so.
   its seconds, like `[pause 0.5s @4.14]`.
 - Delete a `[sound]` to cut it out. To keep part of it, change its seconds,
   like `[sound 0.25s @6.52]`, which keeps the first 0.25 seconds.
+- To fix where a word starts, change its time. A word may move between the
+  end of the word before it and its own end, and after a pause or a sound
+  only later. The speech model sometimes puts
+  the start of a word too early, inside the word before it. When you deleted
+  that word, a bit of it stays in the cut, and moving the kept word's time
+  later puts the join where the word really starts, like `first@8.08` in place
+  of `first@7.84`. A time outside that range stops with the range, like
+  `"first@8.30" can move between 7.84 and 8.24`.
 - Leave everything else as it is. The cut only takes things out, and it keeps
-  the order of the recording. When a word has no time, or a time that isn't in
-  the recording, cut stops and names the line.
+  the order of the recording. A pause or a sound keeps its time, and only its
+  seconds change. When a word has no time, or a time outside its range, cut
+  stops and names the line.
 
 ## Apply it
 
@@ -59,7 +68,19 @@ explainroo cut talk.mp4 --apply
 
 This writes `talk.cut.mp4`, or the file that `--out` names. At each join the
 sound goes to the quietest moment close to the word and crossfades over 30 ms,
-so a join doesn't click. The picture cuts at the frame closest to that moment.
+so a join doesn't click. After a deleted word, it looks for that moment only
+between the end of the deleted word and the start of the kept one, so it never
+reaches into the word you cut. At a word whose time you changed, the join is
+at that time. The picture cuts at the frame closest to the join.
+
+cut lists every join: where it is in the cut, and where the recording stops
+and starts again there, both as planned from the word times and as they
+landed, with the word after the join and its line in the cut list:
+
+```text
+  4.53 s in the cut: stops at 5.32 s (planned 5.43), starts at 8.08 s (planned 8.08), before first@8.08 on line 17
+```
+
 The sound is leveled to -14 LUFS with its peak held at -1 dBTP, like a video
 that explainroo renders. A recording with a few very loud moments, like a
 clap, stays quieter, because the peak limit would have to flatten them. cut
@@ -72,7 +93,9 @@ the likely cause, so you know what to keep. It also names a word it heard that
 the list cut out, which may be left from that word. Each time is given in the
 cut and in the recording, so you can find it in the cut list. Listen at those
 times. The speech model times words to about a tenth of a second, so a cut in
-fast speech can keep a bit of the word next to it.
+fast speech can keep a bit of the word next to it. When it hears something
+right after a join that follows a deleted word, the join may sit in that word,
+and cut names the time to move later and its line.
 
 To try a cut list first, add `--dry-run`:
 
