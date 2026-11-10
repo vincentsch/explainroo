@@ -41,8 +41,9 @@ user. Read it first.
    says about how long the rest will take. A long voice run can take longer
    than your tool waits for a command, so run it in the background if your
    tool can. If a word is not confirmed, the voice said it wrong, or the
-   speech model heard it wrong. Under the scene, `voice` quotes what it heard
-   there, with four words on each side, and says what to do. When the voice
+   speech model heard it wrong. Under the scene, `voice` quotes the sentence
+   the voice was given, after `{shown|spoken}`, and what it heard there, with
+   four words on each side, and says what to do. When the voice
    says a word wrong, fix it with `{shown|spoken}` in the script and run the
    command again. If the word already has `{shown|spoken}`, try another spoken
    spelling, or reword the sentence. A short word like "its" has no better

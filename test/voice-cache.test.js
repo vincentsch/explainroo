@@ -177,7 +177,7 @@ test('a word that stays unconfirmed is quoted with four whole words on each side
   assert.equal(heardQuote(v, 'en', [4, 6]), '"It contains a harmless pizza of the virus, such as a…"');
   assert.equal(heardQuote(v, 'en', [1, 16]), '"It contains a harmless pizza of…" and "…from its surface. That peace a lot."');
   const warn = speechFindings(project, voices).issues.find((i) => i.level === 'warn');
-  assert.match(warn.message, /^the voice check could not confirm "piece"\. It heard: "It contains a harmless pizza of the virus, such…"\. /);
+  assert.match(warn.message, /^the voice check could not confirm "piece"\. The voice was given "It contains a harmless piece of the virus, such as a protein from its surface\. That piece a lot\."\. It heard: "It contains a harmless pizza of the virus, such…"\. /);
 });
 
 test('a long scene says the step it is on, a line per step in the order they run, and in a terminal one line that changes', async (t) => {
@@ -294,13 +294,15 @@ test('voice says what it heard for each word it could not confirm, with the quot
   t.mock.method(process.stderr, 'write', () => true);
   assert.equal(await main(['voice', dir]), 0);
   assert.match(output, /intro .* confirmed {2}unconfirmed: soundroo\.com, there\n/);
-  assert.match(output, /^ {2}"soundroo\.com": it heard "Publish it on Soundray\.com and put the link…"\. \{soundroo\.com\|sound roo dot com\} was heard as "Soundray\.com", so the override didn't help\. Try a different spoken spelling, like \{soundroo\.com\|another spelling\}, or reword the sentence\.$/m);
-  assert.match(output, /^ {2}"there": it heard "…put the link over then today\."\. If the voice says it wrong, write it as \{there\|spoken spelling\} in script\.md\. If it is said right and only heard wrong, reword the sentence\.$/m);
+  // What the voice was given, after {shown|spoken}, comes first, to compare with what was heard.
+  assert.match(output, /^ {2}"soundroo\.com": the voice was given "Publish it on sound roo dot com and put the link over there today\.", and it heard "Publish it on Soundray\.com and put the link…"\. \{soundroo\.com\|sound roo dot com\} was heard as "Soundray\.com", so the override didn't help\. Try a different spoken spelling, like \{soundroo\.com\|another spelling\}, or reword the sentence\.$/m);
+  assert.match(output, /^ {2}"there": the voice was given "Publish it on sound roo dot com and put the link over there today\.", and it heard "…put the link over then today\."\. If the voice says it wrong, write it as \{there\|spoken spelling\} in script\.md\. If it is said right and only heard wrong, reword the sentence\.$/m);
   output = '';
   assert.equal(await main(['voice', dir, '--json']), 0);
   const [row] = JSON.parse(output).scenes;
   assert.deepEqual(row.heard.map((u) => [u.word, u.heard]), [['soundroo.com', 'Soundray.com'], ['there', 'then']]);
   assert.equal(row.heard[1].quote, '"…put the link over then today."');
+  assert.equal(row.heard[1].given, '"Publish it on sound roo dot com and put the link over there today."');
   assert.match(row.heard[1].advice, /^If the voice says it wrong/);
   // A word heard as a word that may sound the same, in a language whose sounds can't be compared.
   const { unconfirmedWords } = await import('../src/qa.js');

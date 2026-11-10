@@ -304,8 +304,23 @@ export function unconfirmedWords(project, v, every = new Map()) {
     else if (shortWord(word.text)) advice = `"${bareWord(word.text)}" is a short, common word, so a spelling hint can't change how it sounds. Reword the sentence.`;
     else if (every.has(normWord(word.text))) advice = `If the voice says it wrong, write it as {${bareWord(word.text)}|spoken spelling} in ${script}. ${everyTimeAdvice(every.get(normWord(word.text)))}`;
     else advice = `If the voice says it wrong, write it as {${bareWord(word.text)}|spoken spelling} in ${script}. If it is said right and only heard wrong, reword the sentence.`;
-    return { word: word.text, heard, quote, advice };
+    const given = givenText(v, [k]);
+    return { word: word.text, heard, quote, ...(given ? { given } : {}), advice };
   });
+}
+
+// The text the voice was given for the sentences of the words at `indexes`, after
+// {shown|spoken}, quoted, so a reader can tell a wrong reading from a word that
+// was only heard wrong. Null when the voice has no sentences saved.
+export function givenText(v, indexes) {
+  if (!Array.isArray(v?.chunks) || !Array.isArray(v.words)) return null;
+  const sentences = [...new Set(indexes.map((k) => {
+    const w = v.words[k];
+    // The last sentence that starts before the word, the one it is in.
+    return w ? v.chunks.findLast((c) => c.start <= w.start + 0.01) ?? v.chunks[0] : null;
+  }).filter(Boolean))];
+  if (!sentences.length) return null;
+  return sentences.map((c) => cutTranscript(c.text)).join(' and ');
 }
 
 // The words of the narration that the speech check heard as the same other
@@ -349,7 +364,8 @@ const soundsAlike = (a, b) => similar(a, b) || (a.length > 1 && b.length > 1 && 
 
 // One line for each word voice couldn't confirm.
 export function unconfirmedLine(u) {
-  return `  "${bareWord(u.word)}": ${u.quote ? `it heard ${u.quote}` : 'nothing was heard there'}. ${u.advice}`;
+  const given = u.given ? `the voice was given ${u.given}, and ` : '';
+  return `  "${bareWord(u.word)}": ${given}${u.quote ? `it heard ${u.quote}` : given ? 'it heard nothing there' : 'nothing was heard there'}. ${u.advice}`;
 }
 
 // What check says about the speech check of each scene, from the narration that
@@ -385,7 +401,8 @@ export function speechFindings(project, voices, timeline = null) {
       const advice = recording
         ? `The recording does not match ${script} here. Make ${script} say what was actually said.`
         : unconfirmedAdvice(shown.map(({ word, k }) => ({ word, heard: instead[k] })), missed.some(({ word }) => !hasOverride(word)), script) + same.map((e) => ` "${e.word}" ${everyTimeAdvice(e).replace(/^It /, '')}`).join('');
-      issues.push({ level: 'warn', scene: sc.id, t: null, message: `the voice check could not confirm ${names.length ? names.map((w) => `"${w}"`).join(', ') : `${Math.round((1 - v.matchRate) * 100)}% of the words`}. It heard: ${quote}. ${advice}` });
+      const given = recording ? null : givenText(v, (named.length ? named : unconfirmed.slice(0, 3)).map(({ k }) => k));
+      issues.push({ level: 'warn', scene: sc.id, t: null, message: `the voice check could not confirm ${names.length ? names.map((w) => `"${w}"`).join(', ') : `${Math.round((1 - v.matchRate) * 100)}% of the words`}. ${given ? `The voice was given ${given}. ` : ''}It heard: ${quote}. ${advice}` });
     }
     if (v && v.duration > 40) issues.push({ level: 'hint', scene: sc.id, t: null, message: `the narration runs ${v.duration.toFixed(0)}s; long scenes are easier to follow when split` });
     if (v && v.duration) {
