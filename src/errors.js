@@ -38,3 +38,14 @@ export function hideSecrets(text) {
   for (const secret of secrets) out = out.split(secret).join('[key hidden]');
   return out;
 }
+
+// The same for every string in a value that is saved or printed, like a job file
+// or a command's answer. Other values stay as they are.
+export function hideSecretsIn(value) {
+  if (typeof value === 'string') return hideSecrets(value);
+  if (Array.isArray(value)) return value.map(hideSecretsIn);
+  if (value && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype) {
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, hideSecretsIn(v)]));
+  }
+  return value;
+}

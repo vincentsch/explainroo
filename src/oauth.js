@@ -14,7 +14,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { envFileId, envLock, envLockMs, readEnvFile, writeKeys } from './env.js';
-import { ProjectError, rememberSecret } from './errors.js';
+import { ProjectError, hideSecrets, rememberSecret } from './errors.js';
 import { configRoot } from './models.js';
 import { lockWords, secondsWords, withLock } from './lock.js';
 
@@ -106,7 +106,7 @@ export function readCallback(service, address, { name, command, target }) {
   const refused = params.get('error');
   if (refused) {
     forgetSignIn(service);
-    fail(`the sign-in was not approved (${refused.replace(/[^\w.-]/g, '').slice(0, 60)}). Nothing was saved. Run "${command}" again to try once more.`);
+    fail(`the sign-in was not approved (${hideSecrets(refused).replace(/[^\w.-]/g, '').slice(0, 60)}). Nothing was saved. Run "${command}" again to try once more.`);
   }
   const code = rememberSecret(params.get('code'));
   if (!code) fail(`that address has no code in it. Copy the whole address from the browser's address bar after you approve.`);
@@ -115,7 +115,7 @@ export function readCallback(service, address, { name, command, target }) {
 
 function said(json) {
   const words = [json?.error, json?.error_description].filter((w) => typeof w === 'string' && w).join(': ');
-  return words.replace(/[\s\p{Cc}]+/gu, ' ').slice(0, 200);
+  return hideSecrets(words).replace(/[\s\p{Cc}]+/gu, ' ').slice(0, 200);
 }
 
 // One form-encoded request to a token address. Every token in the answer is

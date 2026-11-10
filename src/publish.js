@@ -23,7 +23,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { ProjectError, ServiceError, hideSecrets } from './errors.js';
+import { ProjectError, ServiceError, hideSecrets, hideSecretsIn } from './errors.js';
 import { createJob, historyDir, jobKey, listAttempts, projectWord, relativeFile, selfCommand, sha256File, shortId, updateJob, withNameLock, writePrivate } from './history.js';
 import { lockWords } from './lock.js';
 import { packageDir } from './package.js';
@@ -651,8 +651,9 @@ function askYes(question) {
 }
 
 // Text from a job file stays on one line, and a link has to be a web address.
+// Keys are hidden before the text is cut to length, so no part of one is left.
 function plainWords(text, length = 300) {
-  return text === null || text === undefined ? null : String(text).replace(/[\s\p{Cc}]+/gu, ' ').trim().slice(0, length);
+  return text === null || text === undefined ? null : hideSecrets(text).replace(/[\s\p{Cc}]+/gu, ' ').trim().slice(0, length);
 }
 
 function webLink(value) {
@@ -696,7 +697,14 @@ function needYes(plan, request, continued) {
   return { ok: false, dry_run: false, confirmed: false, error: words, plan, request };
 }
 
-export async function publish(project, { via, platform: asked, privacy: askedPrivacy, mediaUrl, mediaUnchecked = false, channel, account, draft = false, dryRun = false, yes = false, fresh = false, log = () => {}, notice = () => {}, ask = askYes } = {}) {
+// A service's answer may repeat a key, so every line publish prints and every
+// field of its answer has keys hidden.
+export async function publish(project, { log = () => {}, notice = () => {}, ...options } = {}) {
+  const r = await publishPost(project, { ...options, log: (line) => log(hideSecrets(line)), notice: (line) => notice(hideSecrets(line)) });
+  return hideSecretsIn(r);
+}
+
+async function publishPost(project, { via, platform: asked, privacy: askedPrivacy, mediaUrl, mediaUnchecked = false, channel, account, draft = false, dryRun = false, yes = false, fresh = false, log, notice, ask = askYes } = {}) {
   const { dir } = project;
   if (via === undefined) fail(`publish needs --via ${oneOf(Object.keys(VIA))}`);
   if (!Object.hasOwn(VIA, via)) fail(`--via must be ${oneOf(Object.keys(VIA))}`);

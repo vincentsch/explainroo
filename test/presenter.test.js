@@ -64,6 +64,40 @@ test('--dry-run shows what goes out and what it costs, and buys nothing', async 
   assert.equal(f.count('presenter', POST), 0);
 });
 
+test('an avatar without a price is never bought, whatever the cap, and the dry run says so', async (t) => {
+  const f = await fake(t);
+  const dir = tinyProject(t);
+  const avatars = { status: 200, body: { avatars: [{ id: 'ava', name: 'Ava', likeness: 'synthetic', usd_per_second: null }, { id: 'neg', name: 'Neg', likeness: 'synthetic', usd_per_second: -1 }] } };
+  f.plan('presenter', 'GET /v1/avatars', ...Array.from({ length: 5 }, () => avatars));
+  const dry = await f.run(['presenter', dir, 'intro', '--avatar', 'ava', '--dry-run', '--json']);
+  assert.equal(dry.code, 0, dry.text);
+  const plan = JSON.parse(dry.stdout);
+  assert.equal(plan.estimated_usd, null);
+  assert.equal(plan.would, 'stop');
+  assert.match(plan.reason, /^The presenter service gives no price for the avatar "Ava", so the cost of the clip is unknown and --max-cost can't hold it, so a real run buys nothing\./);
+  const text = await f.run(['presenter', dir, 'intro', '--avatar', 'ava', '--dry-run']);
+  assert.match(text.stdout, /\n  cost unknown, the service gives no price for this avatar\n/);
+  assert.doesNotMatch(text.stdout, /Run it with --max-cost/);
+  for (const [avatar, cap] of [['ava', '0'], ['ava', '100'], ['neg', '0']]) {
+    const r = await f.run(['presenter', dir, 'intro', '--avatar', avatar, '--max-cost', cap, '--json']);
+    assert.equal(r.code, 1, r.text);
+    assert.match(JSON.parse(r.stdout).error, /gives no price for the avatar "(Ava|Neg)", so the cost of the clip is unknown and --max-cost can't hold it\. Nothing was bought\./);
+  }
+  assert.equal(f.count('presenter', POST), 0);
+  assert.equal(listJobs(dir).length, 0);
+});
+
+test('a service error that repeats the key is hidden whole before it is cut to length', async (t) => {
+  const f = await fake(t);
+  const dir = tinyProject(t);
+  f.plan('presenter', POST, { status: 400, body: { error: `${'x'.repeat(190)}${GOOD_KEY}` } });
+  const r = await f.run(['presenter', dir, 'intro', '--avatar', 'ava', '--max-cost', '1', '--json']);
+  assert.equal(r.code, 1, r.text);
+  const saved = JSON.stringify(listJobs(dir));
+  for (const text of [r.stdout, r.stderr, saved]) assert.ok(!text.includes(GOOD_KEY.slice(0, 6)), text);
+  assert.match(JSON.parse(r.stdout).error, /x\[key hid/);
+});
+
 test('the consent rule refuses a real face without verified consent, a recorded voice on any other avatar, and a photo', async (t) => {
   const f = await fake(t);
   const dir = tinyProject(t);

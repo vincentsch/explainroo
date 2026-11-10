@@ -3,7 +3,7 @@
 // Whisper times the words, as it does for every voice.
 import { setTimeout as sleep } from 'node:timers/promises';
 import { findEnv, settingsEnvFile } from '../env.js';
-import { ProjectError, ServiceError, rememberSecret, thrownOutcome } from '../errors.js';
+import { ProjectError, ServiceError, hideSecrets, rememberSecret, thrownOutcome } from '../errors.js';
 import { serviceUrl } from '../services.js';
 
 // The API version every request names, and the model a voice uses without
@@ -55,7 +55,7 @@ async function speechRequest(url, key, body) {
     }
     if (res.status === 429) throw new ServiceError('Cartesia is busy. Try again in a moment.', 'refused');
     if (res.status >= 500) throw new ServiceError('Cartesia answered with an error. Try again in a moment.', 'failed');
-    throw new ServiceError(`Cartesia could not make the voice${said ? `: ${said.slice(0, 200)}` : ''}. Check voice.id and voice.model in video.json.`, 'refused');
+    throw new ServiceError(`Cartesia could not make the voice${said ? `: ${hideSecrets(said).slice(0, 200)}` : ''}. Check voice.id and voice.model in video.json.`, 'refused');
   }
 }
 

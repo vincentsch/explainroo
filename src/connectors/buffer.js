@@ -9,7 +9,7 @@
 // the new one before anything uses it.
 import { setTimeout as sleep } from 'node:timers/promises';
 import { findEnv, findEnvSource } from '../env.js';
-import { ProjectError, ServiceError, rememberSecret, thrownOutcome } from '../errors.js';
+import { ProjectError, ServiceError, hideSecrets, rememberSecret, thrownOutcome } from '../errors.js';
 import { expiresAt, rotatingAccessToken, tokenRequest } from '../oauth.js';
 import { serviceUrl } from '../services.js';
 
@@ -84,7 +84,7 @@ function retryWords(value) {
 
 function gqlWords(json) {
   const first = Array.isArray(json?.errors) ? json.errors.find((e) => typeof e?.message === 'string') : null;
-  return first ? first.message.replace(/[\s\p{Cc}]+/gu, ' ').trim().slice(0, 300) : '';
+  return first ? hideSecrets(first.message).replace(/[\s\p{Cc}]+/gu, ' ').trim().slice(0, 300) : '';
 }
 
 // One GraphQL request. Buffer answers errors with HTTP 200 too, so the body says what
@@ -168,7 +168,7 @@ async function createPost(dir, body, { token }) {
   const json = await gql(dir, body, { write: true, token });
   const answer = json.data?.createPost;
   if (answer?.__typename === 'PostActionSuccess' && answer.post?.id) return { id: String(answer.post.id), status: answer.post.status ?? null, link: answer.post.externalLink ?? null };
-  if (typeof answer?.message === 'string') throw new ServiceError(`Buffer refused the post (${answer.__typename ?? 'error'}: ${answer.message.replace(/[\s\p{Cc}]+/gu, ' ').slice(0, 300)})`, 'refused');
+  if (typeof answer?.message === 'string') throw new ServiceError(`Buffer refused the post (${answer.__typename ?? 'error'}: ${hideSecrets(answer.message).replace(/[\s\p{Cc}]+/gu, ' ').slice(0, 300)})`, 'refused');
   if (!Object.hasOwn(json, 'data') && Array.isArray(json.errors) && json.errors.length) throw new ServiceError(`Buffer refused the request${gqlWords(json) ? ` (${gqlWords(json)})` : ''}`, 'refused');
   throw new ServiceError(`Buffer answered without saying whether it made the post${gqlWords(json) ? ` (${gqlWords(json)})` : ''}`, 'lost');
 }

@@ -10,7 +10,7 @@
 import fs from 'node:fs';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { findEnv } from '../env.js';
-import { ProjectError, ServiceError, rememberSecret, thrownOutcome } from '../errors.js';
+import { ProjectError, ServiceError, hideSecrets, rememberSecret, thrownOutcome } from '../errors.js';
 import { tokenRequest } from '../oauth.js';
 import { serviceUrl } from '../services.js';
 
@@ -64,7 +64,7 @@ function said(json) {
   const error = json?.error;
   const reason = error?.errors?.[0]?.reason;
   const text = typeof error === 'string' ? error : error?.message;
-  return [reason, text].filter(Boolean).join(': ').replace(/[\s\p{Cc}]+/gu, ' ').slice(0, 300);
+  return hideSecrets([reason, text].filter(Boolean).join(': ')).replace(/[\s\p{Cc}]+/gu, ' ').slice(0, 300);
 }
 
 function retryWords(value) {

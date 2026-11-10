@@ -60,7 +60,7 @@ installs. `formats add` then checks the folder and refuses one that:
 
 - has no `format.json`, `guide.md`, `video.json`, `script.md` or `scenes.js`
 - has a guide of 4 KB or more
-- has a link to a file elsewhere
+- has a symbolic link, even to a file in the format
 - sets a voice that costs money
 - has the name of a built-in format
 
@@ -86,6 +86,11 @@ my-format/
   scenes.js     the example scenes, which import './format.js'
   assets/       files the example uses, if any
 ```
+
+A format may hold more files, like a look file that `video.json` names or
+modules that `format.js` imports. `init --format` copies every file into the
+new project in the same place, apart from `format.json` and `guide.md`. The
+guide goes in as `format.md`, and `video.json` gets the title and the flags.
 
 `format.json` looks like this:
 

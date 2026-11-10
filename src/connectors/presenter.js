@@ -13,7 +13,7 @@
 // from the service's own consent flow, where covers lists "face" and "voice".
 import { setTimeout as sleep } from 'node:timers/promises';
 import { findEnv, settingsEnvFile } from '../env.js';
-import { ProjectError, ServiceError, rememberSecret, thrownOutcome } from '../errors.js';
+import { ProjectError, ServiceError, hideSecrets, rememberSecret, thrownOutcome } from '../errors.js';
 import { serviceUrl } from '../services.js';
 
 function findKey(dir) {
@@ -39,7 +39,7 @@ const headers = (key, json = false) => ({ Authorization: `Bearer ${key}`, ...(js
 async function answer(res) {
   const body = await res.json().catch(() => null);
   const said = typeof body?.error === 'string' ? body.error : typeof body?.message === 'string' ? body.message : '';
-  return { body, said: said.slice(0, 200) };
+  return { body, said: hideSecrets(said).slice(0, 200) };
 }
 
 // A request that costs nothing: the list of avatars, or a job's state.
@@ -64,7 +64,7 @@ async function avatars(dir) {
     name: String(a.name ?? a.id),
     likeness: a.likeness === 'synthetic' ? 'synthetic' : 'real',
     consent: { status: ['verified', 'pending'].includes(a.consent?.status) ? a.consent.status : 'none', id: a.consent?.id ?? null, covers: Array.isArray(a.consent?.covers) ? a.consent.covers.map(String) : [] },
-    usd_per_second: Number.isFinite(a.usd_per_second) ? a.usd_per_second : null,
+    usd_per_second: Number.isFinite(a.usd_per_second) && a.usd_per_second >= 0 ? a.usd_per_second : null,
   }));
 }
 
@@ -117,7 +117,7 @@ async function finish(dir, id, { log = () => {}, wait = 3000, timeout = 20 * 600
       if (!res.ok) throw new ServiceError(`the clip could not be downloaded (${res.status}).`, 'lost');
       return { bytes: Buffer.from(await res.arrayBuffer()), cost_usd: Number.isFinite(job.cost_usd) ? job.cost_usd : null };
     }
-    if (job?.status === 'failed') throw new ServiceError(`the presenter service could not make the clip${job.error ? `: ${String(job.error).slice(0, 200)}` : ''}.`, 'failed');
+    if (job?.status === 'failed') throw new ServiceError(`the presenter service could not make the clip${job.error ? `: ${hideSecrets(job.error).slice(0, 200)}` : ''}.`, 'failed');
     if (Date.now() > until) throw new ServiceError('the presenter service took too long.', 'lost');
     log(`presenter: the service is still making the clip (${job?.status ?? 'waiting'})`);
     await sleep(wait);

@@ -615,6 +615,20 @@ function deletedAt(items, keep, joins, heard) {
   return null;
 }
 
+// Whether two paths name the same file, also through a link: the same device
+// and inode. A path that isn't there yet is no file at all.
+function sameFile(a, b) {
+  if (a === b) return true;
+  try {
+    const x = fs.statSync(a, { bigint: true });
+    const y = fs.statSync(b, { bigint: true });
+    return x.dev === y.dev && x.ino === y.ino;
+  } catch (err) {
+    if (err.code === 'ENOENT' || err.code === 'ENOTDIR') return false;
+    throw err;
+  }
+}
+
 // cut <video> --apply: the video as the cut list says, in <name>.cut.mp4 or
 // `out`. The sound gets the loudness and peak limit of a rendered video. With
 // `dryRun` it only listens to the joined sound and writes no file.
@@ -638,7 +652,7 @@ export async function applyCut(file, { out = null, dryRun = false, log = () => {
   if (!parts.length) throw new ProjectError(`${listName} keeps nothing of ${name}`);
 
   const target = dryRun ? null : path.resolve(out ?? files.out);
-  if (target === video) throw new ProjectError('--out has to be another file than the video you cut');
+  if (target && sameFile(target, video)) throw new ProjectError('--out has to be another file than the video you cut');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-cut-'));
   try {
     log('reading the sound');
@@ -658,10 +672,18 @@ export async function applyCut(file, { out = null, dryRun = false, log = () => {
       await finishMix(joined, mixed, DEFAULTS.loudness, AUDIO_CODECS.mp4, { log });
       log(`writing ${path.basename(target)}`);
       const select = frames.map(([a, b]) => `between(n\\,${a}\\,${b - 1})`).join('+');
-      await ffmpeg(['-loglevel', 'error', '-i', video, '-i', mixed,
-        '-filter_complex', `[0:v]fps=${fpsText},select='${select}',setpts=N/(${fpsText})/TB[v]`,
-        '-map', '[v]', '-map', '1:a', '-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', fpsText,
-        ...AUDIO_CODECS.mp4, '-movflags', '+faststart', target]);
+      // ffmpeg writes next to the target, and the finished file is renamed into
+      // place, so a failed run leaves no half video and never opens the source.
+      const part = path.join(path.dirname(target), `.${process.pid}.part.${path.basename(target)}`);
+      try {
+        await ffmpeg(['-loglevel', 'error', '-i', video, '-i', mixed,
+          '-filter_complex', `[0:v]fps=${fpsText},select='${select}',setpts=N/(${fpsText})/TB[v]`,
+          '-map', '[v]', '-map', '1:a', '-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', fpsText,
+          ...AUDIO_CODECS.mp4, '-movflags', '+faststart', part]);
+        fs.renameSync(part, target);
+      } finally {
+        fs.rmSync(part, { force: true });
+      }
     }
     // Listen to the cut, for the words it should say.
     const wav = path.join(dir, 'cut-16k.wav');

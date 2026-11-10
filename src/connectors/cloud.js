@@ -9,7 +9,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { findEnv } from '../env.js';
-import { ProjectError, ServiceError, rememberSecret, thrownOutcome } from '../errors.js';
+import { ProjectError, ServiceError, hideSecrets, rememberSecret, thrownOutcome } from '../errors.js';
 import { serviceUrl } from '../services.js';
 
 export const SHARE_TYPES = { '.mp4': 'video/mp4', '.webm': 'video/webm' };
@@ -71,7 +71,7 @@ function said(json) {
   if (!json || typeof json !== 'object') return null;
   const first = json.errors && typeof json.errors === 'object' ? Object.values(json.errors).flat().find((m) => typeof m === 'string') : null;
   const text = (typeof json.message === 'string' && json.message) || first || (typeof json.error === 'string' && json.error) || (typeof json.error?.message === 'string' && json.error.message);
-  return text ? String(text).replace(/[\s\p{Cc}]+/gu, ' ').trim().slice(0, 300) : null;
+  return text ? hideSecrets(text).replace(/[\s\p{Cc}]+/gu, ' ').trim().slice(0, 300) : null;
 }
 
 // Uploads one file. The file goes up as a stream from disk, so a large video is

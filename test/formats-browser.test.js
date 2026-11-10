@@ -9,7 +9,7 @@ import path from 'node:path';
 import { findChrome } from '../src/browser.js';
 import { ffmpegPath } from '../src/ffmpeg.js';
 import { loadProject } from '../src/project.js';
-import { BUILT_IN } from '../src/formats.js';
+import { BUILT_IN, readFormat, startFromFormat } from '../src/formats.js';
 import { cachedVoice } from './helpers/cached-voice.js';
 import { runCli } from './helpers/tiny-project.js';
 
@@ -31,6 +31,30 @@ for (const name of fs.readdirSync(BUILT_IN).sort()) {
     assert.deepEqual(bad, [], JSON.stringify(bad, null, 2));
   });
 }
+
+// A format with its own look and a helper module that format.js imports: both
+// come into the new project, so check loads the scenes and draws them.
+test('a project from a format with a look file and helper modules checks without errors', { skip }, async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-format-files-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const from = path.join(root, 'format');
+  fs.cpSync(path.join(BUILT_IN, 'narrated-explainer'), from, { recursive: true });
+  const settings = JSON.parse(fs.readFileSync(path.join(from, 'video.json'), 'utf8'));
+  fs.writeFileSync(path.join(from, 'video.json'), JSON.stringify({ ...settings, theme: 'look.json' }));
+  fs.writeFileSync(path.join(from, 'format.json'), JSON.stringify({ name: 'own-look', description: 'With its own look.', author: 'Jane Doe', version: '0.1.0' }));
+  fs.writeFileSync(path.join(from, 'look.json'), JSON.stringify({ extends: 'paper', bg: '#ededed' }));
+  fs.mkdirSync(path.join(from, 'lib'));
+  fs.writeFileSync(path.join(from, 'lib', 'size.js'), 'export const share = 100;\n');
+  const code = fs.readFileSync(path.join(from, 'format.js'), 'utf8');
+  fs.writeFileSync(path.join(from, 'format.js'), `import { share } from './lib/size.js';\n${code.replace('/ 100;', '/ share;')}`);
+  const dir = path.join(root, 'video');
+  startFromFormat(readFormat(from), dir, { ...settings, theme: 'look.json', title: 'Ice' });
+  for (const scene of loadProject(dir).script.scenes) cachedVoice(dir, scene.id);
+  const r = await runCli(['check', dir, '--json']);
+  assert.equal(r.code, 0, r.text);
+  const { issues } = JSON.parse(r.stdout);
+  assert.deepEqual(issues.filter((i) => i.level === 'error'), []);
+});
 
 test('the formats start with the 0.6 defaults, and the product formats in the studio look', () => {
   for (const name of fs.readdirSync(BUILT_IN)) {

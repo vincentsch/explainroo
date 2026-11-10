@@ -10,7 +10,7 @@
 import fs from 'node:fs';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { findEnv, settingsEnvFile } from '../env.js';
-import { ProjectError, ServiceError, rememberSecret, thrownOutcome } from '../errors.js';
+import { ProjectError, ServiceError, hideSecrets, rememberSecret, thrownOutcome } from '../errors.js';
 import { serviceUrl } from '../services.js';
 
 const ENV = 'BLOTATO_API_KEY';
@@ -39,7 +39,7 @@ function apiKey(dir) {
 
 function said(json) {
   const text = (typeof json?.message === 'string' && json.message) || (typeof json?.error === 'string' && json.error) || (typeof json?.error?.message === 'string' && json.error.message) || '';
-  return text.replace(/[\s\p{Cc}]+/gu, ' ').trim().slice(0, 300);
+  return hideSecrets(text).replace(/[\s\p{Cc}]+/gu, ' ').trim().slice(0, 300);
 }
 
 function retryWords(value) {

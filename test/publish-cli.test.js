@@ -656,6 +656,22 @@ test('a Blotato post that stays in progress is picked up by a later run, which r
   assert.equal(failing.fake.count('blotato', 'POST /posts'), 1);
 });
 
+test('a failed post that repeats the key shows no part of it, in the output or the job file', async (t) => {
+  // The second one is cut to length in the key, if it were cut first.
+  const fragment = BLOTATO_KEY.slice(0, 8);
+  for (const said of [`upstream rejected credential ${BLOTATO_KEY}`, `${'x'.repeat(288)} ${BLOTATO_KEY}`]) {
+    const s = await setup(t, { platforms: ['tiktok'], login: ['blotato'] });
+    s.fake.plan('blotato', 'GET /posts/*', { status: 200, body: { postSubmissionId: 'x', status: 'failed', errorMessage: said } });
+    const failed = await s.json('--via', 'blotato', '--yes');
+    assert.equal(failed.code, 1);
+    assert.equal(failed.out.stage, 'failed');
+    const again = await s.publish('--via', 'blotato', '--yes');
+    assert.equal(again.code, 1);
+    for (const text of [failed.text, again.text, JSON.stringify(jobs(s.dir))]) assert.ok(!text.includes(fragment), text);
+    assert.match(JSON.stringify(jobs(s.dir)), /\[key hidden/);
+  }
+});
+
 // --- Buffer: tokens that rotate, and a 429 ------------------------------------------
 
 function expireBufferLogin(s) {

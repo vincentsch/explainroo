@@ -57,7 +57,7 @@ export async function avatarList(project) {
 
 export function formatAvatars(list) {
   if (!list.length) return 'The presenter service has no avatars for this key.';
-  return `${list.map((a) => `${a.id.padEnd(16)} ${a.name}, ${a.likeness === 'synthetic' ? 'a made-up person' : 'a real person'}, consent ${a.consent.status}${a.usd_per_second !== null ? `, $${a.usd_per_second} a second` : ''}${a.usable ? '' : '. Can\'t be used here'}`).join('\n')}\n${consentRule()}`;
+  return `${list.map((a) => `${a.id.padEnd(16)} ${a.name}, ${a.likeness === 'synthetic' ? 'a made-up person' : 'a real person'}, consent ${a.consent.status}${a.usd_per_second !== null ? `, $${a.usd_per_second} a second` : ', no price'}${a.usable ? '' : '. Can\'t be used here'}`).join('\n')}\n${consentRule()}`;
 }
 
 function stopped(project, job, reason) {
@@ -83,7 +83,10 @@ export async function makePresenter(project, { scene: sceneId, avatar: avatarId,
   const estimate = avatar.usd_per_second === null ? null : Math.round(avatar.usd_per_second * seconds * 10000) / 10000;
   const request = { name: clipName, scene: scene.id, avatar: avatar.id, avatar_name: avatar.name, likeness: avatar.likeness, consent_id: avatar.consent.id, aspect: aspectOf(project), audio_sha256: sha256File(wav), seconds };
   const plan = { ...request, file: `assets/presenters/${clipName}.mp4`, estimated_usd: estimate, sends: `the narration of scene "${scene.id}" (${seconds} s of sound) and the avatar id` };
-  if (dryRun) return { dry_run: true, ...plan };
+  // Without a price no cap can hold, so nothing is bought.
+  const noPrice = estimate === null ? `the presenter service gives no price for the avatar "${avatar.name}", so the cost of the clip is unknown and --max-cost can't hold it` : null;
+  const pickPriced = `Pick an avatar with a price from "${selfCommand()} presenter ${projectWord(project.dir)} --avatars", or ask the service for its price.`;
+  if (dryRun) return { dry_run: true, ...plan, ...(noPrice ? { would: 'stop', reason: `${noPrice.replace(/^\w/, (c) => c.toUpperCase())}, so a real run buys nothing. ${pickPriced}` } : { would: 'buy' }) };
 
   const key = jobKey({ kind: 'presenter', provider: presenter.id, name: clipName, avatar: avatar.id, audio: request.audio_sha256, aspect: request.aspect });
   const decision = decide(project.dir, key, { fresh });
@@ -96,6 +99,7 @@ export async function makePresenter(project, { scene: sceneId, avatar: avatarId,
   if (decision.action === 'stop') throw stopped(project, job, decision.reason);
   if (decision.action === 'buy') {
     // Only buying needs a cap. Using or fetching what was bought costs nothing.
+    if (noPrice) throw new ProjectError(`${noPrice}. Nothing was bought. ${pickPriced}`);
     if (maxCost === undefined) throw new ProjectError(`add --max-cost, the most this clip may cost in US dollars${estimate !== null ? `. The service asks about $${estimate} for it` : ''}. --dry-run shows the plan and costs nothing.`);
     if (estimate !== null && estimate > maxCost) throw new ProjectError(`the clip costs about $${estimate}, more than --max-cost ${maxCost}. Nothing was bought.`);
     presenter.key(project.dir);
@@ -133,7 +137,8 @@ export async function makePresenter(project, { scene: sceneId, avatar: avatarId,
 }
 
 export function formatPresenter(r) {
-  const cost = r.estimated_usd === null ? 'the service gives no price' : `about $${r.estimated_usd}`;
-  if (r.dry_run) return `presenter plan for scene ${r.scene}, nothing was sent:\n  avatar ${r.avatar_name} (${r.likeness === 'synthetic' ? 'a made-up person' : 'a real person with verified consent'}), ${r.aspect}\n  sends ${r.sends}\n  cost ${cost}\n  saves ${r.file}\nRun it with --max-cost to make the clip. Every package of this video then gets the AI label.`;
+  const cost = r.estimated_usd === null ? 'unknown, the service gives no price for this avatar' : `about $${r.estimated_usd}`;
+  const next = r.would === 'stop' ? r.reason : 'Run it with --max-cost to make the clip. Every package of this video then gets the AI label.';
+  if (r.dry_run) return `presenter plan for scene ${r.scene}, nothing was sent:\n  avatar ${r.avatar_name} (${r.likeness === 'synthetic' ? 'a made-up person' : 'a real person with verified consent'}), ${r.aspect}\n  sends ${r.sends}\n  cost ${cost}\n  saves ${r.file}\n${next}`;
   return `${r.reused ? 'already made' : 'made'}: ${r.file} (job ${r.job}${r.cost_usd !== null && r.cost_usd !== undefined ? `, $${r.cost_usd}` : ''})\nShow it with s.presenter('${r.name}') in scene ${r.scene}. Every package of this video gets the AI label.`;
 }

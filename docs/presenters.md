@@ -70,7 +70,8 @@ explainroo presenter videos/<name> intro --avatar ava --max-cost 1
 - The presenter speaks the narration of one scene, so run `voice` first.
   `--dry-run` shows what goes out and what it costs, and buys nothing.
 - `--max-cost` is the most the clip may cost in US dollars. A clip that costs
-  more is not bought.
+  more is not bought. When the service gives no price for the avatar, the
+  cost is unknown, so `presenter` buys nothing, and `--dry-run` says so.
 - The clip is saved as `assets/presenters/<scene>.mp4`, or under `--name`.
   The same command never buys it twice. `--new` buys it again. When the
   service takes long, the same command fetches the clip later and buys
@@ -110,6 +111,8 @@ one takes the key as `Authorization: Bearer <key>`.
   person's face.
 - `consent` is `{ "status": "verified" | "pending" | "none", "id", "covers" }`,
   where `covers` lists `"face"` and `"voice"`.
+- `usd_per_second` is the price in US dollars. explainroo buys no clip of an
+  avatar without one.
 - `audio` is the scene's narration, a WAV file in base64. `aspect` is
   `16:9`, `9:16` or `1:1`.
 - The service checks consent too, and answers 451 when it is missing.

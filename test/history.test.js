@@ -405,6 +405,14 @@ test('no error text in the record can hold a key', (t) => {
   const job = updateJob(dir, createJob(dir, 'abcd1234', { kind: 'image' }), { status: 'failed', error: 'bad a-secret-for-this-test' });
   assert.equal(job.error, 'bad [key hidden]');
   assert.doesNotMatch(fs.readFileSync(historyDir(dir, 'jobs', 'abcd1234.json'), 'utf8'), /a-secret-for-this-test/);
+  // Every string the record keeps, at any depth, also when the job is created.
+  const deep = createJob(dir, 'efgh5678', { kind: 'publish', request: { note: 'with a-secret-for-this-test' } });
+  assert.equal(deep.request.note, 'with [key hidden]');
+  const done = updateJob(dir, deep, { result: { status: 'failed', error: 'echoed a-secret-for-this-test', details: ['a-secret-for-this-test'] }, note: 'a-secret-for-this-test', cost_usd: 0.1 });
+  assert.deepEqual(done.result, { status: 'failed', error: 'echoed [key hidden]', details: ['[key hidden]'] });
+  assert.equal(done.note, '[key hidden]');
+  assert.equal(done.cost_usd, 0.1);
+  assert.doesNotMatch(fs.readFileSync(historyDir(dir, 'jobs', 'efgh5678.json'), 'utf8'), /a-secret-for-this-test/);
 });
 
 test('printed commands name how this copy runs, and paths are safe to paste', () => {
