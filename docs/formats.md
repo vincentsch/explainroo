@@ -60,7 +60,7 @@ installs. `formats add` then checks the folder and refuses one that:
 
 - has no `format.json`, `guide.md`, `video.json`, `script.md` or `scenes.js`
 - has a guide of 4 KB or more
-- has a link to a file elsewhere
+- has a symbolic link, even to a file in the format
 - sets a voice that costs money
 - has the name of a built-in format
 

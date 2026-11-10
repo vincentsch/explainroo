@@ -242,6 +242,12 @@ export function addFormat(url, { commit } = {}) {
     git(['clone', '--no-checkout', '--quiet', url, temp]);
     git(['checkout', '--quiet', '--detach', plan.commit ?? 'HEAD'], temp);
     const sha = git(['rev-parse', 'HEAD'], temp);
+    // Git checks a link out as a plain file that holds its target, so links are
+    // found by their mode in the commit, 120000.
+    for (const entry of git(['ls-tree', '-r', '-z', '--full-tree', 'HEAD'], temp).split('\0')) {
+      const [, mode, name] = /^(\d+) \S+ \S+\t(.*)$/s.exec(entry) ?? [];
+      if (mode === '120000') fail(`the format has a link, ${name}, and a format may only hold plain files`);
+    }
     const f = readFormat(temp, url);
     if (fs.existsSync(path.join(BUILT_IN, f.name))) fail(`a built-in format is called "${f.name}". Ask the format's author to rename it`);
     const target = path.join(root, f.name);

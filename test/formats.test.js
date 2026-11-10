@@ -170,7 +170,8 @@ test('formats add --yes installs at the commit, lists it with its source, and in
 
 test('formats add refuses a format with a link, a paid voice, a long guide or the name of a built-in one', (t) => {
   const cases = [
-    [{ change: (d) => fs.symlinkSync('/etc/hostname', path.join(d, 'assets-link.png')) }, /a format may only hold plain files|no links|link/],
+    [{ change: (d) => fs.symlinkSync('/etc/hostname', path.join(d, 'assets-link.png')) }, /the format has a link, assets-link\.png, and a format may only hold plain files/],
+    [{ change: (d) => { fs.mkdirSync(path.join(d, 'assets')); fs.writeFileSync(path.join(d, 'assets', 'real.svg'), '<svg xmlns="http://www.w3.org/2000/svg"/>'); fs.symlinkSync('real.svg', path.join(d, 'assets', 'logo.svg')); } }, /the format has a link, assets\/logo\.svg, and a format may only hold plain files/],
     [{ change: (d) => fs.writeFileSync(path.join(d, 'video.json'), JSON.stringify({ voice: { provider: 'elevenlabs', id: 'abc' } })) }, /costs money\. A format starts with a free voice/],
     [{ change: (d) => fs.writeFileSync(path.join(d, 'guide.md'), 'x'.repeat(5000)) }, /guide\.md has 5000 bytes, and a guide stays under 4096/],
     [{ name: 'product-ad' }, /a built-in format is called "product-ad"/],
@@ -178,16 +179,9 @@ test('formats add refuses a format with a link, a paid voice, a long guide or th
   for (const [options, message] of cases) {
     const cache = temp(t);
     const { dir } = formatRepo(t, options);
+    // Git checks a link out as a plain file with core.symlinks off, so the
+    // link is found by its mode in the commit.
     const r = cli(t, ['formats', 'add', dir, '--yes'], cache);
-    if (options.change && /link/.test(String(message))) {
-      // Git writes a link as a plain file with core.symlinks off, so it is never followed.
-      if (r.status === 0) {
-        const file = path.join(cache, 'formats', 'recipe-card', 'assets-link.png');
-        assert.ok(!fs.lstatSync(file).isSymbolicLink());
-        assert.equal(fs.readFileSync(file, 'utf8'), '/etc/hostname');
-        continue;
-      }
-    }
     assert.equal(r.status, 1, r.stdout);
     assert.match(r.stderr, message);
     assert.deepEqual(fs.existsSync(path.join(cache, 'formats')) ? fs.readdirSync(path.join(cache, 'formats')) : [], [], 'nothing stays in the cache');
