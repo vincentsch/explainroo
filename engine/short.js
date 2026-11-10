@@ -753,12 +753,6 @@ export class Short {
     const at = o.at ?? -1;
     const a = this.at(at);
     if (a >= 0) this.enter(a, 0.3, o.sfx === undefined ? 'blip' : o.sfx, { label, pitch: n, chosen: o.sfx !== undefined, usual: 'blip' });
-    const life = this.life(at, o.out, 0.3);
-    if (!life) return;
-    // With "defaults": "0.6", it comes after the transition into the scene,
-    // so the step labels of two scenes never show at once.
-    const shown = this.afterBlend();
-    if (shown <= 0) return;
     const tw = this.measure(label, size, 900, 1.5);
     const dotR = size * 0.2;
     const dotsW = total * dotR * 2 + (total - 1) * dotR * 1.4;
@@ -766,8 +760,15 @@ export class Short {
     const w = tw + dotsW + extra + size * 1.9;
     const h = size * 1.7;
     const left = x - w / 2;
-    // Where it is, so a sticker can keep clear of it.
+    // Where it is in the frame, also before it shows, so a sticker can keep
+    // clear of it. The camera doesn't move it.
     this.stepBox = { x0: left, y0: y - h / 2, x1: left + w, y1: y + h / 2 };
+    const life = this.life(at, o.out, 0.3);
+    if (!life) return;
+    // With "defaults": "0.6", it comes after the transition into the scene,
+    // so the step labels of two scenes never show at once.
+    const shown = this.afterBlend();
+    if (shown <= 0) return;
     this.s.ui.over(() => this.screen(() => {
       this.c.globalAlpha *= (1 - life.q) * shown;
       this.roundRect(left, y - h / 2, w, h, h / 2, alpha(INK, 0.82), { shadow: { color: 'rgba(0,0,0,0.3)', blur: 14, y: 4 } });

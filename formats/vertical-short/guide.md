@@ -46,15 +46,15 @@ feed, and keeps it for a product too.
   in the content area at the zoom of the scene's `punch()`.
 - `beats(s, [{ at, icon, label, color }])` shows one big picture per cue, each
   one replacing the one before. Give each beat its own `[#marker]`, at most 2
-  seconds apart.
+  seconds apart. It leaves room above them for a `fact()`.
 - `echo(s, icon, { color, at, out })` draws a large, faint copy of the
   subject below the captions, edge to edge in `s.full`. `hookFrame`, `beats`
   and `payoff` call it, so the tall frame is never empty at the bottom. The
   apps cover part of it with their buttons, so nothing there must be read.
 - `fact(s, '*20%*', { at })` puts one fact on a tilted sticker. It finds a
-  free place near its `x` and `y`, clear of the hook title and of the
-  pictures that `hookFrame` and `beats` drew, so call it after them, but not
-  of an `s.draw`. `check` warns when a sticker covers a picture or text.
+  free place near its `x` and `y`, clear of the hook title, the step label
+  and the pictures that `hookFrame` and `beats` drew, so call it after
+  them, but not of an `s.draw`. `check` warns when a sticker covers a picture or text.
 - `punch(s, at)` gives camera keys for a fast zoom, held for a second. Use it
   as `s.camera(punch(s, '#back'))`, first in the scene. Then `fact()` and
   `beats()` keep their words in the content area at that zoom: a sticker moves

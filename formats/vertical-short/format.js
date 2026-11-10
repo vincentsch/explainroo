@@ -40,6 +40,16 @@ export function wordArea(s) {
   return { left, top, right, bottom, w: right - left, h: bottom - top };
 }
 
+// Where a box of the frame that the camera doesn't move, like the step label,
+// lies in the scene at any zoom of the scene's punch(): the box at zoom 1 and
+// the box at the largest zoom, and everything between them.
+function unzoomed(s, b) {
+  const z = ZOOMS.get(s) ?? 1;
+  const p = pivot(s);
+  const at = (v, c) => c + (v - c) / z;
+  return { x0: Math.min(b.x0, at(b.x0, p.x)), y0: Math.min(b.y0, at(b.y0, p.y)), x1: Math.max(b.x1, at(b.x1, p.x)), y1: Math.max(b.y1, at(b.y1, p.y)) };
+}
+
 // The size of a fact() sticker's words, in units, and the sizes it tries,
 // from its own down to the smallest, where no place is free.
 const FACT_SIZE = 11;
@@ -113,16 +123,19 @@ export function hookFrame(s, title, { icon, color = colors(s).accent, kicker } =
 // Pictures that take turns in the middle of the content area, one per cue, so
 // the frame changes on every beat. Each item is { at, icon, label, color } and
 // stays until the next one comes. A long label gets smaller, so it stays in
-// s.safe at the zoom of the scene's punch().
+// s.safe at the zoom of the scene's punch(). Above the pictures, and below the
+// scene's step label when step() came first, a band stays free for a fact().
 export function beats(s, items, { y = s.safe.y + s.safe.h * 0.55 } = {}) {
   const u = unit(s);
   const area = wordArea(s);
-  const size = u * 44;
+  const step = s.short.stepBox ? unzoomed(s, s.short.stepBox).y1 + u * 2 : -Infinity;
+  const top = Math.max(area.top, step) + factBand(s, area);
   items.forEach((it, i) => {
     const next = items[i + 1]?.at;
     const exit = next === undefined ? undefined : 'none';
     const label = it.label ? fitLine(s, it.label, u * 9, 600, area.w * 0.96).size : u * 9;
-    const at = Math.min(y, area.bottom - size / 2 - label * 1.5);
+    const size = Math.max(u * 24, Math.min(u * 44, area.bottom - label * 1.5 - top));
+    const at = Math.max(Math.min(y, area.bottom - size / 2 - label * 1.5), top + size / 2);
     echo(s, it.icon, { color: it.color, at: it.at, out: next, exit });
     s.icon(it.icon, { x: s.cx, y: at, size, color: it.color ?? colors(s).accent, label: it.label, labelSize: label, labelColor: '#ffffff', at: it.at, out: next, exit, enter: 'pop' });
     // The icon with its label under it.
@@ -144,8 +157,9 @@ export function fact(s, text, { at, x = s.cx + s.safe.w * 0.24, y = s.safe.y + s
   const from = s.time(at ?? 0);
   const until = out === undefined ? Infinity : s.time(out);
   const taken = (TAKEN.get(s) ?? []).filter((b) => b.from < until && b.until > from);
-  // The step label at the top, when the scene shows one.
-  if (s.short.stepBox) taken.push(s.short.stepBox);
+  // The step label at the top, when the scene shows one. It stays put while
+  // the camera zooms the sticker toward it.
+  if (s.short.stepBox) taken.push(unzoomed(s, s.short.stepBox));
   const gap = u * 2;
   // The free place nearest to x and y for the sticker at `k` times its size,
   // or null. With `anyway`, x and y when nothing is free.

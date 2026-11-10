@@ -108,3 +108,25 @@ test('vertical-short keeps the hook title clear of the watermark at its punch, a
     assert.equal(order.length, name === 'late' ? 1 : 0, name);
   }
 });
+
+// The step label stays where it is while the camera zooms. fact() keeps clear
+// of it at every zoom of the scene's punch(), and beats() leaves the sticker a
+// band below it.
+test('vertical-short keeps fact() clear of the step label at the zoom of its punch', { skip }, async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-format-step-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  for (const size of ['reels', 'shorts']) {
+    const dir = path.join(root, size);
+    assert.equal((await runCli(['init', dir, '--format', 'vertical-short', '--size', size])).code, 0);
+    const file = path.join(dir, 'scenes.js');
+    const scenes = fs.readFileSync(file, 'utf8')
+      .replace('s.short.step(2, 2);', "s.short.step(2, 2, { word: 'BREWLY' });")
+      .replace(/(\{ at: '#back', icon: 'battery-full', label: 'It comes back', color: 'green' \},\n {4}\]\);)/, "$1\n    fact(s, '*50%* off', { at: '#warm' });");
+    assert.match(scenes, /50%/);
+    fs.writeFileSync(file, scenes);
+    for (const scene of loadProject(dir).script.scenes) cachedVoice(dir, scene.id);
+    const { issues } = JSON.parse((await runCli(['check', dir, '--json'])).stdout);
+    const bad = issues.filter((i) => i.level === 'warn' || i.level === 'error');
+    assert.deepEqual(bad, [], `${size}: ${JSON.stringify(bad, null, 2)}`);
+  }
+});
