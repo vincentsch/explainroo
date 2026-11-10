@@ -41,8 +41,9 @@ user. Read it first.
    says about how long the rest will take. A long voice run can take longer
    than your tool waits for a command, so run it in the background if your
    tool can. If a word is not confirmed, the voice said it wrong, or the
-   speech model heard it wrong. Under the scene, `voice` quotes what it heard
-   there, with four words on each side, and says what to do. When the voice
+   speech model heard it wrong. Under the scene, `voice` quotes the sentence
+   the voice was given, after `{shown|spoken}`, and what it heard there, with
+   four words on each side, and says what to do. When the voice
    says a word wrong, fix it with `{shown|spoken}` in the script and run the
    command again. If the word already has `{shown|spoken}`, try another spoken
    spelling, or reword the sentence. A short word like "its" has no better
@@ -95,7 +96,7 @@ user. Read it first.
    ```bash
    explainroo still videos/<name>                 # the end of each scene
    explainroo still videos/<name> intro@2.5 12.0  # any moment
-   explainroo sheet videos/<name> --scene intro   # one scene over time
+   explainroo sheet videos/<name> intro           # one scene over time
    explainroo sheet videos/<name>                 # the whole video
    explainroo sheet videos/<name> --times 3,intro@2.5,40  # moments to compare
    ```
@@ -141,8 +142,9 @@ user. Read it first.
     cover it, and the warning gives a `music.volume` 3 dB lower. It doesn't
     for number and maths words, which the check often hears written another
     way, or when the music is already under 0.5. Then listen at those times.
-    Its last
-    line is the verdict: "passed", "passed with 2 warnings" or "failed: 1
+    Two words heard as one, like "Point it" heard as "pointed", are one
+    finding with no music advice, and only a hint when the narration alone
+    confirmed them. Its last line is the verdict: "passed", "passed with 2 warnings" or "failed: 1
     problem", and `--json` has it as `verdict`, with `passed` true or false.
 
 11. **Tell the user** where the video and its subtitle files, chapters and

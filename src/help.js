@@ -52,10 +52,10 @@ export const COMMAND_HELP = {
     example: 'still videos/how-dns-works intro@2.4 resolver@end',
   },
   sheet: {
-    usage: 'sheet [project] [options]',
-    about: 'Writes a contact sheet of the whole video, or of one scene, as a JPEG.',
-    options: [['--scene <id>', 'one scene'], ['--every <s>', 'seconds between frames'], ['--times <list>', 'only these moments, like 3,12.5,intro@2'], ['--cols <n>', 'frames in a row'], ['--large', 'frames 640 pixels wide, 3 to a row, to read labels'], SIZE, PLATFORM, WATERMARK, LANG, JSON_OUT],
-    example: 'sheet videos/how-dns-works --scene intro',
+    usage: 'sheet [project] [scene] [options]',
+    about: 'Writes a contact sheet of the whole video, or of one scene, as a JPEG. The sheet of a scene is out/sheet-<scene>.jpg.',
+    options: [['--scene <id>', 'one scene, the same as naming it after the project'], ['--every <s>', 'seconds between frames'], ['--times <list>', 'only these moments, like 3,12.5,intro@2'], ['--cols <n>', 'frames in a row'], ['--large', 'frames 640 pixels wide, 3 to a row, to read labels'], SIZE, PLATFORM, WATERMARK, LANG, JSON_OUT],
+    example: 'sheet videos/how-dns-works intro',
   },
   check: {
     usage: 'check [project] [options], or check <video.mp4> [options]',

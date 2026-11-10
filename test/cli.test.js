@@ -202,6 +202,14 @@ test('init writes a neutral starter whose scenes match, with "defaults", and say
   const r = await runAll(['init', target, '--title', 'How Bees Make Honey']);
   assert.equal(r.code, 0, r.err);
   assert.match(r.out, /^next: write the narration in script\.md, then run ".+ voice .+bees"\. After that, draw each scene in scenes\.js and run ".+ check .+bees"\.$/m);
+  // One line says what the "defaults" line is for, and where its changes are listed.
+  assert.match(r.out, /^"defaults": "0\.6" in video\.json keeps this look when explainroo changes later\. ".+ docs settings defaults" lists what it changes\.$/m);
+  assert.equal(r.out.match(/"defaults"/g).length, 1);
+  const docs = await runAll(['docs', 'settings', 'defaults']);
+  assert.equal(docs.code, 0, docs.err);
+  assert.match(docs.out, /^## The defaults of a version\n\nThe `"defaults"` line keeps a video looking the same when you update\nexplainroo\./);
+  assert.match(docs.out, /^`"0\.5"` changes these, and `"0\.6"` has them too:$/m);
+  assert.match(docs.out, /^`"0\.6"` also changes these:$/m);
   const made = JSON.parse(fs.readFileSync(path.join(target, 'video.json'), 'utf8'));
   assert.equal(made.defaults, '0.6');
   assert.equal(made.theme, 'studio');
@@ -299,6 +307,29 @@ test('every command refuses a flag it does not take, and takes every flag it rea
   assert.equal(fs.readdirSync(dir).length, 0);
 });
 
+// A word a command would ignore stops it with its usage, before anything runs.
+// Commands that take a list keep taking it.
+test('a command that takes a fixed number of words stops on one more, and sheet names its scenes', async (t) => {
+  const { tinyProject } = await import('./helpers/tiny-project.js');
+  const dir = tinyProject(t, {}, { narrated: false });
+  const render = await run(['render', dir, 'final']);
+  assert.equal(render.code, 1);
+  assert.equal(render.err, 'error: render takes one project, so it would ignore "final". Usage: explainroo render [project] [options]\n');
+  assert.match((await run(['sheet', dir, 'intro', 'outro'])).err, /^error: sheet takes a project and a scene, so it would ignore "outro"\. Usage: explainroo sheet \[project\] \[scene\] \[options\]\n$/);
+  assert.match((await run(['themes', 'dark', 'light'])).err, /^error: themes takes no words, so it would ignore "dark" and "light"\./);
+  assert.match((await run(['verify', dir, 'twice'])).err, /verify takes one project or one video file/);
+  assert.match((await run(['init', path.join(dir, 'a'), 'b'])).err, /init takes one folder, so it would ignore "b"/);
+  // An unknown scene names the scenes, before any narration is made.
+  const nosuch = await run(['sheet', dir, 'nosuch']);
+  assert.equal(nosuch.code, 1);
+  assert.match(nosuch.err, /^error: there is no scene "nosuch" in script\.md\. Its scenes are: intro\n$/);
+  assert.match((await run(['sheet', dir, 'intro', '--scene', 'outro'])).err, /the scene is named twice, as "intro" and with --scene outro\. Leave out one of them\./);
+  assert.equal(fs.existsSync(path.join(dir, 'build')), false);
+  // Lists stay lists.
+  const { extraWords } = await import('../src/cli.js');
+  for (const cmd of ['still', 'words', 'icons', 'say', 'docs', 'image']) assert.equal(extraWords(cmd, ['a', 'b', 'c', 'd']), null);
+});
+
 test('record --inspect takes a project or none and an address, and --viewport, --all, --text, --selector and --locale go only with it', async (t) => {
   const { tinyProject } = await import('./helpers/tiny-project.js');
   const dir = tinyProject(t, {}, { narrated: false });
@@ -346,6 +377,22 @@ test('words prints each spoken word of a scene with its start time, the cue of a
   const wrong = await runAll(['words', dir, 'middle']);
   assert.equal(wrong.code, 1);
   assert.match(wrong.err, /there is no scene "middle" in script\.md\. Its scenes are: intro, outro/);
+});
+
+// "%" has no letters or digits, so it takes the cue of the number before it,
+// and never an empty cue or one that looks like a marker. A word shown with a
+// space keeps it out of its cue, which a cue reads as two words.
+test('words gives a symbol the cue of the word or number it follows', async (t) => {
+  const { tinyProject } = await import('./helpers/tiny-project.js');
+  const { cachedVoice } = await import('./helpers/cached-voice.js');
+  const dir = tinyProject(t, { language: 'fr', voice: 'ff_siwis' }, { narrated: false });
+  fs.writeFileSync(path.join(dir, 'script.md'), '# Tiny\n\n## intro\nÀ 5 % par an, puis à 5 %. Soit {52,50 €|cinquante-deux euros cinquante}.\n');
+  cachedVoice(dir, 'intro');
+  const json = JSON.parse((await runAll(['words', dir, '--json'])).out);
+  const cues = json.scenes[0].words.map((w) => [w.text, w.cue]);
+  assert.deepEqual(cues, [['À', 'À#1'], ['5', '5#1'], ['%', '5#1'], ['par', 'par'], ['an,', 'an'], ['puis', 'puis'], ['à', 'à#2'], ['5', '5#2'], ['%.', '5#2'], ['Soit', 'Soit'], ['52,50 €.', '52,50€']]);
+  assert.ok(json.scenes[0].words.every((w) => w.cue && !w.cue.startsWith('#')));
+  assert.match((await runAll(['words', dir])).out, /^ {3}\d\.\d\d {2}%\. {2}\(cue "5#2"\)$/m);
 });
 
 test('--platform on check, still, sheet and render takes the size and the watermark rule its package uses', async (t) => {

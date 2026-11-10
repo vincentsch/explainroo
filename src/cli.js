@@ -66,7 +66,8 @@ Make a video
   preview [project]     live preview in your browser, reloads on save (--port, --size, --no-watermark)
   still [project] [t…]  PNG stills: "12.5", "scene", "scene@2.4" (default: end of every scene; --size,
                         --no-watermark, --transparent)
-  sheet [project]       contact sheet of the whole video (--scene id, --every s, --size, --no-watermark).
+  sheet [project] [scene]  contact sheet of the whole video, or of one scene as out/sheet-<scene>.jpg
+                        (--every s, --size, --no-watermark).
                         --times 3,12.5,intro@2 makes out/sheet-times.jpg of just those moments, written
                         like the times of still
   check [project]       find layout, timing and pronunciation problems (--view-width pixels, --size, --no-watermark).
@@ -250,6 +251,8 @@ export async function main(argv) {
   try {
     const refused = unknownFlag(cmd, flags);
     if (refused) throw new ProjectError(refused);
+    const extra = extraWords(cmd, pos);
+    if (extra) throw new ProjectError(extra);
     switch (cmd) {
       case 'init': return init(pos[0], flags, print);
       case 'set': {
@@ -368,8 +371,13 @@ export async function main(argv) {
         return 0;
       }
       case 'sheet': {
-        const { project } = runProject(pos[0], flags);
-        const r = await sheet(project, { scene: flags.scene, every: num(flags.every, 'every'), times: timesFlag(flags), cols: num(flags.cols, 'cols'), large: !!flags.large, log });
+        // sheet <project> <scene> is the sheet of that scene, the same as --scene.
+        // One word is the project, unless the current folder is one and the word isn't.
+        const isProject = pos.length === 2 || !fs.existsSync('video.json') || (pos[0] && fs.existsSync(path.join(pos[0], 'video.json')));
+        const { project } = runProject(isProject ? pos.shift() : undefined, flags);
+        const flagScene = textFlag(flags, 'scene');
+        if (pos[0] !== undefined && flagScene !== undefined && flagScene !== pos[0]) throw new ProjectError(`the scene is named twice, as "${pos[0]}" and with --scene ${flagScene}. Leave out one of them.`);
+        const r = await sheet(project, { scene: pos[0] ?? flagScene, every: num(flags.every, 'every'), times: timesFlag(flags), cols: num(flags.cols, 'cols'), large: !!flags.large, log });
         const marked = r.marked.length ? `, ${r.marked.length} marked "camera moving" or "drawing in" under the frame` : '';
         print(`${r.file} (${r.frames} frames${marked})`, r);
         return 0;
@@ -654,6 +662,26 @@ function videoArg(arg) {
   return true;
 }
 
+// What each command takes before its flags, for the commands that take a fixed
+// number of words there. A word more would be ignored, so it stops the command
+// with its usage. Commands that take a list, like still and words, aren't here,
+// and those with a usage message of their own check it themselves.
+const POSITIONALS = {
+  init: [1, 'one folder'], voice: [1, 'one project'], preview: [1, 'one project'], sheet: [2, 'a project and a scene'],
+  check: [1, 'one project or one video file'], render: [1, 'one project'], package: [1, 'one project'], share: [1, 'one project'],
+  clean: [1, 'one project'], export: [1, 'one project'], verify: [1, 'one project or one video file'], images: [1, 'one project'],
+  voices: [1, 'one project'], themes: [0, 'no words'], sizes: [0, 'no words'], doctor: [1, 'one project'], services: [1, 'one step'],
+  history: [1, 'one project'],
+};
+
+export function extraWords(cmd, pos) {
+  if (!Object.hasOwn(POSITIONALS, cmd)) return null;
+  const [most, takes] = POSITIONALS[cmd];
+  if (pos.length <= most) return null;
+  const extra = pos.slice(most).map((w) => `"${w}"`);
+  return `${cmd} takes ${takes}, so it would ignore ${allOf(extra)}. Usage: explainroo ${COMMAND_HELP[cmd].usage}`;
+}
+
 // The flags check and verify take for a video file without a project.
 const VIDEO_FLAGS = new Set(['script', 'language', 'view-width', 'step', 'verbose', 'json', 'quiet']);
 
@@ -661,16 +689,34 @@ const VIDEO_FLAGS = new Set(['script', 'language', 'view-width', 'step', 'verbos
 // matched, one per scene, become one line that names the words without their
 // times when there are more than NEARLY_LISTED words, unless --verbose. Its
 // JSON has them all.
-export function shownIssues(issues, verbose) {
+export function shownIssues(all, verbose) {
+  if (verbose) return all;
+  const issues = oneLineEach(all);
   const near = issues.filter((i) => i.key === 'nearly');
   const words = near.reduce((n, i) => n + i.words, 0);
-  if (verbose || words <= NEARLY_LISTED) return issues;
+  if (words <= NEARLY_LISTED) return issues;
   const at = issues.indexOf(near[0]);
   const rest = issues.filter((i) => i.key !== 'nearly');
   const where = near.length === 1 ? `scene ${near[0].scene}` : `${near.length} scenes`;
   const listed = near.every((i) => i.nearly) ? `${nearlyText(untimed(near.flatMap((i) => i.nearly)))}, in the speech check of ${where}` : `${words} words only nearly matched in the speech check of ${where}`;
   rest.splice(at, 0, { level: 'hint', scene: null, t: null, message: `${listed}. ${nearlyShort(near.flatMap((i) => i.nearly ?? []))}` });
   return rest;
+}
+
+// The same problem on one element at several moments, like the low contrast
+// of a number that counts, is one line with the first time, the count and the
+// span. --verbose and the JSON keep every time.
+function oneLineEach(issues) {
+  const groups = new Map();
+  for (const i of issues) if (i.element) groups.set(i.element, [...(groups.get(i.element) ?? []), i]);
+  return issues.flatMap((i) => {
+    const group = i.element ? groups.get(i.element) : null;
+    if (!group || group.length < 2) return [i];
+    if (group[0] !== i) return [];
+    const times = group.map((x) => x.t).filter((t) => t !== null && t !== undefined);
+    const span = times.length > 1 ? `, from ${Math.min(...times)}s to ${Math.max(...times)}s` : '';
+    return [{ ...i, message: `${i.message} (the same element at ${group.length} moments${span}; --verbose lists each)` }];
+  });
 }
 
 // The flags check and verify take only for a video file. A project has its own
@@ -746,8 +792,18 @@ async function spokenWords(project, only = [], { log, notice }) {
       const key = normWord(w.text);
       const n = (seen.get(key) ?? 0) + 1;
       seen.set(key, n);
-      const cue = bareWord(w.text);
+      // A word shown with a space in it, like "52,50 €" from {52,50 €|…}, is one
+      // word to a cue, which reads its words between spaces.
+      const cue = bareWord(w.text).replace(/\s+/g, '');
       return { text: w.text, start: round(w.start), end: round(w.end), cue: total.get(key) > 1 ? `${cue}#${n}` : cue };
+    });
+    // A token without letters or digits, like "%" in "5 %", shares the cue of the
+    // word or number it follows, or of the next one when it comes first.
+    const named = (w) => /[\p{L}\p{N}]/u.test(bareWord(w.text));
+    words.forEach((w, i) => {
+      if (named(w)) return;
+      const near = words.slice(0, i).reverse().find(named) ?? words.slice(i + 1).find(named);
+      if (near) w.cue = near.cue;
     });
     return { scene: sc.id, start: round(sc.start), duration: round(sc.dur), words, marks: Object.fromEntries(Object.entries(sc.marks).map(([k, v]) => [k, round(v)])) };
   });
@@ -823,6 +879,8 @@ function init(dir, flags, print) {
   if (flags.language !== undefined) config.language = language;
   if (flags.pace !== undefined) config.pace = num(flags.pace, 'pace');
   normalizeConfig(config, format?.dir ?? '.');
+  // What the "defaults" line is for, said once, when it is written.
+  const defaults = `"defaults": "${config.defaults}" in video.json keeps this look when explainroo changes later. "${selfCommand()} docs settings defaults" lists what it changes.`;
   if (format) {
     startFromFormat(format, target, config);
     fs.writeFileSync(path.join(target, '.gitignore'), 'build/\nout/\n.env\nhistory/private/\nhistory/locks/\n');
@@ -832,7 +890,7 @@ function init(dir, flags, print) {
     const sized = flags.size === undefined && size === 'vertical'
       ? `\nThe size is "vertical", a tall frame for no app in particular. For one app, set its size, so pictures and captions keep clear of its buttons: ${selfCommand()} set ${dir} size tiktok (or shorts, or reels).`
       : '';
-    print(`created ${target} from the format ${format.name} ${format.version} by ${format.author}${english}${sized}\nscript.md and scenes.js hold the format's example${example}, and keep the helpers that scenes.js imports from format.js. Its guide is in format.md:\n\n${format.guide.trim()}\n\nnext: write the narration in script.md, then run "${selfCommand()} voice ${dir}". After that, change the scenes in scenes.js and run "${selfCommand()} check ${dir}".`,
+    print(`created ${target} from the format ${format.name} ${format.version} by ${format.author}${english}${sized}\n${defaults}\nscript.md and scenes.js hold the format's example${example}, and keep the helpers that scenes.js imports from format.js. Its guide is in format.md:\n\n${format.guide.trim()}\n\nnext: write the narration in script.md, then run "${selfCommand()} voice ${dir}". After that, change the scenes in scenes.js and run "${selfCommand()} check ${dir}".`,
       { dir: target, format: formatEntry(format), guide: format.guide });
     return 0;
   }
@@ -845,7 +903,7 @@ function init(dir, flags, print) {
   // history/ goes into git, apart from what acts like a secret and the locks,
   // which belong to the runs on this computer.
   fs.writeFileSync(path.join(target, '.gitignore'), 'build/\nout/\n.env\nhistory/private/\nhistory/locks/\n');
-  print(`created ${target}\nnext: write the narration in script.md, then run "${selfCommand()} voice ${dir}". After that, draw each scene in scenes.js and run "${selfCommand()} check ${dir}".`, { dir: target });
+  print(`created ${target}\n${defaults}\nnext: write the narration in script.md, then run "${selfCommand()} voice ${dir}". After that, draw each scene in scenes.js and run "${selfCommand()} check ${dir}".`, { dir: target });
   return 0;
 }
 

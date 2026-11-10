@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { findChrome } from '../src/browser.js';
 import { ffmpegPath } from '../src/ffmpeg.js';
 import { runCli as cli } from './helpers/tiny-project.js';
@@ -93,4 +93,25 @@ test('sheet --large makes frames 640 pixels wide, 3 to a row, also for a tall vi
   const tall = await cli(['sheet', dir, '--times', 'intro@0.5,outro@0.5', '--large', '--cols', '2', '--json']);
   assert.equal(tall.code, 0, tall.text);
   assert.deepEqual(dimensions(JSON.parse(tall.stdout).file), [2 * (640 + 8) + 8, 1138 + 30 + 8 + 8]);
+});
+
+// A scene named after the project makes that scene's sheet, the same as --scene,
+// and leaves the sheet of the whole video as it was.
+test('sheet <project> <scene> makes the sheet of that scene in a file of its own', { skip, timeout: 240000 }, async (t) => {
+  const { tinyProject } = await import('./helpers/tiny-project.js');
+  const dir = tinyProject(t, {}, { narrated: false });
+  const r = await cli(['sheet', dir, 'intro', '--json']);
+  assert.equal(r.code, 0, r.stderr);
+  assert.equal(JSON.parse(r.stdout).file, path.join(dir, 'out', 'sheet-intro.jpg'));
+  assert.ok(fs.existsSync(path.join(dir, 'out', 'sheet-intro.jpg')));
+  assert.equal(fs.existsSync(path.join(dir, 'out', 'sheet.jpg')), false);
+  // From inside the project, one word is the scene.
+  const inside = await new Promise((resolve) => {
+    const child = spawn(process.execPath, [new URL('../bin/explainroo.js', import.meta.url).pathname, 'sheet', 'intro', '--json'], { cwd: dir });
+    let out = '';
+    child.stdout.on('data', (d) => { out += d; });
+    child.on('close', (code) => resolve({ code, out }));
+  });
+  assert.equal(inside.code, 0);
+  assert.equal(JSON.parse(inside.out).file, path.join(dir, 'out', 'sheet-intro.jpg'));
 });

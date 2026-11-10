@@ -748,6 +748,7 @@ export class Stage {
       // A badge of the UI kit, whose words check measures like any text.
       badge: !!entry.badge,
       zoomed: !!entry.zoomed,
+      element: entry.element ?? null,
     });
   }
 
@@ -1147,7 +1148,9 @@ export class Stage {
     const marked = o.bg && lay.lines.some((line) => line.words.some((w) => w.accent));
     const label = plain.length > 40 ? plain.slice(0, 37) + '...' : plain;
     const partial = this._partial(o._counting ?? (['type', 'write', 'words', 'sync'].includes(life.enter) && life.p < 1 ? { name: `"${label}"`, doing: life.enter === 'type' ? 'still typing' : 'still writing itself' } : null));
-    this._logText({ text: plain, x0: ox, y0: oy, x1: -ox, y1: -oy, size, fg: color, bg: o.bg ? colorOf(th, o.bg === true ? 'surface' : o.bg) : null, settled: this._settled(life), mark: marked ? accent : null, overlap: o.overlap, partial });
+    // Which element it is, also when its words change, like a number that counts.
+    const element = o.id === undefined || o.id === null ? `call:${call}` : `id:${o.id}`;
+    this._logText({ text: plain, x0: ox, y0: oy, x1: -ox, y1: -oy, size, fg: color, bg: o.bg ? colorOf(th, o.bg === true ? 'surface' : o.bg) : null, settled: this._settled(life), mark: marked ? accent : null, overlap: o.overlap, partial, element });
     ctx.restore();
     return g;
   }

@@ -75,7 +75,8 @@ and wide videos they sit at the bottom, above the watermark. On a plain
 `9:16` video they sit about a quarter of the way up. In every case `s.safe`
 ends above them. So anything placed inside `s.safe` stays clear of them, and
 `check` warns about text in the caption band. Do not put the same sentence on
-screen as text while the captions show it.
+screen as text while the captions show it. `check` gives a hint when a text
+shows four or more words in a row that the captions show at that moment.
 
 The first frame is often the cover picture on social apps. When the first
 elements draw themselves in, frame one is empty. Give the title

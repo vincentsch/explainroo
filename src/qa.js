@@ -130,6 +130,51 @@ export function missedWords(words, aligned, offset, scene, alone = null) {
   }]));
 }
 
+// Two words heard as one, like "Point it" heard as "pointed": a word the final
+// mix couldn't confirm next to a near match whose heard form covers both words
+// at least as well as the near match alone. The music doesn't cover such a word,
+// so it gets no advice about the music. Each pair is { scene, words, word, near,
+// heard, time, at }, with `mix: true` when the narration alone confirmed `word`,
+// and `at` the places of both words in `aligned`.
+export function heardAsOne(words, aligned, offset, scene, alone = null) {
+  const pairs = [];
+  const used = new Set();
+  const said = (k) => normWord(words[k].spoken);
+  const shown = (k) => bareWord(words[k].display ?? words[k].spoken);
+  aligned.words.forEach((a, k) => {
+    if (!a.nearly || !a.heard || used.has(k)) return;
+    const heard = normWord(a.heard);
+    for (const j of [k + 1, k - 1]) {
+      if (!aligned.words[j] || aligned.words[j].matched || used.has(j)) continue;
+      const [first, second] = j > k ? [k, j] : [j, k];
+      const both = said(first) + said(second);
+      if (!similar(both, heard) || editDistance(both, heard) > editDistance(said(k), heard)) continue;
+      used.add(k);
+      used.add(j);
+      pairs.push({ ...(scene ? { scene } : {}), words: `${shown(first)} ${shown(second)}`, word: shown(j), near: shown(k), heard: bareWord(a.heard),
+        time: Math.round((offset + aligned.words[first].start) * 100) / 100, ...(alone?.[j] ? { mix: true } : {}), at: [first, second] });
+      return;
+    }
+  });
+  return pairs;
+}
+
+// The alignment without the pairs of heardAsOne, so their words are neither
+// near matches nor unconfirmed words of their own.
+function withoutPairs(aligned, pairs) {
+  const taken = new Set(pairs.flatMap((p) => p.at));
+  return taken.size ? { ...aligned, words: aligned.words.map((a, k) => (taken.has(k) ? { ...a, matched: true, nearly: false } : a)) } : aligned;
+}
+
+// What verify says about two words heard as one. The check of the narration
+// alone judges the voice.
+export function togetherText(p) {
+  const head = `"${p.words}" at ${p.time.toFixed(1)} s was probably heard as one word, "${p.heard}", in the final mix, so the music is not what hides "${p.word}" and needs no change`;
+  return p.mix
+    ? `${head}. The narration alone confirmed "${p.word}", so the voice says it. Listen at that time to be sure`
+    : `${head}. The narration alone didn't confirm "${p.word}" either, so see what voice says about it`;
+}
+
 // Whether the check of the narration alone confirmed each word of a scene, from
 // the scene's voice, or null when it can't say.
 function confirmedAlone(project, id, words) {
@@ -259,8 +304,23 @@ export function unconfirmedWords(project, v, every = new Map()) {
     else if (shortWord(word.text)) advice = `"${bareWord(word.text)}" is a short, common word, so a spelling hint can't change how it sounds. Reword the sentence.`;
     else if (every.has(normWord(word.text))) advice = `If the voice says it wrong, write it as {${bareWord(word.text)}|spoken spelling} in ${script}. ${everyTimeAdvice(every.get(normWord(word.text)))}`;
     else advice = `If the voice says it wrong, write it as {${bareWord(word.text)}|spoken spelling} in ${script}. If it is said right and only heard wrong, reword the sentence.`;
-    return { word: word.text, heard, quote, advice };
+    const given = givenText(v, [k]);
+    return { word: word.text, heard, quote, ...(given ? { given } : {}), advice };
   });
+}
+
+// The text the voice was given for the sentences of the words at `indexes`, after
+// {shown|spoken}, quoted, so a reader can tell a wrong reading from a word that
+// was only heard wrong. Null when the voice has no sentences saved.
+export function givenText(v, indexes) {
+  if (!Array.isArray(v?.chunks) || !Array.isArray(v.words)) return null;
+  const sentences = [...new Set(indexes.map((k) => {
+    const w = v.words[k];
+    // The last sentence that starts before the word, the one it is in.
+    return w ? v.chunks.findLast((c) => c.start <= w.start + 0.01) ?? v.chunks[0] : null;
+  }).filter(Boolean))];
+  if (!sentences.length) return null;
+  return sentences.map((c) => cutTranscript(c.text)).join(' and ');
 }
 
 // The words of the narration that the speech check heard as the same other
@@ -304,7 +364,8 @@ const soundsAlike = (a, b) => similar(a, b) || (a.length > 1 && b.length > 1 && 
 
 // One line for each word voice couldn't confirm.
 export function unconfirmedLine(u) {
-  return `  "${bareWord(u.word)}": ${u.quote ? `it heard ${u.quote}` : 'nothing was heard there'}. ${u.advice}`;
+  const given = u.given ? `the voice was given ${u.given}, and ` : '';
+  return `  "${bareWord(u.word)}": ${given}${u.quote ? `it heard ${u.quote}` : given ? 'it heard nothing there' : 'nothing was heard there'}. ${u.advice}`;
 }
 
 // What check says about the speech check of each scene, from the narration that
@@ -340,7 +401,8 @@ export function speechFindings(project, voices, timeline = null) {
       const advice = recording
         ? `The recording does not match ${script} here. Make ${script} say what was actually said.`
         : unconfirmedAdvice(shown.map(({ word, k }) => ({ word, heard: instead[k] })), missed.some(({ word }) => !hasOverride(word)), script) + same.map((e) => ` "${e.word}" ${everyTimeAdvice(e).replace(/^It /, '')}`).join('');
-      issues.push({ level: 'warn', scene: sc.id, t: null, message: `the voice check could not confirm ${names.length ? names.map((w) => `"${w}"`).join(', ') : `${Math.round((1 - v.matchRate) * 100)}% of the words`}. It heard: ${quote}. ${advice}` });
+      const given = recording ? null : givenText(v, (named.length ? named : unconfirmed.slice(0, 3)).map(({ k }) => k));
+      issues.push({ level: 'warn', scene: sc.id, t: null, message: `the voice check could not confirm ${names.length ? names.map((w) => `"${w}"`).join(', ') : `${Math.round((1 - v.matchRate) * 100)}% of the words`}. ${given ? `The voice was given ${given}. ` : ''}It heard: ${quote}. ${advice}` });
     }
     if (v && v.duration > 40) issues.push({ level: 'hint', scene: sc.id, t: null, message: `the narration runs ${v.duration.toFixed(0)}s; long scenes are easier to follow when split` });
     if (v && v.duration) {
@@ -434,6 +496,9 @@ const LARGE_FRAME = 640;
 // `large` makes frames 640 pixels wide, 3 to a row, big enough to read labels.
 export async function sheet(project, { scene = null, every = null, times: moments = null, cols = null, large = false, log = () => {} } = {}) {
   if (moments && (scene || (every !== null && every !== undefined))) throw new ProjectError(`--times picks the moments itself, so it can't go with --${scene ? 'scene' : 'every'}. Leave out one of them.`);
+  // An unknown scene stops before any narration is made.
+  const ids = project.script.scenes.map((s) => s.id);
+  if (scene && !ids.includes(scene)) throw new ProjectError(`there is no scene "${scene}" in ${scriptName(project)}. Its scenes are: ${ids.join(', ')}`);
   const { timeline } = await prepare(project, { log });
   let times = [];
   let labels = [];
@@ -444,7 +509,6 @@ export async function sheet(project, { scene = null, every = null, times: moment
     labels = list.map((x) => x.label);
   } else if (scene) {
     const sc = timeline.scenes.find((s) => s.id === scene);
-    if (!sc) throw new Error(`no scene "${scene}". Scenes: ${timeline.scenes.map((s) => s.id).join(', ')}`);
     const step = every ?? Math.max(0.25, Math.min(1, sc.dur / 16));
     for (let t = 0; t < sc.dur - 0.01; t += step) {
       times.push(sc.start + t);
@@ -538,6 +602,7 @@ export async function verify(project, { file = null, report: reportFile = null, 
       const scenes = [];
       const nearly = [];
       const unconfirmed = [];
+      const together = [];
       let total = 0;
       let matched = 0;
       for (const t of timeline.scenes) {
@@ -549,24 +614,31 @@ export async function verify(project, { file = null, report: reportFile = null, 
         texts.push(heard.text);
         const aligned = await alignSpeech(words, heard.words, t.dur, project.config.language, { accept: project.heard });
         const rate = aligned.matchRate;
-        const near = timedNear(words, aligned, from / 16000);
+        const alone = confirmedAlone(project, t.id, words);
+        const pairs = heardAsOne(words, aligned, from / 16000, t.id, alone);
+        const rest = withoutPairs(aligned, pairs);
+        const near = timedNear(words, rest, from / 16000);
         scenes.push({ id: t.id, matchRate: Math.round(rate * 1000) / 1000, nearly: near });
         nearly.push(...near.map((n) => ({ scene: t.id, ...n })));
-        unconfirmed.push(...missedWords(words, aligned, from / 16000, t.id, confirmedAlone(project, t.id, words)));
+        unconfirmed.push(...missedWords(words, rest, from / 16000, t.id, alone));
+        together.push(...pairs.map(({ at, ...p }) => p));
         total += words.length;
         matched += rate * words.length;
         if (rate < 0.8) issues.push({ level: 'warn', message: `scene "${t.id}": only ${Math.round(rate * 100)}% of the narration was understood in the final mix; it heard "${heard.text.slice(0, 120)}"` });
       }
       const rate = total ? matched / total : 1;
-      speech = { matchRate: Math.round(rate * 1000) / 1000, transcript: texts.join(' '), scenes, nearly, unconfirmed };
+      speech = { matchRate: Math.round(rate * 1000) / 1000, transcript: texts.join(' '), scenes, nearly, unconfirmed, together };
       if (project.config.music && timeline.voiceSpans?.length) music = musicLevel(samples, 16000, timeline.voiceSpans, duration);
     } else {
       // The whole file at once, so a word that only nearly matched has no scene.
       const heard = await transcribe(samples, { log, language: project.config.language });
       const script = project.script.scenes.flatMap(spokenWords);
       const aligned = await alignSpeech(script, heard.words, duration, project.config.language, { accept: project.heard });
-      speech = { matchRate: Math.round(aligned.matchRate * 1000) / 1000, transcript: heard.text, nearly: timedNear(script, aligned, 0), unconfirmed: missedWords(script, aligned, 0, null) };
+      const pairs = heardAsOne(script, aligned, 0, null);
+      const rest = withoutPairs(aligned, pairs);
+      speech = { matchRate: Math.round(aligned.matchRate * 1000) / 1000, transcript: heard.text, nearly: timedNear(script, rest, 0), unconfirmed: missedWords(script, rest, 0, null), together: pairs.map(({ at, ...p }) => p) };
     }
+    for (const p of speech.together) issues.push({ level: p.mix ? 'hint' : 'warn', message: togetherText(p) });
     if (speech.unconfirmed.length) issues.push({ level: 'warn', message: unconfirmedText(speech.unconfirmed) + mixAdvice(speech.unconfirmed, project.config.music, project.config.language) });
     if (speech.matchRate < 0.85) issues.push({ level: 'warn', message: `only ${Math.round(speech.matchRate * 100)}% of the script was understood in the final mix; ${canLower(project.config.music) ? 'lower music.volume or check pronunciation' : 'listen to it and check pronunciation'}` });
     fs.rmSync(wav, { force: true });

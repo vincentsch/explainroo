@@ -1,5 +1,6 @@
 // The four layouts in "explainroo docs pictures" pass check in a wide and in a
-// tall frame, with made-up narration that has their markers.
+// tall frame, with made-up narration that has their markers and doesn't say
+// what the screen text says, which the captions of a tall frame would repeat.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -20,7 +21,7 @@ const SCRIPT = `# Layouts
 About a million [#number] requests come in [#caption] every day.
 
 ## compare
-Callbacks nest [#left] while async await [#right] reads from top to bottom.
+Callbacks nest [#left] while async await [#right] keeps the code flat.
 
 ## steps
 The browser asks [#step2] a resolver, which finds [#step3] the address.
