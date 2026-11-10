@@ -17,19 +17,20 @@ import { dropClipFrames } from './clips.js';
 import { ease, suggest } from '../engine/util.js';
 import { ZOOM_ALIGNS, ZOOM_SECONDS, ZOOM_SCALES } from '../engine/recording.js';
 
-export const STEP_KINDS = ['open', 'click', 'type', 'hover', 'scroll', 'wait', 'zoom', 'mark'];
+export const STEP_KINDS = ['open', 'click', 'type', 'press', 'hover', 'scroll', 'wait', 'zoom', 'mark'];
 // The keys each kind of step takes, besides do, cue, before and the element.
 const STEP_KEYS = {
   open: ['url'],
   click: ['duration'],
   type: ['value', 'press', 'cps', 'duration'],
+  press: ['key', 'duration'],
   hover: ['duration'],
   scroll: ['y', 'duration'],
   wait: ['seconds'],
   zoom: ['scale', 'align'],
   mark: ['name'],
 };
-const ELEMENT = { click: 'needs', type: 'needs', hover: 'needs', scroll: 'may', wait: 'may', zoom: 'may', open: 'no', mark: 'no' };
+const ELEMENT = { click: 'needs', type: 'needs', press: 'may', hover: 'needs', scroll: 'may', wait: 'may', zoom: 'may', open: 'no', mark: 'no' };
 const COMMON = ['do', 'cue', 'before', 'text', 'selector', 'nth'];
 // How long a step looks for its element before it fails.
 const FIND_SECONDS = 10;
@@ -97,7 +98,8 @@ export function stepTarget(step) {
 
 export function stepLabel(step, n) {
   const target = step.text ?? step.selector;
-  return `step ${n} (${step.do}${target !== undefined ? ` ${quoted(target)}` : step.name !== undefined ? ` ${quoted(step.name)}` : ''})`;
+  const key = step.do === 'press' ? ` ${quoted(step.key)}${target !== undefined ? ' on' : ''}` : '';
+  return `step ${n} (${step.do}${key}${target !== undefined ? ` ${quoted(target)}` : step.name !== undefined ? ` ${quoted(step.name)}` : ''})`;
 }
 
 // The line record prints for a step that ran: its label, and what it found,
@@ -180,6 +182,11 @@ export function checkRecordingScript(script, rel = 'the recording script') {
         if (typeof raw.press !== 'string' || !raw.press) bad('press must be a key name like "Enter" or "Tab"');
         step.press = raw.press;
       }
+    }
+    if (raw.do === 'press') {
+      if (typeof raw.key !== 'string' || !raw.key.trim()) bad('a press step needs "key", a key name like "Enter" or a combination like "Control+A"');
+      step.key = raw.key;
+      if (raw.duration !== undefined && !has.length) bad('a press step without an element moves no pointer, so it takes no duration');
     }
     if (raw.do === 'scroll') {
       if (raw.y !== undefined && has.length) bad('give y or the element to scroll to, not both');
@@ -459,6 +466,17 @@ function coverInPage({ x, y }) {
   return `<${hit.tagName.toLowerCase()}${hit.id ? `#${hit.id}` : ''}${classes}>${words ? ` with the words "${words.length > 40 ? words.slice(0, 37) + '...' : words}"` : ''}`;
 }
 
+// Focuses the element findInPage found last, and says whether it, or
+// something inside it, has the focus now. A wrapper that can't take the focus
+// itself needs a click instead.
+function focusTarget() {
+  const el = window.__explainrooTarget;
+  if (!el?.isConnected) return false;
+  el.focus?.({ preventScroll: true });
+  const a = document.activeElement;
+  return !!a && a !== document.body && (a === el || el.contains(a));
+}
+
 // How far the window has to scroll down, less than 0 for up, to put the
 // element findInPage found last in its middle.
 function scrollToMiddle() {
@@ -724,7 +742,7 @@ export async function record(dirArg, name, { log = () => {}, keepProfile = false
         }
       }
       const entry = { step: n, do: step.do, start: round(now()) };
-      for (const k of ['text', 'selector', 'nth', 'name', 'cue', 'before', 'scale', 'align']) if (step[k] !== undefined) entry[k] = step[k];
+      for (const k of ['text', 'selector', 'nth', 'name', 'key', 'cue', 'before', 'scale', 'align']) if (step[k] !== undefined) entry[k] = step[k];
       // What the step found, kept in the log and said in its line, so a wrong
       // match shows right after recording.
       const matched = async () => {
@@ -772,6 +790,32 @@ export async function record(dirArg, name, { log = () => {}, keepProfile = false
           await sleep(400);
           if (step.do === 'click') entry.changed = before === null || before !== await state();
         }
+      } else if (step.do === 'press') {
+        // On its element, the pointer goes there first, and the key goes to
+        // the element, or into what a click on it focuses, like the hidden
+        // field of a math editor. Without one, it goes where the focus is.
+        if (step.text !== undefined || step.selector !== undefined) {
+          const box = await clear(step, n, await find(step, n), false);
+          entry.box = roundBox(box);
+          await matched();
+          const move = await moveTo({ x: box.x, y: box.y }, step.duration ?? MOVE_SECONDS / script.pace);
+          if (move) entry.move = move;
+          await sleep(220);
+          if (!(await page.evaluate(focusTarget))) {
+            await page.mouse.down();
+            await sleep(70);
+            await page.mouse.up();
+            entry.click = round(now());
+          }
+          await sleep(150);
+        }
+        const before = await state();
+        entry.t = round(now());
+        await page.keyboard.press(step.key).catch((e) => fail(step, n, `can't press ${quoted(step.key)}: ${e.message.split('\n')[0]}. Key names are like Enter, Tab, Escape or ArrowDown, and a combination is like "Control+A".`));
+        await sleep(300);
+        await settle();
+        await sleep(400);
+        entry.changed = before === null || before !== await state();
       } else if (step.do === 'scroll') {
         entry.t = entry.start;
         if (step.y !== undefined) await scrollBy(step.y, step.duration);

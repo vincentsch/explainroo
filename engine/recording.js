@@ -63,7 +63,7 @@ export function movingSteps(steps, { zoom = true, noted = true } = {}) {
     else if (st.do === 'type' || st.do === 'scroll') span = [st.t, st.until ?? st.t];
     else if (st.do === 'zoom') span = zoom ? [st.t, st.t + ZOOM_SECONDS] : null;
     else if (st.do === 'open') span = [st.t, st.t];
-    else if (st.do === 'click' || st.do === 'hover') span = st.changed ? [st.t, st.t] : null;
+    else if (st.do === 'click' || st.do === 'hover' || st.do === 'press') span = st.changed ? [st.t, st.t] : null;
     else if (st.do === 'wait') span = st.changed ? [st.end, st.end] : null;
     if (span) out.push({ step: st.step, from: span[0], to: Math.max(span[0], span[1]) });
   }

@@ -31,6 +31,7 @@ Write the steps of a recording in `recordings/<name>.json`:
     { "do": "click", "text": "Accept cookies", "before": true },
     { "do": "click", "text": "New invoice", "cue": "#new" },
     { "do": "type", "text": "Amount", "value": "2400", "press": "Tab" },
+    { "do": "press", "key": "Enter", "cue": "#add" },
     { "do": "zoom", "selector": "form", "cue": "#check" },
     { "do": "click", "text": "Save invoice", "cue": "save" },
     { "do": "zoom" },
@@ -106,7 +107,9 @@ records.
 - `open` goes to `url`, an address or a path. `click`, `hover` and `type`
   move the pointer to the element. `type` clicks the field and types
   `value` at 14 characters a second, or at `cps`, and `press` presses a key
-  after it. `scroll` takes `y` in pixels
+  after it. `press` presses `key`, like `"Enter"`, or a combination like
+  `"Control+A"`, where the focus is, or on its element when it has `text` or
+  a `selector`. `scroll` takes `y` in pixels
   or the element to scroll to the middle of the window. `wait` takes
   `seconds` or the element to wait for. `zoom` moves in on the element, and
   without one back out. `mark` names a moment with `name`.

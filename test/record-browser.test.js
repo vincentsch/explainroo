@@ -511,3 +511,65 @@ test('the browser asks sites for the project\'s language, and a script\'s locale
   await assert.rejects(inspect(null, app.url, { locale: 'German' }), /--locale must be a language tag like en-US or de-DE/);
   await assert.rejects(inspect(null, app.url, { keepProfile: true }), /--keep-profile opens the page with the kept profile of a project, so put the project folder first/);
 });
+
+test('inspect lists a field that types into a hidden input, names the focus, and says what a selector matches', { skip: !chrome }, async (t) => {
+  const app = await serveDemoApp();
+  t.after(app.close);
+  const viewport = { width: 1280, height: 720 };
+  const r = await inspect(null, `${app.url}#/sums`, { viewport });
+  // The line of the sum editor shows no box of its own input, so it goes by
+  // the element around the textarea, which a click focuses.
+  const fields = r.elements.filter((e) => e.kind === 'field');
+  assert.equal(fields.length, 1);
+  assert.equal(fields[0].hidden_input, 'textarea');
+  assert.ok(fields[0].box.w > 300 && fields[0].box.h >= 30, JSON.stringify(fields[0].box));
+  assert.equal(r.focus.selector, fields[0].selector);
+  const text = formatInspect(r);
+  assert.match(text, /\n {2}\d\. field around a hidden textarea {2}at \d+,\d+, \d+x\d+\n {5}selector \S+\n/);
+  assert.match(text, /\nAfter the page loads, the focus is on field around a hidden textarea, selector \S+, so a press step without an element presses its key there\.\n/);
+  // A page whose focus stays on the body says so.
+  assert.match(formatInspect(await inspect(null, `${app.url}#/invoices`, { viewport })), /\nAfter the page loads, no element has the focus\.\n/);
+
+  // --selector says how many elements match, how many show, and each visible one.
+  const cells = await inspect(null, `${app.url}#/invoices`, { viewport, selector: 'td' });
+  assert.equal(cells.elements, undefined);
+  assert.deepEqual([cells.selector.matches, cells.selector.visible, cells.selector.elements.length], [12, 12, 12]);
+  assert.deepEqual([cells.selector.elements[0].words, cells.selector.elements[1].words], ['#1041', 'Harbor Books']);
+  assert.match(formatInspect(cells), /^http:\/\/127\.0\.0\.1:\d+\/#\/invoices at 1280x720 in en-US: the selector "td" matches 12 elements, all visible, from the top\n {2}1\. td "#1041" {2}at \d+,\d+, \d+x\d+\n/);
+  assert.match(formatInspect(cells), /\nA step with this selector takes the first visible one, and "nth": 2 the second\.\n/);
+  // A hidden input matches but doesn't show, and the element around it is named.
+  const hidden = await inspect(null, `${app.url}#/sums`, { viewport, selector: '.sum-input textarea' });
+  assert.deepEqual([hidden.selector.matches, hidden.selector.visible], [1, 0]);
+  assert.equal(hidden.selector.around.selector, fields[0].selector);
+  assert.match(formatInspect(hidden), /: the selector "\.sum-input textarea" matches 1 element, 0 of them visible\nA step leaves hidden elements out\. The visible element around the hidden one, which a click focuses, is field around a hidden textarea {2}at /);
+  // --text and --selector go together.
+  const both = await inspect(null, `${app.url}#/invoices`, { viewport, holding: 'total', selector: 'p.total' });
+  assert.deepEqual([both.matches, both.selector.matches, both.selector.visible], [1, 1, 1]);
+  assert.match(formatInspect(both), /holds "total".*\n[\s\S]*\nthe selector "p\.total" matches 1 element, and it is visible, from the top\n {2}1\. p "Total \$2,430"/);
+  await assert.rejects(inspect(null, app.url, { selector: 'td[' }), /--selector "td\[" is not a valid CSS selector/);
+
+  // The selector inspect gives clicks and types into that field, and a
+  // press step presses keys where the focus is, or on its element.
+  const dir = project(t, { url: `${app.url}#/sums`, viewport, steps: [
+    { do: 'type', selector: fields[0].selector, value: '2+2' },
+    { do: 'press', key: 'Enter', cue: 'next' },
+    { do: 'press', key: '5' },
+    { do: 'wait', text: '5' },
+    { do: 'press', key: 'Enter', selector: '.sum-field' },
+    { do: 'zoom', selector: '.sum', nth: 3 },
+  ] });
+  const lines = [];
+  const rec = await record(dir, 'invoice', { log: (l) => lines.push(l) });
+  const log = JSON.parse(fs.readFileSync(path.join(dir, rec.log), 'utf8'));
+  const [typed, enter, five, , onFirst] = log.steps;
+  assert.equal(typed.match.tag, 'span');
+  assert.deepEqual([enter.key, enter.cue, enter.changed, enter.box, enter.move], ['Enter', 'next', true, undefined, undefined]);
+  assert.deepEqual([five.key, five.changed], ['5', true]);
+  // On an element that can't take the focus itself, the press clicks it first.
+  assert.ok(onFirst.click < onFirst.t && onFirst.box, JSON.stringify(onFirst));
+  assert.ok(lines.includes('step 2 (press "Enter")'), lines.join('\n'));
+  assert.ok(lines.some((l) => l.startsWith('step 5 (press "Enter" on ".sum-field"): <span>')), lines.join('\n'));
+  // A key that isn't one stops with the step.
+  fs.writeFileSync(path.join(dir, 'recordings/invoice.json'), JSON.stringify({ url: `${app.url}#/sums`, viewport, steps: [{ do: 'press', key: 'Entr' }] }));
+  await assert.rejects(record(dir, 'invoice'), /step 1 \(press "Entr"\): can't press "Entr": .*Key names are like Enter, Tab, Escape or ArrowDown, and a combination is like "Control\+A"\./);
+});

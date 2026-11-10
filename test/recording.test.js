@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { checkRecordingScript, readRecordingScript, scriptHash, stepLabel, stepLine, videoOffset, wholeHash } from '../src/record.js';
+import { checkRecordingScript, readRecordingScript, scriptHash, stepLabel, stepLine, videoOffset, wholeHash, projectLocale, LOCALES } from '../src/record.js';
 import { ffmpeg } from '../src/ffmpeg.js';
 import { cuedSteps, recordingClock, videoTime, sceneTime, cursorAt, viewAt, focusRect, coverRect, zoomScale, fitViewport, smallPageText, movingSteps, ZOOM_SECONDS, ZOOM_RANGE, CATCH_UP } from '../engine/recording.js';
 import { makeState } from '../src/pipeline.js';
@@ -80,6 +80,31 @@ test('a recording script names the step and what to write for each mistake', () 
   fails({ url: URL, steps: [{ do: 'zoom', scale: 2 }] }, /a zoom without an element goes back out, so it takes no scale/);
   fails({ url: URL, steps: [{ do: 'type', text: 'Note', value: 'Hi', cps: 100 }] }, /step 1: cps must be the characters it types a second, from 2 to 60\. 14 is the default, and the script's pace makes it faster or slower/);
   fails({ url: URL, steps: [{ do: 'click', text: 'Save', cps: 10 }] }, /a click step has no "cps"/);
+  fails({ url: URL, steps: [{ do: 'press' }] }, /step 1: a press step needs "key", a key name like "Enter" or a combination like "Control\+A"/);
+  fails({ url: URL, steps: [{ do: 'press', key: 'Enter', value: 'x' }] }, /a press step has no "value"/);
+  fails({ url: URL, steps: [{ do: 'press', key: 'Enter', duration: 1 }] }, /a press step without an element moves no pointer, so it takes no duration/);
+  fails({ url: URL, locale: 'English', steps: [{ do: 'mark', name: 'a' }] }, /locale must be a language tag like "en-US" or "de-DE"/);
+});
+
+test('a press step presses a key where the focus is, or on its element, and a script may set its own locale', (t) => {
+  const s = checkRecordingScript({ url: URL, locale: 'de-DE', steps: [{ do: 'press', key: 'Enter', cue: 'next' }, { do: 'press', key: 'Control+A', selector: '.math', duration: 0.4 }] });
+  assert.equal(s.locale, 'de-DE');
+  assert.deepEqual(s.steps, [{ do: 'press', key: 'Enter', cue: 'next' }, { do: 'press', key: 'Control+A', selector: '.math', duration: 0.4 }]);
+  assert.equal(stepLabel(s.steps[0], 1), 'step 1 (press "Enter")');
+  assert.equal(stepLabel(s.steps[1], 2), 'step 2 (press "Control+A" on ".math")');
+  // Without a locale, the script takes none, and record takes the project's language.
+  assert.equal(checkRecordingScript({ url: URL, steps: [{ do: 'mark', name: 'a' }] }).locale, undefined);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-locale-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ title: 'T' }));
+  assert.equal(projectLocale(dir), 'en-US');
+  for (const [language, locale] of Object.entries({ es: 'es-ES', fr: 'fr-FR', it: 'it-IT', 'pt-br': 'pt-BR', hi: 'hi-IN', ja: 'ja-JP', zh: 'zh-CN', de: 'de-DE' })) {
+    fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ title: 'T', language }));
+    assert.equal(projectLocale(dir), locale);
+  }
+  assert.equal(Object.keys(LOCALES).length, 9);
+  // A press that changes the page moves the picture, and one that doesn't, doesn't.
+  assert.deepEqual(movingSteps([{ step: 1, do: 'press', start: 0, t: 0.5, end: 1, changed: true }, { step: 2, do: 'press', start: 1, t: 1.2, end: 2, changed: false }]), [{ step: 1, from: 0.5, to: 0.5 }]);
 });
 
 test('readRecordingScript says where the script goes and lists the ones there', (t) => {

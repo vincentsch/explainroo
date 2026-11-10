@@ -1700,7 +1700,7 @@ export class Stage {
       const n = this._recordingSeq = (this._recordingSeq || 0) + 1;
       const label = (step) => {
         const st = log.steps.find((x) => x.step === step);
-        const target = st.text ?? st.selector ?? st.name;
+        const target = st.text ?? st.selector ?? st.name ?? st.key;
         return `step ${step} (${st.do}${target !== undefined ? ` "${target}"` : ''})`;
       };
       const after = steps.filter((st) => st.t >= from && sceneTime(clock, st.t) > out + 0.05);
