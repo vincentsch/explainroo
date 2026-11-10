@@ -32,7 +32,7 @@ export async function captureFixture() {
   const html = fs.readFileSync(fileURLToPath(new URL('./fixtures/capture.html', import.meta.url)), 'utf8');
   fs.writeFileSync(path.join(dir, 'index.html'), html.replace('__FONT_CSS__', `http://127.0.0.1:${styles.address().port}/font.css`));
   // A page whose buttons are gray, with its color only in the theme-color tag.
-  fs.writeFileSync(path.join(dir, 'plain.html'), '<!doctype html><html><head><meta charset="utf-8"><title>Plain</title><meta name="theme-color" content="#2c5c97"><style>body { font-family: sans-serif; background: #fafafa; } button { background: #e4e4e4; color: #222; border: 1px solid #ccc; padding: 12px 20px; }</style></head><body><h1>Plain tools</h1><button>Run it</button><button>Share</button></body></html>');
+  fs.writeFileSync(path.join(dir, 'plain.html'), '<!doctype html><html><head><meta charset="utf-8"><title>Plain</title><meta name="theme-color" content="#2c5c97"><style>body { font-family: "Segoe UI", sans-serif; background: #fafafa; } h1 { font-family: "San Francisco", sans-serif; } button { font-family: inherit; background: #e4e4e4; color: #222; border: 1px solid #ccc; padding: 12px 20px; }</style></head><body><h1>Plain tools</h1><button>Run it</button><button>Share</button></body></html>');
   const server = http.createServer((req, res) => {
     requests.push(req.url);
     if (req.url === '/redirect') { res.writeHead(302, { Location: '/' }); return res.end(); }

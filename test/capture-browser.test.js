@@ -184,6 +184,12 @@ test('a page whose buttons show no color gets the accent from its theme-color ta
     assert.match(human.stdout, /^The buttons show no clear color, so the accent #2c5c97 comes from the page's theme-color tag\. Check it against the screenshots\.$/m);
     const r = JSON.parse(fs.readFileSync(path.join(dir, 'assets/capture/127.0.0.1/capture.json'), 'utf8'));
     assert.deepEqual([r.colors.accent, r.colors.accentFrom, r.brand.accent, r.suggestion.brand.accent], ['#2c5c97', 'theme-color', '#2c5c97', '#2c5c97']);
+    // Fonts that come with the visitor's computer stay out of the block to paste, and one line names them.
+    assert.deepEqual(r.fonts.system, ['Segoe UI', 'San Francisco']);
+    assert.equal('font' in r.suggestion.brand || 'headline' in r.suggestion.brand, false, JSON.stringify(r.suggestion.brand));
+    assert.match(human.stdout, /^Segoe UI and San Francisco come with the visitor's computer, so capture didn't save them and left them out of the brand block\. They may not be used in a video without a license\.$/m);
+    assert.doesNotMatch(human.stdout, /Segoe UI: get the font files/);
+    assert.doesNotMatch(human.stdout.slice(human.stdout.indexOf('Paste into video.json:')), /Segoe UI|San Francisco/);
   } finally {
     await site.close();
     fs.rmSync(dir, { recursive: true, force: true });

@@ -226,7 +226,10 @@ when they show none, the page's `theme-color` tag, and then `capture` says
 so. Check the block against the screenshots. A font on a
 website isn't always free to use in a video, so check the license of each
 saved font before you publish, and copy the license file next to it. For a
-font it could not save, get the files yourself. Cookie banners and chat
+font it could not save, get the files yourself. A font that comes with the
+visitor's computer, like Segoe UI or San Francisco, has no file on the page.
+`capture` names it in one line and leaves it out of the block, because it
+may not be used in a video without a license. Cookie banners and chat
 widgets can appear in the screenshots, as they do for any visitor. Use a
 screenshot, or a part of one, without them. Capturing the same site again
 replaces these files.
