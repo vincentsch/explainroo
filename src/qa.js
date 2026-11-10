@@ -10,7 +10,7 @@ import { alignSpeech, bareWord, editDistance, expand, nearList, similar } from '
 import { signWords } from './math-words.js';
 import { hasPhonemizer } from './phonemes.js';
 import { normWord } from './script.js';
-import { heardEntry, heardInstead, heardQuote, readVoice, sameHeard, withHeard } from './voice.js';
+import { heardEntry, heardForms, heardInstead, heardQuote, readVoice, sameHeard, sceneHeard, withHeard } from './voice.js';
 import { estimateLength, targetNotes } from './timeline.js';
 import { buildChapters, chapterHints, youtubeFrame } from './chapters.js';
 import { coverTime } from './render.js';
@@ -68,23 +68,24 @@ export const NEARLY_LISTED = 2;
 // The near matches as check and verify print them: the list with its advice,
 // or, for more than NEARLY_LISTED words without `verbose`, the words without
 // their times.
-export function nearlyLine(nearly, verbose = false, heard = true) {
-  if (verbose || nearly.length <= NEARLY_LISTED) return `${nearlyText(nearly)}. ${nearlyAdvice(nearly, heard)}`;
-  return `${nearlyText(untimed(nearly))}. ${nearlyShort(nearly, heard)}`;
+export function nearlyLine(nearly, verbose = false, heard = true, forms = null) {
+  if (verbose || nearly.length <= NEARLY_LISTED) return `${nearlyText(nearly)}. ${nearlyAdvice(nearly, heard, forms)}`;
+  return `${nearlyText(untimed(nearly))}. ${nearlyShort(nearly, heard, forms)}`;
 }
 
 export const NEARLY_SHORT = 'No fix is needed unless one of them sounds wrong when you listen, and --verbose adds their times';
 
 // NEARLY_SHORT with the line for video.json that stops naming the words.
-export function nearlyShort(nearly, heard = true) {
-  const line = heard ? nearlyHeard(nearly) : '';
+export function nearlyShort(nearly, heard = true, forms = null) {
+  const line = heard ? nearlyHeard(nearly, forms) : '';
   return line ? `${NEARLY_SHORT}. ${line}` : NEARLY_SHORT;
 }
 
 // The "heard" line for video.json that accepts the near matches as they were
 // heard, so check and verify stop naming them, or '' when none can go there.
 // Two words heard as one get a line under both words, like "ape lo": ["apelo"].
-export function nearlyHeard(nearly) {
+// With `forms`, from heardForms(), each word lists every form of the run.
+export function nearlyHeard(nearly, forms = null) {
   const seen = new Map();
   for (let i = 0; i < nearly.length; i++) {
     const n = nearly[i];
@@ -97,7 +98,7 @@ export function nearlyHeard(nearly) {
   }
   if (!seen.size) return '';
   const one = seen.size === 1;
-  return `If ${one ? 'it is' : 'they are'} said right, add this to video.json, and check and verify stop naming ${one ? 'it' : 'them'}: ${heardEntry([...seen.values()])}`;
+  return `If ${one ? 'it is' : 'they are'} said right, add this to video.json, and check and verify stop naming ${one ? 'it' : 'them'}: ${heardEntry([...seen.values()], forms)}`;
 }
 
 // The near matches without their times, so the same word heard the same way
@@ -109,10 +110,10 @@ export function untimed(nearly) {
 // What to do about words that only nearly matched or sounded the same: nothing,
 // unless they sound wrong at the times the list gives.
 // With `heard`, it also gives the line for video.json that accepts them.
-export function nearlyAdvice(nearly, heard = true) {
+export function nearlyAdvice(nearly, heard = true, forms = null) {
   const one = nearly.length === 1 || (nearly.length === 2 && nearly[0].joined && nearly[1].joined);
   const timed = nearly.some((n) => typeof n.time === 'number');
-  const line = heard ? nearlyHeard(nearly) : '';
+  const line = heard ? nearlyHeard(nearly, forms) : '';
   return `No fix is needed unless ${one ? 'it sounds' : 'one of them sounds'} wrong when you listen${timed ? ` at ${one ? 'that time' : 'those times'}` : ''}.${line ? ` ${line}` : ''}`;
 }
 
@@ -203,6 +204,33 @@ export function mathWord(word, language = 'en') {
   const signs = signWords(language);
   const tokens = expand(word, language);
   return tokens.length > 0 && tokens.every((t) => /^\d+(?:[.,]\d+)?$/.test(t) || signs.has(t));
+}
+
+// A number, an amount or a maths word, like "12", "$5", "50%" or "half".
+// Heard another way, it may say something else, so it never counts as close.
+export function amountWord(word, language = 'en') {
+  return /[\p{N}$€£¥%]/u.test(word) || mathWord(word, language);
+}
+
+// Whether a heard form sounds close to the word: it starts with the same
+// letter and differs in at most half of its letters, like "Brugley" for
+// "Brewly". Words of fewer than four letters never do.
+export function soundsClose(word, heard) {
+  const a = normWord(word).replace(/\s+/g, '');
+  const b = String(heard).split(/\s+/).map(normWord).join('');
+  const len = Math.max(a.length, b.length);
+  return len >= 4 && a[0] === b[0] && editDistance(a, b) / len <= 0.5;
+}
+
+// What verify says about words the narration alone confirmed and the final
+// mix heard as a form that sounds close, with the line for "heard" that has
+// every form of the run, from heardForms().
+export function closeText(list, forms) {
+  const one = list.length === 1;
+  const shown = list.slice(0, 12).map((u) => `"${u.word}" at ${u.time.toFixed(1)} s (heard "${u.heard}")`);
+  const more = list.length > 12 ? `, and ${list.length - 12} more` : '';
+  const words = [...new Map(list.map((u) => [normWord(u.word), { word: u.word, heard: bareWord(u.heard) }])).values()];
+  return `the speech check heard ${list.length} word${one ? '' : 's'} in the final mix as a form that sounds close: ${shown.join(', ')}${more}. The narration alone confirmed ${one ? 'it' : 'them'}, so the voice says ${one ? 'it' : 'them'} and the speech check only spells ${one ? 'it' : 'them'} another way over the music. Quieter music won't change that. Listen at ${one ? 'that time' : 'those times'} to be sure. If ${one ? 'it is' : 'they are'} said right, add this to video.json, and verify stops naming ${one ? 'it' : 'them'}: ${heardEntry(words, forms)}`;
 }
 
 // Whether verify may tell the user to lower the music: it is at the default
@@ -386,6 +414,8 @@ export function speechFindings(project, voices, timeline = null) {
   const script = scriptName(project);
   const recording = project.config.voice.provider === 'recording';
   const every = recording ? new Map() : heardEveryTime(project, voices);
+  // Every form each word was heard as, in all scenes, for the line for "heard".
+  const forms = heardForms(...project.script.scenes.map((sc) => sceneHeard(voices[sc.id], project.config.language)));
   for (const sc of project.script.scenes) {
     const v = voices[sc.id];
     const suspicious = v ? v.unmatched.filter((w) => w.replace(/[^\p{L}\p{M}\p{N}]/gu, '').length > 3) : [];
@@ -416,10 +446,20 @@ export function speechFindings(project, voices, timeline = null) {
     if (v && v.duration) {
       const nearly = nearTimes(v.nearly ?? [], placed.get(sc.id));
       speech.push({ scene: sc.id, matchRate: v.matchRate, nearly });
-      if (nearly.length) issues.push({ level: 'hint', scene: sc.id, t: null, key: 'nearly', words: nearly.length, nearly, message: `understood ${Math.round(v.matchRate * 100)}%, ${nearlyText(nearly)}. ${nearlyAdvice(nearly)}` });
+      if (nearly.length) issues.push({ level: 'hint', scene: sc.id, t: null, key: 'nearly', words: nearly.length, nearly, heard: formsOf(nearly, forms), message: `understood ${Math.round(v.matchRate * 100)}%, ${nearlyText(nearly)}. ${nearlyAdvice(nearly, true, forms)}` });
     }
   }
   return { issues, speech };
+}
+
+// The forms of the words in `nearly`, from heardForms(), as { word: [forms] }.
+export function formsOf(nearly, forms) {
+  const out = {};
+  for (const n of nearly) {
+    const have = forms.get(normWord(n.word));
+    if (!n.joined && have?.length) out[n.word] = have;
+  }
+  return out;
 }
 
 // `platform` is the platform of a package being made. Chapter hints are about
@@ -647,7 +687,13 @@ export async function verify(project, { file = null, report: reportFile = null, 
       speech = { matchRate: Math.round(aligned.matchRate * 1000) / 1000, transcript: heard.text, nearly: timedNear(script, rest, 0), unconfirmed: missedWords(script, rest, 0, null), together: pairs.map(({ at, ...p }) => p) };
     }
     for (const p of speech.together) issues.push({ level: p.mix ? 'hint' : 'warn', message: togetherText(p) });
-    if (speech.unconfirmed.length) issues.push({ level: 'warn', message: unconfirmedText(speech.unconfirmed) + mixAdvice(speech.unconfirmed, project.config.music, project.config.language) });
+    // A word the narration alone confirmed, heard in the mix as a form that
+    // sounds close, is the speech check spelling it another way: a hint. A
+    // number or an amount heard wrong changes the meaning, so it stays a warning.
+    const close = speech.unconfirmed.filter((u) => u.mix && u.heard && soundsClose(u.word, u.heard) && !amountWord(u.word, project.config.language));
+    const missed = speech.unconfirmed.filter((u) => !close.includes(u));
+    if (close.length) issues.push({ level: 'hint', message: closeText(close, heardForms(speech.nearly, speech.unconfirmed)) });
+    if (missed.length) issues.push({ level: 'warn', message: unconfirmedText(missed) + mixAdvice(missed, project.config.music, project.config.language) });
     if (speech.matchRate < 0.85) issues.push({ level: 'warn', message: `only ${Math.round(speech.matchRate * 100)}% of the script was understood in the final mix; ${canLower(project.config.music) ? 'lower music.volume or check pronunciation' : 'listen to it and check pronunciation'}` });
     fs.rmSync(wav, { force: true });
   }
@@ -771,7 +817,9 @@ export function verdictOf(issues) {
 // What verify prints: the file, the narration understood with the words that
 // only nearly matched, each finding, and the verdict last.
 export function formatVerify(r, { verbose = false } = {}) {
-  const nearly = r.speech?.nearly?.length ? `, ${nearlyLine(r.speech.nearly, verbose)}` : '';
+  // The line for "heard" has every form each word was heard as in the mix.
+  const forms = r.speech ? heardForms(r.speech.nearly ?? [], r.speech.unconfirmed ?? []) : null;
+  const nearly = r.speech?.nearly?.length ? `, ${nearlyLine(r.speech.nearly, verbose, true, forms)}` : '';
   return [
     `${r.file}: ${r.duration}s, ${r.video ? `${r.video.width}x${r.video.height}` : 'no video'}, loudness ${r.loudness?.integrated ?? '?'} LUFS, true peak ${dbtp(r.loudness?.truePeak)}`,
     r.speech ? `narration understood: ${Math.round(r.speech.matchRate * 100)}%${nearly}` : '',

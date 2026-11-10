@@ -55,8 +55,9 @@ user. Read it first.
    know often end up there. `check` and `verify` give each one its time in the
    video. When there are more than two, they only count them, and `--verbose`
    lists them. No fix is needed unless one sounds wrong when you listen at its
-   time. The hint names a `"heard"` line, like `"heard": {"sine": ["sign"]}`.
-   With it in `video.json`, `check` and `verify` stop naming the word.
+   time. The hint names a `"heard"` line, like `"heard": {"sine": ["sign"]}`,
+   with every form the word was heard as in that run. With it in
+   `video.json`, `check` and `verify` stop naming the word.
    Before it makes the narration, `voice` prints how long the video will be
    about.
    Only the scenes you changed are made again. `check`, `still`, `sheet`,
@@ -138,10 +139,13 @@ user. Read it first.
     nearly matched next to the percentage it understood, each with its time in
     the video. More than two are listed by name, and `--verbose` adds their
     times. Each word it could not confirm is a warning with its time in
-    the video. When the narration alone confirmed the word, the music may
-    cover it, and the warning gives a `music.volume` 3 dB lower. It doesn't
-    for number and maths words, which the check often hears written another
-    way, or when the music is already under 0.5. Then listen at those times.
+    the video. When the narration alone confirmed the word and the mix heard
+    a form that sounds close, like "Brugley" for "Brewly", it is a hint with
+    the `"heard"` line, because the check only spells the word another way.
+    Otherwise the music may cover the word, and the warning gives a
+    `music.volume` 3 dB lower. It doesn't for numbers, amounts and maths
+    words, which keep the warning, or when the music is already under 0.5.
+    Then listen at those times.
     Two words heard as one, like "Point it" heard as "pointed", are one
     finding with no music advice, and only a hint when the narration alone
     confirmed them. Its last line is the verdict: "passed", "passed with 2 warnings" or "failed: 1

@@ -12,6 +12,7 @@ import { alignWords } from '../src/align.js';
 import { loadProject } from '../src/project.js';
 import { heardLine, heardTwice, synthesize, voicePaths, withHeard } from '../src/voice.js';
 import { heardEveryTime, speechFindings, unconfirmedWords } from '../src/qa.js';
+import { shownIssues } from '../src/cli.js';
 import { cachedVoice } from './helpers/cached-voice.js';
 import { GOOD_KEY, startFakeServices } from './helpers/fake-services.js';
 
@@ -144,4 +145,57 @@ test('a word heard as the same other spelling each time gets the line for "heard
   const snow = (v) => ({ ...v, transcript: v.transcript.replace('Tap Lip', 'Snow') });
   assert.equal(heardEveryTime(project, { intro: snow(voices.intro), outro: snow(voices.outro) }).size, 0);
   assert.match(unconfirmedWords(project, voices.intro)[0].advice, /reword the sentence\.$/);
+});
+
+// "Brewly" only nearly matched in one scene, and in another, written as
+// {Brewly|Brew lee}, it wasn't confirmed.
+// The line for "heard" lists both forms, in check, in its one line for many
+// near matches, and in voice.
+test('the line for "heard" lists every form a word was heard as in the run', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-heard-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ music: false }));
+  fs.writeFileSync(path.join(dir, 'script.md'), '# Brewly\n\n## why\nMeet Brewly today.\n\n## tip\nOrder your first {Brewly|Brew lee} box.\n');
+  fs.writeFileSync(path.join(dir, 'scenes.js'), 'export default { why() {}, tip() {} };');
+  const voices = {};
+  for (const [id, transcript] of [['why', 'Meet Bruelly today.'], ['tip', 'Order your first Brugley box.']]) {
+    cachedVoice(dir, id);
+    const file = voicePaths(loadProject(dir), id).json;
+    const info = JSON.parse(fs.readFileSync(file, 'utf8'));
+    info.transcript = transcript;
+    if (id === 'why') info.nearly = [{ word: 'Brewly', heard: 'Bruelly' }];
+    else {
+      info.words = info.words.map((w) => (w.text === 'Brewly' ? { ...w, matched: false } : w));
+      info.matchRate = 0.8;
+      info.unmatched = ['Brewly'];
+    }
+    fs.writeFileSync(file, JSON.stringify(info));
+    voices[id] = info;
+  }
+  const project = loadProject(dir);
+  const line = '"heard": {"Brewly": ["Bruelly", "Brugley"]}';
+  const near = speechFindings(project, voices).issues.find((i) => i.key === 'nearly');
+  assert.ok(near.message.endsWith(line), near.message);
+  assert.deepEqual(near.heard, { Brewly: ['Bruelly', 'Brugley'] });
+  // More near matches than check lists one by one become one line, with the same forms.
+  const many = { ...near, words: 3, nearly: [...near.nearly, { word: 'today', heard: 'to day' }, { word: 'Meet', heard: 'Meat' }] };
+  const [shown] = shownIssues([many], false);
+  assert.match(shown.message, /"heard": \{"Brewly": \["Bruelly", "Brugley"\], "today": \["to day"\], "Meet": \["Meat"\]\}$/);
+  // voice gives the line for a word heard the same way twice in a row once
+  // all scenes are made, with the forms of the other scenes too.
+  const notes = [];
+  const before = JSON.parse(fs.readFileSync(voicePaths(project, 'tip').json, 'utf8'));
+  fs.writeFileSync(voicePaths(project, 'tip').json, JSON.stringify({ ...before, hash: 'older' }));
+  const transcribe = async () => ({ text: 'Order your first Brugley box.', words: said('Order your first Brugley box.').map((w) => ({ ...w, start: w.start * 0.3, end: w.end * 0.3 })) });
+  t.mock.method(process.stderr, 'write', () => true);
+  const fake = await startFakeServices();
+  t.after(fake.close);
+  for (const [name, value] of Object.entries({ EXPLAINROO_ELEVENLABS_URL: fake.env.EXPLAINROO_ELEVENLABS_URL, ELEVENLABS_API_KEY: GOOD_KEY })) {
+    const previous = process.env[name];
+    process.env[name] = value;
+    t.after(() => (previous === undefined ? delete process.env[name] : (process.env[name] = previous)));
+  }
+  fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ music: false, voice: { provider: 'elevenlabs', id: 'fake-voice' } }));
+  await synthesize(loadProject(dir), { transcribe, notice: (m) => notes.push(m), log: () => {}, only: ['tip'] });
+  assert.deepEqual(notes.filter((n) => /twice in a row/.test(n)), [`voice tip: the speech check heard "Brewly" as "Brugley" twice in a row. If that is how it is said, add this to video.json, and the check accepts it: "heard": {"Brewly": ["Brugley", "Bruelly"]}`]);
 });
