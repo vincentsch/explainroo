@@ -280,7 +280,7 @@ test('inspect lists what a step can click or type into, and every text and selec
   assert.equal(invoices.selector, 'a[href="#/invoices"]');
   assert.ok(r.elements.every((e) => e.in_view && e.box.w > 0), 'the page fits the window');
   const text = formatInspect(r);
-  assert.match(text, /^http:\/\/127\.0\.0\.1:\d+\/#\/notes at 1280x720: 7 elements to click or type into, from the top\n/);
+  assert.match(text, /^http:\/\/127\.0\.0\.1:\d+\/#\/notes at 1280x720 in en-US: 7 elements to click or type into, from the top\n/);
   assert.match(text, /\n {2}\d\. editor "Write the note here, or paste one\.", aria-label "Note text" {2}at \d+,\d+, 720x220\n {5}text "Write the note here, or paste one\.", or selector div\[aria-label="Note text"\]\n/);
 
   // A form: a field goes by the words of its label, and each selector matches
@@ -441,7 +441,7 @@ test('inspect --all lists headings, sections and images, and --text what holds t
   assert.equal(all.total, plain.total + content.length);
   assert.deepEqual(content.map((e) => e.kind), ['h1', 'table']);
   assert.deepEqual([content[0].words, content[0].text, content[0].selector], ['Invoices', 'Invoices', 'h1']);
-  assert.match(formatInspect(all), /^http:\/\/127\.0\.0\.1:\d+\/#\/invoices at 1280x720: \d+ elements, \d+ to click or type into, and 2 of the headings, sections and images to zoom or scroll to, from the top\n/);
+  assert.match(formatInspect(all), /^http:\/\/127\.0\.0\.1:\d+\/#\/invoices at 1280x720 in en-US: \d+ elements, \d+ to click or type into, and 2 of the headings, sections and images to zoom or scroll to, from the top\n/);
   const held = await inspect(dir, `${app.url}#/invoices`, { viewport, holding: 'total' });
   assert.equal(held.matches, 1);
   assert.deepEqual(held.elements.map((e) => [e.level, e.kind]), [[0, 'p'], [1, 'main']]);
@@ -483,4 +483,31 @@ test('in a short, typing, scrolling, zooming and a click that changes the page c
   // A log from before counts each step at its time, as it did.
   writeLog(steps.map(({ until, changed, ...st }) => st));
   assert.deepEqual(await still(), ["the picture doesn't change for 4.0s, from 1.0s", "the picture doesn't change for 2.2s, from 6.8s"]);
+});
+
+test('the browser asks sites for the project\'s language, and a script\'s locale wins', { skip: !chrome }, async (t) => {
+  const app = await serveDemoApp();
+  t.after(app.close);
+  const dir = project(t, { url: `${app.url}#/sums`, viewport: { width: 1280, height: 720 }, locale: 'de-DE', steps: [{ do: 'wait', text: 'Eine Zeile pro Rechnung.' }] });
+  fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ theme: 'clean', language: 'es', voice: { provider: 'recording', src: 'assets/n.wav' } }));
+  const viewport = { width: 1280, height: 720 };
+  const r = await inspect(dir, `${app.url}#/sums`, { viewport });
+  assert.equal(r.locale, 'es-ES');
+  assert.match(app.languages.at(-1), /^es-ES\b/);
+  assert.match(formatInspect(r), /^http:\/\/127\.0\.0\.1:\d+\/#\/sums at 1280x720 in es-ES: /);
+  // The script's locale wins, and the step log and the first lines name it.
+  const lines = [];
+  const rec = await record(dir, 'invoice', { log: (l) => lines.push(l) });
+  assert.match(app.languages.at(-1), /^de-DE\b/);
+  assert.match(lines[0], /^recording http:\/\/127\.0\.0\.1:\d+\/#\/sums at 1280x720 in de-DE$/);
+  assert.match(formatRecord(rec), /^recorded 1 step, \d+\.\d s at 1280x720 in de-DE\n/);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(dir, rec.log), 'utf8')).locale, 'de-DE');
+  // Without a project, inspect opens the page in en-US at 1920x1080, unless told otherwise.
+  const bare = await inspect(null, `${app.url}#/sums`);
+  assert.deepEqual([bare.locale, bare.viewport], ['en-US', { width: 1920, height: 1080 }]);
+  assert.match(app.languages.at(-1), /^en-US\b/);
+  const german = await inspect(null, `${app.url}#/sums`, { locale: 'de-DE', viewport, holding: 'Eine Zeile' });
+  assert.deepEqual([german.locale, german.matches], ['de-DE', 1]);
+  await assert.rejects(inspect(null, app.url, { locale: 'German' }), /--locale must be a language tag like en-US or de-DE/);
+  await assert.rejects(inspect(null, app.url, { keepProfile: true }), /--keep-profile opens the page with the kept profile of a project, so put the project folder first/);
 });

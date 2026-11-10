@@ -40,3 +40,8 @@ input, select { font: inherit; padding: 10px 12px; border: 1px solid #d5d9e0; bo
 .editor { background: #fff; border: 1px solid #d5d9e0; border-radius: 12px; padding: 18px 20px; min-height: 220px; max-width: 720px; font-family: ui-monospace, monospace; outline: none; }
 .ed-placeholder { color: #8a92a3; pointer-events: none; }
 button.icon { font-size: 22px; line-height: 1; padding: 8px 14px; }
+.sums { background: #fff; border: 1px solid #e3e6eb; border-radius: 12px; width: 420px; height: 900px; }
+.sum { border-bottom: 1px solid #eef0f3; padding: 14px 20px; }
+.sum-field { display: block; min-height: 36px; font-size: 22px; cursor: text; }
+.sum-input { position: absolute; width: 0; height: 0; overflow: hidden; }
+.sum-input textarea { width: 1px; height: 1px; border: 0; padding: 0; }

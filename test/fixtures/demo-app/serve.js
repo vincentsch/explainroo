@@ -10,14 +10,17 @@ const FILES = { '/': 'index.html', '/index.html': 'index.html', '/style.css': 's
 const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript' };
 
 export async function serveDemoApp(port = 0) {
+  // The languages the browser asked for, one per page load.
+  const languages = [];
   const server = http.createServer((req, res) => {
+    if (req.url === '/' || req.url.startsWith('/index.html')) languages.push(req.headers['accept-language'] ?? null);
     const name = FILES[new URL(req.url, 'http://x').pathname];
     if (!name) { res.writeHead(404); return res.end('Not found'); }
     res.writeHead(200, { 'Content-Type': TYPES[path.extname(name)], 'Cache-Control': 'no-store' });
     res.end(fs.readFileSync(path.join(ROOT, name)));
   });
   await new Promise((resolve) => server.listen(port, '127.0.0.1', resolve));
-  return { url: `http://127.0.0.1:${server.address().port}/`, close: () => new Promise((resolve) => { server.closeAllConnections(); server.close(resolve); }) };
+  return { url: `http://127.0.0.1:${server.address().port}/`, languages, close: () => new Promise((resolve) => { server.closeAllConnections(); server.close(resolve); }) };
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {

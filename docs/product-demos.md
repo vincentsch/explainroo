@@ -53,7 +53,21 @@ and placeholder, a `text` and a `selector` that find only it, and its box.
 Copy the text or the selector into the step as it is. Use the viewport of
 your script, because the page may lay itself out differently in another
 size. `--json` gives the same list as JSON, and `--keep-profile` opens the
-page with the kept profile, for a page behind a login.
+page with the kept profile, for a page behind a login. Without the project
+folder, `record --inspect <url>` opens the page in `en-US` at 1920 x 1080,
+and `--viewport` and `--locale de-DE` change that.
+
+Fields that look like a text box but aren't an `input`, like the math
+editor of a graphing calculator, are listed too: elements with
+`contenteditable` or `role="textbox"`, and the visible element around a
+hidden input, as a "field around a hidden textarea". A click on that element
+focuses the input, so its selector works for `click` and `type`. The last
+lines name the element that has the focus after the page loads, which is
+where a `press` step without an element presses its key.
+
+`--selector ".expression"` says what a selector matches: how many elements,
+how many of them are visible, and each visible one with its words and box.
+Use it to try a selector before it goes into a step. It goes with `--text`.
 
 A zoom or a scroll often goes to plain content, like a heading, a section of
 results or a chart. `--all` adds the visible headings, sections and images to
@@ -64,7 +78,10 @@ seconds for the words, for a page that shows its results a moment after it
 opens. Pick the one whose box holds what the voice talks about.
 
 Then run `explainroo record videos/<name> <name>`. It runs the steps in a
-browser of its own and saves `assets/recordings/<name>.webm` and its step
+browser of its own, which asks sites for the project's `language`: `en-US`
+for `en`, `es-ES`, `fr-FR`, `it-IT`, `pt-BR`, `hi-IN`, `ja-JP`, `zh-CN` or
+`de-DE`. `"locale": "en-GB"` in the script sets another one. The first line
+of `record` and the step log name it. It saves `assets/recordings/<name>.webm` and its step
 log, `assets/recordings/<name>.log.json`. The video shows only the page,
 with no browser bars or pop-ups. `record` needs Playwright's own ffmpeg, and
 the first recording downloads it and says so. `explainroo doctor --fetch
