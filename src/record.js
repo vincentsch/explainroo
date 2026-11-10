@@ -286,7 +286,9 @@ export function wholeHash(script) {
 // Runs in every page before its own scripts: blurs what the script names, and
 // keeps links and window.open in this tab, so the video follows them. Each
 // matched element gets the blur as its own style, marked important, which
-// beats the page's style sheets and its own inline filter.
+// beats the page's style sheets and its own inline filter. It also gets
+// transition: none, because a transition on filter outranks even an important
+// style and would show the element sharp while the blur fades in.
 // window.__explainrooBlurCheck says which blurs matched an element and are
 // really blurred there, and which matched one the page still keeps sharp.
 function pageSetup(blur) {
@@ -295,10 +297,11 @@ function pageSetup(blur) {
   const texts = blur.map((b, i) => ({ ...b, i })).filter((b) => b.text);
   const norm = (s) => String(s ?? '').replace(/[\u200b-\u200d\ufeff]/g, '').replace(/\s+/g, ' ').trim();
   const style = document.createElement('style');
-  style.textContent = selectors.map((b) => `${b.selector} { filter: ${BLUR} !important; }`).join('\n');
+  style.textContent = selectors.map((b) => `${b.selector} { filter: ${BLUR} !important; transition: none !important; }`).join('\n');
   // The elements that exact text matched, with the number of their blur.
   const byText = new Map();
   const mark = (el) => {
+    if (el.style.getPropertyValue('transition') !== 'none' || el.style.getPropertyPriority('transition') !== 'important') el.style.setProperty('transition', 'none', 'important');
     if (el.style.getPropertyValue('filter') !== BLUR || el.style.getPropertyPriority('filter') !== 'important') el.style.setProperty('filter', BLUR, 'important');
   };
   const matches = (b) => {
