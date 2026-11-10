@@ -6,7 +6,7 @@ import { getTheme, makeBackground, fontString, colorOf } from './themes.js';
 import { Pen } from './pen.js';
 import { drawTransition } from './transitions.js';
 import { buildPhrases, drawCaptions, buildChunks, drawBoldCaptions, captionHighlight } from './captions.js';
-import { AUDIO_FILE, clamp, ease, hashStr, mulberry32, suggest, suggestColor, contrast, luminance, opaque, withAlpha, parseColor, mixColor, rgba, cssColor, newDefaults, accentNote } from './util.js';
+import { AUDIO_FILE, clamp, ease, hashStr, mulberry32, suggest, suggestColor, contrast, luminance, opaque, withAlpha, parseColor, mixColor, rgba, cssColor, newDefaults, accentNote, normWord } from './util.js';
 import { overlapDepth, holds, crosses, bounds, inside, toEdge, grow } from './geometry.js';
 import { layoutAreas } from './layout.js';
 import { loadClips, soundURL, ClipFrames, FREEZE_SECONDS, FIT_SPEEDS } from './clips.js';
@@ -867,6 +867,12 @@ export class Engine {
     }
   }
 
+  // The words the captions show at T in the video, as { text, start }, or null.
+  captionAt(T) {
+    const shown = this.phrases.find((p) => T >= p.start - 0.08 && T < p.until) ?? this.chunks.find((c) => T >= c.start - 0.05 && T < c.until);
+    return shown ? shown.words : null;
+  }
+
   // Samples every scene and reports layout problems.
   check(step = 0.25, viewWidth = null) {
     // check looks at the layout as written, and then at what the automatic
@@ -1021,6 +1027,17 @@ export class Engine {
           if (mark && contrast(mark, bg) < 3) once(`mark:${sc.id}:${tx.text}`, () => {
             add('warn', sc.id, t, `the *starred* words in "${label}" have low contrast against its background (${contrast(mark, bg).toFixed(1)}:1); ${contrastAdvice('mark', pixelColor(mark), pixelColor(bg), tx.size, named())}`, same('mark', tx));
           });
+        }
+        // Screen text that says four or more words in a row of what the
+        // captions show at the same moment. A hook title is the headline of a
+        // short, there before the voice says it, so it doesn't count.
+        const caption = cjkLanguage(language) ? null : this.captionAt(sc.start + t);
+        if (caption) {
+          for (const tx of texts) {
+            if (tx.block || tx.role === 'title') continue;
+            const run = sharedRun(tx.text, caption);
+            if (run) once(`echo:${sc.id}:${tx.element ?? tx.text}`, () => add('hint', sc.id, t, `"${short(tx.text)}" shows "${run.text}" while the captions show the same words, in "${sentenceOf(sc, run.first)}". The captions already carry what the voice says, so keep the screen text to a short label or a number, or leave it out`));
+          }
         }
         // Overlaps only count when both are fully shown, not mid-fade.
         const solid = texts.filter((x) => x.alpha > 0.95);
@@ -1396,6 +1413,39 @@ function emptyStretches(filled, dur, step, shown) {
     i = j;
   }
   return found;
+}
+
+const cjkLanguage = (language) => ['ja', 'zh'].includes(language);
+
+// The longest run of four or more words in a row that `text` and the caption
+// words share, as { text, first } with the text the captions show and its first
+// word, or null.
+function sharedRun(text, words) {
+  const a = String(text).split(/\s+/).map(normWord).filter(Boolean);
+  const b = words.map((w) => normWord(w.text));
+  let best = { length: 0, end: 0 };
+  for (let i = 0; i < a.length; i++) {
+    for (let j = 0; j < b.length; j++) {
+      let n = 0;
+      while (i + n < a.length && j + n < b.length && b[j + n] && a[i + n] === b[j + n]) n++;
+      if (n > best.length) best = { length: n, end: j + n };
+    }
+  }
+  if (best.length < 4) return null;
+  const run = words.slice(best.end - best.length, best.end);
+  return { text: run.map((w) => w.text).join(' ').replace(/[,.;:!?]+$/, ''), first: run[0] };
+}
+
+// The sentence of the scene's narration that the caption word `first` is in.
+function sentenceOf(sc, first) {
+  const k = sc.words.findIndex((w) => Math.abs(sc.start + w.start - first.start) < 1e-6);
+  if (k === -1) return first.text;
+  const end = (w) => /[.!?…]["'’)\]]*$/.test(w.text);
+  let from = k;
+  while (from > 0 && !end(sc.words[from - 1])) from--;
+  let to = k;
+  while (to < sc.words.length - 1 && !end(sc.words[to])) to++;
+  return sc.words.slice(from, to + 1).map((w) => w.text).join(' ');
 }
 
 // Whether a box reaches into the caption band.

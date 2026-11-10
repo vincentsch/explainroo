@@ -464,3 +464,24 @@ test('the same finding on one element at several moments is one line, and --verb
   assert.equal(shown.find((i) => i.t === first.t).message, `${first.message} (the same element at ${counting.length} moments, from ${first.t}s to ${last.t}s; --verbose lists each)`);
   assert.equal(shownIssues(issues, true).length, issues.length);
 });
+
+// "free and open source" on screen while the captions say "It is free and open
+// source." is a hint that names the element and the sentence. Three words, no
+// captions, or a hook title are not.
+test('with captions on, check gives a hint for screen text that shows four or more words the captions show at the same moment', { skip }, async (t) => {
+  const words = { outro: ['It', 'is', 'free', 'and', 'open', 'source.', 'Try', 'it', 'today.'] };
+  const body = "s.text('free and open source', { y: s.cy - 200, at: 0 }); s.text('open source tool', { y: s.cy, at: 0 }); s.text('Try it today', { y: s.cy + 200, at: 0 });";
+  const hints = (issues) => issues.filter((i) => / while the captions show the same words/.test(i.message));
+  const found = hints(await check(project(t, { captions: true }, { outro: body }, { words })));
+  assert.equal(found.length, 1, JSON.stringify(found));
+  assert.equal(found[0].level, 'hint');
+  assert.equal(found[0].scene, 'outro');
+  assert.equal(found[0].message, '"free and open source" shows "free and open source" while the captions show the same words, in "It is free and open source.". The captions already carry what the voice says, so keep the screen text to a short label or a number, or leave it out');
+  assert.deepEqual(hints(await check(project(t, { captions: false }, { outro: body }, { words }))), []);
+  // After the captions have shown the words, the text is no repeat.
+  assert.deepEqual(hints(await check(project(t, { captions: true }, { outro: "s.text('free and open source', { at: 1.6 });" }, { words }))), []);
+  // A short's hook title is its headline, there before the voice says it.
+  assert.deepEqual(hints(await check(project(t, { size: 'tiktok', captions: 'bold' }, { outro: "s.short.hook('Free and open source');" }, { words }))), []);
+  // Bold captions show up to four words at a time, here "It is free and".
+  assert.equal(hints(await check(project(t, { size: 'tiktok', captions: 'bold' }, { outro: "s.text('It is free and', { y: s.cy, at: 0 });" }, { words }))).length, 1);
+});
