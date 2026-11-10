@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { ffmpeg, probe } from '../src/ffmpeg.js';
+import { AUDIO_CODECS, MOST_LIMITED, PEAK_CEILING, ffmpeg, finishMix, loudness, probe } from '../src/ffmpeg.js';
 import { BREATH, applyCut, compareCut, cutFiles, cutItems, cutListText, formatCut, gapSizes, joinSound, keptParts, partFrames, quietStretches, readCutList, writeCut } from '../src/cut.js';
 import { checkVideo } from '../src/video-check.js';
 import { ASR_MODEL, TTS_MODEL, cacheRoot } from '../src/models.js';
@@ -216,15 +216,43 @@ test('cut writes the list, keeps it from being written over, and cuts the video 
   assert.deepEqual(r.speech.extra, []);
   const info = await probe(r.out);
   assert.ok(Math.abs(Number(info.format.duration) - r.after) < 0.1);
-  assert.match(formatCut(r), /talk\.cut\.mp4\n5\.2 s cut to 2\.\d s, with 3 joins\. The speech model heard 100% of the words the list keeps\.\nCheck the video with: explainroo verify talk\.cut\.mp4$/);
+  assert.match(formatCut(r), /talk\.cut\.mp4\n5\.2 s cut to 2\.\d s, with 3 joins\. The speech model heard 100% of the words the list keeps\.\nThe sound is at -1[34]\.\d LUFS, with its peak at -\d+\.\d dBTP\.\nCheck the video with: explainroo verify talk\.cut\.mp4$/);
+  // The loudness it reached: -14 LUFS, as verify measures it.
+  assert.ok(Math.abs(r.loudness.integrated + 14) <= 0.5, `loudness ${r.loudness.integrated}`);
+  assert.equal(dry.loudness, undefined);
   // verify passes on the cut: the sound is leveled and held under the peak ceiling.
   const checked = await checkVideo(r.out);
   assert.equal(checked.passed, true, JSON.stringify(checked.issues));
   assert.ok(checked.loudness.truePeak <= -1, `true peak ${checked.loudness.truePeak}`);
+  assert.ok(Math.abs(checked.loudness.integrated - r.loudness.integrated) < 0.2, `verify measured ${checked.loudness.integrated}`);
 
   // The list belongs to that recording: another version of the file stops.
   fs.appendFileSync(video, Buffer.from([0]));
   await assert.rejects(applyCut(video, { transcribe: listener(kept) }), /talk\.cut\.md was made from another version of talk\.mp4\. Run "explainroo cut .*talk\.mp4 --force" to write it again from this one\./);
+});
+
+test('a recording is leveled to -14 LUFS, unless the peak limit holds it quieter, and says what it reached', { timeout: 120000 }, async (t) => {
+  const dir = tempDir(t);
+  // Speech-like sound: a tone at -26 dBFS that comes and goes 3 times a second.
+  const even = path.join(dir, 'even.wav');
+  await ffmpeg(['-loglevel', 'error', '-f', 'lavfi', '-i', "aevalsrc='0.05*sin(2*PI*220*t)*(0.6+0.4*sin(2*PI*3*t))':s=48000:d=8", '-c:a', 'pcm_s16le', even]);
+  const out = path.join(dir, 'even-out.wav');
+  await finishMix(even, out, -14, AUDIO_CODECS.mp4, { gain: true });
+  const leveled = await loudness(out);
+  assert.ok(Math.abs(leveled.integrated + 14) <= 0.5, `loudness ${leveled.integrated}`);
+  assert.ok(leveled.truePeak <= PEAK_CEILING + 0.05, `peak ${leveled.truePeak}`);
+  // A quiet tone with a loud clap: the limiter would take more than MOST_LIMITED
+  // dB off it, so the sound stays under -14 LUFS.
+  const clap = path.join(dir, 'clap.wav');
+  await ffmpeg(['-loglevel', 'error', '-f', 'lavfi', '-i', "aevalsrc='0.01*sin(2*PI*220*t)+between(t,4,4.004)*0.95*sin(2*PI*1000*t)':s=48000:d=8", '-c:a', 'pcm_s16le', clap]);
+  const held = path.join(dir, 'clap-out.wav');
+  const r = await finishMix(clap, held, -14, AUDIO_CODECS.mp4, { gain: true });
+  const quiet = await loudness(held);
+  assert.ok(quiet.integrated < -15, `loudness ${quiet.integrated}`);
+  assert.ok(r.gain <= PEAK_CEILING + MOST_LIMITED + 0.5, `gain ${r.gain}`);
+  const line = (integrated) => formatCut({ video: '/v/talk.mp4', list: '/v/talk.cut.md', out: '/v/talk.cut.mp4', before: 9, after: 6, joins: 0, loudness: { integrated, truePeak: -1.2, target: -14 }, speech: { matchRate: 1, missing: [], extra: [] } });
+  assert.match(line(-14.2), /\nThe sound is at -14\.2 LUFS, with its peak at -1\.2 dBTP\.\n/);
+  assert.match(line(-17.5), /\nThe sound is at -17\.5 LUFS, with its peak at -1\.2 dBTP\. Its loudest moments are far above the rest, so the peak limit of -1 dBTP holds it under -14 LUFS\.\n/);
 });
 
 test('cut --force moves an edited list aside, and writes over one as cut wrote it', { timeout: 120000 }, async (t) => {

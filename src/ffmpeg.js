@@ -76,6 +76,8 @@ export function frameEncoder({ fps, out, draft, format = 'mp4', transparent = fa
 
 // The highest true peak a finished video may have, in dBTP.
 export const PEAK_CEILING = -1;
+// The most a limiter takes off the loudest moment of a recording, in dB.
+export const MOST_LIMITED = 10;
 
 // A true peak as people read it, like "+0.5 dBTP", or "-inf dBTP" for silence.
 export function dbtp(peak) {
@@ -135,8 +137,9 @@ export function limiterFilter(db, latency = limiterTakesLatency()) {
 // the result is encoded with `codec` and measured the way verify measures a video.
 // When the encoded sound lands above the ceiling, the limiter goes down by the
 // difference and runs again. The encoder doesn't always follow, so it gets up to
-// four runs.
-export async function finishMix(input, output, target, codec, { log = () => {} } = {}) {
+// four runs. With `gain` the sound is a recording, leveled by finishRecording.
+export async function finishMix(input, output, target, codec, { log = () => {}, gain = false } = {}) {
+  if (gain) return finishRecording(input, output, target, codec, { log });
   const { filter } = await loudnessFilter(input, target);
   let limit = PEAK_CEILING;
   for (let run = 1; ; run++) {
@@ -147,6 +150,34 @@ export async function finishMix(input, output, target, codec, { log = () => {} }
     const before = (await loudness(output)).truePeak;
     limit = Math.round((Math.min(limit, before) - (peak - PEAK_CEILING) - 0.2) * 10) / 10;
     log(`soundtrack: the encoded sound peaked at ${dbtp(peak)}, so the limiter runs again at ${limit} dB`);
+  }
+}
+
+// A recording at `target` LUFS: a plain gain, then the limiter of finishMix on
+// the peaks. Speech has loud moments far above the rest, so the limiter takes
+// some loudness off, and the gain goes up by what is missing and runs again.
+// The gain stays low enough that the limiter takes off at most MOST_LIMITED dB,
+// so a recording with a few very loud moments stays quieter than `target`. It
+// gets up to six runs.
+async function finishRecording(input, output, target, codec, { log }) {
+  const { inputI, inputTP } = await loudnessFilter(input, target);
+  const most = PEAK_CEILING + MOST_LIMITED - inputTP;
+  let db = Number.isFinite(inputI) ? Math.min(target - inputI, most) : 0;
+  let limit = PEAK_CEILING;
+  for (let run = 1; ; run++) {
+    const chain = [`volume=${db.toFixed(2)}dB`, 'aresample=48000', 'aresample=192000', limiterFilter(limit), 'aresample=48000'].join(',');
+    await ffmpeg(['-i', input, '-af', chain, '-ar', '48000', '-c:a', 'pcm_s16le', output]);
+    const peak = await encodedPeak(output, codec);
+    if (run === 6 || !Number.isFinite(inputI)) return { limit, truePeak: peak, gain: db };
+    const measured = await loudness(output);
+    if (peak > PEAK_CEILING) {
+      limit = Math.round((Math.min(limit, measured.truePeak) - (peak - PEAK_CEILING) - 0.2) * 10) / 10;
+      log(`sound: the encoded sound peaked at ${dbtp(peak)}, so the limiter runs again at ${limit} dB`);
+      continue;
+    }
+    const short = target - measured.integrated;
+    if (!(short > 0.2) || db >= most - 0.05) return { limit, truePeak: peak, gain: db };
+    db = Math.min(most, db + short);
   }
 }
 

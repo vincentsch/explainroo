@@ -7,7 +7,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { AUDIO_CODECS, ffmpeg, finishMix, probe } from './ffmpeg.js';
+import { AUDIO_CODECS, dbtp, ffmpeg, finishMix, loudness, probe } from './ffmpeg.js';
 import { cacheRoot, transcribeWords } from './models.js';
 import { readWav } from './wav.js';
 import { sha256File } from './history.js';
@@ -568,7 +568,7 @@ export async function applyCut(file, { out = null, dryRun = false, log = () => {
     writeFloatWav(joined, joinedSound, channels);
     if (!dryRun) {
       log('leveling the sound');
-      await finishMix(joined, mixed, DEFAULTS.loudness, AUDIO_CODECS.mp4, { log });
+      await finishMix(joined, mixed, DEFAULTS.loudness, AUDIO_CODECS.mp4, { log, gain: true });
       log(`writing ${path.basename(target)}`);
       const select = frames.map(([a, b]) => `between(n\\,${a}\\,${b - 1})`).join('+');
       await ffmpeg(['-loglevel', 'error', '-i', video, '-i', mixed,
@@ -600,11 +600,13 @@ export async function applyCut(file, { out = null, dryRun = false, log = () => {
       delete m.index;
     }
     for (const x of speech.extra) x.original = original(x.time);
+    const level = dryRun ? null : await loudness(target);
     return {
       video, list: files.list, out: target, ...(dryRun ? { dryRun: true } : {}),
       before: Math.round(duration * 100) / 100, after: Math.round(kept * 100) / 100,
       joins: sound.length - 1,
       parts: sound.map(([a, b]) => [Math.round((a / RATE) * 1000) / 1000, Math.round((b / RATE) * 1000) / 1000]),
+      ...(level ? { loudness: { integrated: level.integrated, truePeak: level.truePeak, target: DEFAULTS.loudness } } : {}),
       speech,
     };
   } finally {
@@ -628,6 +630,15 @@ export async function compareCut(said, heard, duration, language) {
   };
 }
 
+// The loudness a cut reached. It stays under the target only when the peak
+// limit holds it there.
+function loudnessLine({ integrated, truePeak, target }) {
+  if (integrated === null || integrated === undefined) return '';
+  const reached = `The sound is at ${integrated.toFixed(1)} LUFS, with its peak at ${dbtp(truePeak)}.`;
+  if (integrated >= target - 0.5) return reached;
+  return `${reached} Its loudest moments are far above the rest, so the peak limit of -1 dBTP holds it under ${target} LUFS.`;
+}
+
 // What cut prints.
 export function formatCut(r) {
   if (r.after !== undefined) {
@@ -643,6 +654,7 @@ export function formatCut(r) {
       ...missing.filter((w) => w.next).slice(0, 8).map((w) => `It didn't hear ${where(w)}. You deleted ${w.next.item} right ${w.next.side} it, and that may hold the ${w.next.side === 'after' ? 'end' : 'start'} of the word. Keep it${w.next.type === 'sound' ? ', or give it fewer seconds to keep part of it,' : ''} and try again.`),
       plain.length ? `It didn't hear ${list(plain)}. A join may cut into ${plain.length === 1 ? 'that word' : 'those words'}, so listen there.` : '',
       extra.length ? `It heard ${list(extra)}, which the list doesn't keep. ${extra.every(near) ? 'That may be what is left of a kept word it didn\'t hear, so listen there.' : 'That may be left from a word you cut, so listen there. If it is, delete the word next to it too.'}` : '',
+      r.loudness ? loudnessLine(r.loudness) : '',
       r.dryRun ? `To write ${path.basename(cutFiles(r.video ?? 'video.mp4').out)}, run it again without --dry-run.` : `Check the video with: explainroo verify ${path.basename(r.out)}`,
     ];
     return lines.filter(Boolean).join('\n');

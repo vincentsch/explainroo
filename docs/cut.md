@@ -61,7 +61,9 @@ This writes `talk.cut.mp4`, or the file that `--out` names. At each join the
 sound goes to the quietest moment close to the word and crossfades over 30 ms,
 so a join doesn't click. The picture cuts at the frame closest to that moment.
 The sound is leveled to -14 LUFS with its peak held at -1 dBTP, like a video
-that explainroo renders.
+that explainroo renders. A recording with a few very loud moments, like a
+clap, stays quieter, because the peak limit would have to flatten them. cut
+says the loudness it reached.
 
 Then the speech model listens to the cut and says how much of the kept words
 it heard. It names a kept word that it didn't hear, because a join may cut into
