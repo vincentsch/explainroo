@@ -81,3 +81,18 @@ test('a drawing with a box counts as a shape over a hook title, also after the s
   assert.match(messages(issues, 'over', 'the 1st s.draw at')[0], /^"(BEES|MAKE|HONEY)" and the 1st s\.draw at \d+,\d+ partly overlap/);
   assert.deepEqual(messages(issues, 'clear', 's.draw'), []);
 });
+
+test('check gives a hint when s.camera comes after other elements of a scene', { skip }, async (t) => {
+  const issues = await check(await project(t, {}, {
+    after: `s.text('Before the camera', { at: 0 });
+    s.camera([{ at: 1, zoom: 1.2 }]);`,
+    first: `s.camera([{ at: 1, zoom: 1.2 }]);
+    s.text('After the camera', { at: 0 });`,
+    still: `s.text('Before a still camera', { at: 0 });
+    s.camera([]);`,
+  }));
+  assert.equal(messages(issues, 'after', 's.camera comes after other elements').length, 1, JSON.stringify(issues, null, 2));
+  assert.equal(issues.find((i) => i.scene === 'after' && i.message.startsWith('s.camera')).level, 'hint');
+  assert.deepEqual(messages(issues, 'first', 's.camera'), []);
+  assert.deepEqual(messages(issues, 'still', 's.camera'), []);
+});

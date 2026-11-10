@@ -84,6 +84,8 @@ export class Stage {
     this._texts = 0;
     this._suppress = 0;
     this._camMoved = false;
+    // Whether an element has been called yet in this scene.
+    this._called = false;
     // For check: groups and kit parts that are still arriving or leaving, the
     // groups being drawn (outermost first) and the arrows drawn so far.
     this._unsettled = 0;
@@ -389,6 +391,8 @@ export class Stage {
   }
 
   _record(kind, at, dur, o, extra = {}) {
+    // An element has been called, for the order check of s.camera.
+    this._called = true;
     const rec = this.engine.recorder;
     // Negative times mean "already on screen when the scene starts": no sound.
     if (!rec || at < 0) return;
@@ -446,6 +450,7 @@ export class Stage {
 
   // Something other than the background is on screen.
   _seen(kind, life = null) {
+    this._called = true;
     const log = this.engine.drawLog;
     if (!log || this._suppress > 0 || this.ctx.globalAlpha <= 0.01) return;
     log.shown++;
@@ -838,6 +843,9 @@ export class Stage {
   camera(keys, o = {}) {
     // A scene that moves its own camera gets no automatic camera.
     if (this.engine.planning) this.engine.manualCamera = true;
+    // The camera moves only what is drawn after it.
+    const log = this.engine.textLog;
+    if (log && this._called && keys.length) log.push({ scene: this.id, t: this.t, problem: 's.camera comes after other elements in this scene, and the camera moves only what is drawn after it, so those elements stay where they are while the rest moves; call s.camera first in the scene', level: 'hint', key: 'camera order' });
     const list = [{ at: 0, x: this.cx, y: this.cy, zoom: 1, dur: 0 }, ...keys.map((k) => ({ x: this.cx, y: this.cy, zoom: 1, dur: 1.1, ...k, at: this.time(k.at ?? 0) }))].sort((a, b) => a.at - b.at);
     // check counts a camera move as a change of the picture in a short video.
     for (const k of list.slice(1)) this.engine.cameraKeys?.add(Math.round(k.at * 100) / 100);

@@ -393,8 +393,8 @@ Read `explainroo docs short-video` first.
 
 - `s.camera([{ at, x, y, zoom, dur, rotate }])` moves the view by hand
   instead of the automatic camera (see "The camera" in
-  `explainroo docs pictures`). Call it first in the
-  scene function. `s.camera([])` keeps the scene still.
+  `explainroo docs pictures`). Call it first, as it moves only what
+  comes after it. `s.camera([])` keeps the scene still.
 - `s.focus(target, { at, out })` points the automatic camera at an element
   or a region on a cue, for example one row of a table. `target` is an `id`
   drawn earlier, `{ x, y, w, h }` (center and size) or `[x, y, w, h]`. It
