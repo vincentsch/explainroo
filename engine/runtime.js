@@ -668,7 +668,10 @@ export class Engine {
     const partial = fresh ? [...new Map(log.partial.map((p) => [p.name, p])).values()] : [];
     // Text still on its way in, like a name placed at: 0.
     const coming = texts.filter((x) => !x.problem && !x.settled && x.text.trim() && inside(x)).map((x) => x.text);
-    return { count: words + pictures + lines, picture: pictures > 0, onlyText: words > 0 && pictures + lines === 0, partial, coming };
+    // A recording, a clip, an image or a drawing, which "cover": "auto" looks
+    // for with "defaults": "0.6".
+    const media = log.shapes.some((s) => (s.kind === 'image' || s.kind === 'drawing') && s.settled && s.alpha > 0.95 && arrived(s) && (inside(s.box) || fillsFrame(s.box, this.W, this.H)));
+    return { count: words + pictures + lines, picture: pictures > 0, media, onlyText: words > 0 && pictures + lines === 0, partial, coming };
   }
 
   // The moment "cover": "auto" takes with "defaults": "0.5": the frame of the
@@ -676,8 +679,24 @@ export class Engine {
   // nothing still typing or counting, where a frame with a picture comes before
   // any frame without one, then a frame where nothing shows itself half way, and
   // the earliest of those. Seconds into the video.
+  // With "defaults": "0.6", it is the fullest frame of the first scene that
+  // shows a recording, a clip, an image or a drawing, a frame with one first,
+  // and the first scene's as before when no scene shows one.
   coverMoment() {
-    const sc = this.timeline.scenes[0];
+    if (newDefaults(this.config, '0.6')) {
+      for (const sc of this.timeline.scenes) {
+        if (!this.showsMedia(sc)) continue;
+        const best = this.fullestFrame(sc, true);
+        if (best.media) return best.T;
+      }
+    }
+    return this.fullestFrame(this.timeline.scenes[0]).T;
+  }
+
+  // The fullest frame of a scene, as the time in the video and what it shows.
+  // With `media`, a frame with a recording, a clip, an image or a drawing comes
+  // before any frame without one.
+  fullestFrame(sc, media = false) {
     const last = Math.max(0, Math.floor((sc.dur - 1e-6) * this.fps));
     // Every frame, or evenly spread frames of a long scene.
     const step = Math.max(1, Math.ceil((last + 1) / COVER_FRAMES));
@@ -685,9 +704,19 @@ export class Engine {
     for (let f = 0; f <= last; f += step) {
       const seen = this.framed(sc.index, f / this.fps);
       const fuller = seen.count > best?.count || (seen.count === best?.count && seen.partial.length < best.partial.length);
-      if (!best || (seen.picture && !best.picture) || (seen.picture === best.picture && fuller)) best = { T: sc.start + f / this.fps, ...seen };
+      const first = media && seen.media !== best?.media ? seen.media : seen.picture !== best?.picture ? seen.picture : fuller;
+      if (!best || first) best = { T: sc.start + f / this.fps, ...seen };
     }
-    return best.T;
+    return best;
+  }
+
+  // Whether some frame of a scene shows a recording, a clip, an image or a
+  // drawing, from up to 60 frames spread over it.
+  showsMedia(sc) {
+    const last = Math.max(0, Math.floor((sc.dur - 1e-6) * this.fps));
+    const step = Math.max(1, Math.ceil((last + 1) / 60));
+    for (let f = 0; f <= last; f += step) if (this.framed(sc.index, f / this.fps).media) return true;
+    return false;
   }
 
   // A hint when the first frame of the video shows only the background, or
@@ -708,7 +737,7 @@ export class Engine {
       const name = `"${text.length > 40 ? text.slice(0, 37) + '...' : text}"${more > 0 ? ` and ${more} more text${more > 1 ? 's' : ''}` : ''}`;
       return { level: 'hint', scene: sc.id, t: 0, message: `the first frame of the video shows ${name} still coming in, and Buffer, LinkedIn and other services use it as the thumbnail; give ${more > 0 ? 'them' : 'it'} at: -1 instead of at: 0, so ${more > 0 ? 'they are' : 'it is'} there from the first frame` };
     }
-    const T = this.coverMoment();
+    const T = this.fullestFrame(sc).T;
     const t = T - sc.start;
     if (!(this.framed(sc.index, t).count > 0)) return null;
     // What that frame shows, without the camera, in the order it was drawn.

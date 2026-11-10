@@ -74,6 +74,27 @@ test('with "defaults": "0.5", "cover": "auto" takes the earliest of the fullest 
   near(await moment(fading), 4);
 });
 
+test('with "defaults": "0.6", "cover": "auto" takes the fullest frame of the first scene with a recording, a clip, an image or a drawing', { skip }, async (t) => {
+  const SHOT = `s.title('In the app', { y: 160, at: 0, enter: 'none' });
+    s.draw({ x: 960, y: 600, box: { x: 0, y: 0, w: 800, h: 450 }, at: 2, enter: 'fade', dur: 0.5 }, (c) => { c.fillStyle = '#3b82f6'; c.fillRect(-400, -225, 800, 450); });`;
+  const IMAGE = `s.image('assets/shot.png', { x: 960, y: 560, w: 900, h: 500, at: 1, enter: 'fade', dur: 0.5 });`;
+  const scenes = { hook: HOOK, title: `s.title('Next', { at: 0 });`, shot: SHOT };
+  const fresh = project(t, { defaults: '0.6' }, scenes);
+  const T = await moment(fresh);
+  assert.ok(T >= 10 + 2.5 - 1e-6 && T < 15, `the cover is in the scene with the drawing: ${T}`);
+  // An image counts the same, in the first scene that shows one.
+  const pictured = project(t, { defaults: '0.6' }, { hook: HOOK, image: IMAGE, shot: SHOT });
+  fs.mkdirSync(path.join(pictured.project.dir, 'assets'), { recursive: true });
+  fs.copyFileSync(new URL('./fixtures/text-sizes.png', import.meta.url), path.join(pictured.project.dir, 'assets', 'shot.png'));
+  const atImage = await moment(pictured);
+  assert.ok(atImage >= 5 + 1.5 - 1e-6 && atImage < 10, `the cover is in the scene with the image: ${atImage}`);
+  // Without such a scene, it is the first scene's fullest frame, as with "0.5".
+  const plain = { hook: HOOK, title: `s.title('Next', { at: 0 });` };
+  assert.equal(await moment(project(t, { defaults: '0.6' }, plain)), await moment(project(t, NEW, plain)));
+  // With "0.5", the cover stays in the first scene.
+  assert.ok(await moment(project(t, NEW, scenes)) < 5);
+});
+
 test('without "defaults", "cover": "auto" is the end of the first scene, and 1.0 second into it for Shorts, TikTok and Reels, as before', async (t) => {
   const { coverTime } = await import('../src/render.js');
   const { project: p, timeline } = project(t, {}, { hook: HOOK, next: `s.title('Next', { at: 0 });` });
