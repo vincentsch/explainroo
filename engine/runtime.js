@@ -10,7 +10,7 @@ import { AUDIO_FILE, clamp, ease, hashStr, mulberry32, suggest, suggestColor, co
 import { overlapDepth, holds, crosses, bounds, inside, toEdge, grow } from './geometry.js';
 import { layoutAreas } from './layout.js';
 import { loadClips, soundURL, ClipFrames, FREEZE_SECONDS, FIT_SPEEDS } from './clips.js';
-import { UI } from './ui.js';
+import { UI, STARRED } from './ui.js';
 import { CATCH_UP, fitViewport, PAGE_TEXT, PLAYED_TEXT } from './recording.js';
 import { Short } from './short.js';
 import { playbackTextIssue } from './readability.js';
@@ -1053,6 +1053,8 @@ export class Engine {
           const label = short(tx.text);
           const english = language !== 'en' ? englishKitWord(tx.text) : null;
           if (english) once(`kitword:${sc.id}:${tx.text}`, () => add('hint', sc.id, t, kitWordHint(english, language)));
+          const literal = tx.block ? null : markupShown(tx);
+          if (literal) once(`markup:${sc.id}:${tx.text}`, () => add('warn', sc.id, t, `"${label}" ${literal}`, same('markup', tx)));
           // UI kit text (s.ui) may leave the frame on purpose while the
           // camera zooms or pans; app screens use smaller text than slides.
           // The short-video kit draws titles and stickers, not app screens.
@@ -1560,6 +1562,17 @@ function zoomCause(b, cam, areas, band) {
   if (contentMessage('', { x0, y0, x1, y1 }, areas, { band })) return '';
   const zoom = Math.round(cam.zoom * 100) / 100;
   return `. The camera's zoom of ${zoom}x pushes it there, and without the zoom it fits: zoom less, or move it toward the point the camera zooms onto`;
+}
+
+// What check says about text that shows its markup as it is written: *stars*
+// around a word, a backslash and an n where a new line was meant, or a new
+// line that a kit drew on one line. Null when it shows none.
+function markupShown(tx) {
+  const star = new RegExp(STARRED.source).exec(tx.text);
+  if (star) return `shows the stars of "*${star[1].length > 30 ? star[1].slice(0, 27) + '...' : star[1]}*" as they are written: this call doesn't set *starred* words in the accent color. Leave the stars out, or use one that does, like s.text, s.title or, with "defaults": "0.6", the s.ui text helpers`;
+  if (/\\n/.test(tx.text)) return 'shows a backslash and an n where a new line was meant. In scenes.js, write \\n inside the quotes, not \\\\n, or draw each line on its own';
+  if ((tx.ui || tx.short) && tx.text.includes('\n')) return 'has a new line that this call draws as a space, on one line. Draw each line on its own, or use a call that takes \\n, like s.text or, with "defaults": "0.6", the s.ui text helpers';
+  return null;
 }
 
 // The watermark's box when `b` reaches more than 4 pixels under it, or null.

@@ -97,6 +97,34 @@ test('check gives a hint when s.camera comes after other elements of a scene', {
   assert.deepEqual(messages(issues, 'still', 's.camera'), []);
 });
 
+test('s.ui text takes \\n and *stars* with "defaults": "0.6", and check warns about markup shown as written', { skip }, async (t) => {
+  const scenes = {
+    headline: `s.ui.headline('Catch type errors\\n*as you type*', s.W / 2, 300, { size: 76, at: -1, italic: false });`,
+    texts: `s.ui.text('Saved *in a second*', 960, 500, { size: 40, align: 'center' });
+    s.ui.para('One *long run of words that wraps* over lines', 700, 600, 300, { size: 30 });
+    s.ui.text('Two\\nlines', 960, 900, { size: 40, align: 'center' });`,
+    literal: `s.text('One line\\\\n and more', { y: 400, at: 0 });`,
+  };
+  const fresh = await check(await project(t, { defaults: '0.6' }, scenes), (page) => page.evaluate(() => {
+    const e = window.explainroo;
+    return [0, 1].map((i) => e.textsAt(i, 2.5).map((x) => ({ text: x.text, y: Math.round(x.y0) })));
+  }));
+  const [headline, texts] = fresh.more;
+  // Two lines: the second one lower, without its stars.
+  const lines = [...new Set(headline.map((x) => x.y))];
+  assert.equal(lines.length, 2, JSON.stringify(headline));
+  assert.deepEqual(headline.filter((x) => x.y === Math.max(...lines)).map((x) => x.text), ['as', 'you', 'type']);
+  assert.ok(texts.every((x) => !x.text.includes('*')), JSON.stringify(texts));
+  assert.deepEqual(texts.filter((x) => x.text === 'Two' || x.text === 'lines').length, 2, JSON.stringify(texts));
+  assert.deepEqual(fresh.issues.filter((i) => /as they are written|backslash|draws as a space/.test(i.message) && i.scene !== 'literal'), []);
+  assert.equal(messages(fresh.issues, 'literal', 'shows a backslash and an n').length, 1, JSON.stringify(fresh.issues, null, 2));
+
+  // Without the 0.6 defaults, s.ui draws its text as written, and check says so.
+  const old = await check(await project(t, {}, scenes));
+  assert.equal(messages(old, 'texts', 'shows the stars of "*in a second*" as they are written').length, 1, JSON.stringify(old, null, 2));
+  assert.ok(messages(old, 'headline', 'draws as a space').length >= 1, JSON.stringify(old, null, 2));
+});
+
 test('a clip that plays and changes is something happening, and a still one is not', { skip }, async (t) => {
   const make = async (dir) => {
     fs.mkdirSync(path.join(dir, 'assets'));
