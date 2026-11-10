@@ -100,8 +100,10 @@ Narration for this scene. [#marker] A marker names a moment you can animate on.
   word that already has one, try another spoken spelling.
 - When the check hears a name the way it is said, but written another way,
   like "Reg X 101" for regex101, accept that form in `video.json`:
-  `"heard": { "regex101": ["reg x 101", "regex 101"] }`. A transcript with one
-  of the forms where the script has the word confirms it fully, in `voice`,
+  `"heard": { "regex101": ["reg x 101", "regex 101"] }`. Two words heard as
+  one take both words with a space, like `"heard": { "ape lo": ["apelo"] }`.
+  A transcript with one of the forms where the script has the word confirms
+  it fully, in `voice`,
   `check` and `verify`, without making the voice again. When `voice` hears a
   word the same way twice in a row, it prints the line to add. When a word
   comes up several times and is heard as the same other spelling each time,
@@ -114,6 +116,9 @@ Narration for this scene. [#marker] A marker names a moment you can animate on.
   video, or by name alone when there are more than two (`--verbose` adds the
   times). `{shown|spoken}` can't change how they are heard, and they need no
   fix unless one sounds wrong when you listen at that time.
+- A word with an apostrophe, like "un'ape" or "l'eau", is confirmed fully
+  when its letters are heard with a space or joined, like "un ape" or
+  "unape". This works in every language.
 - Punctuation that stands on its own, like the space before "?" in French, is
   not a word. It stays in the captions next to its word, and the speech check
   and the cues never wait for it.

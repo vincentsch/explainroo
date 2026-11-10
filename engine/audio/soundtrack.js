@@ -226,10 +226,13 @@ export async function renderSoundtrack(opts = {}) {
     const start = Math.round(clip.start * sr);
     const end = Math.min(length, Math.round(clip.end * sr));
     const offset = Math.round(clip.from * sr);
+    // A clip with `to` plays only up to it, and a loop starts at `from` again.
+    const stop = clip.to === undefined ? clipLength : Math.min(clipLength, Math.round(clip.to * sr));
+    const part = Math.max(1, stop - offset);
     for (let i = Math.max(0, start); i < end; i++) {
       let source = offset + i - start;
-      if (clip.loop) source %= clipLength;
-      if (source >= clipLength) break;
+      if (clip.loop) source = clip.to === undefined ? source % clipLength : offset + ((i - start) % part);
+      if (source >= stop) break;
       const sample = (data[source] || 0) * clip.volume;
       L[i] += sample;
       R[i] += sample;

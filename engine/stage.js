@@ -1660,7 +1660,23 @@ export class Stage {
 
   image(src, o = {}) {
     const img = this.engine.image(src);
-    return this._picture(src, img, img.naturalWidth, img.naturalHeight, o);
+    return this._picture(src, img, img.naturalWidth, img.naturalHeight, this._cropped(o, 'image', src, { width: img.naturalWidth, height: img.naturalHeight }, img.naturalWidth));
+  }
+
+  // crop: [x, y, w, h], the part of an image or a clip to show, in the file's
+  // own pixels. `drawn` is the width of the picture the page draws from, which
+  // for a clip wider than 1920 pixels is smaller than the file.
+  _cropped(o, kind, src, file, drawn) {
+    if (o.crop === undefined) return o;
+    const c = o.crop;
+    const size = `${file.width}x${file.height}`;
+    if (!Array.isArray(c) || c.length !== 4 || !c.every(Number.isFinite)) throw new SceneError(`${kind} crop must be [x, y, w, h] in the pixels of "${src}", which is ${size}`);
+    const [x, y, w, h] = c;
+    if (x < 0 || y < 0 || w <= 0 || h <= 0 || x + w > file.width + 0.5 || y + h > file.height + 0.5) {
+      throw new SceneError(`${kind} crop [${c.join(', ')}] must lie inside "${src}", which is ${size}: x and y from 0, w and h above 0, x + w up to ${file.width} and y + h up to ${file.height}`);
+    }
+    const k = drawn / file.width;
+    return { ...o, crop: [x * k, y * k, Math.min(w, file.width - x) * k, Math.min(h, file.height - y) * k] };
   }
 
   clip(src, o = {}) {
@@ -1672,19 +1688,31 @@ export class Stage {
     const volume = o.volume ?? 0;
     const at = this.time(o.at ?? 0);
     const out = o.out === undefined ? this.dur : Math.min(this.dur, this.time(o.out));
+    // to is the time in the file where playing stops, so one file can give
+    // several parts. After it the clip holds that frame, like at its end.
+    const to = o.to === undefined ? undefined : this._clipTo('clip', o.to, from, clip.duration, `"${src}"`);
     // 'fit' plays the clip at the speed that makes it end with the scene, or at out,
     // from half speed to twice the speed. Slower than that, it freezes at the end.
     const fit = o.speed === 'fit';
-    const length = Math.max(0, clip.duration - from);
+    const length = Math.max(0, (to ?? clip.duration) - from);
     const speed = fit ? (out > at && length > 0 ? clamp(length / (out - at), FIT_SPEEDS[0], FIT_SPEEDS[1]) : 1) : o.speed ?? 1;
     for (const [name, value, lo, hi] of [['from', from, 0, Infinity], ['speed', speed, 0.25, 4], ['volume', volume, 0, 1]]) {
       if (!Number.isFinite(value) || value < lo || value > hi) throw new SceneError(`clip ${name} must be ${name === 'from' ? 'a non-negative number' : `from ${lo} to ${hi}`}${name === 'speed' ? ", or 'fit'" : ''}`);
     }
     const end = o.loop ? out : Math.min(out, at + length / speed);
     const n = this._clipSeq = (this._clipSeq || 0) + 1;
-    if (this.engine.recorder) this.engine.recorder.push({ kind: 'clip', key: `clip|${at}|${o.id ?? n}|${src}`, at, end, out, from, speed, fit, loop: !!o.loop, volume, hasAudio: clip.hasAudio, duration: clip.duration, src: clip.src, url: clipURL('audio', clip.src) });
-    const frame = clipFrame(clip, this.t, { at, from, speed, loop: o.loop });
-    return this._picture(src, () => frame === null ? null : this.engine.clipImage(clip, frame), clip.width, clip.height, o);
+    if (this.engine.recorder) this.engine.recorder.push({ kind: 'clip', key: `clip|${at}|${o.id ?? n}|${src}`, at, end, out, from, ...(to === undefined ? {} : { to }), speed, fit, loop: !!o.loop, volume, hasAudio: clip.hasAudio, duration: clip.duration, src: clip.src, url: clipURL('audio', clip.src) });
+    const frame = clipFrame(clip, this.t, { at, from, to, speed, loop: o.loop });
+    return this._picture(src, () => frame === null ? null : this.engine.clipImage(clip, frame), clip.width, clip.height, this._cropped(o, 'clip', src, clip.source ?? clip, clip.width));
+  }
+
+  // The `to` of a clip or a recording: seconds in the file, after `from` and
+  // no later than its end.
+  _clipTo(kind, to, from, duration, name) {
+    if (!Number.isFinite(to) || to <= from || to > duration + 0.05) {
+      throw new SceneError(`${kind} to must be seconds in the file after from (${+from.toFixed(2)}) and no later than its end at ${+duration.toFixed(2)}, the length of ${name}`);
+    }
+    return Math.min(to, duration);
   }
 
   // A recording from "explainroo record", played like a clip: the video with a
@@ -1713,20 +1741,27 @@ export class Stage {
     const from = o.from ?? log.start ?? 0;
     const at = this.time(o.at ?? 0);
     const out = o.out === undefined ? this.dur : Math.min(this.dur, this.time(o.out));
+    if (o.crop !== undefined) throw new SceneError(`recording "${name}" takes no crop. A zoom step in recordings/${name}.json shows a part of the page`);
     if (!Number.isFinite(from) || from < 0 || from > log.duration) throw new SceneError(`recording from must be seconds from 0 to ${log.duration.toFixed(1)}, the length of "${name}"`);
+    // to is the second of the recording where playing stops. The steps after it
+    // don't play, and the frame at it stays.
+    const to = o.to === undefined ? undefined : this._clipTo('recording', o.to, from, log.duration, `"${name}"`);
     if (o.speed !== undefined && o.speed !== 'fit' && !(Number.isFinite(o.speed) && o.speed >= 0.25 && o.speed <= 4)) throw new SceneError("recording speed must be from 0.25 to 4, or 'fit'");
     if (o.cues !== undefined && (typeof o.cues !== 'object' || o.cues === null || Array.isArray(o.cues))) throw new SceneError("recording cues must be an object like { saved: 'saved', 4: '#total' }: a mark name or a step number, and its cue");
-    const steps = log.steps.filter((st) => !st.before);
+    const all = log.steps.filter((st) => !st.before);
     for (const key of Object.keys(o.cues ?? {})) {
-      if (!steps.some((st) => st.name === key || String(st.step) === key)) {
-        const names = steps.filter((st) => st.name).map((st) => st.name);
-        throw new SceneError(`recording "${name}" has no mark or step "${key}" for cues. ${names.length ? `Marks: ${names.join(', ')}. ` : ''}Steps go from ${steps[0].step} to ${steps.at(-1).step}`);
+      const st = all.find((x) => x.name === key || String(x.step) === key);
+      if (!st) {
+        const names = all.filter((x) => x.name).map((x) => x.name);
+        throw new SceneError(`recording "${name}" has no mark or step "${key}" for cues. ${names.length ? `Marks: ${names.join(', ')}. ` : ''}Steps go from ${all[0].step} to ${all.at(-1).step}`);
       }
+      if (to !== undefined && st.t >= to) throw new SceneError(`recording "${name}" step ${st.step}${st.name ? ` ("${st.name}")` : ''} comes at ${st.t.toFixed(2)}s, after to: ${+to.toFixed(2)}, so its cue can't play. Use a later to, or take the cue out`);
     }
+    const steps = to === undefined ? all : all.filter((st) => st.t < to);
     const cued = cuedSteps(steps, { cues: o.cues, from, time: (cue) => this.time(cue) });
     // 'fit' plays the recording at the speed that ends its last step with the
     // scene, or at out, with the holds for its cues, from half to twice its speed.
-    const end = log.end ?? log.duration;
+    const end = to ?? log.end ?? log.duration;
     let speed = o.speed ?? 1;
     if (speed === 'fit') {
       speed = 1;
@@ -1737,7 +1772,8 @@ export class Stage {
       }
     }
     const clock = recordingClock(cued, { at, from, speed });
-    const v = videoTime(clock, this.t);
+    const played = videoTime(clock, this.t);
+    const v = played === null || to === undefined ? played : Math.min(played, to - 0.5 / clip.fps);
     const clicks = steps.filter((st) => st.click !== undefined && st.click >= from).map((st) => ({ st, at: sceneTime(clock, st.click) }));
     const rec = this.engine.recorder;
     if (rec) {
@@ -1833,6 +1869,9 @@ export class Stage {
 
   _picture(src, source, naturalWidth, naturalHeight, o, paint) {
     const th = this.theme;
+    // A crop is the whole picture from here on, in the pixels the page draws.
+    const crop = o.crop ?? null;
+    if (crop) [naturalWidth, naturalHeight] = [crop[2], crop[3]];
     const ratio = naturalWidth / naturalHeight;
     let w = o.w;
     let h = o.h;
@@ -1913,6 +1952,7 @@ export class Stage {
     dh *= kb;
     const img = typeof source === 'function' ? source() : source;
     if (img && paint) paint(ctx, img, -w / 2, iy - h / 2, w, h);
+    else if (img && crop) ctx.drawImage(img, ...crop, -dw / 2, iy - dh / 2, dw, dh);
     else if (img) ctx.drawImage(img, -dw / 2, iy - dh / 2, dw, dh);
     else {
       ctx.fillStyle = th.surface;

@@ -403,6 +403,8 @@ test('the scene-api, troubleshooting, product-demos and commands topics and the 
   const demos = oneLine(page('product-demos'));
   for (const words of ['explainroo capture videos/<name> https://example.com/pricing --name pricing', '`assets/capture/example.com/pricing/`', 'Capturing again with the same name replaces only that folder.', 'A capture without a name replaces its own files and keeps the named folders.', 'It can\'t be `fonts`, because a capture without a name keeps its fonts there.', 'With captions on, `accent` also colors the word being spoken. A look file that sets `caption` colors decides instead.', 'a contrast below 3:1', 'make it lighter on a dark background, or darker on a light one', 'Bold captions keep their own colors.', 'It is a multiplier from 0 to 2: 0 is no shadow, 1 the normal shadow and 2 twice the normal shadow.', 'like 1.4 for a dialog', '`check` warns about a `lift` above 2.']) assert.ok(demos.includes(words), words);
   assert.doesNotMatch(demos, /Capturing the same site again replaces its folder\./);
+  // A brand without a serif sets brand.headline to its own font.
+  assert.ok(demos.includes('If the brand has no serif, set `headline` to the brand\'s own font, like `"headline": "Inter"`, and pass `{ weight: 700, italic: false }` to `u.headline()`. The options alone keep Instrument Serif.'));
   assert.match(page('settings'), /^\| `brand` \| none \| .*its `accent` also colors the spoken word in captions/m);
   const commands = page('commands');
   assert.match(commands, /^\| `sheet \[project\] \[scene\]` \|.*`--times 3,12\.5,intro@2` makes `out\/sheet-times\.jpg` of just those moments, in that order\. It takes every time that `still` takes\. With `--size tiktok` the file is `out\/sheet-times-tiktok\.jpg`/m);
@@ -498,6 +500,11 @@ test('a section is found by its heading in any case, by a word only it has, or b
   assert.equal(none.status, 1);
   assert.match(none.stderr, /^error: publishing has no section "nope"\. Its sections are: package-a-video-for-a-platform, .*share-a-link, test-servers\. "explainroo docs publishing --sections" lists them with their size\./);
   assert.match(run('docs', '--sections').stderr, /the start page has no sections to print one by one/);
+  // A topic without sections names the command for the whole topic.
+  const whole = run('docs', 'voices', 'kokoro');
+  assert.equal(whole.status, 1);
+  assert.match(whole.stderr, /^error: voices has no sections, so there is no section "kokoro"\. It is [\d.]+ KB, so print it whole with "explainroo docs voices"\./);
+  assert.doesNotMatch(whole.stderr, /Its sections are/);
 });
 
 test('publishing starts with the package and the common part of posting, and each route has a section of its own', () => {
@@ -514,6 +521,12 @@ test('publishing starts with the package and the common part of posting, and eac
 test('the start page says to print only the section of a topic that you need', () => {
   const topicsPart = oneLine(part('Topics'));
   for (const words of ['`npx --yes explainroo docs <topic> --sections`', '`npx --yes explainroo docs <topic> <section>`', 'Print only the section you need']) assert.ok(topicsPart.includes(words), words);
+  // The first screen names --sections before it points to a whole topic.
+  const firstScreen = start.split('\n').slice(0, 24).join('\n');
+  const sections = firstScreen.indexOf('`explainroo docs <topic> --sections`');
+  assert.ok(sections !== -1, 'the first screen of the start page names docs <topic> --sections');
+  const whole = /`explainroo docs [a-z-]+`/.exec(firstScreen);
+  assert.ok(!whole || whole.index > sections, `the first screen points to ${whole?.[0]} before it names --sections`);
 });
 
 // Defaults and choices that are easy to miss, on the page that is read first.

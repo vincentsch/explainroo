@@ -83,10 +83,18 @@ export function nearlyShort(nearly, heard = true) {
 
 // The "heard" line for video.json that accepts the near matches as they were
 // heard, so check and verify stop naming them, or '' when none can go there.
-// Two words heard as one have no line.
+// Two words heard as one get a line under both words, like "ape lo": ["apelo"].
 export function nearlyHeard(nearly) {
   const seen = new Map();
-  for (const n of nearly) if (!n.joined && n.heard && !seen.has(n.word)) seen.set(n.word, { word: n.word, heard: bareWord(n.heard) });
+  for (let i = 0; i < nearly.length; i++) {
+    const n = nearly[i];
+    const next = nearly[i + 1];
+    if (n.joined && next?.joined && next.heard === n.heard && next.scene === n.scene) {
+      const word = `${n.word} ${next.word}`;
+      if (n.heard && !seen.has(word)) seen.set(word, { word, heard: bareWord(n.heard) });
+      i++;
+    } else if (!n.joined && n.heard && !seen.has(n.word)) seen.set(n.word, { word: n.word, heard: bareWord(n.heard) });
+  }
   if (!seen.size) return '';
   const one = seen.size === 1;
   return `If ${one ? 'it is' : 'they are'} said right, add this to video.json, and check and verify stop naming ${one ? 'it' : 'them'}: ${heardEntry([...seen.values()])}`;

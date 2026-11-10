@@ -10,7 +10,7 @@ import { alignWords, nearList } from '../src/align.js';
 import { loadProject } from '../src/project.js';
 import { speechChunks } from '../src/script.js';
 import { nearMatches, sceneHash, synthesize, voiceLine, voicePaths } from '../src/voice.js';
-import { formatVerify, nearlyAdvice, nearlyText, speechFindings, unconfirmedWords, verify } from '../src/qa.js';
+import { formatVerify, nearlyAdvice, nearlyHeard, nearlyText, speechFindings, unconfirmedWords, verify } from '../src/qa.js';
 import { ffmpeg } from '../src/ffmpeg.js';
 import { writeWav } from '../src/wav.js';
 import { main } from '../src/cli.js';
@@ -337,4 +337,29 @@ test('the "heard" line that a near match hint names keeps check and verify quiet
   const quiet = await run({ heard: JSON.parse(line) });
   assert.deepEqual(quiet.hints, []);
   assert.deepEqual(quiet.verified, []);
+});
+
+test('two words heard as one get a "heard" line under both words, and that line keeps check and verify quiet', async (t) => {
+  const run = async (settings) => {
+    const dir = cachedProject(t, '# Demo\n\n## intro\nOgni ape lo succhia.\n', { intro: { transcript: 'Ogni apelo succhia.' } }, { language: 'it', voice: 'if_sara', ...settings });
+    const project = loadProject(dir);
+    const voices = await synthesize(project, { transcribe: () => { throw new Error('no voice should be made'); } });
+    const hints = speechFindings(project, voices).issues.filter((i) => i.key === 'nearly');
+    fs.mkdirSync(project.paths.out, { recursive: true });
+    await ffmpeg(['-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=white:s=320x180:d=1:r=24', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=1', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', path.join(project.paths.out, 'video.mp4')]);
+    fs.writeFileSync(path.join(project.paths.build, 'timeline.json'), JSON.stringify({ duration: 1, scenes: [{ id: 'intro', start: 0, dur: 1 }] }));
+    const r = await verify(project, { transcribe: async () => ({ text: 'Ogni apelo succhia.', words: [{ text: 'Ogni', start: 0, end: 0.15 }, { text: 'apelo', start: 0.2, end: 0.45 }, { text: 'succhia.', start: 0.5, end: 0.7 }] }) });
+    return { hints, verified: r.speech.nearly };
+  };
+  const loud = await run({});
+  assert.equal(loud.hints.length, 1);
+  const line = /add this to video\.json, and check and verify stop naming it: "heard": (\{.*\})$/.exec(loud.hints[0].message)?.[1];
+  assert.equal(line, '{"ape lo": ["apelo"]}');
+  assert.equal(loud.verified.length, 2);
+  const quiet = await run({ heard: JSON.parse(line) });
+  assert.deepEqual(quiet.hints, []);
+  assert.deepEqual(quiet.verified, []);
+  // The line names both words for a pair, next to a word of its own.
+  assert.equal(nearlyHeard([{ word: 'ape', heard: 'apelo', joined: true }, { word: 'lo', heard: 'apelo', joined: true }, { word: 'Soundroo', heard: 'Soundru' }]),
+    'If they are said right, add this to video.json, and check and verify stop naming them: "heard": {"ape lo": ["apelo"], "Soundroo": ["Soundru"]}');
 });

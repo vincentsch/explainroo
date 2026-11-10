@@ -6,7 +6,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { ensureFonts, languageFonts } from './fonts.js';
-import { CLIP_SOURCE, dropClipFrames, extractClip, stillSpans, VIDEO_FILE } from './clips.js';
+import { CLIP_SOURCE, dropClipFrames, extractClip, stillSpans, VIDEO_FILE, withSourceSize } from './clips.js';
 import { typesetMath, mathHash, MAX_TEX_LENGTH } from './math.js';
 import { decodeSound, SOUND_RATE } from './sounds.js';
 import { ProjectError } from './errors.js';
@@ -112,7 +112,7 @@ async function cachedClip(projectDir, file, fps) {
   if (!clipJobs.has(key)) {
     const job = (async () => {
       if (fs.existsSync(infoFile)) {
-        const info = JSON.parse(fs.readFileSync(infoFile, 'utf8'));
+        const info = await withSourceSize(file, JSON.parse(fs.readFileSync(infoFile, 'utf8')));
         // Frames taken out before check looked for still stretches get them now.
         if (!info.still) {
           info.still = await stillSpans(path.dirname(infoFile), info.fps, info.frames);

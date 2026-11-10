@@ -164,7 +164,7 @@ It enters like the look's text, or with `fade`, `pop` or `rise`. In `paper`,
 `chalk` and `blueprint` its outlines draw first.
 
 Double each backslash in a regular JS string, for example `'\\frac{1}{2}'`.
-`String.raw` keeps backslashes as written, as in the second example above.
+`String.raw` keeps backslashes as written.
 Only fixed TeX strings work. Always call `s.math`, and use `at` and `out` for
 timing. `check` reports formulas that change with `s.t` or appear only later.
 
@@ -233,7 +233,8 @@ its label. With a label, it also returns `label`, the label's box, and
 `s.image(src, options)` draws a file from `assets/`. Options: `w` and/or `h`
 (the image keeps its shape), `fit` (`cover` or `contain`), `radius`, `frame`
 (`none`, `card`, `browser`, `window`, `phone`), `url` (for the browser frame),
-`border`, `shadow: false`, `kenburns: true` for a slow zoom.
+`border`, `shadow: false`, `kenburns: true` for a slow zoom, `crop` (`[x, y,
+w, h]` in the file's pixels).
 
 `s.clip(src, options)` draws a video from `assets/` (`.mp4`, `.mov`, `.webm`
 or `.m4v`). It takes the layout, frame and timing options of `s.image`, and
@@ -246,33 +247,34 @@ s.clip('assets/signup.mp4', { w: 1200, frame: 'browser', url: 'app.example.com',
 s.clip('assets/demo.mov', { x: 1400, y: 540, h: 600, from: 12.5, speed: 1.5, at: '#demo', out: 9 });
 ```
 
-Like an image, a clip has no frame by default and gets the look's shadow,
-corners and entrance. `shadow: false`, `radius: 0` and `enter: 'none'` turn
-these off.
+Like an image, a clip has no frame and gets the look's shadow, corners and
+entrance, and `shadow: false`, `radius: 0` and `enter: 'none'` turn them off.
 
 - `full: true` fills the whole frame, edge to edge, for a clip behind the
   whole scene. It has no frame, shadow, corners or entrance, and it ignores
   `x`, `y`, `w` and `h`.
-- `from` (0) is the second in the clip where playback starts, at `at`.
+- `from` (0) and `to` (its end) are the seconds in the file where it starts
+  at `at` and stops. `speed` and `loop` take the part as the clip.
 - `speed` (1) goes from 0.25 to 4. `speed: 'fit'` plays the clip at the
   speed that makes it end with the scene, or at `out`, from half to twice the
   speed. Slower, it freezes at the end. Faster, it is cut off.
-- `loop` (false) repeats the whole clip. Otherwise it holds the last frame,
+- `loop` (false) repeats the clip. Otherwise it holds the last frame,
   and `check` warns when that lasts more than 0.3 seconds.
 - `volume` (0) goes from 0 to 1. Sound plays only at `speed: 1`, stops at
   `out`, the clip's end or the scene's end, and repeats with a loop. Music
   ducks under it as it does under the voice.
 
 `at: -1` starts a clip one second into it, and `at: 0, enter: 'none'` shows
-it from its first frame when the scene starts. `check` cannot read text
-inside a clip, so look at stills of those moments.
+its first frame when the scene starts. `check` can't read text in a clip, so
+look at stills.
 
 ## Recordings
 
 `s.recording(name, options)` plays a recording of a real app that
 `explainroo record` made (`explainroo docs product-demos recording`). A cursor
 moves from step to step and a ring shows each click. It takes the layout,
-frame and timing options of `s.clip`, and fills `s.safe` without `w` and `h`.
+frame and timing options of `s.clip` but `crop`, and fills `s.safe` without
+`w` and `h`.
 
 ```js
 const r = s.recording('new-invoice', { frame: 'browser', url: 'app.example.com', cues: { saved: '#saved' } });
@@ -281,9 +283,9 @@ s.text('Saved', { y: 120, at: r.times.saved });
 
 A step with a `cue` happens on its word: the video holds the frame before
 it until its action lands on the cue, or plays up to twice as fast when the
-steps before take longer than the words. `check` warns about a
-step late even then. Steps sharing a cue run in order, the first on the
-cue. `cues` sets cues by mark name or step number, and
+steps before take longer than the words. `check` warns about a step still
+late. Steps sharing a cue run in order, the first on the cue. `cues` sets
+cues by mark name or step number, and
 `r.times` has each step's scene time, by number and name. It also takes
 `cursor: false`, `zoom: false` and `sound: false` for the clicks. The
 automatic camera keeps out, as its zoom steps are the camera.
@@ -385,9 +387,9 @@ than a second, and about a command that starts with the prompt.
 
 ## Short videos
 
-`s.short` is a kit for Shorts, TikTok and Reels: a hook title that is there on
-the first frame, stickers, a step pill, a payoff card and camera punch-ins.
-Read `explainroo docs short-video` first.
+`s.short` is a kit for Shorts, TikTok and Reels, with a hook title that is
+there on the first frame and camera punch-ins. Read
+`explainroo docs short-video` first.
 
 ## Camera, groups and your own drawing
 

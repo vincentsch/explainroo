@@ -252,6 +252,9 @@ export function cutText(text, bytes = TEXT_BYTES) {
   return { text: end.trimEnd(), cut: true };
 }
 
+// Names joined like "A, B and C".
+const listed = (names) => (names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0]);
+
 // What kind of font file the bytes are, from their first bytes, or null.
 export function fontType(bytes) {
   const head = bytes.subarray(0, 4);
@@ -371,11 +374,15 @@ export async function capture(project, value, { mobile = false, name: pageName, 
     // that come with explainroo. fonts.json says where each file came from.
     const savedFonts = [];
     const fontList = [];
+    // A family without any font file on the page comes with the visitor's
+    // computer, like Segoe UI or San Francisco, so there is nothing to save.
+    const system = result.fonts.families.filter((f) => !BUILT_IN_FONTS.has(f.family) && !f.sources.length).map((f) => f.family);
     for (const f of result.fonts.families) {
       if (BUILT_IN_FONTS.has(f.family)) {
         result.notes.push(`${f.family} is built into explainroo. It needs no font files.`);
         continue;
       }
+      if (system.includes(f.family)) continue;
       let saved = 0;
       let google = true;
       for (const source of f.sources) {
@@ -399,6 +406,12 @@ export async function capture(project, value, { mobile = false, name: pageName, 
       }
       if (saved) result.notes.push(`${f.family}: saved ${saved} font file${saved === 1 ? '' : 's'}${google ? ' from Google Fonts' : ''} in ${relative}/fonts/, check the license before you publish.`);
       else result.notes.push(`${f.family}: get the font files and check the license. Copy the license file next to them.`);
+    }
+    if (system.length) {
+      for (const key of ['font', 'headline']) if (system.includes(result.brand[key])) delete result.brand[key];
+      const one = system.length === 1;
+      result.fonts.system = system;
+      result.notes.push(`${listed(system)} ${one ? 'comes' : 'come'} with the visitor's computer, so capture didn't save ${one ? 'it' : 'them'} and left ${one ? 'it' : 'them'} out of the brand block. ${one ? 'It' : 'They'} may not be used in a video without a license.`);
     }
     if (fontList.length) fs.writeFileSync(path.join(temp, 'fonts', 'fonts.json'), JSON.stringify(fontList, null, 2) + '\n');
     result.fonts.saved = fontList;

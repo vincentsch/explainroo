@@ -183,9 +183,19 @@ lists close words from the page and saves a picture of the page in
 `build/record/`. Fix the script from what the page shows or what
 `--inspect` lists, and never guess a button. Then play it with `s.recording`, which
 `explainroo docs scene-api recordings` explains. `from` skips the first
-seconds of the video. Write the narration around what the video shows, and
-look at stills. You can also show any screen recording with `s.clip` in a
-`browser` frame.
+seconds of the video, and `to` stops it, so one recording can play in several
+scenes. Write the narration around what the video shows, and look at stills.
+
+You can also show any screen recording with `s.clip` in a `browser` frame.
+One long file is enough for every scene, so there is no need to cut it into
+pieces first. This plays seconds 31 to 38.5 of it:
+
+```js
+s.clip('assets/take.mp4', { from: 31, to: 38.5, crop: [0, 120, 1280, 720], speed: 'fit' });
+```
+
+It shows only the part of the screen in `crop`, in the file's own pixels,
+and `speed: 'fit'` fits those seconds into the scene.
 
 ## Capture the live site
 
@@ -216,7 +226,10 @@ when they show none, the page's `theme-color` tag, and then `capture` says
 so. Check the block against the screenshots. A font on a
 website isn't always free to use in a video, so check the license of each
 saved font before you publish, and copy the license file next to it. For a
-font it could not save, get the files yourself. Cookie banners and chat
+font it could not save, get the files yourself. A font that comes with the
+visitor's computer, like Segoe UI or San Francisco, has no file on the page.
+`capture` names it in one line and leaves it out of the block, because it
+may not be used in a video without a license. Cookie banners and chat
 widgets can appear in the screenshots, as they do for any visitor. Use a
 screenshot, or a part of one, without them. Capturing the same site again
 replaces these files.
@@ -292,8 +305,9 @@ for feeds, also for a product short.
   the font's license file next to it.
 - `headline` is the font for big headlines. Instrument Serif is built in.
   `capture` suggests the font of the site's first heading. If the brand has
-  no serif, use its own font and pass `{ weight: 700, italic: false }` to
-  `u.headline()`.
+  no serif, set `headline` to the brand's own font, like `"headline": "Inter"`,
+  and pass `{ weight: 700, italic: false }` to `u.headline()`. The options
+  alone keep Instrument Serif.
 - `logo` is the product's logo from the app or website, best as SVG.
 
 ## Rebuilding the screens with s.ui
