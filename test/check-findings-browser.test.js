@@ -445,3 +445,22 @@ test('check gives a hint when the cover shows an image that fit: \'cover\' cuts 
   assert.match(hint.message, /^the cover at intro@\d\.\d shows the image assets\/wide\.png with fit: 'cover', which cuts 75% of it off at the left and right; look at the cover for words or faces cut at its edge, and give the image the shape of the picture or fit: 'contain' if they are$/);
   assert.equal(await cropped('contain'), null);
 });
+
+// A number that counts changes its words at every moment, and is still one
+// element: the command line prints its finding once, with the count and the span.
+test('the same finding on one element at several moments is one line, and --verbose and the JSON keep every time', { skip }, async (t) => {
+  const p = project(t, {}, { count: "s.number(1500, { from: 600, x: s.cx, y: s.cy, color: '#f4e6d8', at: 0.2, dur: 1 }); s.text('Pale', { x: s.cx, y: s.cy + 260, color: '#f4e6d8', at: 0 });" });
+  const issues = await check(p);
+  const low = issues.filter((i) => / has low contrast/.test(i.message));
+  const counting = low.filter((i) => i.message !== low.find((x) => x.message.startsWith('"Pale"')).message);
+  assert.ok(counting.length >= 3, JSON.stringify(low));
+  assert.equal(new Set(counting.map((i) => i.element)).size, 1);
+  assert.notEqual(low.find((i) => i.message.startsWith('"Pale"')).element, counting[0].element);
+  const { shownIssues } = await import('../src/cli.js');
+  const shown = shownIssues(issues, false).filter((i) => / has low contrast/.test(i.message));
+  assert.equal(shown.length, 2);
+  const first = counting[0];
+  const last = counting.at(-1);
+  assert.equal(shown.find((i) => i.t === first.t).message, `${first.message} (the same element at ${counting.length} moments, from ${first.t}s to ${last.t}s; --verbose lists each)`);
+  assert.equal(shownIssues(issues, true).length, issues.length);
+});

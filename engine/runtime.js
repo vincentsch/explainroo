@@ -883,7 +883,10 @@ export class Engine {
 
   _check(step, viewWidth) {
     const issues = [];
-    const add = (level, scene, t, message) => issues.push({ level, scene, t: t === null ? null : Math.round(t * 100) / 100, message });
+    const add = (level, scene, t, message, extra = {}) => issues.push({ level, scene, t: t === null ? null : Math.round(t * 100) / 100, message, ...extra });
+    // The same problem on one element, at every moment it has it. The command
+    // line prints these as one line, with the first time, the count and the span.
+    const same = (kind, tx) => (tx.element ? { element: `${kind}:${tx.scene}:${tx.element}` } : {});
     if (this.config.look) {
       for (const [key, min] of [['ink', 4.5], ['muted', 3]]) {
         if (contrast(this.theme[key], this.theme.bg) < min) add('warn', null, null, `${this.config.theme}: ${key} has low contrast against bg; use colors with a contrast of at least ${min}`);
@@ -994,17 +997,17 @@ export class Engine {
           // camera zooms or pans; app screens use smaller text than slides.
           const framed = !(tx.ui && tx.zoomed);
           if (tx.x0 < -1 || tx.y0 < -1 || tx.x1 > W + 1 || tx.y1 > H + 1) {
-            if (framed) once(`off:${sc.id}:${tx.text}`, () => add('error', sc.id, t, `"${label}" runs off the frame (${Math.round(tx.x0)},${Math.round(tx.y0)} to ${Math.round(tx.x1)},${Math.round(tx.y1)} in a ${W}x${H} frame)`));
+            if (framed) once(`off:${sc.id}:${tx.text}`, () => add('error', sc.id, t, `"${label}" runs off the frame (${Math.round(tx.x0)},${Math.round(tx.y0)} to ${Math.round(tx.x1)},${Math.round(tx.y1)} in a ${W}x${H} frame)`, same('off', tx)));
           } else if (this.appArea) {
             // On Shorts, TikTok and Reels: outside the content area, s.safe.
             const message = framed ? contentMessage(`"${label}"`, tx, areas, { verb: 'is', band: inBand(tx, this.captionBand) }) : null;
-            if (message) once(`app:${sc.id}:${tx.text}`, () => add('warn', sc.id, t, message + zoomCause(tx, this.sceneCamera, areas, inBand(tx, this.captionBand))));
+            if (message) once(`app:${sc.id}:${tx.text}`, () => add('warn', sc.id, t, message + zoomCause(tx, this.sceneCamera, areas, inBand(tx, this.captionBand)), same('app', tx)));
           } else if (framed && (tx.x0 < margin || tx.y0 < margin || tx.x1 > W - margin || tx.y1 > H - margin)) {
-            once(`edge:${sc.id}:${tx.text}`, () => add('warn', sc.id, t, `"${label}" sits closer than ${margin}px to the edge`));
+            once(`edge:${sc.id}:${tx.text}`, () => add('warn', sc.id, t, `"${label}" sits closer than ${margin}px to the edge`, same('edge', tx)));
           }
           const b = this.captionBand;
           if (inBand(tx, b)) {
-            once(`cap:${sc.id}:${tx.text}`, () => add('warn', sc.id, t, `"${label}" is in the caption band (y ${Math.round(b.top)} to ${Math.round(b.bottom)}), where captions can cover it; keep content above s.safe.bottom (${Math.round(this.safeArea.bottom)})`));
+            once(`cap:${sc.id}:${tx.text}`, () => add('warn', sc.id, t, `"${label}" is in the caption band (y ${Math.round(b.top)} to ${Math.round(b.bottom)}), where captions can cover it; keep content above s.safe.bottom (${Math.round(this.safeArea.bottom)})`, same('band', tx)));
           }
           // Text on a sticker, a box or a card of its own is measured against
           // that color, *starred* words too.
@@ -1012,11 +1015,11 @@ export class Engine {
           const bg = opaque(own || pageColor(tx, H) || this.theme.bg, this.theme.bg);
           const fg = cssColor(tx.fg);
           if (fg && contrast(fg, bg) < 3) once(`contrast:${sc.id}:${tx.text}`, () => {
-            add('warn', sc.id, t, `"${label}" has low contrast against its background (${contrast(fg, bg).toFixed(1)}:1); ${contrastAdvice(tx.option ?? 'color', pixelColor(fg), pixelColor(bg), tx.size, named())}`);
+            add('warn', sc.id, t, `"${label}" has low contrast against its background (${contrast(fg, bg).toFixed(1)}:1); ${contrastAdvice(tx.option ?? 'color', pixelColor(fg), pixelColor(bg), tx.size, named())}`, same('contrast', tx));
           });
           const mark = own && cssColor(tx.mark);
           if (mark && contrast(mark, bg) < 3) once(`mark:${sc.id}:${tx.text}`, () => {
-            add('warn', sc.id, t, `the *starred* words in "${label}" have low contrast against its background (${contrast(mark, bg).toFixed(1)}:1); ${contrastAdvice('mark', pixelColor(mark), pixelColor(bg), tx.size, named())}`);
+            add('warn', sc.id, t, `the *starred* words in "${label}" have low contrast against its background (${contrast(mark, bg).toFixed(1)}:1); ${contrastAdvice('mark', pixelColor(mark), pixelColor(bg), tx.size, named())}`, same('mark', tx));
           });
         }
         // Overlaps only count when both are fully shown, not mid-fade.

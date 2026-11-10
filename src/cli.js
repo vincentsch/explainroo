@@ -689,16 +689,34 @@ const VIDEO_FLAGS = new Set(['script', 'language', 'view-width', 'step', 'verbos
 // matched, one per scene, become one line that names the words without their
 // times when there are more than NEARLY_LISTED words, unless --verbose. Its
 // JSON has them all.
-export function shownIssues(issues, verbose) {
+export function shownIssues(all, verbose) {
+  if (verbose) return all;
+  const issues = oneLineEach(all);
   const near = issues.filter((i) => i.key === 'nearly');
   const words = near.reduce((n, i) => n + i.words, 0);
-  if (verbose || words <= NEARLY_LISTED) return issues;
+  if (words <= NEARLY_LISTED) return issues;
   const at = issues.indexOf(near[0]);
   const rest = issues.filter((i) => i.key !== 'nearly');
   const where = near.length === 1 ? `scene ${near[0].scene}` : `${near.length} scenes`;
   const listed = near.every((i) => i.nearly) ? `${nearlyText(untimed(near.flatMap((i) => i.nearly)))}, in the speech check of ${where}` : `${words} words only nearly matched in the speech check of ${where}`;
   rest.splice(at, 0, { level: 'hint', scene: null, t: null, message: `${listed}. ${nearlyShort(near.flatMap((i) => i.nearly ?? []))}` });
   return rest;
+}
+
+// The same problem on one element at several moments, like the low contrast
+// of a number that counts, is one line with the first time, the count and the
+// span. --verbose and the JSON keep every time.
+function oneLineEach(issues) {
+  const groups = new Map();
+  for (const i of issues) if (i.element) groups.set(i.element, [...(groups.get(i.element) ?? []), i]);
+  return issues.flatMap((i) => {
+    const group = i.element ? groups.get(i.element) : null;
+    if (!group || group.length < 2) return [i];
+    if (group[0] !== i) return [];
+    const times = group.map((x) => x.t).filter((t) => t !== null && t !== undefined);
+    const span = times.length > 1 ? `, from ${Math.min(...times)}s to ${Math.max(...times)}s` : '';
+    return [{ ...i, message: `${i.message} (the same element at ${group.length} moments${span}; --verbose lists each)` }];
+  });
 }
 
 // The flags check and verify take only for a video file. A project has its own
