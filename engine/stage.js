@@ -764,6 +764,9 @@ export class Stage {
       // Drawn by the short-video kit, which makes no app screens.
       short: !!entry.short,
       element: entry.element ?? null,
+      // A chart's value or label, which check reads since 0.6 and which the
+      // cover counts only with "defaults": "0.6".
+      chart: !!entry.chart,
     });
   }
 
@@ -2280,7 +2283,7 @@ export class Stage {
           const txt = `${o.prefix ?? ''}${val}${o.suffix ?? ''}`;
           ctx.fillText(txt, cx, base - bh * g - 12);
           const vw = ctx.measureText(txt).width;
-          this._logText({ text: txt, x0: cx - vw / 2, y0: base - bh * g - 12 - vs, x1: cx + vw / 2, y1: base - bh * g - 12, size: vs, fg: ctx.fillStyle, bg: null, settled: g >= 1 && this._settled(axisLife) });
+          this._logText({ text: txt, x0: cx - vw / 2, y0: base - bh * g - 12 - vs, x1: cx + vw / 2, y1: base - bh * g - 12, size: vs, fg: ctx.fillStyle, bg: null, settled: g >= 1 && this._settled(axisLife), chart: true });
           ctx.restore();
         }
       }
@@ -2394,7 +2397,7 @@ export class Stage {
         if (!l.text) continue;
         ctx.fillText(l.text, l.x, l.y);
         const lw = ctx.measureText(l.text).width;
-        this._logText({ text: l.text, x0: l.x - lw / 2, y0: l.y, x1: l.x + lw / 2, y1: l.y + ls, size: ls, fg: ctx.fillStyle, bg: null, settled });
+        this._logText({ text: l.text, x0: l.x - lw / 2, y0: l.y, x1: l.x + lw / 2, y1: l.y + ls, size: ls, fg: ctx.fillStyle, bg: null, settled, chart: true });
       }
     }
     const shown = clamp((life.p - 0.85) / 0.15);
@@ -2408,7 +2411,7 @@ export class Stage {
         ctx.fillStyle = colorOf(th, n.color);
         ctx.fillText(n.text, n.x, n.y);
         const nw = ctx.measureText(n.text).width;
-        this._logText({ text: n.text, x0: n.x, y0: n.y - ns / 2, x1: n.x + nw, y1: n.y + ns / 2, size: ns, fg: ctx.fillStyle, bg: null, settled: settled && shown >= 1 });
+        this._logText({ text: n.text, x0: n.x, y0: n.y - ns / 2, x1: n.x + nw, y1: n.y + ns / 2, size: ns, fg: ctx.fillStyle, bg: null, settled: settled && shown >= 1, chart: true });
       }
       ctx.restore();
     }
@@ -2470,7 +2473,7 @@ export class Stage {
           ctx.fillText(txt, lx, ly);
           const lw = ctx.measureText(txt).width;
           const x0 = ctx.textAlign === 'left' ? lx : ctx.textAlign === 'right' ? lx - lw : lx - lw / 2;
-          this._logText({ text: txt, x0, y0: ly - ls / 2, x1: x0 + lw, y1: ly + ls / 2, size: ls, fg: ctx.fillStyle, bg: null, settled: this._settled(life) });
+          this._logText({ text: txt, x0, y0: ly - ls / 2, x1: x0 + lw, y1: ly + ls / 2, size: ls, fg: ctx.fillStyle, bg: null, settled: this._settled(life), chart: true });
         }
       }
       a0 += full;

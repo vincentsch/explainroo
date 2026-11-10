@@ -81,3 +81,30 @@ test('still and sheet take a video file that is not a project', { skip, timeout:
   const gone = await cli(['sheet', path.join(dir, 'missing.mp4')]);
   assert.match(gone.stderr, /missing\.mp4 does not exist/);
 });
+
+test('still and sheet show a video turned by its display rotation, like a phone films upright', { skip, timeout: 240000 }, async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-video-frames-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  // Stored wide, 320 x 180 with red on the left and blue on the right, and
+  // marked to show turned by 90 degrees, so a player shows it 180 x 320.
+  const wide = path.join(dir, 'wide.mp4');
+  await ffmpeg(['-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=red:s=160x180:r=25:d=1', '-f', 'lavfi', '-i', 'color=c=blue:s=160x180:r=25:d=1',
+    '-filter_complex', '[0][1]hstack[v]', '-map', '[v]', '-pix_fmt', 'yuv420p', '-c:v', 'libx264', wide]);
+  const video = path.join(dir, 'phone.mp4');
+  await ffmpeg(['-loglevel', 'error', '-display_rotation', '90', '-i', wide, '-c', 'copy', video]);
+
+  const stills = await cli(['still', video, '0.5', '--json']);
+  assert.equal(stills.code, 0, stills.text);
+  const [still] = JSON.parse(stills.stdout).stills;
+  assert.deepEqual(dimensions(still.file), [180, 320]);
+  // Turned, the two halves sit above each other.
+  const halves = [colorAt(still.file, 90, 60), colorAt(still.file, 90, 260)].sort();
+  assert.deepEqual(halves, ['blue', 'red']);
+
+  const sheet = await cli(['sheet', video, '--times', '0.5', '--json']);
+  assert.equal(sheet.code, 0, sheet.text);
+  const file = JSON.parse(sheet.stdout).file;
+  // One upright frame 200 wide, 356 high, with its time under it.
+  assert.deepEqual(dimensions(file), [200 + 16, 356 + 30 + 16]);
+  assert.deepEqual([colorAt(file, 108, 60), colorAt(file, 108, 330)].sort(), ['blue', 'red']);
+});

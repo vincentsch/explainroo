@@ -182,3 +182,56 @@ test('vertical-short payoff() fills the content area in a tall frame and takes w
     assert.deepEqual(bad, [], `${name}: ${JSON.stringify(bad, null, 2)}`);
   }
 });
+
+// A short made from vertical-short's helpers, as an app's TikTok: its brand
+// color, a kicker on the hook, and the app's icon on the closing card.
+test('vertical-short payoff() puts its icon on the card, the kicker takes brand.accent, and the card\'s lines are balanced', { skip }, async (t) => {
+  const { withEngine } = await import('../src/pipeline.js');
+  const { suggestColor } = await import('../engine/util.js');
+  const look = async (defaults) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-format-app-'));
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+    fs.copyFileSync(path.join(BUILT_IN, 'vertical-short', 'format.js'), path.join(dir, 'format.js'));
+    fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ theme: 'midnight', size: 'tiktok', captions: false, music: false, sfx: false, camera: 'still', brand: { accent: '#ff4fa3' }, ...(defaults ? { defaults } : {}) }));
+    fs.writeFileSync(path.join(dir, 'script.md'), '## hook\n\n## outro\n');
+    fs.writeFileSync(path.join(dir, 'scenes.js'), `import { hookFrame, payoff } from './format.js';
+export default {
+  hook(s) {
+    const round = s.short.roundRect.bind(s.short);
+    s.short.roundRect = (x, y, w, h, r, fill, ...rest) => { globalThis.fills.add(fill); return round(x, y, w, h, r, fill, ...rest); };
+    hookFrame(s, 'Learn *10* new words a day', { icon: 'languages', kicker: 'Lingopop' });
+  },
+  outro(s) {
+    const icon = s.short.icon.bind(s.short);
+    s.short.icon = (name, ...rest) => { globalThis.cardIcons.add(name); return icon(name, ...rest); };
+    payoff(s, 'Lingopop', ['10 words a day in 5 minutes', '10 words, 5 minutes a day'], { icon: 'languages', at: 0 });
+  },
+};
+`);
+    const project = loadProject(dir);
+    const scenes = ['hook', 'outro'].map((id, index) => ({ id, index, start: index * 4, dur: 4, marks: {}, voice: null, lead: 0, transition: 'none', words: [] }));
+    const { width, height } = project.config;
+    const timeline = { pace: 1, duration: 8, frames: 240, fps: 30, width, height, transitionSeconds: 0, scenes };
+    return withEngine(project, timeline, { scale: 0.5 }, (page) => page.evaluate(() => {
+      globalThis.cardIcons = new Set();
+      globalThis.fills = new Set();
+      const card = window.explainroo.textsAt(1, 3).map((x) => x.text);
+      window.explainroo.textsAt(0, 1);
+      return { card, icons: [...globalThis.cardIcons], fills: [...globalThis.fills] };
+    }));
+  };
+  const now = await look('0.6');
+  // The card shows the app's icon, not the check mark of its tone.
+  assert.ok(now.icons.includes('languages') && !now.icons.includes('circle-check'), JSON.stringify(now.icons));
+  // The kicker's pill is the brand's pink, made darker until its white words read.
+  const pink = suggestColor('#ff4fa3', '#ffffff', 44).color;
+  assert.ok(now.fills.includes(pink) && !now.fills.includes('#e5233d'), `${pink}: ${JSON.stringify(now.fills)}`);
+  // No word sits alone on a line of the card.
+  const lines = now.card.filter((x) => x !== 'Lingopop');
+  assert.ok(lines.length >= 3 && lines.every((l) => l.trim().includes(' ')), JSON.stringify(now.card));
+  // With "defaults": "0.5", the kicker stays red and the lines wrap as before,
+  // which leaves a word alone.
+  const old = await look('0.5');
+  assert.ok(old.fills.includes('#e5233d') && !old.fills.includes(pink), JSON.stringify(old.fills));
+  assert.ok(old.card.some((l) => l !== 'Lingopop' && !l.trim().includes(' ')), JSON.stringify(old.card));
+});

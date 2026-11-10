@@ -429,6 +429,19 @@ test('the hold that targetSeconds adds at the end of a scene doesn\'t count as a
   assert.ok(!held.some((i) => i.message.startsWith('no new element')), JSON.stringify(held));
 });
 
+test('in a short, the hold that targetSeconds adds doesn\'t count as a stretch where the picture doesn\'t change', { skip }, async (t) => {
+  const scenes = { why: `s.text('Why', { x: s.cx, y: s.cy, size: 80, at: 0 });`, how: `s.text('How', { x: s.cx, y: s.cy, size: 80, at: 0 });` };
+  const still = (issues) => issues.filter((i) => i.message.startsWith('the picture doesn\'t change')).map((i) => `${i.scene}: ${i.message.split(',')[0]}`);
+  const plain = await check(project(t, { size: 'tiktok', captions: false }, scenes, { dur: 3 }));
+  assert.deepEqual(still(plain), ['why: the picture doesn\'t change for 3.0s', 'how: the picture doesn\'t change for 3.0s']);
+  // 1.5 s of each scene is the hold that targetSeconds added, so 1.5 s count.
+  const held = await check(project(t, { size: 'tiktok', captions: false }, scenes, { dur: 3, added: { why: 1.5, how: 1.5 } }));
+  assert.deepEqual(still(held), []);
+  // A stretch longer than that without the hold still gets the hint.
+  const long = await check(project(t, { size: 'tiktok', captions: false }, scenes, { dur: 3, added: { why: 0.5, how: 0.5 } }));
+  assert.equal(still(long).length, 2, JSON.stringify(long));
+});
+
 test('check gives a hint when the cover shows an image that fit: \'cover\' cuts at its edges', { skip }, async (t) => {
   const { execFileSync } = await import('node:child_process');
   const { ffmpegPath } = await import('../src/ffmpeg.js');

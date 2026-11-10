@@ -284,41 +284,69 @@ export function wholeHash(script) {
 // --- in the page -----------------------------------------------------------
 
 // Runs in every page before its own scripts: blurs what the script names, and
-// keeps links and window.open in this tab, so the video follows them.
+// keeps links and window.open in this tab, so the video follows them. Each
+// matched element gets the blur as its own style, marked important, which
+// beats the page's style sheets and its own inline filter.
+// window.__explainrooBlurCheck says which blurs matched an element and are
+// really blurred there, and which matched one the page still keeps sharp.
 function pageSetup(blur) {
-  const seen = new Set();
-  window.__explainrooBlurSeen = seen;
+  const BLUR = 'blur(9px)';
   const selectors = blur.map((b, i) => ({ ...b, i })).filter((b) => b.selector);
   const texts = blur.map((b, i) => ({ ...b, i })).filter((b) => b.text);
   const norm = (s) => String(s ?? '').replace(/[\u200b-\u200d\ufeff]/g, '').replace(/\s+/g, ' ').trim();
-  const STYLE = 'filter: blur(9px) !important;';
   const style = document.createElement('style');
-  style.textContent = selectors.map((b) => `${b.selector} { ${STYLE} }`).join('\n');
-  const mark = (el, i) => {
-    seen.add(i);
-    if (el.style.getPropertyValue('filter') !== 'blur(9px)') el.style.setProperty('filter', 'blur(9px)', 'important');
+  style.textContent = selectors.map((b) => `${b.selector} { filter: ${BLUR} !important; }`).join('\n');
+  // The elements that exact text matched, with the number of their blur.
+  const byText = new Map();
+  const mark = (el) => {
+    if (el.style.getPropertyValue('filter') !== BLUR || el.style.getPropertyPriority('filter') !== 'important') el.style.setProperty('filter', BLUR, 'important');
+  };
+  const matches = (b) => {
+    try { return [...document.querySelectorAll(b.selector)]; } catch { return []; }
+  };
+  const bySelector = () => {
+    if (!style.isConnected) (document.head || document.documentElement).append(style);
+    for (const b of selectors) for (const el of matches(b)) mark(el);
   };
   const pass = () => {
-    if (!style.isConnected) (document.head || document.documentElement).append(style);
-    for (const b of selectors) {
-      try { if (document.querySelector(b.selector)) seen.add(b.i); } catch {}
-    }
+    bySelector();
     if (!texts.length || !document.body) return;
     for (const b of texts) {
       const want = norm(b.text);
       for (const el of document.body.querySelectorAll('*')) {
         if (el.matches('input, textarea')) {
-          if (norm(el.value) === want) mark(el, b.i);
+          if (norm(el.value) === want) { mark(el); byText.set(el, b.i); }
           continue;
         }
         if (norm(el.textContent) !== want) continue;
         // The smallest element with exactly these words.
         if ([...el.children].some((c) => norm(c.textContent) === want)) continue;
-        mark(el, b.i);
+        mark(el);
+        byText.set(el, b.i);
       }
     }
   };
+  window.__explainrooBlurCheck = () => {
+    pass();
+    const seen = new Set();
+    const open = new Set();
+    const judge = (el, i) => {
+      if (getComputedStyle(el).filter === BLUR) seen.add(i);
+      else open.add(i);
+    };
+    for (const b of selectors) for (const el of matches(b)) judge(el, b.i);
+    for (const [el, i] of byText) {
+      if (el.isConnected) judge(el, i);
+      else byText.delete(el);
+    }
+    return { seen: [...seen], open: [...open] };
+  };
   new MutationObserver(pass).observe(document, { childList: true, subtree: true, characterData: true });
+  // A page that changes an element's style or class gets the blur back at once.
+  if (selectors.length) new MutationObserver(bySelector).observe(document, { subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
+  if (texts.length) {
+    new MutationObserver(() => { for (const el of byText.keys()) if (el.isConnected) mark(el); }).observe(document, { subtree: true, attributes: true, attributeFilter: ['style'] });
+  }
   document.addEventListener('input', pass, true);
   document.addEventListener('DOMContentLoaded', pass);
   document.addEventListener('click', (e) => {
@@ -626,8 +654,17 @@ export async function record(dirArg, name, { log = () => {}, keepProfile = false
     await page.evaluate(syncPage).catch(() => {});
     await sleep(SYNC_SECONDS * 1000);
     const blurSeen = new Set();
-    const readBlur = async () => {
-      for (const i of await page.evaluate(() => [...(window.__explainrooBlurSeen ?? [])]).catch(() => [])) blurSeen.add(i);
+    // Looks at the blur in the page, after each step and at the end. An
+    // element that matched and still isn't blurred stops the recording, so
+    // no video with the secret in it is kept.
+    const checkBlur = async (where) => {
+      const r = await page.evaluate(() => window.__explainrooBlurCheck?.()).catch(() => null);
+      if (!r) return;
+      for (const i of r.seen) blurSeen.add(i);
+      if (!r.open.length) return;
+      const b = script.blur[r.open[0]];
+      const what = b.selector !== undefined ? `selector ${quoted(b.selector)}` : `text ${quoted(b.text)}`;
+      throw new ProjectError(`recordings/${name}.json ${where}: blur ${r.open[0] + 1} (${what}) matched an element that is not blurred, because the page's own style keeps it sharp. The secret would show in the video, so record stopped and kept no new video. Blur an element around it instead, or hide it in the app while you record.`);
     };
     const settle = async () => {
       await page.waitForLoadState('load').catch(() => {});
@@ -666,6 +703,7 @@ export async function record(dirArg, name, { log = () => {}, keepProfile = false
     };
     await page.goto(script.url, { waitUntil: 'load' }).catch((e) => { throw new ProjectError(`recordings/${name}.json: could not open ${script.url}: ${e.message.split('\n')[0]}. Start the app first, and check the address.`); });
     await settle();
+    await checkBlur('at the start');
     // The pointer waits in the middle until the first step moves it.
     let pos = { x: width / 2, y: height / 2 };
     await page.mouse.move(pos.x, pos.y);
@@ -853,9 +891,10 @@ export async function record(dirArg, name, { log = () => {}, keepProfile = false
       entry.end = round(now());
       steps.push(entry);
       log(stepLine(label, entry));
-      await readBlur();
+      await checkBlur(stepLabel(step, n));
     }
     await sleep(TAIL_SECONDS * 1000);
+    await checkBlur('at the end');
     const end = round(now());
     const video = page.video();
     await context.close();

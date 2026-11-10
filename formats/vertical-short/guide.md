@@ -32,10 +32,10 @@ here serves that second and keeps the picture moving after it.
 
 The background and the glow come from `"brand"` in `video.json`:
 `brand.background` and `brand.accent` when they are set, and the look's
-background and accent otherwise. The hook's keywords take `brand.accent` too,
-when white words read on it. So set the brand's colors in `video.json`, not in
-`format.js`. The format starts in the dark `midnight` look, which suits a feed,
-also for a product.
+background and accent otherwise. The hook's keywords and its kicker take
+`brand.accent` too, darker where white words need it. So set brand colors
+in `video.json`, not in `format.js`. The format starts in the dark
+`midnight` look, which suits a feed.
 
 ## The helpers in format.js
 
@@ -59,10 +59,10 @@ also for a product.
   in and a long label gets smaller. A scene can punch more than once: put the
   keys in one call, like `s.camera([...punch(s, '#one'), ...punch(s, '#two')])`,
   at least 1.5 seconds apart.
-- `backdrop(s, { glow, pattern })` draws the background of a scene.
-- `payoff(s, title, lines, { icon, w })` is the closing card, with `icon` as
-  its echo. In a tall frame it is as wide as the content area. It returns
-  the card's box, for a sticker's `top: card.bottom + 24`.
+- `backdrop(s, { glow, pattern })` draws a scene's background.
+- `payoff(s, title, lines, { icon, w })` is the closing card, with `icon`
+  on it and as its echo. In a tall frame it is as wide as the content area.
+  It returns the card's box, for a sticker's `top: card.bottom + 24`.
 
 `explainroo docs short-video` has the whole `s.short` kit.
 

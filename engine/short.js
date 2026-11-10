@@ -246,6 +246,27 @@ export class Short {
     return lines;
   }
 
+  // The narrowest wrap of a text with as many lines as wrap() gives, so the
+  // lines come out about the same length and no word is left alone on the
+  // last one, like the balanced lines of a title.
+  balancedWrap(str, maxW, size, weight = 400) {
+    let best = this.wrap(str, maxW, size, weight);
+    if (best.length < 2) return best;
+    const count = best.length;
+    let lo = maxW / count;
+    let hi = maxW;
+    for (let k = 0; k < 12 && hi - lo > 2; k++) {
+      const mid = (lo + hi) / 2;
+      const next = this.wrap(str, mid, size, weight);
+      if (next.length > count) lo = mid;
+      else {
+        hi = mid;
+        best = next;
+      }
+    }
+    return best;
+  }
+
   roundRect(x, y, w, h, r, fill, o = {}) {
     if (!this.hidden) this.s._seen(null);
     const c = this.c;
@@ -577,8 +598,19 @@ export class Short {
     return s._v6 ? (s.H > s.W ? 44 : 40) : 34;
   }
 
+  // brand.accent for the kicker's pill with "defaults": "0.6", when it is set.
+  // The kicker's words are white, so where they read too poorly on it, it
+  // keeps its hue, made darker until they read, like the box behind a slab's
+  // keywords. Null without a brand accent.
+  brandKicker(size) {
+    if (!this.s._v6) return null;
+    const accent = cssColor(this.s.engine.config.brand?.accent ?? '');
+    return accent ? suggestColor(accent, '#ffffff', size)?.color ?? null : null;
+  }
+
   // A small uppercase label, like "QUICK TIP" above a hook. o: x, y, size,
-  // color, icon (an icon name), at, out, sfx. Returns its width.
+  // color, icon (an icon name), at, out, sfx. Returns its width. With
+  // "defaults": "0.6", its color is brand.accent when that is set.
   kicker(str, o = {}) {
     const s = this.s;
     const size = o.size ?? this.kickerSize();
@@ -594,7 +626,7 @@ export class Short {
     if (this.at(at) >= 0) this.enter(at, 0.35, o.sfx ?? null, { label: 'kicker', chosen: o.sfx !== undefined });
     const life = this.life(at, o.out, 0.35);
     if (!life) return w;
-    const bg = o.color ?? '#e5233d';
+    const bg = o.color ?? this.brandKicker(size) ?? '#e5233d';
     this.popIn(life, x, y, () => {
       this.roundRect(x - w / 2, y - h / 2, w, h, h / 2, bg, { shadow: { color: alpha(bg, 0.45), blur: 20, y: 6 } });
       let tx = x - w / 2 + size * 0.65;
@@ -844,9 +876,11 @@ export class Short {
     const titleSize = o.titleSize ?? (tall ? 76 : 64);
     const lineSize = o.lineSize ?? (tall ? 48 : 40);
     const card = o.card ?? '#ffffff';
-    const titleLines = this.wrap(String(o.title ?? ''), w - pad * 2, titleSize, 900);
+    // With "defaults": "0.6", the title and each line wrap into balanced lines.
+    const wrap = (str, maxW, size, weight) => (s._v6 ? this.balancedWrap(str, maxW, size, weight) : this.wrap(str, maxW, size, weight));
+    const titleLines = wrap(String(o.title ?? ''), w - pad * 2, titleSize, 900);
     const items = (o.lines ?? []).map((l) => (typeof l === 'string' ? { text: l } : l));
-    const itemLines = items.map((it) => this.wrap(it.text, w - pad * 2 - lineSize * 1.3, lineSize, 700));
+    const itemLines = items.map((it) => wrap(it.text, w - pad * 2 - lineSize * 1.3, lineSize, 700));
     const iconR = o.iconSize ?? (tall ? 100 : 84);
     const h = pad + iconR * 2 + 34 + titleLines.length * titleSize * 1.08 + (items.length ? 30 : 0) + itemLines.reduce((n, l) => n + l.length * lineSize * 1.25 + 22, 0) + pad - (items.length ? 22 : 0);
     const y = o.y ?? s.cy;

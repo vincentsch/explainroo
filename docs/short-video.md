@@ -140,6 +140,9 @@ area. On Shorts, TikTok and Reels the apps cover the bottom and the right side
 of the frame with their own buttons and text, and the band sits right above
 that. `s.safe` ends above the band, so place everything from `s.safe`. `check`
 warns about text and shapes in the band and where the app's buttons go.
+The buttons sit on the right, so the content area sits left of the middle of
+the frame, most on TikTok. `s.cx` is its middle, and a card placed there is
+off center on purpose.
 `explainroo docs sizes` has the content area of each size in pixels.
 
 Numbers, amounts of money and words with `*stars*` in `script.md` get the
@@ -216,7 +219,9 @@ the backdrop or `s.bg` behind it.
 
 A small uppercase label in a pill, like "QUICK TIP". `x`, `y`, `size` (44 in a
 tall frame and 40 in others with `"defaults": "0.6"`, and 34 before), `color`,
-`icon` (an icon name), `at`, `out`, `sfx`.
+`icon` (an icon name), `at`, `out`, `sfx`. The pill is red, and with
+`"defaults": "0.6"` it takes `brand.accent`, made darker until its white words
+read. A hook's kicker is the same pill, and `kickerColor` sets its color.
 
 ### `sticker(text, options)`
 
@@ -253,7 +258,9 @@ A thin bar above the content area that fills over the whole video. `x`,
 The closing card: an icon, a bold title and up to three short lines with check
 marks. `tone` (`'good'`, `'bad'`, `'info'` or `'dark'`), `icon`, `title`,
 `lines` (texts, or `{ text, at }` for a line on its own cue), `x`, `y`, `w`,
-`card` (its color), `at`, `out`, `sfx`, `id`. It returns its box.
+`card` (its color), `at`, `out`, `sfx`, `id`. It returns its box. With
+`"defaults": "0.6"`, the title and each line wrap into lines of about the same
+length, so no word sits alone on a line.
 
 ### `punch(at, options)` and `drift(options)`
 

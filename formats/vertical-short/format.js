@@ -225,10 +225,13 @@ export function punch(s, at, { zoom = 1.25 } = {}) {
 // a tall frame the card fills the width of s.safe, so it is the clearest frame
 // of the video. Its words, 52 pixels in from its sides, stay in s.safe at the
 // zoom of the scene's punch(): a large zoom makes it narrower. `w` sets
-// another width. Returns the card's box.
-export function payoff(s, title, lines, { at = 0.2, tone = 'good', icon = 'circle-check', color = colors(s).accent, w } = {}) {
+// another width. `icon` is the card's icon and its faint copy behind it.
+// Without it, the card shows the tone's icon over a faint check mark, and
+// icon: false leaves the copy out. Returns the card's box.
+export function payoff(s, title, lines, { at = 0.2, tone = 'good', icon, color = colors(s).accent, w } = {}) {
   backdrop(s, { pattern: 'none' });
-  if (icon) echo(s, icon, { color, at });
+  const copy = icon === undefined ? 'circle-check' : icon;
+  if (copy) echo(s, copy, { color, at });
   const width = w ?? (s.H > s.W ? Math.min(s.safe.w, wordArea(s).w + 52 * 2) : undefined);
-  return s.short.payoff({ title, lines, tone, at, w: width, y: s.safe.y + s.safe.h * 0.5 });
+  return s.short.payoff({ title, lines, tone, at, w: width, y: s.safe.y + s.safe.h * 0.5, ...(icon ? { icon } : {}) });
 }

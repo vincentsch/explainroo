@@ -17,6 +17,7 @@ import { parseScript, ScriptError, tokenizeNarration } from './script.js';
 import { DEFAULTS, ProjectError, checkLanguage } from './project.js';
 import { sha256File } from './history.js';
 import { readWav } from './wav.js';
+import { shownSize } from './video-frames.js';
 
 // The files check and verify take without a project.
 export const VIDEO_FILE = /\.(mp4|m4v|mov|webm|mkv)$/i;
@@ -168,13 +169,6 @@ export async function checkVideo(file, { script = null, language = 'en', viewWid
 }
 
 const round1 = (t) => Math.round(t * 10) / 10;
-
-// The width and height a player shows. A phone stores a video filmed upright as
-// a wide one turned by 90 degrees, and ffmpeg turns it back when it reads frames.
-function shownSize(v) {
-  const turn = Number(v.side_data_list?.find((d) => d.rotation !== undefined)?.rotation ?? v.tags?.rotate ?? 0);
-  return Math.abs(turn) % 180 === 90 ? { width: v.height, height: v.width } : { width: v.width, height: v.height };
-}
 
 // The stretches where the picture doesn't change for 3 seconds or more.
 async function frozenStretches(video, duration) {
