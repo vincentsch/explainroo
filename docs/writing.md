@@ -120,7 +120,7 @@ Narration for this scene. [#marker] A marker names a moment you can animate on.
 - A scene can have these settings in the braces after its id: `hold`
   (seconds after the voice, default 0.7), `min` (the shortest the scene can
   be, in seconds), `lead` (seconds before the voice, default 0.35) and
-  `transition` (`fade`, `slide`, `wipe`, `zoom`, `brush`, `cut`).
+  `transition` (`fade`, `slide`, `push`, `wipe`, `zoom`, `brush`, `cut`).
 - A scene without narration lasts `min` seconds (default 3).
 - `chapter="How the resolver finds it"` in a scene's braces starts a
   chapter at that scene. It lasts until the next chapter. Titles have 1 to

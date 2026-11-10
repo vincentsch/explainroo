@@ -42,7 +42,7 @@ the file keeps its order.
 | `sfx` | `true` | sound effects: `true`, `"minimal"` or `false` |
 | `captions` | `"auto"` | text of the narration at the bottom; `"auto"` turns it on for vertical, 4:5 and square videos, and leaves it off for 16:9; `"bold"` shows 2 to 4 big words at a time, with numbers, money and `*starred*` words in color |
 | `cover` | `"auto"` | full-size JPEG, without captions. With `"defaults": "0.5"`, `"auto"` takes the frame of the first scene with the most elements fully arrived, a frame with a shape, icon, image or clip first. Code still typing and a number still counting have not arrived. Without it, `"auto"` is the end of the first scene, or 1.0 second into it on Shorts, TikTok and Reels. With `"defaults": "0.6"`, `"auto"` looks in the first scene that shows a recording, a clip, an image or a drawing. Or a still spec: `12.5`, `"intro"`, `"intro@2.4"`, `"intro@end"`. A new cover needs no new render |
-| `transition` | `"auto"` | the look's default, or `fade`, `slide`, `wipe`, `zoom`, `brush`, `cut` |
+| `transition` | `"auto"` | the look's default, or `fade`, `slide`, `push`, `wipe`, `zoom`, `brush`, `cut`. `push` moves the new scene in and the old one out side by side, so the text of two scenes never shows in one place |
 | `camera` | `"auto"` | `"auto"` films each scene with a camera that follows the narration; `"still"` keeps every frame as written |
 | `motionBlur` | `true` | motion blur on moving frames in the final render; `render --quality fast` leaves it out for one run |
 | `lead`, `hold`, `end` | 0.35, 0.7, 1.4 | seconds before the voice, after it, and extra at the very end |

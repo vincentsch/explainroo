@@ -6,7 +6,7 @@ import { getTheme, makeBackground, fontString, colorOf } from './themes.js';
 import { Pen } from './pen.js';
 import { drawTransition } from './transitions.js';
 import { buildPhrases, drawCaptions, buildChunks, drawBoldCaptions, captionHighlight } from './captions.js';
-import { AUDIO_FILE, clamp, hashStr, mulberry32, suggest, suggestColor, contrast, luminance, opaque, withAlpha, parseColor, mixColor, rgba, cssColor, newDefaults, accentNote } from './util.js';
+import { AUDIO_FILE, clamp, ease, hashStr, mulberry32, suggest, suggestColor, contrast, luminance, opaque, withAlpha, parseColor, mixColor, rgba, cssColor, newDefaults, accentNote } from './util.js';
 import { overlapDepth, holds, crosses, bounds, inside, toEdge, grow } from './geometry.js';
 import { layoutAreas } from './layout.js';
 import { loadClips, soundURL, ClipFrames, FREEZE_SECONDS, FIT_SPEEDS } from './clips.js';
@@ -302,6 +302,13 @@ export class Engine {
     const name = sc.transition === 'auto' ? this.theme.transition : sc.transition;
     if (this.transparent && ['slide', 'wipe', 'brush'].includes(name)) return 'fade';
     return name || 'fade';
+  }
+
+  // How long a scene shows together with the one before it at its start: the
+  // length of its transition, or 0 after a cut and for the first scene.
+  blendIn(sc) {
+    if (!sc || sc.index === 0 || sc.transition === 'none' || this.transitionFor(sc) === 'cut') return 0;
+    return Math.min(this.timeline.transitionSeconds, sc.dur * 0.5);
   }
 
   drawScene(ctx, index, t) {
@@ -1257,7 +1264,73 @@ export class Engine {
     this.cueNotes = null;
     this.cueErrors = null;
     for (const { scene, t, tex } of this.lateMath.values()) add('error', scene, t, `math "${tex}" was not collected at the start; keep TeX strings fixed and always call s.math with at and out for timing`);
+    if (!anyBroke) for (const f of this.transitionOverlaps()) add('warn', f.scene, f.t, f.message);
     return issues;
+  }
+
+  // The texts a scene shows at `t`, as check logs them, with the camera off.
+  textsAt(index, t) {
+    const scratch = (this._framedCanvas ??= Object.assign(document.createElement('canvas'), { width: 16, height: 16 }));
+    const saved = { textLog: this.textLog, drawLog: this.drawLog, recorder: this.recorder };
+    this.textLog = [];
+    this.drawLog = drawLog();
+    this.recorder = null;
+    try {
+      this.drawScene(scratch.getContext('2d'), index, t);
+      return this.textLog.filter((x) => !x.problem && x.alpha > 0.3 && String(x.text).trim());
+    } catch {
+      return [];
+    } finally {
+      Object.assign(this, saved);
+    }
+  }
+
+  // Text of two scenes in the same place during a fade or a zoom between them,
+  // for more than two frames, like a step label of each scene over the other.
+  // A slide, a push, a wipe and a brush show each part of the frame from one
+  // scene only, and a cut shows no two scenes at all.
+  transitionOverlaps() {
+    const found = [];
+    const { W, H } = this;
+    for (const sc of this.timeline.scenes) {
+      const blend = this.blendIn(sc);
+      const name = this.transitionFor(sc);
+      if (!blend || !['fade', 'zoom'].includes(name)) continue;
+      const prev = this.timeline.scenes[sc.index - 1];
+      const frames = Math.ceil(blend * this.fps);
+      let count = 0;
+      let first = null;
+      for (let f = 0; f < frames; f++) {
+        const t = f / this.fps;
+        const e = ease.inOut(t / blend);
+        // Each side as the frame shows it: how much shows, and how much bigger.
+        const sides = [
+          { texts: this.textsAt(prev.index, sc.start + t - prev.start), weight: 1 - e, grow: name === 'zoom' ? 1 + 0.12 * e : 1 },
+          { texts: this.textsAt(sc.index, t), weight: e, grow: name === 'zoom' ? 0.94 + 0.06 * e : 1 },
+        ];
+        if (sides.some((side) => side.weight < 0.15)) continue;
+        const box = (x, k) => ({ x0: W / 2 + (x.x0 - W / 2) * k, x1: W / 2 + (x.x1 - W / 2) * k, y0: H / 2 + (x.y0 - H / 2) * k, y1: H / 2 + (x.y1 - H / 2) * k });
+        let pair = null;
+        for (const A of sides[0].texts) {
+          for (const B of sides[1].texts) {
+            const a = box(A, sides[0].grow);
+            const b = box(B, sides[1].grow);
+            const ix = Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0);
+            const iy = Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0);
+            const small = Math.min((a.x1 - a.x0) * (a.y1 - a.y0), (b.x1 - b.x0) * (b.y1 - b.y0)) || 1;
+            if (ix > 4 && iy > 4 && (ix * iy) / small > 0.15) pair ??= [A.text, B.text];
+          }
+        }
+        if (!pair) continue;
+        count++;
+        first ??= { t, pair };
+      }
+      if (count <= 2) continue;
+      const label = (text) => `"${text.length > 30 ? text.slice(0, 27) + '...' : text}"`;
+      const [a, b] = first.pair;
+      found.push({ scene: sc.id, t: Math.round(first.t * 100) / 100, message: `during the ${name} from "${prev.id}" into this scene, ${label(a)} of "${prev.id}" and ${label(b)} of this scene show in the same place for ${count} frames, from ${(sc.start + first.t).toFixed(1)}s in the video; give the scene {transition=cut} or {transition=push} in the script, or let one of them leave or come later` });
+    }
+    return found;
   }
 }
 

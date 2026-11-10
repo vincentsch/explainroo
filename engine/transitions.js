@@ -2,7 +2,7 @@
 // canvases for progress p in 0..1.
 import { ease, mulberry32, hashStr } from './util.js';
 
-export const TRANSITION_NAMES = ['fade', 'slide', 'wipe', 'zoom', 'brush', 'cut'];
+export const TRANSITION_NAMES = ['fade', 'slide', 'push', 'wipe', 'zoom', 'brush', 'cut'];
 
 export function drawTransition(name, ctx, from, to, p, W, H, seed = 1, transparent = false) {
   const e = ease.inOut(p);
@@ -43,9 +43,20 @@ export function drawTransition(name, ctx, from, to, p, W, H, seed = 1, transpare
       }
       break;
     }
+    case 'push': {
+      // The new scene pushes the old one out to the left, fastest in the middle,
+      // so the two never show in the same place.
+      const x = Math.round(cw * e);
+      ctx.drawImage(from, -x, 0);
+      ctx.drawImage(to, cw - x, 0);
+      break;
+    }
     case 'zoom': {
       ctx.save();
-      ctx.globalAlpha = 1 - e;
+      // The old scene goes under the new one in full, so nothing of the frame
+      // drawn before shows through. Fading it out let the last frame's text
+      // show doubled.
+      if (transparent) ctx.globalAlpha = 1 - e;
       const s1 = 1 + 0.12 * e;
       ctx.translate(cw / 2, ch / 2);
       ctx.scale(s1, s1);

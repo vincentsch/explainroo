@@ -753,6 +753,10 @@ export class Short {
     if (a >= 0) this.enter(a, 0.3, o.sfx === undefined ? 'blip' : o.sfx, { label, pitch: n, chosen: o.sfx !== undefined, usual: 'blip' });
     const life = this.life(at, o.out, 0.3);
     if (!life) return;
+    // With "defaults": "0.6", it comes after the transition into the scene,
+    // so the step labels of two scenes never show at once.
+    const shown = this.afterBlend();
+    if (shown <= 0) return;
     const tw = this.measure(label, size, 900, 1.5);
     const dotR = size * 0.2;
     const dotsW = total * dotR * 2 + (total - 1) * dotR * 1.4;
@@ -761,7 +765,7 @@ export class Short {
     const h = size * 1.7;
     const left = x - w / 2;
     this.s.ui.over(() => this.screen(() => {
-      this.c.globalAlpha *= 1 - life.q;
+      this.c.globalAlpha *= (1 - life.q) * shown;
       this.roundRect(left, y - h / 2, w, h, h / 2, alpha(INK, 0.82), { shadow: { color: 'rgba(0,0,0,0.3)', blur: 14, y: 4 } });
       this.text(label, left + size * 0.6, y + 1, { size, weight: 900, color, tracking: 1.5, bg: INK });
       let dx = left + size * 0.6 + tw + size * 0.55 + dotR;
@@ -780,7 +784,11 @@ export class Short {
   progress(o = {}) {
     const s = this.s;
     const p = clamp(s.T / Math.max(0.1, s.video.duration));
+    // Like step(), it comes after the transition into the scene.
+    const shown = this.afterBlend();
+    if (shown <= 0) return;
     this.screen(() => {
+      this.c.globalAlpha *= shown;
       const x = o.x ?? s.safe.left;
       const w = o.w ?? s.safe.w;
       const y = o.y ?? s.safe.top - 14;
@@ -788,6 +796,15 @@ export class Short {
       this.roundRect(x, y, w, h, h / 2, alpha('#ffffff', 0.22));
       this.roundRect(x, y, Math.max(h, w * p), h, h / 2, o.color ?? KEY);
     });
+  }
+
+  // With "defaults": "0.6", 0 while the scene's transition blends it with the
+  // scene before, then up to 1 within 0.15 seconds. 1 before 0.6.
+  afterBlend() {
+    const s = this.s;
+    if (!s._v6) return 1;
+    const blend = s.engine.blendIn?.(s.scene) ?? 0;
+    return blend ? clamp((s.t - blend) / 0.15) : 1;
   }
 
   // ---------- payoff ----------

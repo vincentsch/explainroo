@@ -64,6 +64,13 @@ feed, and keeps it for a product too.
 `explainroo docs short-video` has the whole `s.short` kit, and `s.safe` keeps
 text out of the apps' buttons.
 
+## Scene changes
+
+The scenes change with `"transition": "push"` from `video.json`: the new
+scene pushes the old one out, fast. A fade would show the words of two scenes
+in one place. `{transition=cut}` on a scene in `script.md` cuts there instead,
+which suits a hard turn in the story.
+
 ## Check before you render
 
 Run `check`, and look at `still <project> hook@0`, the cover. It shows the

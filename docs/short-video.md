@@ -234,7 +234,9 @@ show moves below it, when that fits in `area` (`s.safe` by default).
 "STEP 2/4" with dots at the top of the content area, outside the camera. Step
 `n` fills at `at`. With `"defaults": "0.6"`, the word is in the video's
 language, like "PASO 2/4" in Spanish. `word` sets another one, like
-`word: 'FASE'`. Also `label`, `x`, `y`, `size` (48 with
+`word: 'FASE'`. With `"defaults": "0.6"`, it comes after the transition into
+its scene, so the labels of two scenes never show at once, and so does
+`progress()`. Also `label`, `x`, `y`, `size` (48 with
 `"defaults": "0.6"`, which reads well on a phone, and 34 before), `color`,
 `at`, `out`, `sfx`.
 

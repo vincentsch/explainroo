@@ -30,7 +30,12 @@ the right person want to try the product. It has four short scenes.
   in a tile, its name and one line.
 - `benefits(s, [{ text, at }])` shows up to three rows with check marks.
 - `offer(s, { name, action, url, at })` fills the frame with the brand color
-  and shows the action.
+  and shows the action. The button says "Try it for free" in the video's
+  language unless `action` says something else.
+
+The scenes change with `"transition": "push"` from `video.json`: the new scene
+pushes the old one out, so the words of two scenes never show in one place.
+`{transition=cut}` on a scene in `script.md` cuts there instead.
 
 Use a screenshot of the product with `s.image('assets/app.png', { frame:
 'phone' })` in the product scene when the user has one. Put the brand's
