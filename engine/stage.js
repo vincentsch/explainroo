@@ -2,7 +2,7 @@
 // draws the whole frame from scratch as a function of the scene time `s.t`.
 // Elements take `at` (when they appear) and optional `out` (when they leave);
 // the theme decides how they enter, and entering elements add sound effects.
-import { clamp, lerp, ease, easeFn, rand01, noise1, hashStr, mulberry32, suggest, normWord, withAlpha, contrast, mixColor, opaque, newDefaults, ordinal } from './util.js';
+import { clamp, lerp, ease, easeFn, rand01, noise1, hashStr, mulberry32, suggest, normWord, withAlpha, contrast, mixColor, opaque, newDefaults, ordinal, LOCALES } from './util.js';
 import { colorOf, tintOf, fontString } from './themes.js';
 import { scalePath, quadD, polyD, pathLength, pointAt, parsePath, absolutize, samplePath } from './pathdata.js';
 import { layoutText, lineStartX } from './text.js';
@@ -2108,13 +2108,33 @@ export class Stage {
     });
     const cp = ease.out(clamp((this.t - at) / dur));
     const v = lerp(from, value, cp);
-    const fmt = (n) => {
-      const s = Math.abs(n).toFixed(decimals);
-      const [int, dec] = s.split('.');
-      const grouped = o.group === false ? int : int.replace(/\B(?=(\d{3})+(?!\d))/g, o.separator ?? ',');
-      return (n < 0 ? '-' : '') + grouped + (dec ? '.' + dec : '');
-    };
-    const str = `${o.prefix ?? ''}${fmt(v)}${o.suffix ?? ''}`;
+    // With "defaults": "0.6" the number is written the way the video's
+    // language writes it, like 1 050 and 52,50 in French, and `locale` asks
+    // for another. A unit in suffix or prefix then stays with the number, as
+    // its space doesn't break.
+    const locale = o.locale ?? (this._v6 ? LOCALES[this.lang] ?? this.lang : null);
+    let fmt;
+    let prefix = o.prefix ?? '';
+    let suffix = o.suffix ?? '';
+    if (locale) {
+      let nf;
+      try {
+        nf = new Intl.NumberFormat(locale, { minimumFractionDigits: decimals, maximumFractionDigits: decimals, useGrouping: o.group !== false });
+      } catch {
+        throw new SceneError(`number: locale "${locale}" is not a language tag; use one like "fr-FR" or "de-DE"`);
+      }
+      fmt = (n) => nf.formatToParts(n).map((part) => (part.type === 'group' && o.separator !== undefined ? o.separator : part.value)).join('');
+      prefix = String(prefix).replace(/ $/, '\u00a0');
+      suffix = String(suffix).replace(/^ /, '\u00a0');
+    } else {
+      fmt = (n) => {
+        const s = Math.abs(n).toFixed(decimals);
+        const [int, dec] = s.split('.');
+        const grouped = o.group === false ? int : int.replace(/\B(?=(\d{3})+(?!\d))/g, o.separator ?? ',');
+        return (n < 0 ? '-' : '') + grouped + (dec ? '.' + dec : '');
+      };
+    }
+    const str = `${prefix}${fmt(v)}${suffix}`;
     const counting = cp < 1 ? { name: `the number counting to ${value}`, doing: 'still counting' } : null;
     return this._text(str, { font: 'display', size: 150, color: o.color ?? 'accent', ...o, at, sfx: null, enter: o.enter ?? th.enter.number ?? 'fade', dur: o.enterDur ?? 0.4, id: o.id, _counting: counting }, 'number');
   }
