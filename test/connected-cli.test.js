@@ -58,6 +58,21 @@ async function setup(t) {
 const read = (dir, rel) => fs.readFileSync(path.join(dir, rel), 'utf8');
 const jobs = (dir) => (fs.existsSync(path.join(dir, 'history/jobs')) ? fs.readdirSync(path.join(dir, 'history/jobs')).map((f) => JSON.parse(read(dir, `history/jobs/${f}`))) : []);
 
+test('voices --elevenlabs and --cartesia before the project read the project\'s key, and leave the project as the project', async (t) => {
+  const s = await setup(t);
+  fs.writeFileSync(path.join(s.dir, '.env'), `ELEVENLABS_API_KEY=${GOOD_KEY}\nCARTESIA_API_KEY=${GOOD_KEY}\n`);
+  const away = temp(t);
+  for (const [flag, voice] of [['--elevenlabs', 'fake-voice'], ['--cartesia', null]]) {
+    const r = await s.cli(['voices', flag, s.dir, '--json'], { ELEVENLABS_API_KEY: '', CARTESIA_API_KEY: '', EXPLAINROO_CONFIG: path.join(away, 'settings') }, away);
+    assert.equal(r.code, 0, r.text);
+    const { voices } = JSON.parse(r.stdout);
+    assert.ok(voices.length > 0);
+    if (voice) assert.equal(voices[0].id, voice);
+  }
+  assert.equal(s.fake.count('elevenlabs', 'GET /v2/voices'), 1);
+  assert.ok(s.fake.count('cartesia', 'GET /voices') >= 1);
+});
+
 test('an image goes through the record: one purchase, a job with its price, and the old log stays unwritten', async (t) => {
   const { dir, cli, image, purchases, fake } = await setup(t);
   const r = await cli([...image('hero', PROMPT_A), '--json']);
