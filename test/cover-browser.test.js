@@ -181,3 +181,16 @@ test('render writes the automatic cover at that frame, without captions, and che
   const checked = await check(loadProject(dir));
   assert.deepEqual(checked.issues.filter((i) => /cover at|"cover"/.test(i.message)), []);
 });
+
+test('a chart\'s own words count for the cover only with "defaults": "0.6", so a 0.5 project keeps its cover', { skip }, async (t) => {
+  // The line chart shows at the start and leaves at 3 s; three cards come at 4 s.
+  const body = `s.lineChart([1, 2, 4, 6, 9], { labels: ['A', 'B', 'C', 'D', 'E'], at: -1, out: 3, w: 900, h: 400 });
+    for (let i = 0; i < 3; i++) s.box('Card ' + i, { x: 500 + i * 450, y: 540, w: 300, h: 180, at: 4, color: 'blue' });`;
+  const settings = { cover: 'auto', watermark: false };
+  // As explainroo 0.5.0 picked it: the frame with the three cards.
+  const old = await moment(project(t, { ...settings, defaults: '0.5' }, { intro: body }, { intro: 8 }));
+  assert.equal(Math.round(old * 1000) / 1000, 4.633);
+  // With "defaults": "0.6", the chart's five labels make its frame the fuller one.
+  const fresh = await moment(project(t, { ...settings, defaults: '0.6' }, { intro: body }, { intro: 8 }));
+  assert.ok(fresh < 3, `cover at ${fresh}`);
+});

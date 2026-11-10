@@ -686,7 +686,10 @@ export class Engine {
     const fresh = newDefaults(this.config);
     const arrived = (x) => !(fresh && x.partial);
     const inside = (b) => b.x0 >= -1 && b.y0 >= -1 && b.x1 <= this.W + 1 && b.y1 <= this.H + 1;
-    const words = texts.filter((x) => !x.problem && x.settled && x.alpha > 0.95 && inside(x) && arrived(x)).length;
+    // A chart's own words count as text only with "defaults": "0.6", so an
+    // older project keeps the cover it had.
+    const counted = newDefaults(this.config, '0.6') ? texts : texts.filter((x) => !x.chart);
+    const words = counted.filter((x) => !x.problem && x.settled && x.alpha > 0.95 && inside(x) && arrived(x)).length;
     // A picture is a shape, icon, image, clip, chart or drawing. Lines and
     // arrows count as elements, but no picture. A clip or image that fills the
     // frame counts too, also while the camera crops it.
