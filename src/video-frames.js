@@ -8,7 +8,14 @@ import { ffmpeg, probe } from './ffmpeg.js';
 import { launch } from './browser.js';
 import { ProjectError } from './project.js';
 
-// The size and length of a video's picture.
+// The width and height a player shows. A phone stores a video filmed upright as
+// a wide one turned by 90 degrees, and ffmpeg turns it back when it reads frames.
+export function shownSize(v) {
+  const turn = Number(v.side_data_list?.find((d) => d.rotation !== undefined)?.rotation ?? v.tags?.rotate ?? 0);
+  return Math.abs(turn) % 180 === 90 ? { width: v.height, height: v.width } : { width: v.width, height: v.height };
+}
+
+// The size a player shows and the length of a video's picture.
 async function pictureInfo(file) {
   const info = await probe(file).catch(() => {
     throw new ProjectError(`${file} is not a video that ffmpeg can read`);
@@ -17,7 +24,7 @@ async function pictureInfo(file) {
   if (!v) throw new ProjectError(`${path.basename(file)} has no picture to look at`);
   const [n, d] = String(v.avg_frame_rate ?? '').split('/').map(Number);
   const fps = d ? n / d : 30;
-  return { width: v.width, height: v.height, duration: Number(info.format.duration) || Number(v.duration), fps: fps > 0 && fps <= 240 ? fps : 30 };
+  return { ...shownSize(v), duration: Number(info.format.duration) || Number(v.duration), fps: fps > 0 && fps <= 240 ? fps : 30 };
 }
 
 // Times in seconds, kept inside the video.
