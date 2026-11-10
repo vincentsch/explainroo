@@ -96,6 +96,22 @@ frame.
 `explainroo docs scene-api` lists every call these layouts use, with all
 its options.
 
+Numbers follow the video's language with `"defaults": "0.6"`. In a French
+video, `s.number` writes `1 050 €` and `52,50 €`, and a line chart compares
+two curves on one scale:
+
+```js
+const years = Array.from({ length: 21 }, (_, n) => n);
+s.number(1050, { suffix: ' €', at: 'passe' });
+s.number(52.5, { decimals: 2, suffix: ' €', y: 800, at: 'alors' });
+s.lineChart({
+  'Intérêts composés': years.map((n) => 1000 * 1.05 ** n),
+  'Intérêts simples': years.map((n) => 1000 + 50 * n),
+}, { labels: years.map((n) => (n % 5 ? '' : `${n} ans`)), at: 'vingt' });
+```
+
+Each line gets its name at its end, in the look's colors.
+
 ## The camera
 
 explainroo films each scene with a camera that follows the narration. It

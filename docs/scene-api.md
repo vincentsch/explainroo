@@ -329,12 +329,15 @@ s.pie([{ label: 'Images', value: 55 }, { label: 'Other', value: 45 }], { donut: 
   `locale` (like `'de-DE'`), plus the text options. With `"defaults": "0.6"`
   it writes the number as the video's language does, like `1 050` in French,
   and keeps a unit in `suffix: ' €'` with it.
+- In charts, `x`, `y` is the center of the plot and `w`, `h` its size.
 - `s.bars(data, options)`: items are `{ label, value, color, at }`. A bar
   with its own `at` grows when that word is spoken. Options: `x`, `y`, `w`,
   `h`, `max`, `stagger`, `growDur`, `values: false`, `prefix`, `suffix`,
   `format(v)`, `labelSize`, `valueSize`, `fillStyle`.
-- `s.lineChart(values, options)`: `x`, `y`, `w`, `h`, `min`, `max`,
-  `labels`, `dots: false`, `area: false`, `color`, `dur`.
+- `s.lineChart(values, options)`: numbers, or several lines on one scale as
+  `{ Compound: [...], Simple: [...] }` or `[{ label, values, color }]`, each
+  named at its end in the look's colors. Options: `x`, `y`, `w`, `h`, `min`,
+  `max`, `labels`, `dots: false`, `area` (on for one line), `color`, `dur`.
 - `s.pie(data, options)`: `x`, `y`, `r`, `donut` (0 to 0.8), `labels: false`,
   `labelOffset`, `dur`.
 

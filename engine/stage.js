@@ -2230,68 +2230,115 @@ export class Stage {
     return geom(x, y, w, h);
   }
 
+  // values: one array of numbers, or several series that share one scale, as
+  // { 'Name': [...] } or [{ label, values, color }]. Each of several series
+  // gets its label at the end of its line.
   lineChart(values, o = {}) {
     const th = this.theme;
     const ctx = this.ctx;
+    const many = !(Array.isArray(values) && values.every((v) => typeof v === 'number'));
+    const series = many ? chartSeries(values).map((d, i) => ({ ...d, color: d.color ?? palette(th, i) })) : [{ values, color: o.color ?? 'accent' }];
     const x = o.x ?? this.cx;
     const y = o.y ?? this.cy;
     const w = o.w ?? this._w(0.6);
     const h = o.h ?? (this.platform ? this.safe.h * 0.44 : this.H * 0.44);
-    const lo = o.min ?? Math.min(0, ...values);
-    const hi = o.max ?? Math.max(...values) * 1.1;
-    const pts = values.map((v, i) => [x - w / 2 + (w * i) / Math.max(1, values.length - 1), y + h / 2 - ((v - lo) / (hi - lo || 1)) * h]);
+    const all = series.flatMap((d) => d.values);
+    const lo = o.min ?? Math.min(0, ...all);
+    const hi = o.max ?? Math.max(...all) * 1.1;
+    const count = Math.max(...series.map((d) => d.values.length));
+    const place = (list) => list.map((v, i) => [x - w / 2 + (w * i) / Math.max(1, count - 1), y + h / 2 - ((v - lo) / (hi - lo || 1)) * h]);
+    series.forEach((d) => { d.pts = place(d.values); });
+    const ls = o.labelSize ?? (this._v6 ? SCALE.axis : 30);
+    // The names at the ends of the lines, moved apart so none touches another.
+    const ns = SCALE.label;
+    const nameFont = fontString(th, 'body', ns, BOLD.body);
+    const names = many ? endLabels(series, ns * 1.2).map((n) => ({ ...n, x: n.end[0] + 18 + (o.dots === false ? 0 : 9) })) : [];
+    const axisLabels = (o.labels ?? []).slice(0, count).map((l, i) => ({ text: String(l), x: x - w / 2 + (w * i) / Math.max(1, count - 1), y: y + h / 2 + 14 }));
     this._register(o.id, x, y, w, h);
     if (this.engine.layoutLog) {
       // The ends of the axes, the dots and the labels under the axis count
       // for the camera, not for arrows.
       const pad = 12 + th.stroke.width * 1.3;
       const around = this._designBox(x, y, w + pad * 2, h + pad * 2);
-      const ls = o.labelSize ?? (this._v6 ? SCALE.axis : 30);
-      const text = o.labels && this._textExtent(o.labels.slice(0, pts.length).map((l, i) => ({ text: String(l), x: pts[i][0], y: y + h / 2 + 14, font: fontString(th, 'body', ls), base: 'top' })));
+      const text = this._textExtent([
+        ...axisLabels.map((l) => ({ ...l, font: fontString(th, 'body', ls), base: 'top' })),
+        ...names.map((n) => ({ text: n.text, x: n.x, y: n.y, font: nameFont, align: 'left' })),
+      ]);
       this._pendingExtra = text ? unionBox(around, text) : around;
     }
     const life = this._life(o, 'chart', { enter: 'draw', dur: o.dur ?? 1.6 });
     if (!life) return geom(x, y, w, h);
     ctx.save();
     ctx.globalAlpha *= life.q > 0 ? 1 - ease.in(life.q) : 1;
-    const color = colorOf(th, o.color ?? 'accent');
     const p = ease.inOut(life.p);
     this.pen.draw(ctx, { kind: 'poly', points: [[x - w / 2, y - h / 2 - 10], [x - w / 2, y + h / 2], [x + w / 2 + 10, y + h / 2]] }, { stroke: colorOf(th, 'muted'), width: th.stroke.width * 0.7, seed: this._seed('axes', o), single: true }, { stroke: clamp(p * 3), fill: 1 });
-    if (o.area !== false) {
-      ctx.save();
-      ctx.globalAlpha *= clamp((life.p - 0.6) / 0.4) * 0.9;
-      ctx.beginPath();
-      ctx.moveTo(pts[0][0], y + h / 2);
-      pts.forEach((pt) => ctx.lineTo(pt[0], pt[1]));
-      ctx.lineTo(pts[pts.length - 1][0], y + h / 2);
-      ctx.closePath();
-      const gr = ctx.createLinearGradient(0, y - h / 2, 0, y + h / 2);
-      gr.addColorStop(0, withAlpha(color, 0.35));
-      gr.addColorStop(1, withAlpha(color, 0));
-      ctx.fillStyle = gr;
-      ctx.fill();
-      ctx.restore();
-    }
-    this.pen.draw(ctx, { kind: 'poly', points: pts }, { stroke: color, width: o.width ?? th.stroke.width * 1.3, seed: this._seed('series', o), single: true, glow: th.stroke.glow ?? 0 }, { stroke: p, fill: 1 });
-    if (o.dots !== false) {
-      pts.forEach((pt, i) => {
-        const k = clamp((p - i / Math.max(1, pts.length - 1)) * 6);
-        if (k <= 0) return;
+    // Several lines get no area under them unless area: true, so one doesn't
+    // hide another.
+    if (many ? o.area === true : o.area !== false) {
+      for (const d of series) {
+        const color = colorOf(th, d.color);
         ctx.save();
-        ctx.translate(pt[0], pt[1]);
-        ctx.scale(ease.outBack(k), ease.outBack(k));
-        this.pen.draw(ctx, { kind: 'ellipse', w: 18, h: 18 }, { fill: color, stroke: th.bg, width: 3, seed: i + 3, fillStyle: 'solid', rough: false }, { stroke: 1, fill: 1 });
+        ctx.globalAlpha *= clamp((life.p - 0.6) / 0.4) * 0.9;
+        ctx.beginPath();
+        ctx.moveTo(d.pts[0][0], y + h / 2);
+        d.pts.forEach((pt) => ctx.lineTo(pt[0], pt[1]));
+        ctx.lineTo(d.pts[d.pts.length - 1][0], y + h / 2);
+        ctx.closePath();
+        const gr = ctx.createLinearGradient(0, y - h / 2, 0, y + h / 2);
+        gr.addColorStop(0, withAlpha(color, many ? 0.2 : 0.35));
+        gr.addColorStop(1, withAlpha(color, 0));
+        ctx.fillStyle = gr;
+        ctx.fill();
         ctx.restore();
+      }
+    }
+    series.forEach((d, k) => {
+      const color = colorOf(th, d.color);
+      this.pen.draw(ctx, { kind: 'poly', points: d.pts }, { stroke: color, width: o.width ?? th.stroke.width * 1.3, seed: this._seed('series', o) + (many ? k : 0), single: true, glow: th.stroke.glow ?? 0 }, { stroke: p, fill: 1 });
+    });
+    if (o.dots !== false) {
+      series.forEach((d) => {
+        const color = colorOf(th, d.color);
+        d.pts.forEach((pt, i) => {
+          const k = clamp((p - i / Math.max(1, count - 1)) * 6);
+          if (k <= 0) return;
+          ctx.save();
+          ctx.translate(pt[0], pt[1]);
+          ctx.scale(ease.outBack(k), ease.outBack(k));
+          this.pen.draw(ctx, { kind: 'ellipse', w: 18, h: 18 }, { fill: color, stroke: th.bg, width: 3, seed: i + 3, fillStyle: 'solid', rough: false }, { stroke: 1, fill: 1 });
+          ctx.restore();
+        });
       });
     }
-    if (o.labels) {
-      ctx.font = fontString(th, 'body', o.labelSize ?? (this._v6 ? SCALE.axis : 30));
+    // check reads the chart's words like any text, so a held shot that cuts
+    // them, small or faint ones are found.
+    const settled = this._settled(life);
+    if (axisLabels.length) {
+      ctx.font = fontString(th, 'body', ls);
       ctx.fillStyle = colorOf(th, 'muted');
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
-      o.labels.forEach((l, i) => {
-        if (i < pts.length) ctx.fillText(String(l), pts[i][0], y + h / 2 + 14);
-      });
+      for (const l of axisLabels) {
+        if (!l.text) continue;
+        ctx.fillText(l.text, l.x, l.y);
+        const lw = ctx.measureText(l.text).width;
+        this._logText({ text: l.text, x0: l.x - lw / 2, y0: l.y, x1: l.x + lw / 2, y1: l.y + ls, size: ls, fg: ctx.fillStyle, bg: null, settled });
+      }
+    }
+    const shown = clamp((life.p - 0.85) / 0.15);
+    if (names.length && shown > 0) {
+      ctx.save();
+      ctx.globalAlpha *= shown;
+      ctx.font = nameFont;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      for (const n of names) {
+        ctx.fillStyle = colorOf(th, n.color);
+        ctx.fillText(n.text, n.x, n.y);
+        const nw = ctx.measureText(n.text).width;
+        this._logText({ text: n.text, x0: n.x, y0: n.y - ns / 2, x1: n.x + nw, y1: n.y + ns / 2, size: ns, fg: ctx.fillStyle, bg: null, settled: settled && shown >= 1 });
+      }
+      ctx.restore();
     }
     ctx.restore();
     return geom(x, y, w, h);
@@ -2807,6 +2854,43 @@ function palette(th, i) {
   const order = [th.accent, 'blue', 'green', 'yellow', 'purple', 'orange', 'teal', 'pink', 'red'];
   const uniq = [...new Set(order)];
   return uniq[i % uniq.length];
+}
+
+// The series of a line chart: { 'Name': [...] } or [{ label, values, color }].
+function chartSeries(values) {
+  const list = Array.isArray(values) ? values : values && typeof values === 'object' ? Object.entries(values).map(([label, v]) => ({ label, values: v })) : null;
+  if (!list?.length) throw new SceneError("lineChart: give it an array of numbers, or several series like { 'Compound': [...], 'Simple': [...] } or [{ label, values, color }]");
+  return list.map((d, i) => {
+    if (!d || !Array.isArray(d.values) || !d.values.length || !d.values.every((v) => typeof v === 'number' && Number.isFinite(v))) {
+      throw new SceneError(`lineChart: series ${d?.label !== undefined ? `"${d.label}"` : i + 1} needs values, an array of numbers`);
+    }
+    return { label: d.label === undefined ? '' : String(d.label), values: d.values, color: d.color };
+  });
+}
+
+// Where the names at the ends of several lines go: beside each line's last
+// point, moved up or down until every two are `gap` apart, and as close to
+// their lines as that allows.
+function endLabels(series, gap) {
+  const labels = series.filter((d) => d.label).map((d) => ({ text: d.label, color: d.color, end: d.pts[d.pts.length - 1], y: d.pts[d.pts.length - 1][1] }));
+  labels.sort((a, b) => a.y - b.y);
+  // Runs of labels that would touch move as one block, centered on their lines.
+  const blocks = labels.map((l) => ({ items: [l], want: l.y }));
+  for (let merged = true; merged;) {
+    merged = false;
+    for (let i = 0; i + 1 < blocks.length; i++) {
+      const [a, b] = [blocks[i], blocks[i + 1]];
+      const top = (bl) => bl.want - ((bl.items.length - 1) * gap) / 2;
+      if (top(a) + a.items.length * gap > top(b)) {
+        const items = [...a.items, ...b.items];
+        blocks.splice(i, 2, { items, want: items.reduce((sum, l) => sum + l.end[1], 0) / items.length });
+        merged = true;
+        break;
+      }
+    }
+  }
+  for (const bl of blocks) bl.items.forEach((l, i) => { l.y = bl.want - ((bl.items.length - 1) * gap) / 2 + i * gap; });
+  return labels;
 }
 
 function wedgeD(r, hole, a0, a1) {
