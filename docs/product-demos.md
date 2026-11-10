@@ -292,8 +292,9 @@ for feeds, also for a product short.
   the font's license file next to it.
 - `headline` is the font for big headlines. Instrument Serif is built in.
   `capture` suggests the font of the site's first heading. If the brand has
-  no serif, use its own font and pass `{ weight: 700, italic: false }` to
-  `u.headline()`.
+  no serif, set `headline` to the brand's own font, like `"headline": "Inter"`,
+  and pass `{ weight: 700, italic: false }` to `u.headline()`. The options
+  alone keep Instrument Serif.
 - `logo` is the product's logo from the app or website, best as SVG.
 
 ## Rebuilding the screens with s.ui

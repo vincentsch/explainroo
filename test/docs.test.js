@@ -403,6 +403,8 @@ test('the scene-api, troubleshooting, product-demos and commands topics and the 
   const demos = oneLine(page('product-demos'));
   for (const words of ['explainroo capture videos/<name> https://example.com/pricing --name pricing', '`assets/capture/example.com/pricing/`', 'Capturing again with the same name replaces only that folder.', 'A capture without a name replaces its own files and keeps the named folders.', 'It can\'t be `fonts`, because a capture without a name keeps its fonts there.', 'With captions on, `accent` also colors the word being spoken. A look file that sets `caption` colors decides instead.', 'a contrast below 3:1', 'make it lighter on a dark background, or darker on a light one', 'Bold captions keep their own colors.', 'It is a multiplier from 0 to 2: 0 is no shadow, 1 the normal shadow and 2 twice the normal shadow.', 'like 1.4 for a dialog', '`check` warns about a `lift` above 2.']) assert.ok(demos.includes(words), words);
   assert.doesNotMatch(demos, /Capturing the same site again replaces its folder\./);
+  // A brand without a serif sets brand.headline to its own font.
+  assert.ok(demos.includes('If the brand has no serif, set `headline` to the brand\'s own font, like `"headline": "Inter"`, and pass `{ weight: 700, italic: false }` to `u.headline()`. The options alone keep Instrument Serif.'));
   assert.match(page('settings'), /^\| `brand` \| none \| .*its `accent` also colors the spoken word in captions/m);
   const commands = page('commands');
   assert.match(commands, /^\| `sheet \[project\] \[scene\]` \|.*`--times 3,12\.5,intro@2` makes `out\/sheet-times\.jpg` of just those moments, in that order\. It takes every time that `still` takes\. With `--size tiktok` the file is `out\/sheet-times-tiktok\.jpg`/m);
