@@ -336,7 +336,14 @@ test('a zoom holds the side of its element that align names', () => {
   assert.equal(viewAt(log, 1 + ZOOM_SECONDS, 16 / 9).x, left.x);
   const s = checkRecordingScript({ url: URL, steps: [{ do: 'zoom', selector: '.results', align: 'left' }, { do: 'zoom', text: 'Total', align: 'center' }] });
   assert.deepEqual(s.steps, [{ do: 'zoom', selector: '.results', align: 'left' }, { do: 'zoom', text: 'Total' }]);
-  fails({ url: URL, steps: [{ do: 'zoom', text: 'Total', align: 'middle' }] }, /step 1: align must be one of center, left, right, top, bottom: the side of the element the zoom holds in view/);
+  fails({ url: URL, steps: [{ do: 'zoom', text: 'Total', align: 'middle' }] }, /step 1: align must be one of center, left, right, top, bottom, top-left, top-right, bottom-left, bottom-right: the side or corner of the element the zoom holds in view/);
+  // A corner holds both of its sides: the top left of a tall list shows its first rows.
+  const list = { x: 300, y: 400, w: 400, h: 700 };
+  const corner = focusRect(list, base, 1280, 720, 2, 'top-left');
+  assert.deepEqual([corner.x, corner.y], [focusRect(list, base, 1280, 720, 2, 'left').x, focusRect(list, base, 1280, 720, 2, 'top').y]);
+  const low = focusRect(list, base, 1280, 720, 2, 'bottom-right');
+  assert.deepEqual([low.x, low.y], [focusRect(list, base, 1280, 720, 2, 'right').x, focusRect(list, base, 1280, 720, 2, 'bottom').y]);
+  assert.deepEqual(checkRecordingScript({ url: URL, steps: [{ do: 'zoom', selector: '.list', align: 'top-left' }] }).steps[0].align, 'top-left');
   fails({ url: URL, steps: [{ do: 'zoom', align: 'left' }] }, /step 1: a zoom without an element goes back out, so it takes no align/);
   fails({ url: URL, steps: [{ do: 'click', text: 'Save', align: 'left' }] }, /step 1: a click step has no "align"/);
 });

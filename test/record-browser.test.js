@@ -573,3 +573,30 @@ test('inspect lists a field that types into a hidden input, names the focus, and
   fs.writeFileSync(path.join(dir, 'recordings/invoice.json'), JSON.stringify({ url: `${app.url}#/sums`, viewport, steps: [{ do: 'press', key: 'Entr' }] }));
   await assert.rejects(record(dir, 'invoice'), /step 1 \(press "Entr"\): can't press "Entr": .*Key names are like Enter, Tab, Escape or ArrowDown, and a combination is like "Control\+A"\./);
 });
+
+test('record says when a zoom\'s element is larger than the frame, and when the zoom shows almost one colour', { skip: !chrome }, async (t) => {
+  const app = await serveDemoApp();
+  t.after(app.close);
+  const viewport = { width: 1280, height: 720 };
+  const dir = project(t, { url: `${app.url}#/sums`, viewport, steps: [
+    { do: 'click', text: 'Accept', before: true },
+    { do: 'type', selector: '.sum-field', value: '1250 + 860 + 320 = 2430' },
+    { do: 'zoom', selector: '#sums' },
+    { do: 'zoom' },
+    { do: 'zoom', selector: '#sums', align: 'top-left', scale: 2.5 },
+  ] });
+  const rec = await record(dir, 'invoice');
+  // The list is 900 pixels tall in a window of 720, and its middle is empty.
+  assert.deepEqual(rec.notes.filter((n) => n.startsWith('step 3 ')), [
+    'step 3 (zoom "#sums"): the element is 420x900, larger than the 914x514 of the page the zoom shows, so the zoom shows its middle and leaves the rest out. Hold the part the narration names in view with "align", like "top-left", or zoom on a smaller element inside it, which "--inspect --text" lists.',
+    'step 3 (zoom "#sums"): almost all of what the zoom shows is one colour, so it may show empty space. Look at build/record/invoice/step-3.png.',
+  ]);
+  // Held by its top left corner, the zoom shows the first line, with its words.
+  assert.deepEqual(rec.notes.filter((n) => n.startsWith('step 5 ')), [
+    'step 5 (zoom "#sums"): the element is 420x900, larger than the 512x288 of the page the zoom shows, so the zoom shows its top left part and leaves the rest out. Zoom on a smaller element inside it, which "--inspect --text" lists.',
+  ]);
+  // The picture of a zoom step is what the zoom shows.
+  const size = async (file) => (await probe(file)).streams.map((st) => [st.width, st.height])[0];
+  assert.deepEqual(await size(path.join(dir, 'build/record/invoice/step-5.png')), [480, 270]);
+  assert.match(formatRecord(rec), /\nstep 3 \(zoom "#sums"\): almost all of what the zoom shows is one colour/);
+});

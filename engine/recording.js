@@ -193,8 +193,8 @@ export function zoomScale(box, base, scale) {
   return clamp(ZOOM_FIT * Math.min(base.w / Math.max(1, box.w), base.h / Math.max(1, box.h)), ZOOM_RANGE[0], ZOOM_RANGE[1]);
 }
 
-// The sides a zoom may hold its element by.
-export const ZOOM_ALIGNS = ['center', 'left', 'right', 'top', 'bottom'];
+// The sides and corners a zoom may hold its element by.
+export const ZOOM_ALIGNS = ['center', 'left', 'right', 'top', 'bottom', 'top-left', 'top-right', 'bottom-left', 'bottom-right'];
 // How much room a zoom held by one side leaves between that side and the edge
 // of the view, as a part of the view.
 const ALIGN_ROOM = 0.04;
@@ -202,17 +202,19 @@ const ALIGN_ROOM = 0.04;
 // The view a zoom on `box` (center and size in video pixels) moves to: in the
 // shape of `base`, zoomScale times closer, around the box and inside the video.
 // `align` holds one side of the box in view instead of its middle, like
-// 'left' for a wide element whose words start at its left.
+// 'left' for a wide element whose words start at its left, or a corner, like
+// 'top-left' for a tall list whose first rows are at its top.
 export function focusRect(box, base, width, height, scale, align = 'center') {
   const aspect = base.w / base.h;
   const w = base.w / zoomScale(box, base, scale);
   const h = w / aspect;
   let x = box.x - w / 2;
   let y = box.y - h / 2;
-  if (align === 'left') x = box.x - box.w / 2 - w * ALIGN_ROOM;
-  if (align === 'right') x = box.x + box.w / 2 + w * ALIGN_ROOM - w;
-  if (align === 'top') y = box.y - box.h / 2 - h * ALIGN_ROOM;
-  if (align === 'bottom') y = box.y + box.h / 2 + h * ALIGN_ROOM - h;
+  const sides = align.split('-');
+  if (sides.includes('left')) x = box.x - box.w / 2 - w * ALIGN_ROOM;
+  if (sides.includes('right')) x = box.x + box.w / 2 + w * ALIGN_ROOM - w;
+  if (sides.includes('top')) y = box.y - box.h / 2 - h * ALIGN_ROOM;
+  if (sides.includes('bottom')) y = box.y + box.h / 2 + h * ALIGN_ROOM - h;
   return { x: clamp(x, 0, width - w), y: clamp(y, 0, height - h), w, h };
 }
 

@@ -122,7 +122,11 @@ records.
   times closer. `"scale": 2` on a zoom step sets how close it goes. It
   holds the middle of the element in view. `"align": "left"` holds its left
   edge instead, for a wide row whose words start at the left, and `right`,
-  `top` and `bottom` work the same way.
+  `top` and `bottom` work the same way. A corner, like `top-left`, holds
+  two edges, for a tall list whose first rows are at its top. When the
+  element is larger than what the zoom shows, `record` says so for that
+  step. When almost all of what a zoom shows is one colour, `record` warns
+  with the step and its picture, because the zoom may show empty space.
 - A pointer move takes about 0.6 seconds, and a scroll of one window height
   about 1 second. `"pace": 1.5` in the script makes moves, scrolls and
   typing faster, from 0.5 to 2. `"duration": 1.2` on a step sets the seconds

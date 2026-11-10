@@ -15,7 +15,7 @@ import { ffmpeg, probe } from './ffmpeg.js';
 import { selfCommand } from './history.js';
 import { dropClipFrames } from './clips.js';
 import { ease, suggest } from '../engine/util.js';
-import { ZOOM_ALIGNS, ZOOM_SECONDS, ZOOM_SCALES } from '../engine/recording.js';
+import { ZOOM_ALIGNS, ZOOM_SECONDS, ZOOM_SCALES, coverRect, focusRect } from '../engine/recording.js';
 
 export const STEP_KINDS = ['open', 'click', 'type', 'press', 'hover', 'scroll', 'wait', 'zoom', 'mark'];
 // The keys each kind of step takes, besides do, cue, before and the element.
@@ -215,7 +215,7 @@ export function checkRecordingScript(script, rel = 'the recording script') {
     }
     if (raw.align !== undefined) {
       if (!has.length) bad('a zoom without an element goes back out, so it takes no align');
-      if (!ZOOM_ALIGNS.includes(raw.align)) bad(`align must be one of ${ZOOM_ALIGNS.join(', ')}: the side of the element the zoom holds in view, like "left" for a row whose words start at the left`);
+      if (!ZOOM_ALIGNS.includes(raw.align)) bad(`align must be one of ${ZOOM_ALIGNS.join(', ')}: the side or corner of the element the zoom holds in view, like "left" for a row whose words start at the left, or "top-left" for a tall list whose first rows are at its top`);
       if (raw.align !== 'center') step.align = raw.align;
     }
     if (raw.do === 'mark') {
@@ -895,8 +895,16 @@ export async function record(dirArg, name, { log = () => {}, keepProfile = false
     if (readLog(old)) fs.rmSync(old, { force: true });
     dropClipFrames(dir, `assets/recordings/${name}.webm`);
     const rel = (p) => path.relative(dir, p).split(path.sep).join('/');
-    const shots = await stepShots(webm, out, path.join(dir, 'build', 'record', name));
-    const notes = [...skipped, ...missed.map((b) => `blur ${b.i + 1} (${b.selector !== undefined ? `selector ${quoted(b.selector)}` : `text ${quoted(b.text)}`}) matched nothing on any page. Check it, or take it out.`)];
+    const { shots, blank } = await stepShots(webm, out, path.join(dir, 'build', 'record', name));
+    const zoomNotes = [];
+    for (const st of steps.filter((x) => x.do === 'zoom' && x.box)) {
+      const label = stepLabel(script.steps[st.step - 1], st.step);
+      const view = zoomView(st, out);
+      const over = st.box.w > view.w + 1 || st.box.h > view.h + 1;
+      if (over) zoomNotes.push(`${label}: the element is ${st.box.w}x${st.box.h}, larger than the ${Math.round(view.w)}x${Math.round(view.h)} of the page the zoom shows, so the zoom shows ${st.align ? `its ${st.align.replace('-', ' ')} part` : 'its middle'} and leaves the rest out. ${st.align ? 'Zoom' : 'Hold the part the narration names in view with "align", like "top-left", or zoom'} on a smaller element inside it, which "--inspect --text" lists.`);
+      if (blank.has(st.step)) zoomNotes.push(`${label}: almost all of what the zoom shows is one colour, so it may show empty space. Look at ${rel(shots[st.step])}${over ? '' : ', and hold the part with words in view with "align", or zoom on a smaller element'}.`);
+    }
+    const notes = [...skipped, ...zoomNotes, ...missed.map((b) => `blur ${b.i + 1} (${b.selector !== undefined ? `selector ${quoted(b.selector)}` : `text ${quoted(b.text)}`}) matched nothing on any page. Check it, or take it out.`)];
     return { name, video: rel(webm), log: rel(json), duration: out.duration, start: out.start, steps: steps.length, width, height, locale, notes,
       matched: steps.filter((st) => st.match).map((st) => ({ step: st.step, do: st.do, ...st.match, ...(shots[st.step] ? { picture: rel(shots[st.step]) } : {}) })),
       ...(Object.keys(shots).length ? { pictures: rel(path.join(dir, 'build', 'record', name)) } : {}) };
@@ -911,28 +919,66 @@ export async function record(dirArg, name, { log = () => {}, keepProfile = false
 const SHOT_SIZE = { w: 480, h: 320 };
 const SHOT_ROOM = 12;
 
+// The part of the video a zoom step shows once it has arrived, in a frame
+// of the video's own shape.
+function zoomView(st, log) {
+  return focusRect(st.box, coverRect(log.width, log.height, log.width / log.height), log.width, log.height, st.scale, st.align);
+}
+
 // The moment of the video that shows what a step found: a click as the
 // pointer gets there, before it presses, typing and a scroll once they are
-// done, a wait once it found its element, a hover and a zoom as they start.
+// done, a wait once it found its element, a zoom once it has arrived, and a
+// hover and a key press as they start.
 function shotTime(st) {
   if (st.do === 'type' || st.do === 'scroll') return st.until ?? st.end;
   if (st.do === 'wait') return st.end;
+  if (st.do === 'zoom') return Math.min(st.end, st.t + ZOOM_SECONDS);
   if (st.do === 'click') return Math.max(st.start, Math.min(st.move?.t1 ?? st.t, st.t - 0.1));
   return st.t;
 }
 
+// How much of a zoom's picture one colour may cover before record warns, and
+// how far a pixel may be from that colour, per channel, to count as it.
+const BLANK_SHARE = 0.985;
+const BLANK_SPREAD = 12;
+
+// Whether almost all of an image is one colour, read at a small size.
+async function oneColour(file) {
+  const { stdout } = await ffmpeg(['-loglevel', 'error', '-i', file, '-vf', 'scale=96:-2:flags=area,format=rgb24', '-f', 'rawvideo', '-'], { binary: true });
+  const n = Math.floor(stdout.length / 3);
+  if (!n) return false;
+  const counts = new Map();
+  for (let i = 0; i < n; i++) {
+    const key = (stdout[i * 3] >> 4) << 8 | (stdout[i * 3 + 1] >> 4) << 4 | stdout[i * 3 + 2] >> 4;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  const top = [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
+  const want = [(top >> 8) * 16 + 8, ((top >> 4) & 15) * 16 + 8, (top & 15) * 16 + 8];
+  let same = 0;
+  for (let i = 0; i < n; i++) {
+    if ([0, 1, 2].every((c) => Math.abs(stdout[i * 3 + c] - want[c]) <= BLANK_SPREAD)) same++;
+  }
+  return same / n >= BLANK_SHARE;
+}
+
 // A small picture of each step's element, cut from the video at shotTime, in
-// `folder`/step-<n>.png. The pictures of an earlier run go first. Returns the
-// files by step number; a picture that fails is left out.
+// `folder`/step-<n>.png. A zoom's picture shows what the zoom shows. The
+// pictures of an earlier run go first. Returns the files by step number, and
+// the zoom steps whose picture is almost all one colour; a picture that fails
+// is left out.
 async function stepShots(video, log, folder) {
   fs.rmSync(folder, { recursive: true, force: true });
   const shots = {};
+  const blank = new Set();
   for (const st of log.steps) {
     if (!st.box || st.before) continue;
-    const x0 = Math.max(0, Math.floor(st.box.x - st.box.w / 2 - SHOT_ROOM));
-    const y0 = Math.max(0, Math.floor(st.box.y - st.box.h / 2 - SHOT_ROOM));
-    const x1 = Math.min(log.width, Math.ceil(st.box.x + st.box.w / 2 + SHOT_ROOM));
-    const y1 = Math.min(log.height, Math.ceil(st.box.y + st.box.h / 2 + SHOT_ROOM));
+    const view = st.do === 'zoom' ? zoomView(st, log) : null;
+    const room = view ? 0 : SHOT_ROOM;
+    const area = view ? { x: view.x + view.w / 2, y: view.y + view.h / 2, w: view.w, h: view.h } : st.box;
+    const x0 = Math.max(0, Math.floor(area.x - area.w / 2 - room));
+    const y0 = Math.max(0, Math.floor(area.y - area.h / 2 - room));
+    const x1 = Math.min(log.width, Math.ceil(area.x + area.w / 2 + room));
+    const y1 = Math.min(log.height, Math.ceil(area.y + area.h / 2 + room));
     const w = x1 - x0;
     const h = y1 - y0;
     if (w < 2 || h < 2) continue;
@@ -942,10 +988,13 @@ async function stepShots(video, log, folder) {
     const at = Math.max(0, Math.min(log.duration - 0.05, shotTime(st)));
     try {
       await ffmpeg(['-loglevel', 'error', '-y', '-ss', String(at), '-i', video, '-frames:v', '1', '-vf', `crop=${w}:${h}:${x0}:${y0},scale=${Math.max(2, Math.round(w * k))}:${Math.max(2, Math.round(h * k))}`, file]);
-      if (fs.existsSync(file)) shots[st.step] = file;
+      if (fs.existsSync(file)) {
+        shots[st.step] = file;
+        if (view && await oneColour(file).catch(() => false)) blank.add(st.step);
+      }
     } catch {}
   }
-  return shots;
+  return { shots, blank };
 }
 
 // --- inspect ---------------------------------------------------------------
