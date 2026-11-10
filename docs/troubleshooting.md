@@ -135,6 +135,9 @@ text. It finds text that is:
 - an arrow whose line runs through a shape or icon that is not one of its
   ends, and an arrow line off the frame, near its edge, outside the content
   area or in the caption band
+- an arrow that points at nothing for a while: it starts from an element
+  that isn't on screen yet, or its tip arrives before the element it points
+  at. Give it the `at` of that element or a later one
 - code that types itself or shows its lines one by one, a terminal, a number
   that counts or text that writes itself, when it isn't all there by the end
   of its scene or by its `out`. It says how much is missing and which option

@@ -351,7 +351,7 @@ export class Stage {
     // that point at it.
     if (this._lastId !== undefined && o.id !== undefined && o.id !== null && String(o.id) === this._lastId) {
       const entry = this._ids.get(this._lastId);
-      if (entry) entry.life = { ...this._lifetime(at, out, o.exit ?? 'fade', o.outDur ?? 0.45), spec: o.out };
+      if (entry) entry.life = { ...this._lifetime(at, out, o.exit ?? 'fade', o.outDur ?? 0.45), spec: o.out, atSpec: o.at };
     }
     this._lastId = undefined;
     if (this.engine.layoutLog && this._pendingBox) {
@@ -1376,6 +1376,18 @@ export class Stage {
     const c = { x: (a.x + b.x) / 2 - dy * bend * 0.5, y: (a.y + b.y) / 2 + dx * bend * 0.5 };
     const d = bend ? quadD([a.x, a.y], [c.x, c.y], [b.x, b.y]) : polyD([[a.x, a.y], [b.x, b.y]]);
     const life = this._life(o, 'arrow', { enter: o.enter ?? 'draw', dur: o.dur ?? 0.7 });
+    // By its id, by the ids of its ends, or by its call and where it runs.
+    const end = (v, p) => (typeof v === 'string' ? `"${v}"` : `${Math.round(p.x)},${Math.round(p.y)}`);
+    const name = o.id !== undefined && o.id !== null ? `the arrow "${o.id}"` : typeof from === 'string' && typeof to === 'string' ? `the arrow from ${end(from, a)} to ${end(to, b)}` : `the ${ordinal(serial)} s.arrow from ${end(from, a)} to ${end(to, b)}`;
+    // For check: when it starts drawing, and when the elements it starts from
+    // and points at come in.
+    const arrows = this.engine.arrowLog;
+    if (arrows && !arrows.has(serial)) {
+      const ends = [[from, 'from'], [to, 'to']].filter(([v]) => typeof v === 'string' && this._ids.get(v)?.life).map(([v, side]) => ({ id: v, side, at: this._ids.get(v).life.at, spec: this._ids.get(v).life.atSpec }));
+      const at = this._lifetime(this.time(o.at ?? 0), Infinity, 'none', 0).at;
+      // Its tip reaches what it points at as it finishes drawing.
+      arrows.set(serial, { name, at, reach: at + (o.dur ?? 0.7) / this.pace, ends });
+    }
     if (this.engine.layoutLog) {
       const xs = [a.x, b.x, c.x];
       const ys = [a.y, b.y, c.y];
@@ -1432,10 +1444,7 @@ export class Stage {
     // check sees the whole line once it is drawn, heads included.
     if (this.engine.drawLog && L > 1 && prog >= 1) {
       const heads = [...(head === 'end' || head === 'both' ? [headAt(L, 1)] : []), ...(head === 'start' || head === 'both' ? [headAt(0.001, -1)] : [])];
-      const end = (v, p) => (typeof v === 'string' ? `"${v}"` : `${Math.round(p.x)},${Math.round(p.y)}`);
       const body = samplePath(d);
-      // By its id, by the ids of its ends, or by its call and where it runs.
-      const name = o.id !== undefined && o.id !== null ? `the arrow "${o.id}"` : typeof from === 'string' && typeof to === 'string' ? `the arrow from ${end(from, a)} to ${end(to, b)}` : `the ${ordinal(serial)} s.arrow from ${end(from, a)} to ${end(to, b)}`;
       this._logStroke('arrow', [...body, ...heads.flatMap((h) => along(h))], this._settled(life), { serial, name, ends: [typeof from === 'string' ? from : null, typeof to === 'string' ? to : null], body: this._designPoints(body), tips: this._designPoints([[a.x, a.y], [b.x, b.y]]) });
     }
     if (o.label) {

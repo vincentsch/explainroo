@@ -622,13 +622,14 @@ export class Engine {
   // check counts it, without the camera.
   shownAt(index, t) {
     const scratch = (this._framedCanvas ??= Object.assign(document.createElement('canvas'), { width: 16, height: 16 }));
-    const saved = { textLog: this.textLog, drawLog: this.drawLog, recorder: this.recorder, revealLog: this.revealLog, markLog: this.markLog, windowLog: this.windowLog };
+    const saved = { textLog: this.textLog, drawLog: this.drawLog, recorder: this.recorder, revealLog: this.revealLog, markLog: this.markLog, windowLog: this.windowLog, arrowLog: this.arrowLog };
     this.textLog = [];
     this.drawLog = drawLog();
     this.recorder = null;
     this.revealLog = null;
     this.markLog = null;
     this.windowLog = null;
+    this.arrowLog = null;
     try {
       this.drawScene(scratch.getContext('2d'), index, t);
       return this.drawLog.shown > 0;
@@ -967,6 +968,8 @@ export class Engine {
       this.markLog = new Map();
       // Code windows and terminals, and when their first line shows.
       this.windowLog = new Map();
+      // Arrows, when they start drawing and when their ends come in.
+      this.arrowLog = new Map();
       const n = Math.ceil(sc.dur / step);
       for (let k = 0; k <= n; k++) {
         const t = Math.min(sc.dur - 0.001, k * step);
@@ -1239,6 +1242,18 @@ export class Engine {
         }
       }
       this.windowLog = null;
+      // An arrow that starts drawing before an element it starts from or points
+      // at has come in, so it points at empty space for a while.
+      if (!broke) {
+        for (const a of this.arrowLog.values()) {
+          for (const e of a.ends) {
+            if (a.at >= sc.dur || !(e.at > (e.side === 'to' ? a.reach : a.at + ARROW_SLACK))) continue;
+            const like = e.spec === undefined ? '' : `, like at: ${typeof e.spec === 'string' ? `'${e.spec}'` : e.spec}`;
+            once(`arrow-early:${sc.id}:${a.name}:${e.id}`, () => add('warn', sc.id, a.at, `${a.name} starts drawing at ${a.at.toFixed(1)}s, but "${e.id}", which it ${e.side === 'to' ? 'points at' : 'starts from'}, comes in at ${e.at.toFixed(1)}s; give the arrow the at of "${e.id}" or a later one${like}`));
+          }
+        }
+      }
+      this.arrowLog = null;
       const emptyStart = !broke && bare !== null && bare > EMPTY_START;
       if (emptyStart) add('hint', sc.id, 0, `the scene shows only its background for the first ${bare.toFixed(1)}s; put something on screen sooner, for example give the first element an earlier at`);
       // The same later in the scene, once everything has left and before the next
@@ -1487,6 +1502,9 @@ const INK_CALLS = new Set(['fill', 'stroke', 'fillRect', 'strokeRect', 'fillText
 const EMPTY_START = 1.5;
 // A mark may stay this long after what it marks has gone, in seconds.
 const MARK_SLACK = 0.3;
+// An arrow may start drawing this many seconds before the element it starts
+// from comes in. The element it points at may come in until its tip arrives.
+const ARROW_SLACK = 0.1;
 // A code window or a terminal may be empty this long before its first line.
 const EMPTY_WINDOW = 1;
 // A short is a tall video of up to this many seconds. Its picture changes at
