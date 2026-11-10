@@ -774,8 +774,18 @@ async function spokenWords(project, only = [], { log, notice }) {
       const key = normWord(w.text);
       const n = (seen.get(key) ?? 0) + 1;
       seen.set(key, n);
-      const cue = bareWord(w.text);
+      // A word shown with a space in it, like "52,50 €" from {52,50 €|…}, is one
+      // word to a cue, which reads its words between spaces.
+      const cue = bareWord(w.text).replace(/\s+/g, '');
       return { text: w.text, start: round(w.start), end: round(w.end), cue: total.get(key) > 1 ? `${cue}#${n}` : cue };
+    });
+    // A token without letters or digits, like "%" in "5 %", shares the cue of the
+    // word or number it follows, or of the next one when it comes first.
+    const named = (w) => /[\p{L}\p{N}]/u.test(bareWord(w.text));
+    words.forEach((w, i) => {
+      if (named(w)) return;
+      const near = words.slice(0, i).reverse().find(named) ?? words.slice(i + 1).find(named);
+      if (near) w.cue = near.cue;
     });
     return { scene: sc.id, start: round(sc.start), duration: round(sc.dur), words, marks: Object.fromEntries(Object.entries(sc.marks).map(([k, v]) => [k, round(v)])) };
   });

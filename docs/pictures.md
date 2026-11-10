@@ -1,7 +1,8 @@
 # What makes the pictures good
 
 - **Show it when it is said.** A picture appears as the voice mentions it.
-  Use word cues.
+  Use word cues. A cue names a word or a number, not a symbol: for "5 %" the
+  cue is `'5'`. `explainroo words` prints the cue of every word.
 - **Something changes every 2 to 4 seconds.** A new element, an arrow or a
   highlight. The camera adds its own moves. `check` points out long stretches
   where nothing new appears.

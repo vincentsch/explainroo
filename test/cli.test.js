@@ -371,6 +371,22 @@ test('words prints each spoken word of a scene with its start time, the cue of a
   assert.match(wrong.err, /there is no scene "middle" in script\.md\. Its scenes are: intro, outro/);
 });
 
+// "%" has no letters or digits, so it takes the cue of the number before it,
+// and never an empty cue or one that looks like a marker. A word shown with a
+// space keeps it out of its cue, which a cue reads as two words.
+test('words gives a symbol the cue of the word or number it follows', async (t) => {
+  const { tinyProject } = await import('./helpers/tiny-project.js');
+  const { cachedVoice } = await import('./helpers/cached-voice.js');
+  const dir = tinyProject(t, { language: 'fr', voice: 'ff_siwis' }, { narrated: false });
+  fs.writeFileSync(path.join(dir, 'script.md'), '# Tiny\n\n## intro\nÀ 5 % par an, puis à 5 %. Soit {52,50 €|cinquante-deux euros cinquante}.\n');
+  cachedVoice(dir, 'intro');
+  const json = JSON.parse((await runAll(['words', dir, '--json'])).out);
+  const cues = json.scenes[0].words.map((w) => [w.text, w.cue]);
+  assert.deepEqual(cues, [['À', 'À#1'], ['5', '5#1'], ['%', '5#1'], ['par', 'par'], ['an,', 'an'], ['puis', 'puis'], ['à', 'à#2'], ['5', '5#2'], ['%.', '5#2'], ['Soit', 'Soit'], ['52,50 €.', '52,50€']]);
+  assert.ok(json.scenes[0].words.every((w) => w.cue && !w.cue.startsWith('#')));
+  assert.match((await runAll(['words', dir])).out, /^ {3}\d\.\d\d {2}%\. {2}\(cue "5#2"\)$/m);
+});
+
 test('--platform on check, still, sheet and render takes the size and the watermark rule its package uses', async (t) => {
   const { tinyProject } = await import('./helpers/tiny-project.js');
   const dir = tinyProject(t, { size: '16:9', sizes: { tiktok: { captions: false } } }, { narrated: false });
