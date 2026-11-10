@@ -114,7 +114,9 @@ text. It finds text that is:
   outside is fine. A shape's own text, text in its group and `overlap: true`
   don't count
 - crossed by the line of an arrow or of a mark from `s.annotate`
-- cut at the edge of the frame by the camera while the shot holds still
+- cut at the edge of the frame by the camera while the shot holds still,
+  the words of charts too. For a table of texts in rows and columns, a held
+  shot that shows some rows without the header counts as cut. Keep that scene still with `s.camera([])`
 
 ## What else check finds
 
@@ -135,6 +137,9 @@ text. It finds text that is:
 - an arrow whose line runs through a shape or icon that is not one of its
   ends, and an arrow line off the frame, near its edge, outside the content
   area or in the caption band
+- an arrow that points at nothing for a while: it starts from an element
+  that isn't on screen yet, or its tip arrives before the element it points
+  at. Give it the `at` of that element or a later one
 - code that types itself or shows its lines one by one, a terminal, a number
   that counts or text that writes itself, when it isn't all there by the end
   of its scene or by its `out`. It says how much is missing and which option

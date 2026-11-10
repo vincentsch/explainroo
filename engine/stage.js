@@ -2,7 +2,7 @@
 // draws the whole frame from scratch as a function of the scene time `s.t`.
 // Elements take `at` (when they appear) and optional `out` (when they leave);
 // the theme decides how they enter, and entering elements add sound effects.
-import { clamp, lerp, ease, easeFn, rand01, noise1, hashStr, mulberry32, suggest, normWord, withAlpha, contrast, mixColor, opaque, newDefaults, ordinal } from './util.js';
+import { clamp, lerp, ease, easeFn, rand01, noise1, hashStr, mulberry32, suggest, normWord, withAlpha, contrast, mixColor, opaque, newDefaults, ordinal, LOCALES } from './util.js';
 import { colorOf, tintOf, fontString } from './themes.js';
 import { scalePath, quadD, polyD, pathLength, pointAt, parsePath, absolutize, samplePath } from './pathdata.js';
 import { layoutText, lineStartX } from './text.js';
@@ -351,7 +351,7 @@ export class Stage {
     // that point at it.
     if (this._lastId !== undefined && o.id !== undefined && o.id !== null && String(o.id) === this._lastId) {
       const entry = this._ids.get(this._lastId);
-      if (entry) entry.life = { ...this._lifetime(at, out, o.exit ?? 'fade', o.outDur ?? 0.45), spec: o.out };
+      if (entry) entry.life = { ...this._lifetime(at, out, o.exit ?? 'fade', o.outDur ?? 0.45), spec: o.out, atSpec: o.at };
     }
     this._lastId = undefined;
     if (this.engine.layoutLog && this._pendingBox) {
@@ -1379,6 +1379,18 @@ export class Stage {
     const c = { x: (a.x + b.x) / 2 - dy * bend * 0.5, y: (a.y + b.y) / 2 + dx * bend * 0.5 };
     const d = bend ? quadD([a.x, a.y], [c.x, c.y], [b.x, b.y]) : polyD([[a.x, a.y], [b.x, b.y]]);
     const life = this._life(o, 'arrow', { enter: o.enter ?? 'draw', dur: o.dur ?? 0.7 });
+    // By its id, by the ids of its ends, or by its call and where it runs.
+    const end = (v, p) => (typeof v === 'string' ? `"${v}"` : `${Math.round(p.x)},${Math.round(p.y)}`);
+    const name = o.id !== undefined && o.id !== null ? `the arrow "${o.id}"` : typeof from === 'string' && typeof to === 'string' ? `the arrow from ${end(from, a)} to ${end(to, b)}` : `the ${ordinal(serial)} s.arrow from ${end(from, a)} to ${end(to, b)}`;
+    // For check: when it starts drawing, and when the elements it starts from
+    // and points at come in.
+    const arrows = this.engine.arrowLog;
+    if (arrows && !arrows.has(serial)) {
+      const ends = [[from, 'from'], [to, 'to']].filter(([v]) => typeof v === 'string' && this._ids.get(v)?.life).map(([v, side]) => ({ id: v, side, at: this._ids.get(v).life.at, spec: this._ids.get(v).life.atSpec }));
+      const at = this._lifetime(this.time(o.at ?? 0), Infinity, 'none', 0).at;
+      // Its tip reaches what it points at as it finishes drawing.
+      arrows.set(serial, { name, at, reach: at + (o.dur ?? 0.7) / this.pace, ends });
+    }
     if (this.engine.layoutLog) {
       const xs = [a.x, b.x, c.x];
       const ys = [a.y, b.y, c.y];
@@ -1435,10 +1447,7 @@ export class Stage {
     // check sees the whole line once it is drawn, heads included.
     if (this.engine.drawLog && L > 1 && prog >= 1) {
       const heads = [...(head === 'end' || head === 'both' ? [headAt(L, 1)] : []), ...(head === 'start' || head === 'both' ? [headAt(0.001, -1)] : [])];
-      const end = (v, p) => (typeof v === 'string' ? `"${v}"` : `${Math.round(p.x)},${Math.round(p.y)}`);
       const body = samplePath(d);
-      // By its id, by the ids of its ends, or by its call and where it runs.
-      const name = o.id !== undefined && o.id !== null ? `the arrow "${o.id}"` : typeof from === 'string' && typeof to === 'string' ? `the arrow from ${end(from, a)} to ${end(to, b)}` : `the ${ordinal(serial)} s.arrow from ${end(from, a)} to ${end(to, b)}`;
       this._logStroke('arrow', [...body, ...heads.flatMap((h) => along(h))], this._settled(life), { serial, name, ends: [typeof from === 'string' ? from : null, typeof to === 'string' ? to : null], body: this._designPoints(body), tips: this._designPoints([[a.x, a.y], [b.x, b.y]]) });
     }
     if (o.label) {
@@ -2111,13 +2120,33 @@ export class Stage {
     });
     const cp = ease.out(clamp((this.t - at) / dur));
     const v = lerp(from, value, cp);
-    const fmt = (n) => {
-      const s = Math.abs(n).toFixed(decimals);
-      const [int, dec] = s.split('.');
-      const grouped = o.group === false ? int : int.replace(/\B(?=(\d{3})+(?!\d))/g, o.separator ?? ',');
-      return (n < 0 ? '-' : '') + grouped + (dec ? '.' + dec : '');
-    };
-    const str = `${o.prefix ?? ''}${fmt(v)}${o.suffix ?? ''}`;
+    // With "defaults": "0.6" the number is written the way the video's
+    // language writes it, like 1 050 and 52,50 in French, and `locale` asks
+    // for another. A unit in suffix or prefix then stays with the number, as
+    // its space doesn't break.
+    const locale = o.locale ?? (this._v6 ? LOCALES[this.lang] ?? this.lang : null);
+    let fmt;
+    let prefix = o.prefix ?? '';
+    let suffix = o.suffix ?? '';
+    if (locale) {
+      let nf;
+      try {
+        nf = new Intl.NumberFormat(locale, { minimumFractionDigits: decimals, maximumFractionDigits: decimals, useGrouping: o.group !== false });
+      } catch {
+        throw new SceneError(`number: locale "${locale}" is not a language tag; use one like "fr-FR" or "de-DE"`);
+      }
+      fmt = (n) => nf.formatToParts(n).map((part) => (part.type === 'group' && o.separator !== undefined ? o.separator : part.value)).join('');
+      prefix = String(prefix).replace(/ $/, '\u00a0');
+      suffix = String(suffix).replace(/^ /, '\u00a0');
+    } else {
+      fmt = (n) => {
+        const s = Math.abs(n).toFixed(decimals);
+        const [int, dec] = s.split('.');
+        const grouped = o.group === false ? int : int.replace(/\B(?=(\d{3})+(?!\d))/g, o.separator ?? ',');
+        return (n < 0 ? '-' : '') + grouped + (dec ? '.' + dec : '');
+      };
+    }
+    const str = `${prefix}${fmt(v)}${suffix}`;
     const counting = cp < 1 ? { name: `the number counting to ${value}`, doing: 'still counting' } : null;
     return this._text(str, { font: 'display', size: 150, color: o.color ?? 'accent', ...o, at, sfx: null, enter: o.enter ?? th.enter.number ?? 'fade', dur: o.enterDur ?? 0.4, id: o.id, _counting: counting }, 'number');
   }
@@ -2192,6 +2221,8 @@ export class Stage {
           const val = (o.format ?? ((v) => (Number.isInteger(v) ? String(Math.round(v)) : v.toFixed(1))))(d.value * g);
           const txt = `${o.prefix ?? ''}${val}${o.suffix ?? ''}`;
           ctx.fillText(txt, cx, base - bh * g - 12);
+          const vw = ctx.measureText(txt).width;
+          this._logText({ text: txt, x0: cx - vw / 2, y0: base - bh * g - 12 - vs, x1: cx + vw / 2, y1: base - bh * g - 12, size: vs, fg: ctx.fillStyle, bg: null, settled: g >= 1 && this._settled(axisLife) });
           ctx.restore();
         }
       }
@@ -2213,68 +2244,115 @@ export class Stage {
     return geom(x, y, w, h);
   }
 
+  // values: one array of numbers, or several series that share one scale, as
+  // { 'Name': [...] } or [{ label, values, color }]. Each of several series
+  // gets its label at the end of its line.
   lineChart(values, o = {}) {
     const th = this.theme;
     const ctx = this.ctx;
+    const many = !(Array.isArray(values) && values.every((v) => typeof v === 'number'));
+    const series = many ? chartSeries(values).map((d, i) => ({ ...d, color: d.color ?? palette(th, i) })) : [{ values, color: o.color ?? 'accent' }];
     const x = o.x ?? this.cx;
     const y = o.y ?? this.cy;
     const w = o.w ?? this._w(0.6);
     const h = o.h ?? (this.platform ? this.safe.h * 0.44 : this.H * 0.44);
-    const lo = o.min ?? Math.min(0, ...values);
-    const hi = o.max ?? Math.max(...values) * 1.1;
-    const pts = values.map((v, i) => [x - w / 2 + (w * i) / Math.max(1, values.length - 1), y + h / 2 - ((v - lo) / (hi - lo || 1)) * h]);
+    const all = series.flatMap((d) => d.values);
+    const lo = o.min ?? Math.min(0, ...all);
+    const hi = o.max ?? Math.max(...all) * 1.1;
+    const count = Math.max(...series.map((d) => d.values.length));
+    const place = (list) => list.map((v, i) => [x - w / 2 + (w * i) / Math.max(1, count - 1), y + h / 2 - ((v - lo) / (hi - lo || 1)) * h]);
+    series.forEach((d) => { d.pts = place(d.values); });
+    const ls = o.labelSize ?? (this._v6 ? SCALE.axis : 30);
+    // The names at the ends of the lines, moved apart so none touches another.
+    const ns = SCALE.label;
+    const nameFont = fontString(th, 'body', ns, BOLD.body);
+    const names = many ? endLabels(series, ns * 1.2).map((n) => ({ ...n, x: n.end[0] + 18 + (o.dots === false ? 0 : 9) })) : [];
+    const axisLabels = (o.labels ?? []).slice(0, count).map((l, i) => ({ text: String(l), x: x - w / 2 + (w * i) / Math.max(1, count - 1), y: y + h / 2 + 14 }));
     this._register(o.id, x, y, w, h);
     if (this.engine.layoutLog) {
       // The ends of the axes, the dots and the labels under the axis count
       // for the camera, not for arrows.
       const pad = 12 + th.stroke.width * 1.3;
       const around = this._designBox(x, y, w + pad * 2, h + pad * 2);
-      const ls = o.labelSize ?? (this._v6 ? SCALE.axis : 30);
-      const text = o.labels && this._textExtent(o.labels.slice(0, pts.length).map((l, i) => ({ text: String(l), x: pts[i][0], y: y + h / 2 + 14, font: fontString(th, 'body', ls), base: 'top' })));
+      const text = this._textExtent([
+        ...axisLabels.map((l) => ({ ...l, font: fontString(th, 'body', ls), base: 'top' })),
+        ...names.map((n) => ({ text: n.text, x: n.x, y: n.y, font: nameFont, align: 'left' })),
+      ]);
       this._pendingExtra = text ? unionBox(around, text) : around;
     }
     const life = this._life(o, 'chart', { enter: 'draw', dur: o.dur ?? 1.6 });
     if (!life) return geom(x, y, w, h);
     ctx.save();
     ctx.globalAlpha *= life.q > 0 ? 1 - ease.in(life.q) : 1;
-    const color = colorOf(th, o.color ?? 'accent');
     const p = ease.inOut(life.p);
     this.pen.draw(ctx, { kind: 'poly', points: [[x - w / 2, y - h / 2 - 10], [x - w / 2, y + h / 2], [x + w / 2 + 10, y + h / 2]] }, { stroke: colorOf(th, 'muted'), width: th.stroke.width * 0.7, seed: this._seed('axes', o), single: true }, { stroke: clamp(p * 3), fill: 1 });
-    if (o.area !== false) {
-      ctx.save();
-      ctx.globalAlpha *= clamp((life.p - 0.6) / 0.4) * 0.9;
-      ctx.beginPath();
-      ctx.moveTo(pts[0][0], y + h / 2);
-      pts.forEach((pt) => ctx.lineTo(pt[0], pt[1]));
-      ctx.lineTo(pts[pts.length - 1][0], y + h / 2);
-      ctx.closePath();
-      const gr = ctx.createLinearGradient(0, y - h / 2, 0, y + h / 2);
-      gr.addColorStop(0, withAlpha(color, 0.35));
-      gr.addColorStop(1, withAlpha(color, 0));
-      ctx.fillStyle = gr;
-      ctx.fill();
-      ctx.restore();
-    }
-    this.pen.draw(ctx, { kind: 'poly', points: pts }, { stroke: color, width: o.width ?? th.stroke.width * 1.3, seed: this._seed('series', o), single: true, glow: th.stroke.glow ?? 0 }, { stroke: p, fill: 1 });
-    if (o.dots !== false) {
-      pts.forEach((pt, i) => {
-        const k = clamp((p - i / Math.max(1, pts.length - 1)) * 6);
-        if (k <= 0) return;
+    // Several lines get no area under them unless area: true, so one doesn't
+    // hide another.
+    if (many ? o.area === true : o.area !== false) {
+      for (const d of series) {
+        const color = colorOf(th, d.color);
         ctx.save();
-        ctx.translate(pt[0], pt[1]);
-        ctx.scale(ease.outBack(k), ease.outBack(k));
-        this.pen.draw(ctx, { kind: 'ellipse', w: 18, h: 18 }, { fill: color, stroke: th.bg, width: 3, seed: i + 3, fillStyle: 'solid', rough: false }, { stroke: 1, fill: 1 });
+        ctx.globalAlpha *= clamp((life.p - 0.6) / 0.4) * 0.9;
+        ctx.beginPath();
+        ctx.moveTo(d.pts[0][0], y + h / 2);
+        d.pts.forEach((pt) => ctx.lineTo(pt[0], pt[1]));
+        ctx.lineTo(d.pts[d.pts.length - 1][0], y + h / 2);
+        ctx.closePath();
+        const gr = ctx.createLinearGradient(0, y - h / 2, 0, y + h / 2);
+        gr.addColorStop(0, withAlpha(color, many ? 0.2 : 0.35));
+        gr.addColorStop(1, withAlpha(color, 0));
+        ctx.fillStyle = gr;
+        ctx.fill();
         ctx.restore();
+      }
+    }
+    series.forEach((d, k) => {
+      const color = colorOf(th, d.color);
+      this.pen.draw(ctx, { kind: 'poly', points: d.pts }, { stroke: color, width: o.width ?? th.stroke.width * 1.3, seed: this._seed('series', o) + (many ? k : 0), single: true, glow: th.stroke.glow ?? 0 }, { stroke: p, fill: 1 });
+    });
+    if (o.dots !== false) {
+      series.forEach((d) => {
+        const color = colorOf(th, d.color);
+        d.pts.forEach((pt, i) => {
+          const k = clamp((p - i / Math.max(1, count - 1)) * 6);
+          if (k <= 0) return;
+          ctx.save();
+          ctx.translate(pt[0], pt[1]);
+          ctx.scale(ease.outBack(k), ease.outBack(k));
+          this.pen.draw(ctx, { kind: 'ellipse', w: 18, h: 18 }, { fill: color, stroke: th.bg, width: 3, seed: i + 3, fillStyle: 'solid', rough: false }, { stroke: 1, fill: 1 });
+          ctx.restore();
+        });
       });
     }
-    if (o.labels) {
-      ctx.font = fontString(th, 'body', o.labelSize ?? (this._v6 ? SCALE.axis : 30));
+    // check reads the chart's words like any text, so a held shot that cuts
+    // them, small or faint ones are found.
+    const settled = this._settled(life);
+    if (axisLabels.length) {
+      ctx.font = fontString(th, 'body', ls);
       ctx.fillStyle = colorOf(th, 'muted');
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
-      o.labels.forEach((l, i) => {
-        if (i < pts.length) ctx.fillText(String(l), pts[i][0], y + h / 2 + 14);
-      });
+      for (const l of axisLabels) {
+        if (!l.text) continue;
+        ctx.fillText(l.text, l.x, l.y);
+        const lw = ctx.measureText(l.text).width;
+        this._logText({ text: l.text, x0: l.x - lw / 2, y0: l.y, x1: l.x + lw / 2, y1: l.y + ls, size: ls, fg: ctx.fillStyle, bg: null, settled });
+      }
+    }
+    const shown = clamp((life.p - 0.85) / 0.15);
+    if (names.length && shown > 0) {
+      ctx.save();
+      ctx.globalAlpha *= shown;
+      ctx.font = nameFont;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      for (const n of names) {
+        ctx.fillStyle = colorOf(th, n.color);
+        ctx.fillText(n.text, n.x, n.y);
+        const nw = ctx.measureText(n.text).width;
+        this._logText({ text: n.text, x0: n.x, y0: n.y - ns / 2, x1: n.x + nw, y1: n.y + ns / 2, size: ns, fg: ctx.fillStyle, bg: null, settled: settled && shown >= 1 });
+      }
+      ctx.restore();
     }
     ctx.restore();
     return geom(x, y, w, h);
@@ -2330,7 +2408,11 @@ export class Stage {
           ctx.fillStyle = colorOf(th, 'ink');
           ctx.textAlign = Math.cos(mid) > 0.2 ? 'left' : Math.cos(mid) < -0.2 ? 'right' : 'center';
           ctx.textBaseline = 'middle';
-          ctx.fillText(txt, Math.cos(mid) * lr, Math.sin(mid) * lr);
+          const [lx, ly] = [Math.cos(mid) * lr, Math.sin(mid) * lr];
+          ctx.fillText(txt, lx, ly);
+          const lw = ctx.measureText(txt).width;
+          const x0 = ctx.textAlign === 'left' ? lx : ctx.textAlign === 'right' ? lx - lw : lx - lw / 2;
+          this._logText({ text: txt, x0, y0: ly - ls / 2, x1: x0 + lw, y1: ly + ls / 2, size: ls, fg: ctx.fillStyle, bg: null, settled: this._settled(life) });
         }
       }
       a0 += full;
@@ -2695,6 +2777,10 @@ export class Stage {
         cursor = { x: left, y: top + row * lh, typing: false };
       }
     }
+    // cursor: false shows no cursor. With "defaults": "0.6" a terminal whose
+    // last line is output has no empty prompt line under it once it is shown.
+    const last = timed[timed.length - 1];
+    if (o.cursor === false || (this._v6 && last && last.cmd === undefined && this.t >= last.start)) cursor = null;
     if (cursor && (cursor.typing || Math.floor(this.T * 2) % 2 === 0)) {
       ctx.fillStyle = T.fg;
       ctx.globalAlpha *= 0.85;
@@ -2790,6 +2876,43 @@ function palette(th, i) {
   const order = [th.accent, 'blue', 'green', 'yellow', 'purple', 'orange', 'teal', 'pink', 'red'];
   const uniq = [...new Set(order)];
   return uniq[i % uniq.length];
+}
+
+// The series of a line chart: { 'Name': [...] } or [{ label, values, color }].
+function chartSeries(values) {
+  const list = Array.isArray(values) ? values : values && typeof values === 'object' ? Object.entries(values).map(([label, v]) => ({ label, values: v })) : null;
+  if (!list?.length) throw new SceneError("lineChart: give it an array of numbers, or several series like { 'Compound': [...], 'Simple': [...] } or [{ label, values, color }]");
+  return list.map((d, i) => {
+    if (!d || !Array.isArray(d.values) || !d.values.length || !d.values.every((v) => typeof v === 'number' && Number.isFinite(v))) {
+      throw new SceneError(`lineChart: series ${d?.label !== undefined ? `"${d.label}"` : i + 1} needs values, an array of numbers`);
+    }
+    return { label: d.label === undefined ? '' : String(d.label), values: d.values, color: d.color };
+  });
+}
+
+// Where the names at the ends of several lines go: beside each line's last
+// point, moved up or down until every two are `gap` apart, and as close to
+// their lines as that allows.
+function endLabels(series, gap) {
+  const labels = series.filter((d) => d.label).map((d) => ({ text: d.label, color: d.color, end: d.pts[d.pts.length - 1], y: d.pts[d.pts.length - 1][1] }));
+  labels.sort((a, b) => a.y - b.y);
+  // Runs of labels that would touch move as one block, centered on their lines.
+  const blocks = labels.map((l) => ({ items: [l], want: l.y }));
+  for (let merged = true; merged;) {
+    merged = false;
+    for (let i = 0; i + 1 < blocks.length; i++) {
+      const [a, b] = [blocks[i], blocks[i + 1]];
+      const top = (bl) => bl.want - ((bl.items.length - 1) * gap) / 2;
+      if (top(a) + a.items.length * gap > top(b)) {
+        const items = [...a.items, ...b.items];
+        blocks.splice(i, 2, { items, want: items.reduce((sum, l) => sum + l.end[1], 0) / items.length });
+        merged = true;
+        break;
+      }
+    }
+  }
+  for (const bl of blocks) bl.items.forEach((l, i) => { l.y = bl.want - ((bl.items.length - 1) * gap) / 2 + i * gap; });
+  return labels;
 }
 
 function wedgeD(r, hole, a0, a1) {

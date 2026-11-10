@@ -485,3 +485,31 @@ test('with captions on, check gives a hint for screen text that shows four or mo
   // Bold captions show up to four words at a time, here "It is free and".
   assert.equal(hints(await check(project(t, { size: 'tiktok', captions: 'bold' }, { outro: "s.text('It is free and', { y: s.cy, at: 0 });" }, { words }))).length, 1);
 });
+
+test('check warns when an arrow starts drawing before an element it points at or starts from has come in, and names both and the times', { skip }, async (t) => {
+  const issues = await check(project(t, {}, {
+    early: `s.icon('piggy-bank', { id: 'pig', x: 500, y: 540, at: 0 });
+    s.icon('calendar', { id: 'cal', x: 1400, y: 540, at: 1.5 });
+    s.arrow('pig', 'cal', { label: '5% a year', at: 0.5 });`,
+    from: `s.box('Later', { id: 'later', x: 500, y: 540, at: 1 });
+    s.box('Now', { id: 'now', x: 1400, y: 540, at: 0 });
+    s.arrow('later', 'now', { id: 'link', at: 0.2 });`,
+    // On time, a target that comes in while the arrow draws toward it, a
+    // start a frame early and a point end.
+    fine: `s.box('A', { id: 'a', x: 500, y: 540, at: 0.5 });
+    s.box('B', { id: 'b', x: 1400, y: 540, at: 1 });
+    s.arrow('a', 'b', { at: 1 });
+    s.arrow('a', 'b', { at: 0.6, bend: -0.4 });
+    s.arrow('a', [1400, 900], { at: 0.5 });
+    s.arrow('b', 'a', { at: 0.95, bend: 0.4 });`,
+    // A long draw gives the target longer.
+    slow: `s.box('A', { id: 'a', x: 500, y: 540, at: 0 });
+    s.box('B', { id: 'b', x: 1400, y: 540, at: 1.4 });
+    s.arrow('a', 'b', { at: 0.2, dur: 1.5 });`,
+  }));
+  const early = issues.filter((i) => i.message.includes('starts drawing'));
+  assert.deepEqual(early.map((i) => [i.level, i.scene, i.t, i.message]), [
+    ['warn', 'early', 0.5, 'the arrow from "pig" to "cal" starts drawing at 0.5s, but "cal", which it points at, comes in at 1.5s; give the arrow the at of "cal" or a later one, like at: 1.5'],
+    ['warn', 'from', 0.2, 'the arrow "link" starts drawing at 0.2s, but "later", which it starts from, comes in at 1.0s; give the arrow the at of "later" or a later one, like at: 1'],
+  ]);
+});

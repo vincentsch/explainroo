@@ -14,7 +14,7 @@ import { cacheRoot } from './models.js';
 import { ffmpeg, probe } from './ffmpeg.js';
 import { selfCommand } from './history.js';
 import { dropClipFrames } from './clips.js';
-import { ease, suggest } from '../engine/util.js';
+import { LOCALES, ease, suggest } from '../engine/util.js';
 import { ZOOM_ALIGNS, ZOOM_SECONDS, ZOOM_SCALES, coverRect, focusRect } from '../engine/recording.js';
 
 export const STEP_KINDS = ['open', 'click', 'type', 'press', 'hover', 'scroll', 'wait', 'zoom', 'mark'];
@@ -48,7 +48,7 @@ const CPS_RANGE = [2, 60];
 const PACES = [0.5, 2];
 // The language the browser asks sites for, from the project's language. A
 // script's "locale" sets another one.
-export const LOCALES = { en: 'en-US', es: 'es-ES', fr: 'fr-FR', it: 'it-IT', 'pt-br': 'pt-BR', hi: 'hi-IN', ja: 'ja-JP', zh: 'zh-CN', de: 'de-DE' };
+export { LOCALES };
 export const DEFAULT_LOCALE = LOCALES.en;
 export const isLocale = (v) => typeof v === 'string' && /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(v);
 

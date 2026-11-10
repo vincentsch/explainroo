@@ -622,13 +622,14 @@ export class Engine {
   // check counts it, without the camera.
   shownAt(index, t) {
     const scratch = (this._framedCanvas ??= Object.assign(document.createElement('canvas'), { width: 16, height: 16 }));
-    const saved = { textLog: this.textLog, drawLog: this.drawLog, recorder: this.recorder, revealLog: this.revealLog, markLog: this.markLog, windowLog: this.windowLog };
+    const saved = { textLog: this.textLog, drawLog: this.drawLog, recorder: this.recorder, revealLog: this.revealLog, markLog: this.markLog, windowLog: this.windowLog, arrowLog: this.arrowLog };
     this.textLog = [];
     this.drawLog = drawLog();
     this.recorder = null;
     this.revealLog = null;
     this.markLog = null;
     this.windowLog = null;
+    this.arrowLog = null;
     try {
       this.drawScene(scratch.getContext('2d'), index, t);
       return this.drawLog.shown > 0;
@@ -976,6 +977,8 @@ export class Engine {
       this.markLog = new Map();
       // Code windows and terminals, and when their first line shows.
       this.windowLog = new Map();
+      // Arrows, when they start drawing and when their ends come in.
+      this.arrowLog = new Map();
       const n = Math.ceil(sc.dur / step);
       for (let k = 0; k <= n; k++) {
         const t = Math.min(sc.dur - 0.001, k * step);
@@ -1124,6 +1127,13 @@ export class Engine {
               });
             }
           }
+          // A table of texts, which the shot shows only in part: some rows
+          // without the header, or some columns without the others.
+          if (held && filmed.texts.length === laid.texts.length) {
+            for (const f of cutTables(laid.texts, filmed.texts, onScreen, inFrame)) {
+              once(`table:${sc.id}:${f.key}`, () => add('warn', sc.id, t, `the camera shows only part of the table with "${short(f.shown)}" while it holds still: ${f.out} ${f.count > 1 ? 'are' : 'is'} out of the shot; keep this scene still with s.camera([]), or point the camera with s.focus`));
+            }
+          }
           if (held && filmed.draw.shapes.length === laid.draw.shapes.length) {
             laid.draw.shapes.forEach((sh, i) => {
               const shot = filmed.draw.shapes[i];
@@ -1259,6 +1269,18 @@ export class Engine {
         }
       }
       this.windowLog = null;
+      // An arrow that starts drawing before an element it starts from or points
+      // at has come in, so it points at empty space for a while.
+      if (!broke) {
+        for (const a of this.arrowLog.values()) {
+          for (const e of a.ends) {
+            if (a.at >= sc.dur || !(e.at > (e.side === 'to' ? a.reach : a.at + ARROW_SLACK))) continue;
+            const like = e.spec === undefined ? '' : `, like at: ${typeof e.spec === 'string' ? `'${e.spec}'` : e.spec}`;
+            once(`arrow-early:${sc.id}:${a.name}:${e.id}`, () => add('warn', sc.id, a.at, `${a.name} starts drawing at ${a.at.toFixed(1)}s, but "${e.id}", which it ${e.side === 'to' ? 'points at' : 'starts from'}, comes in at ${e.at.toFixed(1)}s; give the arrow the at of "${e.id}" or a later one${like}`));
+          }
+        }
+      }
+      this.arrowLog = null;
       const emptyStart = !broke && bare !== null && bare > EMPTY_START;
       if (emptyStart) add('hint', sc.id, 0, `the scene shows only its background for the first ${bare.toFixed(1)}s; put something on screen sooner, for example give the first element an earlier at`);
       // The same later in the scene, once everything has left and before the next
@@ -1533,6 +1555,70 @@ function edgeMessage(name, b, { W, H, margin, app, band, format, safe }, { edge 
   return null;
 }
 
+// Texts on their own, not on a box or as an arrow's label, that line up in
+// rows and columns, at least two of each with two texts or more, make a
+// table. A shot that shows part of a column and leaves the rest of it out,
+// or cuts it, cuts the table. Each finding names a text the shot shows, the
+// texts of those columns it leaves out from the top left, and a key for the
+// table.
+function cutTables(laid, filmed, onScreen, inFrame) {
+  const free = [];
+  laid.forEach((tx, i) => {
+    if (tx.alpha > 0.95 && tx.settled && !tx.block && !tx.ui && !tx.shape && tx.owner === null && !tx.partial && String(tx.text).trim() && inFrame(tx)) free.push({ tx, shot: filmed[i] });
+  });
+  const mid = (a, b) => Math.abs((a.y0 + a.y1) / 2 - (b.y0 + b.y1) / 2) <= Math.min(a.y1 - a.y0, b.y1 - b.y0) * 0.2;
+  const near = (u, v) => Math.abs(u - v) <= 3;
+  const column = (a, b) => near((a.x0 + a.x1) / 2, (b.x0 + b.x1) / 2) || near(a.x0, b.x0) || near(a.x1, b.x1);
+  // A cell shares its row with another text and its column with another, so
+  // a title centered over the table is no part of it.
+  const cells = free.filter((c) => free.some((d) => d !== c && mid(c.tx, d.tx)) && free.some((d) => d !== c && column(c.tx, d.tx)));
+  // Tables are the groups of cells linked by a shared row or column.
+  const parent = cells.map((_, i) => i);
+  const root = (i) => (parent[i] === i ? i : (parent[i] = root(parent[i])));
+  for (let i = 0; i < cells.length; i++) {
+    for (let j = i + 1; j < cells.length; j++) {
+      if (mid(cells[i].tx, cells[j].tx) || column(cells[i].tx, cells[j].tx)) parent[root(i)] = root(j);
+    }
+  }
+  const tables = new Map();
+  cells.forEach((cell, i) => {
+    const k = root(i);
+    if (!tables.has(k)) tables.set(k, []);
+    tables.get(k).push(cell);
+  });
+  const found = [];
+  for (const list of tables.values()) {
+    // Two rows of two or more, and two columns of two or more.
+    const lines = (same) => {
+      const groups = [];
+      for (const c of list) {
+        const g = groups.find((x) => same(x[0].tx, c.tx));
+        if (g) g.push(c);
+        else groups.push([c]);
+      }
+      return groups.filter((g) => g.length >= 2);
+    };
+    const columns = lines(column);
+    if (lines(mid).length < 2 || columns.length < 2) continue;
+    // A column the shot splits, like rows without their header. A close-up
+    // of whole columns, like one side of a comparison, is fine.
+    const split = columns.filter((g) => g.some((c) => onScreen(c.shot)) && g.some((c) => !inFrame(c.shot)));
+    if (!split.length) continue;
+    const order = (a, b) => a.tx.y0 - b.tx.y0 || a.tx.x0 - b.tx.x0;
+    const left = [...new Set(split.flat().filter((c) => !inFrame(c.shot)))].sort(order);
+    const shown = split.flat().filter((c) => inFrame(c.shot)).sort(order);
+    const names = left.slice(0, 2).map((c) => `"${String(c.tx.text).slice(0, 30)}"`);
+    const more = left.length - names.length;
+    found.push({
+      key: [...list].sort(order)[0].tx.text,
+      shown: (shown[0] ?? split.flat().filter((c) => onScreen(c.shot)).sort(order)[0]).tx.text,
+      out: more > 0 ? `${names.join(', ')} and ${more} more` : names.join(' and '),
+      count: left.length,
+    });
+  }
+  return found;
+}
+
 // The canvas calls that put something on it.
 const INK_CALLS = new Set(['fill', 'stroke', 'fillRect', 'strokeRect', 'fillText', 'strokeText', 'drawImage']);
 
@@ -1540,6 +1626,9 @@ const INK_CALLS = new Set(['fill', 'stroke', 'fillRect', 'strokeRect', 'fillText
 const EMPTY_START = 1.5;
 // A mark may stay this long after what it marks has gone, in seconds.
 const MARK_SLACK = 0.3;
+// An arrow may start drawing this many seconds before the element it starts
+// from comes in. The element it points at may come in until its tip arrives.
+const ARROW_SLACK = 0.1;
 // A code window or a terminal may be empty this long before its first line.
 const EMPTY_WINDOW = 1;
 // A short is a tall video of up to this many seconds. Its picture changes at

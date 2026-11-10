@@ -80,7 +80,7 @@ works wherever a time goes: `at`, `out`, `s.time`, `s.cue` and `s.cueEnd`.
 Only digits after the last `#` count, so `'C#'` stays a word and `'#ask'`
 stays a marker.
 
-An easing sets how a movement speeds up and slows down. The easing names are
+The easing names are
 `linear`, `in`, `out`, `inOut`, `outBack`, `outElastic`, `outQuart` and
 `inOutSine`. `s.ease.out(p)`, `s.lerp(a, b, p)` and `s.clamp(v, lo, hi)` are
 there for your own math.
@@ -160,14 +160,13 @@ s.math(String.raw`\int_0^1 x^2\,dx = \tfrac{1}{3}`, { x: 960, y: 700, size: 72, 
 `size` (72), `color` (ink), `align` (`center` or `left`, where x is the left
 edge), `display` (true for display style), and the common element options.
 It returns a box like text. Its `id` works with arrows and `s.annotate`.
-In `paper`, `chalk` and `blueprint`, the outlines draw first, then fill in.
-Other looks use their text entrance. You can also use `fade`, `pop` or `rise`.
+It enters like the look's text, or with `fade`, `pop` or `rise`. In `paper`,
+`chalk` and `blueprint` its outlines draw first.
 
 Double each backslash in a regular JS string, for example `'\\frac{1}{2}'`.
 `String.raw` keeps backslashes as written, as in the second example above.
 Only fixed TeX strings work. Always call `s.math`, and use `at` and `out` for
 timing. `check` reports formulas that change with `s.t` or appear only later.
-Formulas are typeset on this computer and cached in `build/math/`.
 
 ## Shapes and arrows
 
@@ -206,19 +205,14 @@ one to the left; at 1 its middle moves a quarter of its length), `head`
 (the handwritten font by default; `'body'` suits `clean`), `labelOffset`,
 `labelSide`, `gap`, `dashed`, `width`, `headSize`. `s.connect` does the same.
 `gap` is the space in pixels between each end of the arrow and what it points
-at: from the edge of an element (14 by default), and from a point, where it
-is 0 unless you set it. So `gap: 20` between two points leaves 20 pixels free
-at both ends.
+at: 14 from the edge of an element, and 0 from a point unless you set it.
 
 A label sits above a straight arrow, left of a vertical one and on the outer
 side of a curve, `labelOffset` away from the arrow's middle. Its size and
 offset depend on the `"defaults"` line, which `explainroo docs settings`
 explains.
 `labelSide: 'left'`, `'right'`, `'above'` or `'below'` puts it on that side
-instead. The third arrow above is vertical, and its label goes to the right,
-for example because the left side is near the edge or full. `check` treats
-the label as text. So it finds a label that overlaps other text or runs off
-the frame, the same way it does for any text.
+instead, like the third arrow above. `check` treats the label as text.
 
 ## Icons, images and video clips
 
@@ -252,9 +246,9 @@ s.clip('assets/signup.mp4', { w: 1200, frame: 'browser', url: 'app.example.com',
 s.clip('assets/demo.mov', { x: 1400, y: 540, h: 600, from: 12.5, speed: 1.5, at: '#demo', out: 9 });
 ```
 
-Like an image, a clip has no frame by default, and it gets the look's
-shadow, rounded corners and entrance for images. `shadow: false`,
-`radius: 0` and `enter: 'none'` turn these off.
+Like an image, a clip has no frame by default and gets the look's shadow,
+corners and entrance. `shadow: false`, `radius: 0` and `enter: 'none'` turn
+these off.
 
 - `full: true` fills the whole frame, edge to edge, for a clip behind the
   whole scene. It has no frame, shadow, corners or entrance, and it ignores
@@ -332,13 +326,18 @@ s.pie([{ label: 'Images', value: 55 }, { label: 'Other', value: 45 }], { donut: 
   `enter`.
 - `s.number(value, options)` counts up with ticking sounds. Options: `from`,
   `dur` (1.4), `prefix`, `suffix`, `decimals`, `separator`, `group: false`,
-  plus the text options.
+  `locale` (like `'de-DE'`), plus the text options. With `"defaults": "0.6"`
+  it writes the number as the video's language does, like `1 050` in French,
+  and keeps a unit in `suffix: ' €'` with it.
+- In charts, `x`, `y` is the center of the plot and `w`, `h` its size.
 - `s.bars(data, options)`: items are `{ label, value, color, at }`. A bar
   with its own `at` grows when that word is spoken. Options: `x`, `y`, `w`,
   `h`, `max`, `stagger`, `growDur`, `values: false`, `prefix`, `suffix`,
   `format(v)`, `labelSize`, `valueSize`, `fillStyle`.
-- `s.lineChart(values, options)`: `x`, `y`, `w`, `h`, `min`, `max`,
-  `labels`, `dots: false`, `area: false`, `color`, `dur`.
+- `s.lineChart(values, options)`: numbers, or several lines on one scale as
+  `{ Compound: [...], Simple: [...] }` or `[{ label, values, color }]`, each
+  named at its end in the look's colors. Options: `x`, `y`, `w`, `h`, `min`,
+  `max`, `labels`, `dots: false`, `area` (on for one line), `color`, `dur`.
 - `s.pie(data, options)`: `x`, `y`, `r`, `donut` (0 to 0.8), `labels: false`,
   `labelOffset`, `dur`.
 
@@ -378,8 +377,9 @@ line count. `check` checks the lines of every step.
 typed as commands. Other lines are output. A line can also be `{ cmd, at }`
 or `{ out, at, color }`. `{ cmd }` adds the prompt itself, so write
 `{ cmd: 'npm test' }`, not `'$ npm test'`. Options: `w`, `size`, `rows`,
-`title`, `prompt`, `cps` (22), `outputDelay`, `lineGap`. With `"defaults":
-"0.5"`, a terminal without an `at` of its own comes in with its first line,
+`title`, `prompt`, `cps` (22), `outputDelay`, `lineGap`, `cursor: false`.
+With `"defaults": "0.6"`, no cursor waits under output that ends the
+terminal. With `"defaults": "0.5"`, a terminal without an `at` of its own comes in with its first line,
 like code with steps. `check` warns about a window that is empty for more
 than a second, and about a command that starts with the prompt.
 
@@ -443,8 +443,7 @@ and the swipe of `s.ui.wipe` count as their entrance sounds too. `"sfx": "minima
 `s.sfx(name, at, { gain, dur, pitch })` adds a sound: `pop`, `click`,
 `whoosh`, `swipe`, `tick`, `type`, `ding`, `chime`, `thud`, `scribble`,
 `chalk`, `rise`, `sparkle`, `blip`, `error`. `dur` sets the length of `type`,
-`scribble`, `chalk` and `rise` (`rise` ends at `at + dur`). The music is made
-to fit the video, and it gets quieter while the voice speaks.
+`scribble`, `chalk` and `rise` (`rise` ends at `at + dur`).
 
 `s.sound('assets/door.mp3', { at, out, volume })` plays your own file on a cue,
 lowered under the voice. `"sfx": false` doesn't silence it.
@@ -456,6 +455,7 @@ For product demos in a brand's own colors and fonts, run
 
 Color names: `accent`, `ink`, `muted`, `bg`, `surface`, `red`, `orange`,
 `yellow`, `green`, `teal`, `blue`, `purple`, `pink`, `gray`. Each look has its
-own version of each color, so scenes keep working when you change the look.
-`s.color(name)` returns the CSS color and `s.tint(name)` the light fill. The
+own version of each color.
+`s.color(c)` takes a color name or any CSS color, like `'#c2410c'`, and
+returns the CSS color. `s.tint(c)` gives the light fill. The
 font roles are `display`, `body`, `hand` and `mono`.

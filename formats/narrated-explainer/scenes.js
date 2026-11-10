@@ -19,7 +19,7 @@ export default {
     const solid = s.portrait ? { x: b.cx, y: b.y + b.h * 0.75 } : { x: b.x + b.w * 0.73, y: b.cy };
     const box = u * 34;
     s.box('', { id: 'water', x: liquid.x, y: liquid.y, w: box, h: box, color: 'blue', at: '#move', overlap: true });
-    s.box('', { id: 'ice', x: solid.x, y: solid.y, w: box, h: box, color: 'teal', at: '#lattice', overlap: true });
+    s.box('', { id: 'ice', x: solid.x, y: solid.y, w: box, h: box, color: 'teal', at: '#freeze', overlap: true });
     s.draw({ at: '#move', box: { x: liquid.x, y: liquid.y, w: box, h: box } }, (ctx) => {
       ctx.fillStyle = '#1c7ed6';
       for (let i = 0; i < 24; i++) {
