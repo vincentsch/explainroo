@@ -44,6 +44,8 @@ export const SCROLL_SECONDS = 1;
 // How many characters a second a type step types at pace 1, and the range a
 // step's cps may take.
 export const TYPE_CPS = 14;
+// The milliseconds between two keys of a type step.
+export const keyDelay = (step, pace = 1) => 1000 / ((step.cps ?? TYPE_CPS) * pace);
 const CPS_RANGE = [2, 60];
 const PACES = [0.5, 2];
 // The language the browser asks sites for, from the project's language. A
@@ -778,7 +780,7 @@ export async function record(dirArg, name, { log = () => {}, keepProfile = false
             await sleep(250);
             entry.t = round(now());
             // The script's pace makes typing faster or slower too.
-            await page.keyboard.type(step.value, { delay: 1000 / ((step.cps ?? TYPE_CPS) * script.pace) });
+            await page.keyboard.type(step.value, { delay: keyDelay(step, script.pace) });
             if (step.press) {
               await sleep(250);
               await page.keyboard.press(step.press).catch((e) => fail(step, n, `can't press ${quoted(step.press)}: ${e.message.split('\n')[0]}. Key names are like Enter, Tab, Escape or ArrowDown.`));

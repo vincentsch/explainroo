@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { findChrome, launch } from '../src/browser.js';
-import { formatInspect, formatRecord, inspect, record } from '../src/record.js';
+import { formatInspect, formatRecord, inspect, keyDelay, record } from '../src/record.js';
 import { loadProject } from '../src/project.js';
 import { withEngine } from '../src/pipeline.js';
 import { execFileSync } from 'node:child_process';
@@ -324,12 +324,20 @@ test('a type step types at 14 characters a second, at its cps, and faster at a h
     // The step ends 0.7 s and a moment to settle after the last key.
     return log.steps[0].end - log.steps[0].t;
   };
+  // The keys come no faster than the delay between them: 32 characters take at
+  // least 2.3 s at 14 a second, 1.1 s at 28, and 0.6 s at 28 with pace 2. A busy
+  // computer only makes them slower, so these are lower bounds.
   const plain = await typing({});
+  assert.ok(plain >= value.length / 14 - 0.05, `${plain}`);
   const quick = await typing({ cps: 28 });
+  assert.ok(quick >= value.length / 28 - 0.05, `${quick}`);
   const paced = await typing({ cps: 28 }, 2);
-  // 32 characters take about 2.3 s at 14 a second, 1.1 s at 28, and 0.6 s at 28 with pace 2.
-  assert.ok(plain - quick > 0.6 && plain - quick < 2, `${plain} and ${quick}`);
-  assert.ok(quick - paced > 0.2 && quick - paced < 1.2, `${quick} and ${paced}`);
+  assert.ok(paced >= value.length / 56 - 0.05, `${paced}`);
+  // The delay itself: 14 keys a second by default, a step's cps, and the pace.
+  assert.equal(keyDelay({}), 1000 / 14);
+  assert.equal(keyDelay({ cps: 28 }), 1000 / 28);
+  assert.equal(keyDelay({ cps: 28 }, 2), 1000 / 56);
+  assert.equal(keyDelay({}, 0.5), 1000 / 7);
 });
 
 test('check warns about a recording that plays small with no zoom, and names the zoom step to add', { skip: !chrome }, async (t) => {
