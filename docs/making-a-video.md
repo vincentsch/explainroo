@@ -56,8 +56,9 @@ user. Read it first.
    video. When there are more than two, they only count them, and `--verbose`
    lists them. No fix is needed unless one sounds wrong when you listen at its
    time. The hint names a `"heard"` line, like `"heard": {"sine": ["sign"]}`,
-   with every form the word was heard as in that run. With it in
-   `video.json`, `check` and `verify` stop naming the word.
+   with every form the word was heard as in that run and the ones
+   `video.json` already has. With it in `video.json`, `check` and `verify`
+   stop naming the word.
    Before it makes the narration, `voice` prints how long the video will be
    about.
    Only the scenes you changed are made again. `check`, `still`, `sheet`,

@@ -162,6 +162,11 @@ test('a word the narration alone confirmed and the mix heard as a close form is 
   // "Brooli" sounded the same, and its line for "heard" has both forms too.
   assert.deepEqual(r.speech.nearly.map((n) => n.heard), ['Brooli']);
   assert.match(formatVerify(r), /narration understood: \d+%, 1 word sounded the same: Brewly at 2\.\d s \(heard "Brooli"\)\. .*"heard": \{"Brewly": \["Brooli", "Brugley"\]\}\n/);
+  assert.deepEqual(r.speech.heard, { Brewly: ['Brooli', 'Brugley'] });
+  // The forms already in "heard" stay in the line, after those of the run.
+  fs.writeFileSync(path.join(project.dir, 'video.json'), JSON.stringify({ size: '320x180', fps: 24, music: { volume: 0.35 }, heard: { Brewly: ['Bruelly'] } }));
+  const given = await verify(loadProject(project.dir), { transcribe: says(mix) });
+  assert.match(given.issues.find((i) => i.level === 'hint' && /Brugley/.test(i.message)).message, /"heard": \{"Brewly": \["Brugley", "Brooli", "Bruelly"\]\}$/);
   // With the line in video.json, verify names "Brewly" no more.
   fs.writeFileSync(path.join(project.dir, 'video.json'), JSON.stringify({ size: '320x180', fps: 24, music: { volume: 0.35 }, heard: { Brewly: ['Brugley', 'Brooli'] } }));
   const after = await verify(loadProject(project.dir), { transcribe: says(mix) });

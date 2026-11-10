@@ -241,7 +241,8 @@ function withForms(word, heard, forms) {
 }
 
 // Every form each word was heard as in a run: where the check didn't confirm
-// it, and where it only nearly matched. `lists` holds lists of { word, heard }.
+// it, and where it only nearly matched, and then the forms that "heard" in
+// video.json has for it. `lists` holds lists of { word, heard }.
 // A map from the word, by normWord, to its forms in the order they came.
 export function heardForms(...lists) {
   const forms = new Map();
@@ -254,6 +255,12 @@ export function heardForms(...lists) {
     forms.set(key, have);
   }
   return forms;
+}
+
+// The forms of "heard" in video.json as [{ word, heard }], for heardForms(),
+// so a line for "heard" keeps them next to the forms heard in a run.
+export function givenForms(accept) {
+  return Object.entries(accept ?? {}).flatMap(([word, list]) => list.map((heard) => ({ word, heard })));
 }
 
 // What each scene's check heard where it didn't confirm a word or only nearly
@@ -536,7 +543,7 @@ export async function synthesize(project, { force = false, fresh = false, log = 
   const finish = () => {
     for (const id of Object.keys(result)) result[id] = withHeard(result[id], config.language, project.heard);
     if (heardAgain.length) {
-      const forms = heardForms(...Object.values(result).map((info) => sceneHeard(info, config.language)));
+      const forms = heardForms(...Object.values(result).map((info) => sceneHeard(info, config.language)), givenForms(project.heard));
       for (const { id, twice } of heardAgain) notice(`voice ${id}: ${heardLine(twice, forms)}`);
     }
     return result;

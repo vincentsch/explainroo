@@ -10,7 +10,7 @@ import { alignSpeech, bareWord, editDistance, expand, nearList, similar } from '
 import { signWords } from './math-words.js';
 import { hasPhonemizer } from './phonemes.js';
 import { normWord } from './script.js';
-import { heardEntry, heardForms, heardInstead, heardQuote, readVoice, sameHeard, sceneHeard, withHeard } from './voice.js';
+import { givenForms, heardEntry, heardForms, heardInstead, heardQuote, readVoice, sameHeard, sceneHeard, withHeard } from './voice.js';
 import { estimateLength, targetNotes } from './timeline.js';
 import { buildChapters, chapterHints, youtubeFrame } from './chapters.js';
 import { coverTime } from './render.js';
@@ -415,7 +415,7 @@ export function speechFindings(project, voices, timeline = null) {
   const recording = project.config.voice.provider === 'recording';
   const every = recording ? new Map() : heardEveryTime(project, voices);
   // Every form each word was heard as, in all scenes, for the line for "heard".
-  const forms = heardForms(...project.script.scenes.map((sc) => sceneHeard(voices[sc.id], project.config.language)));
+  const forms = heardForms(...project.script.scenes.map((sc) => sceneHeard(voices[sc.id], project.config.language)), givenForms(project.heard));
   for (const sc of project.script.scenes) {
     const v = voices[sc.id];
     const suspicious = v ? v.unmatched.filter((w) => w.replace(/[^\p{L}\p{M}\p{N}]/gu, '').length > 3) : [];
@@ -692,7 +692,10 @@ export async function verify(project, { file = null, report: reportFile = null, 
     // number or an amount heard wrong changes the meaning, so it stays a warning.
     const close = speech.unconfirmed.filter((u) => u.mix && u.heard && soundsClose(u.word, u.heard) && !amountWord(u.word, project.config.language));
     const missed = speech.unconfirmed.filter((u) => !close.includes(u));
-    if (close.length) issues.push({ level: 'hint', message: closeText(close, heardForms(speech.nearly, speech.unconfirmed)) });
+    // Every form each word was heard as in the mix, then the forms of "heard".
+    const forms = heardForms(speech.nearly, speech.unconfirmed, givenForms(project.heard));
+    speech.heard = formsOf([...speech.nearly, ...speech.unconfirmed], forms);
+    if (close.length) issues.push({ level: 'hint', message: closeText(close, forms) });
     if (missed.length) issues.push({ level: 'warn', message: unconfirmedText(missed) + mixAdvice(missed, project.config.music, project.config.language) });
     if (speech.matchRate < 0.85) issues.push({ level: 'warn', message: `only ${Math.round(speech.matchRate * 100)}% of the script was understood in the final mix; ${canLower(project.config.music) ? 'lower music.volume or check pronunciation' : 'listen to it and check pronunciation'}` });
     fs.rmSync(wav, { force: true });
@@ -818,7 +821,7 @@ export function verdictOf(issues) {
 // only nearly matched, each finding, and the verdict last.
 export function formatVerify(r, { verbose = false } = {}) {
   // The line for "heard" has every form each word was heard as in the mix.
-  const forms = r.speech ? heardForms(r.speech.nearly ?? [], r.speech.unconfirmed ?? []) : null;
+  const forms = r.speech?.heard ? new Map(Object.entries(r.speech.heard).map(([word, list]) => [normWord(word), list])) : null;
   const nearly = r.speech?.nearly?.length ? `, ${nearlyLine(r.speech.nearly, verbose, true, forms)}` : '';
   return [
     `${r.file}: ${r.duration}s, ${r.video ? `${r.video.width}x${r.video.height}` : 'no video'}, loudness ${r.loudness?.integrated ?? '?'} LUFS, true peak ${dbtp(r.loudness?.truePeak)}`,
