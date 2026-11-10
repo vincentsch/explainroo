@@ -27,7 +27,7 @@ https://github.com/user-attachments/assets/6dd5dc32-c975-4e0e-8cd4-2ef3ccc11e61
 
 ## News
 
-- **(draft)** explainroo 0.6 records your real app with `explainroo record`, and a scene plays that recording with a cursor and zooms. New projects start in the studio look. `check` and `verify` work on any video file, and `cut` edits your own recording by its words. Formats are ready ways to make one kind of video, and `explainroo formats` now lists them. The list of sizes moved to `explainroo sizes`.
+- **Nov 10, 2026**: [explainroo 0.6](https://www.explainroo.com/news/explainroo-0-6/) records your real app with `explainroo record`, and a scene plays that recording with a pointer and zooms that land on the narration. New projects start in the studio look, and formats give one kind of video a ready shape. `check` and `verify` work on any video file, and `cut` edits your own recording by its words. The list of sizes moved to `explainroo sizes`.
 - **Nov 9, 2026**: [explainroo 0.5](https://www.explainroo.com/news/explainroo-0-5/) runs with npx, so you don't have to clone it. It can also use outside services on your own key, like AI video clips and posting to your channels. German narration works with a paid voice or your own recording. A project made before keeps its look, frame for frame, until you add `"defaults": "0.5"` to its `video.json`, which brings the new look, like bigger arrow labels.
 - **Oct 20, 2026**: [explainroo 0.4.1](https://www.explainroo.com/news/explainroo-0-4-1/) keeps arrow and chart labels whole while a shot holds.
 - **Oct 15, 2026**: [explainroo 0.4](https://www.explainroo.com/news/explainroo-0-4/) films each scene with a camera that follows the narration.
