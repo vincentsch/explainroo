@@ -74,3 +74,37 @@ test('vertical-short draws pictures below the captions, and keeps its words insi
   for (let i = 0; i < before.length; i++) if (Math.abs(before[i] - after[i]) > 12) changed++;
   assert.ok(changed / before.length > 0.05, `only ${changed} of ${before.length} pixels below the captions changed`);
 });
+
+test('vertical-short keeps the hook title clear of the watermark at its punch, and fact() clear of the hook picture', { skip }, async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-format-hook-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const hook = {
+    // A two-line title with a kicker leaves little room under it at the
+    // zoom, and fact() at its own place still finds the band left for it.
+    kicker: `s.camera(punch(s, '#dies', { zoom: 1.15 }));
+    hookFrame(s, 'Come le api fanno il *miele*', { icon: 'flower-2', color: 'yellow', kicker: 'Natura' });
+    fact(s, '*< 1 g* a vita', { at: '#twenty' });`,
+    // Without a kicker, the title is placed in the part of s.safe the zoom keeps.
+    plain: `s.camera(punch(s, '#dies', { zoom: 1.15 }));
+    hookFrame(s, 'Come le api fanno il *miele*', { icon: 'flower-2', color: 'yellow' });
+    fact(s, '*< 1 g* a vita', { at: '#twenty' });`,
+    // A punch after the title zooms in no further than keeps it in s.safe.
+    late: `hookFrame(s, 'Come le api fanno il *miele*', { icon: 'flower-2', color: 'yellow' });
+    s.camera(punch(s, '#dies', { zoom: 1.4 }));
+    fact(s, '*< 1 g* a vita', { at: '#twenty' });`,
+  };
+  for (const [name, body] of Object.entries(hook)) {
+    const dir = path.join(root, name);
+    assert.equal((await runCli(['init', dir, '--format', 'vertical-short', '--size', 'shorts'])).code, 0);
+    const file = path.join(dir, 'scenes.js');
+    const scenes = fs.readFileSync(file, 'utf8').replace(/ {2}hook\(s\) \{[\s\S]*?\n {2}\},/, `  hook(s) {\n    ${body}\n  },`);
+    assert.match(scenes, /< 1 g/);
+    fs.writeFileSync(file, scenes);
+    for (const scene of loadProject(dir).script.scenes) cachedVoice(dir, scene.id);
+    const { issues } = JSON.parse((await runCli(['check', dir, '--json'])).stdout);
+    const hookIssues = issues.filter((i) => i.scene === 'hook' && (i.level === 'warn' || i.level === 'error'));
+    const order = issues.filter((i) => /s\.camera comes after/.test(i.message));
+    assert.deepEqual(hookIssues, [], `${name}: ${JSON.stringify(hookIssues, null, 2)}`);
+    assert.equal(order.length, name === 'late' ? 1 : 0, name);
+  }
+});

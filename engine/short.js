@@ -431,7 +431,9 @@ export class Short {
     const s = this.s;
     const v6 = s._v6;
     const style = o.style ?? 'slab';
-    const width = o.width ?? s.safe.w;
+    // With "defaults": "0.6", the title stays in `area`, s.safe by default.
+    const area = o.area ?? s.safe;
+    const width = o.width ?? (v6 ? area.w : s.safe.w);
     const maxLines = o.maxLines ?? 2;
     let size = o.size ?? (s.H > s.W ? 104 : 88);
     const minSize = o.minSize ?? 56;
@@ -460,11 +462,10 @@ export class Short {
       // With "defaults": "0.6", the kicker stays inside s.safe, below the
       // strip the watermark takes. When it would go above that, the kicker and
       // the title move down together.
-      const area = o.area ?? s.safe;
       const kh = kickerSize * 1.75;
       const above = o.kicker && o.kickerY === undefined ? kh + 14 : 0;
       y = o.y ?? area.top + (above ? 8 + above : 18) + blockH / 2;
-      if (above) y = Math.max(y, area.top + 8 + above + blockH / 2);
+      y = Math.max(y, area.top + (above ? 8 + above : 0) + blockH / 2);
       kickerY = o.kickerY ?? y - blockH / 2 - 14 - kh / 2;
     } else {
       y = o.y ?? s.safe.top + (o.kicker ? 64 : 0) + blockH / 2 + 18;
