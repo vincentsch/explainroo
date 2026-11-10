@@ -258,7 +258,7 @@ test('every command prints its own usage, options and one example with --help', 
   assert.deepEqual(cases.filter((c) => !Object.hasOwn(COMMAND_HELP, c)), [], 'every command has help');
   const still = await runAll(['still', '--help']);
   assert.equal(still.code, 0);
-  assert.match(still.out, /^Usage: explainroo still \[project\] \[time…\] \[options\]\n\nWrites PNG stills/);
+  assert.match(still.out, /^Usage: explainroo still \[project\] \[time…\] \[options\], or still <video\.mp4> \[seconds…\]\n\nWrites PNG stills/);
   assert.match(still.out, /^ {2}--platform <name> {2}the size, its block in "sizes" and the watermark rule that "package --platform <name>" uses$/m);
   assert.match(still.out, /^Example:\n {2}explainroo still videos\/how-dns-works intro@2\.4 resolver@end\n$/m);
   assert.equal((await runAll(['help', 'still'])).out, still.out);
@@ -315,7 +315,7 @@ test('a command that takes a fixed number of words stops on one more, and sheet 
   const render = await run(['render', dir, 'final']);
   assert.equal(render.code, 1);
   assert.equal(render.err, 'error: render takes one project, so it would ignore "final". Usage: explainroo render [project] [options]\n');
-  assert.match((await run(['sheet', dir, 'intro', 'outro'])).err, /^error: sheet takes a project and a scene, so it would ignore "outro"\. Usage: explainroo sheet \[project\] \[scene\] \[options\]\n$/);
+  assert.match((await run(['sheet', dir, 'intro', 'outro'])).err, /^error: sheet takes a project and a scene, so it would ignore "outro"\. Usage: explainroo sheet \[project\] \[scene\] \[options\], or sheet <video\.mp4> \[options\]\n$/);
   assert.match((await run(['themes', 'dark', 'light'])).err, /^error: themes takes no words, so it would ignore "dark" and "light"\./);
   assert.match((await run(['verify', dir, 'twice'])).err, /verify takes one project or one video file/);
   assert.match((await run(['init', path.join(dir, 'a'), 'b'])).err, /init takes one folder, so it would ignore "b"/);

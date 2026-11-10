@@ -16,8 +16,8 @@ project.
 | `voice [project]` | makes the narration and the word times, saved per scene so only changed scenes are made again (`--estimate` prints how long the video will be about and makes nothing, `--force` makes every scene again, `--new` buys again only paid sentences with no good answer, `--size` makes the narration of a size whose block in `"sizes"` sets its own pace, `--lang`) |
 | `words [project] [scenes]` | prints each spoken word of the scenes you name, like `words videos/x hook tip`, or of every scene, with its start time in seconds into the scene, and the markers. A word spoken more than once shows its cue, like `fills#2` (`--size`, `--lang`, `--json`) |
 | `preview [project]` | a live preview in the browser that reloads when you save (`--size`, `--no-watermark`) |
-| `still [project] [times]` | PNG pictures at `12.5`, `scene`, `scene@2.4` or `scene@end` (`--size`, `--platform`, `--no-watermark`, `--transparent` keeps alpha). A still caught while the camera moves, or while something draws itself in, says so next to its file |
-| `sheet [project] [scene]` | one image with many frames of the video, or of one scene as `out/sheet-<scene>.jpg` (`--every`, `--size`, `--platform`, `--no-watermark`). `--large` makes frames 640 pixels wide, 3 to a row. A frame caught while the camera moves, or while something draws itself in, has "camera moving" or "drawing in" under it. `--times 3,12.5,intro@2` makes `out/sheet-times.jpg` of just those moments, in that order. It takes every time that `still` takes. With `--size tiktok` the file is `out/sheet-times-tiktok.jpg` |
+| `still [project] [times]` | PNG pictures at `12.5`, `scene`, `scene@2.4` or `scene@end` (`--size`, `--platform`, `--no-watermark`, `--transparent` keeps alpha). A still caught while the camera moves, or while something draws itself in, says so next to its file. `still <video> 3 12.5` takes any video file, with times in seconds (see "Checking any video") |
+| `sheet [project] [scene]` | one image with many frames of the video, or of one scene as `out/sheet-<scene>.jpg` (`--every`, `--size`, `--platform`, `--no-watermark`). `--large` makes frames 640 pixels wide, 3 to a row. A frame caught while the camera moves, or while something draws itself in, has "camera moving" or "drawing in" under it. `--times 3,12.5,intro@2` makes `out/sheet-times.jpg` of just those moments, in that order. It takes every time that `still` takes. With `--size tiktok` the file is `out/sheet-times-tiktok.jpg`. `sheet <video>` takes any video file |
 | `check [project]` | finds layout, timing and pronunciation problems (`--size`, `--platform`, `--no-watermark`). With more than two words that only nearly matched, it names them without their times, and `--verbose` adds the times. `--json` always has them all. `check <video.mp4>` checks any video file instead, see below |
 | `render [project]` | the video plus subtitle files, chapters and a cover (`--format mp4`, `gif`, `webm` or `mov`, `--transparent`, `--size`, `--platform`, `--no-watermark`, `--draft`, `--quality final` or `fast`, `--from`, `--to`, `--workers`, `--out`). Its last line says how long it took before the first frame, for the frames and after them, and a step that takes longer than 2 seconds says what it is |
 | `verify [project]` | checks the finished MP4, WebM or MOV: loudness, true peak, black frames, silence, clear voice (`--file` picks another file). With `--platform`, `--size` or `--no-watermark` it checks the file that `render` wrote with the same flags. With more than two words that only nearly matched, it names them, and `--verbose` adds their times. The last line says "passed", "passed with N warnings" or "failed: N problems". `verify <video.mp4>` checks any video file, like `check <video.mp4>` |
@@ -104,3 +104,10 @@ A `script.md` of explainroo works too. Add `--language es` for another language.
 ```bash
 explainroo check talk.mp4 --script script.txt
 ```
+
+`still` and `sheet` take a video file too, with times in seconds:
+`still talk.mp4 3 12.5` writes `talk.stills/t3.00.png` and `t12.50.png`, and
+without times the start, the middle and the end. `sheet talk.mp4` writes
+`talk.sheet.jpg`, a frame every few seconds with its time under it. It takes
+`--every`, `--times 3,12.5`, which writes `talk.sheet-times.jpg`, `--cols` and
+`--large`.

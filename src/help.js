@@ -46,14 +46,14 @@ export const COMMAND_HELP = {
     example: 'preview videos/how-dns-works',
   },
   still: {
-    usage: 'still [project] [time…] [options]',
-    about: 'Writes PNG stills of moments of the video. A time is seconds ("12.5"), a scene ("intro") or a moment in a scene ("intro@2.4", "intro@end"). Without times it takes the end of every scene.',
+    usage: 'still [project] [time…] [options], or still <video.mp4> [seconds…]',
+    about: 'Writes PNG stills of moments of the video. A time is seconds ("12.5"), a scene ("intro") or a moment in a scene ("intro@2.4", "intro@end"). Without times it takes the end of every scene. With a video file in place of the project, it takes times in seconds and writes the stills to <name>.stills/ next to the video, and without times the start, the middle and the end.',
     options: [SIZE, PLATFORM, WATERMARK, ['--transparent', 'a transparent background'], ['--scale <n>', 'smaller stills, like 0.5'], LANG, JSON_OUT],
     example: 'still videos/how-dns-works intro@2.4 resolver@end',
   },
   sheet: {
-    usage: 'sheet [project] [scene] [options]',
-    about: 'Writes a contact sheet of the whole video, or of one scene, as a JPEG. The sheet of a scene is out/sheet-<scene>.jpg.',
+    usage: 'sheet [project] [scene] [options], or sheet <video.mp4> [options]',
+    about: 'Writes a contact sheet of the whole video, or of one scene, as a JPEG. The sheet of a scene is out/sheet-<scene>.jpg. With a video file in place of the project, like a cut of your own recording, it writes <name>.sheet.jpg next to it, and takes --every, --times in seconds, --cols and --large.',
     options: [['--scene <id>', 'one scene, the same as naming it after the project'], ['--every <s>', 'seconds between frames'], ['--times <list>', 'only these moments, like 3,12.5,intro@2'], ['--cols <n>', 'frames in a row'], ['--large', 'frames 640 pixels wide, 3 to a row, to read labels'], SIZE, PLATFORM, WATERMARK, LANG, JSON_OUT],
     example: 'sheet videos/how-dns-works intro',
   },

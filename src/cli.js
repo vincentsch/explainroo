@@ -39,6 +39,7 @@ import { formatPublish, publish } from './publish.js';
 import { COMMAND_HELP, commandFlags, commandHelp } from './help.js';
 import { checkVideo, formatVideoCheck, isVideoFile, VIDEO_FILE } from './video-check.js';
 import { applyCut, formatCut, writeCut } from './cut.js';
+import { videoSheet, videoStills } from './video-frames.js';
 import { LIKENESS_FLAGS, avatarList, consentRule, formatAvatars, formatPresenter, makePresenter } from './presenter.js';
 import { addFormat, addPlan, findFormat, formatAdded, formatEntry, formatList, formatPlan, listFormats, startFromFormat } from './formats.js';
 
@@ -65,11 +66,12 @@ Make a video
   words [project] [scenes]  each spoken word of the scenes named, or of all, with its start time, for choosing cues
   preview [project]     live preview in your browser, reloads on save (--port, --size, --no-watermark)
   still [project] [t…]  PNG stills: "12.5", "scene", "scene@2.4" (default: end of every scene; --size,
-                        --no-watermark, --transparent)
+                        --no-watermark, --transparent). still <video.mp4> 3 12.5 takes any video file,
+                        with times in seconds, and writes <name>.stills/
   sheet [project] [scene]  contact sheet of the whole video, or of one scene as out/sheet-<scene>.jpg
                         (--every s, --size, --no-watermark).
                         --times 3,12.5,intro@2 makes out/sheet-times.jpg of just those moments, written
-                        like the times of still
+                        like the times of still. sheet <video.mp4> takes any video file and writes <name>.sheet.jpg
   check [project]       find layout, timing and pronunciation problems (--view-width pixels, --size, --no-watermark).
                         check <video.mp4> checks any video file: blank, frozen and silent stretches, loudness,
                         true peak and text too small to read (--script file compares the speech with it)
@@ -364,6 +366,12 @@ export async function main(argv) {
       }
       case 'preview': return await preview(pos[0], flags, log);
       case 'still': {
+        if (videoArg(pos[0])) {
+          frameFlags('still', flags, []);
+          const list = await videoStills(pos[0], pos.slice(1), { log });
+          print(list.map((x) => `${x.label.padEnd(24)} ${x.file}`).join('\n'), { stills: list });
+          return 0;
+        }
         const isProject = pos[0] && fs.existsSync(path.join(pos[0], 'video.json'));
         const { project } = runProject(isProject ? pos.shift() : undefined, flags);
         const list = await stills(project, pos, { log, scale: num(flags.scale, 'scale') ?? 1, transparent: !!flags.transparent });
@@ -371,6 +379,13 @@ export async function main(argv) {
         return 0;
       }
       case 'sheet': {
+        if (videoArg(pos[0])) {
+          if (pos.length > 1) throw new ProjectError(`a video file has no scenes, so sheet takes only the video. Pick moments with --times, like: explainroo sheet ${pos[0]} --times 3,12.5`);
+          frameFlags('sheet', flags, ['every', 'times', 'cols', 'large']);
+          const r = await videoSheet(pos[0], { every: num(flags.every, 'every'), times: timesFlag(flags), cols: num(flags.cols, 'cols'), large: !!flags.large, log });
+          print(`${r.file} (${r.frames} frames)`, r);
+          return 0;
+        }
         // sheet <project> <scene> is the sheet of that scene, the same as --scene.
         // One word is the project, unless the current folder is one and the word isn't.
         const isProject = pos.length === 2 || !fs.existsSync('video.json') || (pos[0] && fs.existsSync(path.join(pos[0], 'video.json')));
@@ -725,6 +740,12 @@ function videoOnly(cmd, flags, names) {
   const flag = names.find((f) => flags[f] !== undefined);
   const example = { script: 'script.txt', language: 'es', 'view-width': '400', step: '2' };
   if (flag) throw new ProjectError(`--${flag} is for a video file, like: explainroo ${cmd} video.mp4 --${flag} ${example[flag]}. With a project, ${cmd} uses the project's own script and settings.`);
+}
+
+// still and sheet of a video file take only the flags that don't need a project.
+function frameFlags(cmd, flags, names) {
+  const other = Object.keys(flags).find((flag) => !names.includes(flag) && !['json', 'quiet'].includes(flag));
+  if (other) throw new ProjectError(`--${other} works with a project. For a video file, ${cmd} takes ${names.length ? allOf(names.map((f) => `--${f}`)) : 'times in seconds'}.`);
 }
 
 // check and verify of any video file: the same findings, read from the file.

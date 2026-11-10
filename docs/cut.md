@@ -79,11 +79,17 @@ explainroo cut talk.mp4 --apply --dry-run
 It reports the joins, the new length and the words it didn't hear, the same way,
 and writes no file.
 
-Then check the cut like any other video:
+Then check the cut like any other video, and look at its picture:
 
 ```bash
 explainroo verify talk.cut.mp4
+explainroo sheet talk.cut.mp4
 ```
+
+`verify` checks the sound and finds black or frozen stretches, but it can't
+tell whether the picture is the right one. `sheet` writes `talk.cut.sheet.jpg`,
+a frame every few seconds with its time, so open it and look. `still
+talk.cut.mp4 4.5` writes the frame at 4.5 seconds, to see a join up close.
 
 For a video that isn't an explainroo project, small text is only a hint. Text
 in your recording, like a clock or a terminal, may be fine where it is.
