@@ -255,7 +255,9 @@ A thin bar above the content area that fills over the whole video. `x`,
 The closing card: an icon, a bold title and up to three short lines with check
 marks. `tone` (`'good'`, `'bad'`, `'info'` or `'dark'`), `icon`, `title`,
 `lines` (texts, or `{ text, at }` for a line on its own cue), `x`, `y`, `w`,
-`card` (its color), `at`, `out`, `sfx`, `id`. It returns its box.
+`card` (its color), `at`, `out`, `sfx`, `id`. It returns its box. With
+`"defaults": "0.6"`, the title and each line wrap into lines of about the same
+length, so no word sits alone on a line.
 
 ### `punch(at, options)` and `drift(options)`
 

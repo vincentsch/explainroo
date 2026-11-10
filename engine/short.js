@@ -246,6 +246,27 @@ export class Short {
     return lines;
   }
 
+  // The narrowest wrap of a text with as many lines as wrap() gives, so the
+  // lines come out about the same length and no word is left alone on the
+  // last one, like the balanced lines of a title.
+  balancedWrap(str, maxW, size, weight = 400) {
+    let best = this.wrap(str, maxW, size, weight);
+    if (best.length < 2) return best;
+    const count = best.length;
+    let lo = maxW / count;
+    let hi = maxW;
+    for (let k = 0; k < 12 && hi - lo > 2; k++) {
+      const mid = (lo + hi) / 2;
+      const next = this.wrap(str, mid, size, weight);
+      if (next.length > count) lo = mid;
+      else {
+        hi = mid;
+        best = next;
+      }
+    }
+    return best;
+  }
+
   roundRect(x, y, w, h, r, fill, o = {}) {
     if (!this.hidden) this.s._seen(null);
     const c = this.c;
@@ -855,9 +876,11 @@ export class Short {
     const titleSize = o.titleSize ?? (tall ? 76 : 64);
     const lineSize = o.lineSize ?? (tall ? 48 : 40);
     const card = o.card ?? '#ffffff';
-    const titleLines = this.wrap(String(o.title ?? ''), w - pad * 2, titleSize, 900);
+    // With "defaults": "0.6", the title and each line wrap into balanced lines.
+    const wrap = (str, maxW, size, weight) => (s._v6 ? this.balancedWrap(str, maxW, size, weight) : this.wrap(str, maxW, size, weight));
+    const titleLines = wrap(String(o.title ?? ''), w - pad * 2, titleSize, 900);
     const items = (o.lines ?? []).map((l) => (typeof l === 'string' ? { text: l } : l));
-    const itemLines = items.map((it) => this.wrap(it.text, w - pad * 2 - lineSize * 1.3, lineSize, 700));
+    const itemLines = items.map((it) => wrap(it.text, w - pad * 2 - lineSize * 1.3, lineSize, 700));
     const iconR = o.iconSize ?? (tall ? 100 : 84);
     const h = pad + iconR * 2 + 34 + titleLines.length * titleSize * 1.08 + (items.length ? 30 : 0) + itemLines.reduce((n, l) => n + l.length * lineSize * 1.25 + 22, 0) + pad - (items.length ? 22 : 0);
     const y = o.y ?? s.cy;
