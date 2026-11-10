@@ -68,6 +68,32 @@ test('check warns about text and pictures under the watermark, also where the sc
   assert.ok(punched.some((m) => m.includes('the icon "star" is under the "explainroo.com" watermark') && m.includes("The camera's zoom of 1.3x pushes it there")), JSON.stringify(tall, null, 2));
   assert.ok(messages(tall, 'punch', "zoom of 1.3x pushes it there").some((m) => /^"(BEES|MAKE|HONEY|TOGETHER)"/.test(m)), JSON.stringify(tall, null, 2));
   assert.deepEqual(messages(tall, 'still', 'watermark'), []);
+
+  // A card or a sticker with its corner under the watermark counts, however
+  // large it is. A large picture may run behind it.
+  const panels = await check(await project(t, { size: 'reels', defaults: '0.6' }, {
+    card: `s.short.payoff({ title: 'Brewly', lines: ['Fresh beans every 2 weeks', 'First box half price'], w: s.safe.w, y: s.safe.top + 260, at: -1 });`,
+    sticker: `s.short.sticker('Order *today*', { x: s.safe.right - 190, y: s.safe.top - 20, rotate: 0, at: -1 });`,
+    picture: `s.icon('coffee', { x: s.cx, y: s.safe.top + 380, size: 900, at: -1 });`,
+  }));
+  assert.equal(messages(panels, 'card', 'the card "Brewly" is under the "explainroo.com" watermark').length, 1, JSON.stringify(panels, null, 2));
+  assert.equal(messages(panels, 'sticker', 'the sticker "Order today" is under the "explainroo.com" watermark').length, 1, JSON.stringify(panels, null, 2));
+  assert.deepEqual(messages(panels, 'picture', 'watermark'), []);
+});
+
+// The box a sticker returns, with "defaults": "0.6", is the box around it
+// tilted, and `top` places the top of that box. So a sticker placed right
+// below a card's box doesn't overlap the card.
+test('a sticker placed with top right below a card keeps clear of it, and returns its tilted box', { skip }, async (t) => {
+  const body = `const card = s.short.payoff({ title: 'Brewly', lines: ['Fresh beans every 2 weeks', 'First box half price'], y: s.safe.top + 320, at: -1 });
+    const st = s.short.sticker('Order *today*', { top: card.bottom + 12, at: -1 });
+    const right = s._v6 ? st.h > 84 + 20 && Math.abs(st.top - card.bottom - 12) < 0.01 : st.h === 84 && st.top > card.bottom + 12;
+    if (!right) throw new Error('the sticker returned ' + JSON.stringify(st));`;
+  for (const defaults of ['0.6', undefined]) {
+    const issues = await check(await project(t, { size: 'reels', defaults }, { below: body }));
+    const bad = issues.filter((i) => i.level === 'error' || /overlap|covers/.test(i.message));
+    assert.deepEqual(bad, [], `${defaults}: ${JSON.stringify(bad, null, 2)}`);
+  }
 });
 
 test('a drawing with a box counts as a shape over a hook title, also after the scene used the short-video kit', { skip }, async (t) => {

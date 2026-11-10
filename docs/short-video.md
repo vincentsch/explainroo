@@ -228,7 +228,9 @@ keywords against the box's color, and warns when the sticker partly covers
 another shape. `overlap: true` says that is meant, for backgrounds only:
 `check` always warns when a sticker covers an icon, an image, a clip, a
 drawing, other text or words of the hook title. With `"defaults": "0.6"`, a sticker that would cover the title while both
-show moves below it, when that fits in `area` (`s.safe` by default).
+show moves below it, when that fits in `area` (`s.safe` by default), and the
+box it returns holds the tilted sticker. `top` places the top of that box
+instead of `y`, so `top: card.bottom + 24` puts it right below a card.
 
 ### `step(n, total, options)`
 

@@ -2,7 +2,9 @@
 // sizes.shorts.pace reaches into a block. The value is JSON when it reads as
 // JSON, and text otherwise, and null takes the key out. The changed settings get
 // the same check as every command, before anything is written. The rest of the
-// file keeps its content, its order and its indentation.
+// file keeps its content, its order and its indentation. It says the type of
+// the value it wrote, and when a setting changed its type, like "music" from
+// true to a block.
 import fs from 'node:fs';
 import path from 'node:path';
 import { ProjectError } from './errors.js';
@@ -43,6 +45,8 @@ export function setSetting(arg, key, text) {
     value = text;
   }
   const next = structuredClone(settings);
+  // A setting that had a value of another type before, as { key, before, after }.
+  let retyped = null;
   let block = next;
   for (let i = 0; i < parts.length - 1; i++) {
     const part = parts[i];
@@ -53,6 +57,7 @@ export function setSetting(arg, key, text) {
     } else if (here === 'music' && (block[part] === true || typeof block[part] === 'string')) {
       // "music": true is the look's own music, and "music": "calm" a style.
       // Both become a block that keeps the same music.
+      retyped = { key: here, before: block[part] };
       block[part] = block[part] === true ? {} : { style: block[part] };
     } else if (typeof block[part] !== 'object' || Array.isArray(block[part])) {
       fail(`${here} is ${Array.isArray(block[part]) ? 'a list' : `${JSON.stringify(block[part])}`}, not a block of settings, so it has no ${parts[i + 1]}. Set ${here} as a whole instead.`);
@@ -61,8 +66,10 @@ export function setSetting(arg, key, text) {
   }
   const last = parts.at(-1);
   const had = Object.hasOwn(block, last);
+  if (had && value !== null && block[last] !== null && typeName(block[last]) !== typeName(value)) retyped = { key, before: block[last] };
   if (value === null) delete block[last];
   else block[last] = value;
+  if (retyped) retyped.after = retyped.key === key ? value : retyped.key.split('.').reduce((b, part) => b[part], next);
   // The same check as every command. A mistake stops here, and the file stays as it was.
   loadProject(dir, {}, { settings: next });
   const indent = indentOf(before);
@@ -73,11 +80,30 @@ export function setSetting(arg, key, text) {
     fs.writeFileSync(temp, written);
     fs.renameSync(temp, file);
   }
-  return { file, key, value: value === null ? null : value, removed: value === null && had, changed };
+  return { file, key, value: value === null ? null : value, ...(value === null ? {} : { type: typeName(value) }), removed: value === null && had, changed, ...(retyped ? { retyped } : {}) };
+}
+
+// The type of a value as set names it: a number, text, true or false, a list
+// or a block of settings.
+export function typeName(value) {
+  if (Array.isArray(value)) return 'list';
+  if (value && typeof value === 'object') return 'block';
+  return { number: 'number', string: 'text', boolean: 'true or false' }[typeof value] ?? String(value);
+}
+
+// A value with its type, like `the number 40`, `the text "bold"` or `true`.
+function described(value) {
+  const json = JSON.stringify(value).replace(/":/g, '": ').replace(/,"/g, ', "');
+  const type = typeName(value);
+  return type === 'true or false' ? json : `the ${type} ${json}`;
 }
 
 export function formatSet(r) {
   const where = path.basename(r.file);
   if (r.value === null) return r.removed ? `took ${r.key} out of ${where}` : `${where} has no ${r.key}, so nothing changed`;
-  return `${r.changed ? 'set' : 'kept'} ${r.key} to ${JSON.stringify(r.value)} in ${where}`;
+  const line = `${r.changed ? `set ${r.key} to` : `kept ${r.key} at`} ${described(r.value)} in ${where}`;
+  if (!r.retyped) return line;
+  const { key, before, after } = r.retyped;
+  const same = key === 'music' && typeName(after) === 'block' ? ', with the same music' : '';
+  return `${line}. ${key} was ${described(before)} and is now ${described(after)}${same}`;
 }

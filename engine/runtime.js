@@ -1133,7 +1133,7 @@ export class Engine {
           if (!sh.settled || sh.alpha <= 0.95) continue;
           const drawing = sh.kind === 'drawing';
           if (!drawing && (fillsFrame(sh.box, W, H) || (sh.ui && sh.zoomed && !sh.short))) continue;
-          const covered = underWatermark(sh.box, watermark, true);
+          const covered = underWatermark(sh.box, watermark, PICTURES.has(sh.kind));
           if (covered) {
             once(`drawing-watermark:${sc.id}:${shapeKey(sh)}`, () => add('warn', sc.id, t, watermarkMessage(shapeName(sh), sh.box, covered, this.sceneCamera, true)));
             continue;
@@ -1575,6 +1575,11 @@ function markupShown(tx) {
   if ((tx.ui || tx.short) && tx.text.includes('\n')) return 'has a new line that this call draws as a space, on one line. Draw each line on its own, or use a call that takes \\n, like s.text or, with "defaults": "0.6", the s.ui text helpers';
   return null;
 }
+
+// The shapes that are pictures. A large one may run behind the watermark. A
+// card, a sticker, a box or a code window is a panel that holds words, and the
+// watermark on its corner reads as part of it.
+const PICTURES = new Set(['icon', 'image', 'drawing']);
 
 // The watermark's box when `b` reaches more than 4 pixels under it, or null.
 // With `part`, a box counts only when the watermark covers at least a twentieth

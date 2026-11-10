@@ -223,16 +223,62 @@ export function heardTwice(before, after, language) {
   return Object.entries(now).filter(([word, heard]) => then[word] && sameHeard(then[word], heard)).map(([word, heard]) => ({ word, heard }));
 }
 
-// The "heard" block for video.json that accepts these words as heard.
-export function heardEntry(list) {
-  const map = Object.fromEntries(list.map(({ word, heard }) => [bareWord(word), [heard]]));
+// The "heard" block for video.json that accepts these words as heard. `heard`
+// is one form or a list of them. With `forms`, from heardForms(), each word
+// takes every form it was heard as in the run too, so one line covers them all.
+export function heardEntry(list, forms = null) {
+  const map = Object.fromEntries(list.map(({ word, heard }) => [bareWord(word), withForms(word, heard, forms)]));
   return `"heard": ${JSON.stringify(map).replace(/":/g, '": ').replace(/,"/g, ', "')}`;
 }
 
-// The line voice prints for words heard the same way twice in a row.
-export function heardLine(list) {
+// The forms of a word: its own, then the others of `forms`, each once.
+function withForms(word, heard, forms) {
+  const out = [];
+  for (const form of [...[heard].flat(), ...(forms?.get(normWord(bareWord(word))) ?? [])]) {
+    if (form && !out.some((f) => sameHeard(f, form))) out.push(form);
+  }
+  return out;
+}
+
+// Every form each word was heard as in a run: where the check didn't confirm
+// it, and where it only nearly matched, and then the forms that "heard" in
+// video.json has for it. `lists` holds lists of { word, heard }.
+// A map from the word, by normWord, to its forms in the order they came.
+export function heardForms(...lists) {
+  const forms = new Map();
+  for (const { word, heard, joined } of lists.flat()) {
+    if (!heard || joined) continue;
+    const key = normWord(bareWord(word));
+    const have = forms.get(key) ?? [];
+    const form = bareWord(heard);
+    if (form && !have.some((f) => sameHeard(f, form))) have.push(form);
+    forms.set(key, have);
+  }
+  return forms;
+}
+
+// The forms of "heard" in video.json as [{ word, heard }], for heardForms(),
+// so a line for "heard" keeps them next to the forms heard in a run.
+export function givenForms(accept) {
+  return Object.entries(accept ?? {}).flatMap(([word, list]) => list.map((heard) => ({ word, heard })));
+}
+
+// What each scene's check heard where it didn't confirm a word or only nearly
+// matched it, as [{ word, heard }], for heardForms().
+export function sceneHeard(info, language) {
+  if (!Array.isArray(info?.words)) return [];
+  const instead = info.words.some((w) => !w.matched) ? heardInstead(info, language) : {};
+  return [
+    ...info.words.flatMap((w, k) => (instead[k] ? [{ word: w.text, heard: instead[k] }] : [])),
+    ...(info.nearly ?? []),
+  ];
+}
+
+// The line voice prints for words heard the same way twice in a row. With
+// `forms`, the line for video.json has every form of the run.
+export function heardLine(list, forms = null) {
   const names = list.map(({ word, heard }) => `"${bareWord(word)}" as "${heard}"`).join(', ');
-  return `the speech check heard ${names} twice in a row. If that is how ${list.length > 1 ? 'they are' : 'it is'} said, add this to video.json, and the check accepts it: ${heardEntry(list)}`;
+  return `the speech check heard ${names} twice in a row. If that is how ${list.length > 1 ? 'they are' : 'it is'} said, add this to video.json, and the check accepts it: ${heardEntry(list, forms)}`;
 }
 
 // A cached scene with today's speech check. A scene checked with older rules is
@@ -490,9 +536,16 @@ export async function synthesize(project, { force = false, fresh = false, log = 
       todo.push({ scene, chunks, hash, key, before: cached });
     }
   }
-  // Every scene takes the forms of "heard" in video.json.
+  // The scenes made now with words heard the same way as before.
+  const heardAgain = [];
+  // Every scene takes the forms of "heard" in video.json. Words heard the same
+  // way twice in a row get the line for "heard", with every form of the run.
   const finish = () => {
     for (const id of Object.keys(result)) result[id] = withHeard(result[id], config.language, project.heard);
+    if (heardAgain.length) {
+      const forms = heardForms(...Object.values(result).map((info) => sceneHeard(info, config.language)), givenForms(project.heard));
+      for (const { id, twice } of heardAgain) notice(`voice ${id}: ${heardLine(twice, forms)}`);
+    }
     return result;
   };
   if (!todo.length) return finish();
@@ -542,7 +595,7 @@ export async function synthesize(project, { force = false, fresh = false, log = 
     }
     result[scene.id] = info;
     const twice = item.before ? heardTwice(withHeard(item.before, config.language, project.heard), withHeard(info, config.language, project.heard), config.language) : [];
-    if (twice.length) notice(`voice ${scene.id}: ${heardLine(twice)}`);
+    if (twice.length) heardAgain.push({ id: scene.id, twice });
     if (chunks.length) {
       const warn = info.matchRate < 0.85 ? (recordings
         ? `, recording does not match ${scriptName(project)} here (${Math.round(info.matchRate * 100)}% of words confirmed). Make ${scriptName(project)} say what was actually said.`

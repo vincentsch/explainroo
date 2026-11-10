@@ -17,13 +17,11 @@ here serves that second and keeps the picture moving after it.
   the voice starts at once. The title and the subject are there at 0
   seconds, never drawing in. The first spoken line names the stakes or the
   question. No greeting and no setup.
-- **Bold captions** (`"captions": "bold"`) show two to four words at a time
-  in the safe area. Put `*stars*` on one or two words a sentence for the
-  keyword color.
+- **Bold captions** (`"captions": "bold"`) show two to four words at a time.
+  Put `*stars*` on one or two words a sentence for the keyword color.
 - **A visual change at least every 2 seconds.** A new picture, a sticker, a
   camera punch or a new scene counts. A background that drifts doesn't.
-  `check` gives a hint when a short goes longer than 2 seconds without a
-  change.
+  `check` gives a hint after 2 seconds without one.
 - One promise per video, paid off before the end.
 - Short sentences of 6 to 14 words, spoken to one person.
 - Text at least 48 pixels, and the subject fills the content area. Words
@@ -36,8 +34,8 @@ The background and the glow come from `"brand"` in `video.json`:
 `brand.background` and `brand.accent` when they are set, and the look's
 background and accent otherwise. The hook's keywords take `brand.accent` too,
 when white words read on it. So set the brand's colors in `video.json`, not in
-`format.js`. The format starts in the `midnight` look, a dark look that suits a
-feed, and keeps it for a product too.
+`format.js`. The format starts in the dark `midnight` look, which suits a feed,
+also for a product.
 
 ## The helpers in format.js
 
@@ -46,15 +44,15 @@ feed, and keeps it for a product too.
   in the content area at the zoom of the scene's `punch()`.
 - `beats(s, [{ at, icon, label, color }])` shows one big picture per cue, each
   one replacing the one before. Give each beat its own `[#marker]`, at most 2
-  seconds apart.
+  seconds apart. It leaves room above them for a `fact()`.
 - `echo(s, icon, { color, at, out })` draws a large, faint copy of the
   subject below the captions, edge to edge in `s.full`. `hookFrame`, `beats`
   and `payoff` call it, so the tall frame is never empty at the bottom. The
   apps cover part of it with their buttons, so nothing there must be read.
 - `fact(s, '*20%*', { at })` puts one fact on a tilted sticker. It finds a
-  free place near its `x` and `y`, clear of the hook title and of the
-  pictures that `hookFrame` and `beats` drew, so call it after them, but not
-  of an `s.draw`. `check` warns when a sticker covers a picture or text.
+  free place near its `x` and `y`, clear of the hook title, the step label
+  and the pictures that `hookFrame` and `beats` drew, so call it after
+  them, but not of an `s.draw`. `check` warns when a sticker covers a picture or text.
 - `punch(s, at)` gives camera keys for a fast zoom, held for a second. Use it
   as `s.camera(punch(s, '#back'))`, first in the scene. Then `fact()` and
   `beats()` keep their words in the content area at that zoom: a sticker moves
@@ -62,11 +60,11 @@ feed, and keeps it for a product too.
   keys in one call, like `s.camera([...punch(s, '#one'), ...punch(s, '#two')])`,
   at least 1.5 seconds apart.
 - `backdrop(s, { glow, pattern })` draws the background of a scene.
-- `payoff(s, title, lines, { icon })` is the closing card, with `icon` as
-  its echo.
+- `payoff(s, title, lines, { icon, w })` is the closing card, with `icon` as
+  its echo. In a tall frame it is as wide as the content area. It returns
+  the card's box, for a sticker's `top: card.bottom + 24`.
 
-`explainroo docs short-video` has the whole `s.short` kit, and `s.safe` keeps
-text out of the apps' buttons.
+`explainroo docs short-video` has the whole `s.short` kit.
 
 ## Scene changes
 

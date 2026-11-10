@@ -143,3 +143,32 @@ test('a word the mix could not confirm next to a near match that covers both is 
   const apart = await verify(loadProject(project.dir), { transcribe: says(['Pointy at a file and it prints the file back neatly.']) });
   assert.deepEqual(apart.speech.together, []);
 });
+
+// "Brewly" heard as "Brugley" over the music, after the narration alone
+// confirmed it, is the speech check spelling a made-up name its own way. A
+// number heard as a close form may say something else, so it stays a warning.
+test('a word the narration alone confirmed and the mix heard as a close form is a hint with every form heard', async (t) => {
+  const { cachedVoice } = await import('./helpers/cached-voice.js');
+  const project = await videoProject(t, '# Brewly\n\n## why\nMeet Brewly, fresh beans for fifteen days.\n\n## tip\nOrder your first Brewly box today.\n', [{ id: 'why', dur: 2 }, { id: 'tip', dur: 2 }]);
+  fs.writeFileSync(path.join(project.dir, 'video.json'), JSON.stringify({ size: '320x180', fps: 24, music: { volume: 0.35 } }));
+  for (const id of ['why', 'tip']) cachedVoice(project.dir, id);
+  const mix = ['Meet Brugley, fresh beans for fifty days.', 'Order your first Brooli box today.'];
+  const r = await verify(loadProject(project.dir), { transcribe: says(mix) });
+  const found = r.issues.filter((i) => /Brewly|fifteen/.test(i.message)).map((i) => [i.level, i.message]);
+  assert.deepEqual(found, [
+    ['hint', 'the speech check heard 1 word in the final mix as a form that sounds close: "Brewly" at 0.1 s (heard "Brugley"). The narration alone confirmed it, so the voice says it and the speech check only spells it another way over the music. Quieter music won\'t change that. Listen at that time to be sure. If it is said right, add this to video.json, and verify stops naming it: "heard": {"Brewly": ["Brugley", "Brooli"]}'],
+    ['warn', 'the speech check could not confirm 1 word in the final mix: "fifteen" at 0.9 s. The narration alone confirmed it. It is a number or maths word, which the speech check often hears written another way in the final mix, so quieter music may not help. Listen at that time to be sure'],
+  ]);
+  // "Brooli" sounded the same, and its line for "heard" has both forms too.
+  assert.deepEqual(r.speech.nearly.map((n) => n.heard), ['Brooli']);
+  assert.match(formatVerify(r), /narration understood: \d+%, 1 word sounded the same: Brewly at 2\.\d s \(heard "Brooli"\)\. .*"heard": \{"Brewly": \["Brooli", "Brugley"\]\}\n/);
+  assert.deepEqual(r.speech.heard, { Brewly: ['Brooli', 'Brugley'] });
+  // The forms already in "heard" stay in the line, after those of the run.
+  fs.writeFileSync(path.join(project.dir, 'video.json'), JSON.stringify({ size: '320x180', fps: 24, music: { volume: 0.35 }, heard: { Brewly: ['Bruelly'] } }));
+  const given = await verify(loadProject(project.dir), { transcribe: says(mix) });
+  assert.match(given.issues.find((i) => i.level === 'hint' && /Brugley/.test(i.message)).message, /"heard": \{"Brewly": \["Brugley", "Brooli", "Bruelly"\]\}$/);
+  // With the line in video.json, verify names "Brewly" no more.
+  fs.writeFileSync(path.join(project.dir, 'video.json'), JSON.stringify({ size: '320x180', fps: 24, music: { volume: 0.35 }, heard: { Brewly: ['Brugley', 'Brooli'] } }));
+  const after = await verify(loadProject(project.dir), { transcribe: says(mix) });
+  assert.deepEqual(after.issues.filter((i) => /Brewly/.test(i.message)), []);
+});

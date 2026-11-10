@@ -699,7 +699,9 @@ export function shownIssues(all, verbose) {
   const rest = issues.filter((i) => i.key !== 'nearly');
   const where = near.length === 1 ? `scene ${near[0].scene}` : `${near.length} scenes`;
   const listed = near.every((i) => i.nearly) ? `${nearlyText(untimed(near.flatMap((i) => i.nearly)))}, in the speech check of ${where}` : `${words} words only nearly matched in the speech check of ${where}`;
-  rest.splice(at, 0, { level: 'hint', scene: null, t: null, message: `${listed}. ${nearlyShort(near.flatMap((i) => i.nearly ?? []))}` });
+  // Every form each word was heard as, in all scenes.
+  const forms = new Map(near.flatMap((i) => Object.entries(i.heard ?? {})).map(([word, list]) => [normWord(word), list]));
+  rest.splice(at, 0, { level: 'hint', scene: null, t: null, message: `${listed}. ${nearlyShort(near.flatMap((i) => i.nearly ?? []), true, forms)}` });
   return rest;
 }
 

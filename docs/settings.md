@@ -22,9 +22,11 @@ videos/<name>/
 <value>` writes one of them, like `explainroo set videos/<name> targetSeconds
 40`. A dotted key like `sizes.shorts.pace` sets a setting of one size. The
 value is JSON when it reads as JSON, like `40`, `false` or `{"pace": 1.2}`,
-and text otherwise, and `null` takes the key out. The settings get the same
-check as every command first, so a mistake changes nothing, and the rest of
-the file keeps its order.
+and text otherwise, so `brand.accent '#e8a24a'` needs no quotes, and `null`
+takes the key out. It prints the value with its type, and says when a
+setting changes type, like `music` from `true` to a block. The settings get
+the same check as every command first, so a mistake changes nothing, and the
+rest of the file keeps its order.
 
 | Setting | Default | What it does |
 |---|---|---|
