@@ -26,7 +26,7 @@ function project(t, settings, scenes, { words = {}, dur = 2, added = {} } = {}) 
   let start = 0;
   const list = Object.keys(scenes).map((id, index) => {
     const scene = { id, index, start, dur, marks: {}, voice: null, lead: 0, transition: 'none',
-      words: (words[id] ?? []).map((text, i) => ({ text, start: 0.2 + i * 0.2, end: 0.35 + i * 0.2 })), ...(added[id] ? { added: added[id] } : {}) };
+      words: (words[id] ?? []).map((w, i) => ({ ...(typeof w === 'string' ? { text: w } : w), start: 0.2 + i * 0.2, end: 0.35 + i * 0.2 })), ...(added[id] ? { added: added[id] } : {}) };
     start += dur;
     return scene;
   });
@@ -280,6 +280,19 @@ test('the hint about a word spoken twice names "word#1" and "word#2", and "word#
     ['hint', 'first', 'cue "fills" means the first of the 2 times it is spoken in this scene; write "fills#1" if you mean the first time, or "fills#2" for a later one'],
   ]);
   assert.deepEqual(issues.filter((i) => i.level === 'error'), []);
+});
+
+// "cem reais" heard as "R$100": "cem" has the start of the heard word, and the
+// start of "reais" was shared out, so it is estimated.
+test('a cue on an estimated time gets a hint that names a nearby word with a measured time', { skip }, async (t) => {
+  const words = ['Com', 'cem', { text: 'reais,', estimated: true }, 'você', 'compra', 'cinco', 'pacotes.'];
+  const issues = await check(project(t, {}, {
+    money: `s.text('R$ 100', { at: 'reais' });
+    s.text('5', { at: 'cinco', y: 700 });`,
+  }, { words: { money: words } }));
+  assert.deepEqual(issues.filter((i) => i.message.startsWith('cue ')).map((i) => [i.level, i.scene, i.t, i.message]), [
+    ['hint', 'money', 0.6, 'cue "reais" sits on an estimated time: the speech check heard no start of its own for this word, like when Whisper writes "one hundred dollars" as "$100". "cem" at 0.40 s has a measured time, so cue that word when the picture has to land exactly.'],
+  ]);
 });
 
 test('a cue that is not in the narration is one error, and check goes on with the scene\'s other findings, with that cue at the scene start', { skip }, async (t) => {

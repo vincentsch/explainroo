@@ -131,6 +131,52 @@ for (const [language, [script, transcript]] of Object.entries(UNIT_CASES)) {
   });
 }
 
+// The voice says the amount, and Whisper wrote it with a currency symbol,
+// before or after the number, in one piece or split like "R", "$" and "22".
+const MONEY_CASES = {
+  en: ['It costs one hundred reais, five dollars, ten dollars, three pounds and twenty euros.',
+    'It costs R$100, US$5, $10, £3 and 20 €.'],
+  de: ['Es kostet 100 Real, 5 Dollar, 10 Dollar, 3 Pfund und 20 Euro.',
+    'Es kostet R$ 100, US$5, 10 $, £3 und 20 €.'],
+  es: ['Cuesta cien reales, cinco dólares, diez dólares, tres libras y veinte euros.',
+    'Cuesta R$ 100, US$5, $10, £3 y 20 €.'],
+  fr: ['Ça coûte cent reais, cinq dollars, dix dollars, trois livres et vingt euros.',
+    'Ça coûte R$100, US$5, 10 $, 3 £ et 20 €.'],
+  it: ['Costa cento reais, cinque dollari, dieci dollari, tre sterline e venti euro.',
+    'Costa R$100, US$5, $10, £3 e 20 €.'],
+  'pt-br': ['Por que a mesma nota de cem reais custa vinte e dois reais, cinco dólares, dez dólares, três libras e vinte euros?',
+    'Porque a mesma nota de R $100 custa R $ 22, US$5, $10, £3 e 20 €?'],
+  hi: ['इसकी कीमत 100 रियल, 5 डॉलर, 3 पाउंड और 20 यूरो है।', 'इसकी कीमत R$100, $5, £3 और 20 € है।'],
+};
+
+for (const [language, [script, transcript]] of Object.entries(MONEY_CASES)) {
+  test(`an amount with a currency symbol is read as the number and the currency's word: ${language}`, () => {
+    const r = alignWords(words(script), said(transcript), 30, language);
+    assert.deepEqual(missed(script, r), []);
+  });
+}
+
+test('"cem reais" heard as "R$ 100,00" is confirmed, and another amount is not', () => {
+  assert.equal(alignWords(words('Com cem reais, você'), said('Com R$ 100,00, você'), 3, 'pt-br').matchRate, 1);
+  assert.equal(alignWords(words('Com um real'), said('Com R$1'), 3, 'pt-br').matchRate, 1);
+  assert.deepEqual(missed('Com cem reais', alignWords(words('Com cem reais'), said('Com R$200'), 3, 'pt-br')), ['cem']);
+  assert.deepEqual(missed('Com cem reais', alignWords(words('Com cem reais'), said('Com US$100'), 3, 'pt-br')), ['reais']);
+});
+
+// Whisper writes several spoken words as one, like "R$100" for "cem reais" or
+// "10%" for "dez por cento". The first word starts with it, and the words after
+// it get estimated starts, like a word that wasn't heard at all.
+test('words whose start was shared out from one heard word, or not heard, are marked estimated', () => {
+  const marks = (text, heardText, language = 'pt-br') => alignWords(words(text), said(heardText), 5, language).words.map((w) => (w.estimated ? '~' : '') + (w.matched ? 'ok' : 'no'));
+  assert.deepEqual(marks('nota de cem reais compra', 'nota de R $100 compra'), ['ok', 'ok', 'ok', '~ok', 'ok']);
+  assert.deepEqual(marks('de dez por cento em', 'de 10% em'), ['ok', 'ok', '~ok', '~ok', 'ok']);
+  assert.deepEqual(marks('custar vinte e dois reais.', 'custar R$ 22.'), ['ok', 'ok', '~ok', '~ok', '~ok']);
+  assert.deepEqual(marks('It costs five dollars today.', 'It costs $5 today.', 'en'), ['ok', 'ok', 'ok', '~ok', 'ok']);
+  assert.deepEqual(marks('See costs at noon.', 'Seacosts at noon.', 'en'), ['ok', '~ok', 'ok', 'ok']);
+  assert.deepEqual(marks('No API key needed.', 'No API can needed.', 'en'), ['ok', 'ok', '~no', 'ok']);
+  assert.deepEqual(marks('Imagine que um pacote custa', 'Imagine que um pacote custa'), ['ok', 'ok', 'ok', 'ok', 'ok']);
+});
+
 // The voice says the formula, and Whisper wrote it with signs.
 const MATH_CASES = {
   en: ['like two x squared plus three x minus five equals zero, so x equals minus five halves, three times four, one half and a third.',

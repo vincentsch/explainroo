@@ -55,7 +55,8 @@ export function buildTimeline(project, voices) {
       // A keyword for bold captions is display information. It always comes from
       // the current script and never from a voice cache, matched to the cached
       // words by position, so adding or removing *stars* needs no new voice.
-      words: v.words.map((w, k) => ({ text: w.text, start: lead + w.start, end: lead + w.end, ...(shown[k]?.key && shown[k].display === w.text ? { key: true } : {}) })),
+      // A start that the speech check estimated, for check's note on cues.
+      words: v.words.map((w, k) => ({ text: w.text, start: lead + w.start, end: lead + w.end, ...(shown[k]?.key && shown[k].display === w.text ? { key: true } : {}), ...(w.estimated ? { estimated: true } : {}) })),
       marks: Object.fromEntries(Object.entries(v.marks || {}).map(([k, m]) => [k, lead + m])),
       attrs: a,
       // The hold that targetSeconds adds at the end of the scene.

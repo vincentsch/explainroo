@@ -91,7 +91,7 @@ function canon(w) {
 const ONES = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
 const TENS = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
 const SCALES = [[1e9, 'billion'], [1e6, 'million'], [1e3, 'thousand']];
-const CURRENCY = { $: 'dollars', '€': 'euros', '£': 'pounds' };
+const CURRENCY = { $: 'dollars', 'us$': 'dollars', '€': 'euros', '£': 'pounds', 'r$': 'reais' };
 
 // 1102 -> one thousand one hundred two (without "and"; "and" is optional below).
 export function intWords(n) {
@@ -150,7 +150,7 @@ export function expand(word, language = 'en') {
   const n = canon(word);
   const ordinal = /^(\d+)(st|nd|rd|th)$/.exec(n);
   if (ordinal && !/\d,\d/.test(raw)) return [...lead, ...ordinalWords(Number(ordinal[1]))];
-  const money = /^([$€£])?(\d+)(?:\.(\d+))?(%)?$/.exec(n);
+  const money = /^(r\$|us\$|[$€£])?(\d+)(?:\.(\d+))?(%)?$/.exec(n);
   if (money && /\d/.test(raw) && !/^\d+\.\d+\.\d+/.test(n)) {
     const [, cur, int, dec, pct] = money;
     const year = !cur && dec === undefined && !pct && /^\d{4}$/.test(int) && !/\d,\d/.test(raw) ? yearWords(Number(int)) : null;
@@ -256,6 +256,7 @@ function readWords(list, language, other = []) {
 
 // words: [{ spoken, display? }] in order. heard: [{ text, start, end }] from Whisper.
 // Returns per-word { start, end, matched } and the share of spoken tokens matched.
+// A word whose start is estimated, not measured, also has `estimated: true`.
 // A word also counts as heard when Whisper writes its shown form, so
 // {SQL|sequel} or {async|a sink} is confirmed by "SQL" or "async", also over
 // several heard words, like "tabslip.com" for {tabslip.com|tab slip dot com}.
@@ -290,18 +291,20 @@ export function alignWords(words, heard, duration, language = 'en', { sounds = n
     return sounds?.has(a) && sounds.get(a) === sounds.get(b) ? ALIKE : 0;
   };
   // Whisper splits numbers into pieces ("$1", ",000" and "5", "%" and "1",
-  // ".1", and in German "19", "-hundert"), writes thousands with a space, like
+  // ".1", "R" and "$100", and in German "19", "-hundert"), writes thousands with a space, like
   // "300" and "000", splits units, like "km" and "/s", and splits fractions and
   // powers, like "-5" and "/2". Join them back before comparing.
   const joined = [];
   for (const h of heard) {
     const prev = joined[joined.length - 1];
     const t = String(h.text).trim();
-    const thousands = !cjk && prev && (prev.grouped ? /\d{3}$/.test(prev.text) : /^[$€£]?\d{1,3}$/.test(prev.text)) && /^\d{3}(?!\d)/.test(t);
+    const thousands = !cjk && prev && (prev.grouped ? /\d{3}$/.test(prev.text) : /^(?:R\$|US\$|[$€£])?\d{1,3}$/.test(prev.text)) && /^\d{3}(?!\d)/.test(t);
+    // A currency with letters, like "R$100", split as "R" and "$100" or "R", "$" and "100".
+    const money = !cjk && prev && /^\$/.test(t) && /^(R|US)$/.test(prev.text);
     const unit = !cjk && prev && ((/^\/\p{L}/u.test(t) && /\p{L}$/u.test(prev.text)) || (/^[cC]\b/.test(t) && /°$/.test(prev.text)));
     // A fraction or a power split after its number, like "-5" and "/2", or "2x" and "^2".
     const maths = !cjk && prev && ((/^\/\d/.test(t) && /\d$/.test(prev.text)) || (/^(\^\d|[²³])/.test(t) && /[\p{L}\p{N})]$/u.test(prev.text)));
-    const glue = prev && (thousands || unit || maths || (/^[,.]\d/.test(t) && /\d$/.test(prev.text)) || (/^%/.test(t) && /\d$/.test(prev.text)) || (/^\d/.test(t) && /^[$€£]$/.test(prev.text))
+    const glue = prev && (thousands || unit || maths || money || (/^[,.]\d/.test(t) && /\d$/.test(prev.text)) || (/^%/.test(t) && /\d$/.test(prev.text)) || (/^\d/.test(t) && /^(?:R\$|US\$|[$€£])$/.test(prev.text))
       || (language === 'de' && /^-(hundert|tausend)/i.test(t) && /\d$/.test(prev.text)));
     if (glue) {
       prev.text += t;
@@ -570,9 +573,14 @@ export function alignWords(words, heard, duration, language = 'en', { sounds = n
   const sources = words.map(() => new Set());
   const nearly = words.map(() => 0);
   for (const t of tokens) if (!t.optional) need[t.wi]++;
-  const add = (wi, s, e, n = 1) => {
+  // The heard token each word's start comes from, and the words whose start was
+  // shared out from the time of a heard word, which makes it estimated.
+  const startHeard = words.map(() => -1);
+  const shared = words.map(() => false);
+  const add = (wi, s, e, n = 1, from = -1) => {
     hits[wi] += n;
     const cur = spans[wi];
+    if (!cur || s <= cur.start) startHeard[wi] = from;
     spans[wi] = cur ? { start: Math.min(cur.start, s), end: Math.max(cur.end, e) } : { start: s, end: e };
   };
   const pair = (wi, from, to, mark = 0) => {
@@ -590,13 +598,13 @@ export function alignWords(words, heard, duration, language = 'en', { sounds = n
   let j = N;
   while (i > 0 || j > 0) {
     const m = move[i][j];
-    if (m === 1) { add(tokens[i - 1].wi, H[j - 1].start, H[j - 1].end); pair(tokens[i - 1].wi, j - 1, j - 1, near[i][j]); matched++; i--; j--; }
+    if (m === 1) { add(tokens[i - 1].wi, H[j - 1].start, H[j - 1].end, 1, j - 1); pair(tokens[i - 1].wi, j - 1, j - 1, near[i][j]); matched++; i--; j--; }
     else if (m === 4) { pair(tokens[i - 1].wi, j - 1, j - 1); i--; j--; }
     else if (m === 2) { i--; }
     else if (m === 3) { j--; }
     else if (m === 5) {
       const s = wordStart(i);
-      add(tokens[i - 1].wi, H[j - 1].start, H[j - 1].end, i - s);
+      add(tokens[i - 1].wi, H[j - 1].start, H[j - 1].end, i - s, j - 1);
       pair(tokens[i - 1].wi, j - 1, j - 1, near[i][j]);
       matched += i - s;
       i = s;
@@ -604,7 +612,7 @@ export function alignWords(words, heard, duration, language = 'en', { sounds = n
     } else if (m === 7 || m === 8) {
       const L = length[i][j];
       const s = wordStart(i);
-      add(tokens[i - 1].wi, H[j - L].start, H[j - 1].end, i - s);
+      add(tokens[i - 1].wi, H[j - L].start, H[j - 1].end, i - s, j - L);
       pair(tokens[i - 1].wi, j - L, j - 1, near[i][j]);
       matched += i - s;
       i = s;
@@ -618,14 +626,15 @@ export function alignWords(words, heard, duration, language = 'en', { sounds = n
       const from = H[j - L].start;
       const to = H[j - 1].end;
       const cut = from + ((to - from) * weight[wa]) / (weight[wa] + weight[wb]);
-      add(wa, from, cut, sb - sa);
+      add(wa, from, cut, sb - sa, j - L);
       add(wb, cut, to, i - sb);
+      shared[wb] = true;
       pair(wa, j - L, j - 1, near[i][j]);
       pair(wb, j - L, j - 1, near[i][j]);
       matched += i - sa;
       i = sa;
       j -= L;
-    } else if (m === 6) { add(tokens[i - 1].wi, H[j - 2].start, H[j - 1].end); pair(tokens[i - 1].wi, j - 2, j - 1, near[i][j]); matched++; i--; j -= 2; }
+    } else if (m === 6) { add(tokens[i - 1].wi, H[j - 2].start, H[j - 1].end, 1, j - 2); pair(tokens[i - 1].wi, j - 2, j - 1, near[i][j]); matched++; i--; j -= 2; }
     else break;
   }
 
@@ -644,6 +653,7 @@ export function alignWords(words, heard, duration, language = 'en', { sounds = n
     for (let q = wi; q < e; q++) {
       const d = ((end - start) * weight[q]) / total;
       spans[q] = { start: t, end: t + d };
+      if (q > wi) shared[q] = true;
       t += d;
     }
   }
@@ -654,6 +664,15 @@ export function alignWords(words, heard, duration, language = 'en', { sounds = n
   // "example.com" read as "example comm" is reported.
   const out = words.map((w, wi) => ({ start: 0, end: 0, matched: !!spans[wi] && hits[wi] >= need[wi] }));
   out.forEach((word, wi) => { if (follows[wi]) word.matched = out[leader[wi]].matched; });
+  // A start is estimated, not measured, when Whisper wrote the word together
+  // with the words before it, like "cem reais" as "R$100", so its start was
+  // shared out from that heard word, and when no heard word gave it a time.
+  // Japanese and Chinese are read by characters, whatever Whisper's words, so
+  // there only a word without a heard time is estimated.
+  out.forEach((word, wi) => {
+    const from = startHeard[wi];
+    if (!spans[wi] || (!cjk && (shared[wi] || (from >= 0 && !heardStart[from])))) word.estimated = true;
+  });
   let k = 0;
   while (k < words.length) {
     if (spans[k]) {

@@ -374,6 +374,17 @@ test('words prints each spoken word of a scene with its start time, the cue of a
   assert.deepEqual(json.scenes.map((s) => s.scene), ['intro', 'outro']);
   assert.deepEqual(json.scenes[0].words[2], { text: 'fills', start: 0.6, end: 0.84, cue: 'fills#1' });
   assert.deepEqual(json.scenes[0].marks, { full: 0.9 });
+  // A start the speech check estimated has a ~, and "estimated" in JSON.
+  const { voicePaths } = await import('../src/voice.js');
+  const file = voicePaths(loadProject(dir), 'intro').json;
+  const info = JSON.parse(fs.readFileSync(file, 'utf8'));
+  info.words[3].estimated = true;
+  fs.writeFileSync(file, JSON.stringify(info));
+  const marked = (await runAll(['words', dir, 'intro'])).out;
+  assert.match(marked, /^ {3}0\.90~ and$/m);
+  assert.match(marked, /^ {3}0\.60  fills {2}\(cue "fills#1"\)$/m);
+  assert.match(marked, /^ {2}~ estimated: the speech check heard no start of its own for this word, so a cue on it may land a little early or late$/m);
+  assert.deepEqual(JSON.parse((await runAll(['words', dir, 'intro', '--json'])).out).scenes[0].words[3], { text: 'and', start: 0.9, end: 1.14, cue: 'and', estimated: true });
   const wrong = await runAll(['words', dir, 'middle']);
   assert.equal(wrong.code, 1);
   assert.match(wrong.err, /there is no scene "middle" in script\.md\. Its scenes are: intro, outro/);

@@ -10,7 +10,7 @@ import { alignSpeech, bareWord, editDistance, expand, nearList, similar } from '
 import { signWords } from './math-words.js';
 import { hasPhonemizer } from './phonemes.js';
 import { normWord } from './script.js';
-import { givenForms, heardEntry, heardForms, heardInstead, heardQuote, readVoice, sameHeard, sceneHeard, withHeard } from './voice.js';
+import { givenForms, heardEntry, heardForms, heardInstead, heardQuote, readVoice, sameHeard, sceneHeard, unusedForms, unusedFormText, withHeard } from './voice.js';
 import { estimateLength, targetNotes } from './timeline.js';
 import { buildChapters, chapterHints, youtubeFrame } from './chapters.js';
 import { coverTime } from './render.js';
@@ -240,22 +240,28 @@ const canLower = (music) => Boolean(music) && (music.volume ?? MUSIC_VOLUME) >= 
 // The advice for words that the narration alone confirmed and the final mix
 // didn't: music.volume 3 dB lower, which is 0.71 times the volume, and never
 // under 0.2. Number and maths words don't count, and music that is already
-// quieter than the default gets no lower volume: listening comes next.
+// quieter than the default gets no lower volume: listening comes next. A word
+// that is in the list once with `mix` and once without is named with its time,
+// so the advice never says the narration confirmed a word where it didn't, and
+// the words the narration didn't confirm are sent to what voice says.
 export function mixAdvice(list, music, language = 'en') {
   const covered = list.filter((u) => u.mix);
   if (!covered.length || !music) return '';
-  const which = covered.length === list.length ? (list.length === 1 ? 'it' : 'them') : covered.slice(0, 3).map((u) => `"${u.word}"`).join(', ');
+  const name = (u) => (u.time !== undefined && list.some((o) => !o.mix && o.word === u.word) ? `"${u.word}" at ${u.time.toFixed(1)} s` : `"${u.word}"`);
+  const which = covered.length === list.length ? (list.length === 1 ? 'it' : 'them') : covered.slice(0, 3).map(name).join(', ');
   const one = covered.length === 1;
+  const others = list.length - covered.length;
+  const rest = others ? `. The narration alone didn't confirm the other ${others === 1 ? 'word' : `${others} words`}, so see what voice says about ${others === 1 ? 'it' : 'them'}` : '';
   const masked = covered.filter((u) => !mathWord(u.word, language));
   if (!masked.length) {
-    return `. The narration alone confirmed ${which}. ${one ? 'It is a number or maths word' : 'They are number or maths words'}, which the speech check often hears written another way in the final mix, so quieter music may not help. Listen at ${one ? 'that time' : 'those times'} to be sure`;
+    return `. The narration alone confirmed ${which}. ${one ? 'It is a number or maths word' : 'They are number or maths words'}, which the speech check often hears written another way in the final mix, so quieter music may not help. Listen at ${one ? 'that time' : 'those times'} to be sure${rest}`;
   }
   const now = music.volume ?? MUSIC_VOLUME;
   if (!canLower(music)) {
-    return `. The narration alone confirmed ${which}. The music is already at ${now}, quieter than the default ${MUSIC_VOLUME}, so listen at ${one ? 'that time' : 'those times'} before you lower it more`;
+    return `. The narration alone confirmed ${which}. The music is already at ${now}, quieter than the default ${MUSIC_VOLUME}, so listen at ${one ? 'that time' : 'those times'} before you lower it more${rest}`;
   }
   const lower = Math.max(QUIETEST, Math.floor(now * Math.pow(10, -3 / 20) * 100) / 100);
-  return `. The narration alone confirmed ${which}, so the music may cover ${one ? 'it' : 'them'}: set music.volume in video.json to ${lower}, from ${now}, which is ${dbQuieter(now, lower)} dB quieter`;
+  return `. The narration alone confirmed ${which}, so the music may cover ${one ? 'it' : 'them'}: set music.volume in video.json to ${lower}, from ${now}, which is ${dbQuieter(now, lower)} dB quieter${rest}`;
 }
 
 const dbQuieter = (from, to) => Math.round(20 * Math.log10(from / to));
@@ -449,6 +455,8 @@ export function speechFindings(project, voices, timeline = null) {
       if (nearly.length) issues.push({ level: 'hint', scene: sc.id, t: null, key: 'nearly', words: nearly.length, nearly, heard: formsOf(nearly, forms), message: `understood ${Math.round(v.matchRate * 100)}%, ${nearlyText(nearly)}. ${nearlyAdvice(nearly, true, forms)}` });
     }
   }
+  // Forms of "heard" that matched nothing, for words the run still doesn't confirm.
+  for (const u of unusedForms(voices, project.config.language, project.heard)) issues.push({ level: 'hint', scene: null, t: null, key: 'heard', word: u.word, forms: u.forms, message: unusedFormText(u) });
   return { issues, speech };
 }
 

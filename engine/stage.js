@@ -204,7 +204,7 @@ export class Stage {
         } else {
           for (let k = 0; k < want.length; k++) if (!forms(i + k).includes(want[k])) { ok = false; break; }
         }
-        if (ok && ++count === n && !at) at = { start: ws[i].start, end: ws[end - 1].end };
+        if (ok && ++count === n && !at) at = { start: ws[i].start, end: ws[end - 1].end, index: i };
       }
       return { count, at };
     };
@@ -219,7 +219,9 @@ export class Stage {
     if (found) {
       // A word spoken more than once silently means its first time; tell the check.
       if (seen > 1 && !meant && this.engine.cueNotes) this.engine.cueNotes.push({ scene: this.id, word: written, count: seen });
-      return found;
+      // A start the speech check estimated; tell the check, with the nearest word it measured.
+      if (ws[found.index].estimated && this.engine.estimatedCues) this.engine.estimatedCues.push({ scene: this.id, word: written, t: found.start, near: this._measuredNear(found.index) });
+      return { start: found.start, end: found.end };
     }
     const count = seen ? ` (it is spoken ${seen} time${seen > 1 ? 's' : ''})` : '';
     // A cue with the name of one of the scene's markers, written without its #.
@@ -229,6 +231,26 @@ export class Stage {
     // Each language says other words, so a cue that works in one fails in another.
     const several = this.engine.state?.text?.languages ? ' Word cues differ between languages, so a scene that every language draws is safer with the same [#marker] in each script.' : '';
     return this._noCue(`cue("${written}"${counted === null && n > 1 ? `, ${n}` : ''}) is not in the narration of scene "${this.id}"${count}${mean}. Close words: ${hint}${several ? `.${several}` : ''}`);
+  }
+
+  // The spoken word nearest to word `index` whose start the speech check
+  // measured, as { cue, t }, or null, the earlier one of two as near. Its cue
+  // names the time it is spoken, like "fills#2", when the scene says it more
+  // than once.
+  _measuredNear(index) {
+    const ws = this.words;
+    const away = (i) => Math.abs(ws[i].start - ws[index].start);
+    let best = -1;
+    ws.forEach((w, i) => {
+      if (w.estimated || !/[\p{L}\p{N}]/u.test(normWord(w.text))) return;
+      if (best === -1 || away(i) < away(best) - 1e-6) best = i;
+    });
+    if (best === -1) return null;
+    const key = normWord(ws[best].text);
+    const same = ws.filter((w) => normWord(w.text) === key).length;
+    const nth = ws.slice(0, best + 1).filter((w) => normWord(w.text) === key).length;
+    const word = String(ws[best].text).replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
+    return { cue: same > 1 ? `${word}#${nth}` : word, t: ws[best].start };
   }
 
   mark(name) {

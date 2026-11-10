@@ -105,10 +105,10 @@ export function germanOrdinal(word) {
   return low !== null && low % 100 > 0 && low % 100 < 20 ? low : null;
 }
 
-const SIGNS = { '%': ['prozent'], '€': ['euro'], $: ['dollar'], '£': ['pfund'], '°': ['grad'], '°c': ['grad', 'celsius'] };
+const SIGNS = { '%': ['prozent'], '€': ['euro'], $: ['dollar'], 'us$': ['dollar'], '£': ['pfund'], 'r$': ['real'], '°': ['grad'], '°c': ['grad', 'celsius'] };
 // Digits with a period for thousands and a comma for decimals, with a sign before
-// or after them, like "1.000", "3,5", "29.", "5%" or "€5".
-const DIGITS = /^([€$£]?)(\d{1,3}(?:\.\d{3})+|\d+)(?:,(\d+))?([%€$£]|°c?)?\.?$/i;
+// or after them, like "1.000", "3,5", "29.", "5%", "€5" or "R$ 5".
+const DIGITS = /^(r\$|us\$|[€$£])?(\d{1,3}(?:\.\d{3})+|\d+)(?:,(\d+))?([%€$£]|r\$|us\$|°c?)?\.?$/i;
 
 // Digits with "hundert" or "tausend" after them, as Whisper sometimes writes a
 // year it heard, like "19-hundert" for 1900 or "2-tausend-24" for 2024.

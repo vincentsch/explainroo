@@ -107,6 +107,32 @@ test('a word the narration alone confirmed and the final mix did not names music
   assert.match(lowered.issues.find((i) => i.message.startsWith('the speech check could not confirm')).message, /\. The narration alone confirmed it\. The music is already at 0\.35, quieter than the default 0\.5, so listen at that time before you lower it more$/);
 });
 
+// The same word said twice, where the narration alone confirmed only the second
+// time: verify names that time, and sends the other to what voice says.
+test('verify says the narration alone confirmed a word only where it did', async (t) => {
+  const { cachedVoice } = await import('./helpers/cached-voice.js');
+  const project = await videoProject(t, '# Demo\n\n## intro\nThe key opens it. The key is lost.\n', [{ id: 'intro', dur: 3 }]);
+  fs.writeFileSync(path.join(project.dir, 'video.json'), JSON.stringify({ size: '320x180', fps: 24, music: { volume: 0.5 } }));
+  cachedVoice(project.dir, 'intro');
+  const file = path.join(project.paths.voice, 'intro.json');
+  const info = JSON.parse(fs.readFileSync(file, 'utf8'));
+  info.words[1].matched = false;
+  info.transcript = 'The can opens it. The key is lost.';
+  fs.writeFileSync(file, JSON.stringify(info));
+  const r = await verify(loadProject(project.dir), { transcribe: says(['The can opens it. The can is lost.']) });
+  const [first, second] = r.speech.unconfirmed;
+  assert.deepEqual([first.word, first.mix, second.word, second.mix], ['key', undefined, 'key', true]);
+  const warning = r.issues.find((i) => i.message.startsWith('the speech check could not confirm'));
+  assert.ok(warning.message.endsWith(`. The narration alone confirmed "key" at ${second.time.toFixed(1)} s, so the music may cover it: set music.volume in video.json to 0.35, from 0.5, which is 3 dB quieter. The narration alone didn't confirm the other word, so see what voice says about it`), warning.message);
+  // Where it confirmed neither, verify says nothing about the narration or the music.
+  info.words[3 + 2].matched = false;
+  fs.writeFileSync(file, JSON.stringify(info));
+  const neither = await verify(loadProject(project.dir), { transcribe: says(['The can opens it. The can is lost.']) });
+  assert.doesNotMatch(neither.issues.find((i) => i.message.startsWith('the speech check could not confirm')).message, /narration alone|music/);
+  assert.equal(mixAdvice([{ word: 'reais', time: 1.9 }, { word: 'reais', time: 37.1, mix: true }, { word: 'dez', time: 40 }], { volume: 0.5 }, 'pt-br'),
+    '. The narration alone confirmed "reais" at 37.1 s, so the music may cover it: set music.volume in video.json to 0.35, from 0.5, which is 3 dB quieter. The narration alone didn\'t confirm the other 2 words, so see what voice says about them');
+});
+
 test('the music advice leaves out number and maths words, and never goes under 0.2', () => {
   const maths = ['squared', 'minus', 'equals', 'halves', 'two'].map((word, i) => ({ word, time: i, mix: true }));
   assert.equal(mixAdvice(maths, { volume: 0.5 }), '. The narration alone confirmed them. They are number or maths words, which the speech check often hears written another way in the final mix, so quieter music may not help. Listen at those times to be sure');

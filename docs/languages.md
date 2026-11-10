@@ -124,6 +124,7 @@ the words of the language before it compares:
 - weights: kg and g
 - times: s and ms
 - symbols: %, °C, € and $
+- amounts: R$, US$, $, € and £, before or after the number
 
 It knows them in the languages of this table, in the singular and the plural,
 like "kilómetro" and "kilómetros".
@@ -139,6 +140,12 @@ like "kilómetro" and "kilómetros".
 
 "m", "mm", "g", "s" and "ms" count as units only right after a number, so a
 letter on its own stays a letter.
+
+An amount reads as the number and the currency's word, so "cem reais" matches
+"R$100", "R$ 100,00" and "R$ 22" matches "vinte e dois reais". R$ reads as
+reais (reales in Spanish, Real in German), US$ and $ as dollars, € as euros
+and £ as pounds (libras, livres, sterline, Pfund). Hindi reads these amounts
+too, with digits in the script, like "100 डॉलर".
 
 Maths works the same way. Whisper writes "two x squared plus three x minus five
 equals zero" as "2x² + 3x-5 = 0", and "minus five halves" as "−5/2". The check
