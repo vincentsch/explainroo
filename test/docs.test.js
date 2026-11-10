@@ -405,7 +405,7 @@ test('the scene-api, troubleshooting, product-demos and commands topics and the 
   assert.doesNotMatch(demos, /Capturing the same site again replaces its folder\./);
   assert.match(page('settings'), /^\| `brand` \| none \| .*its `accent` also colors the spoken word in captions/m);
   const commands = page('commands');
-  assert.match(commands, /^\| `sheet \[project\]` \|.*`--times 3,12\.5,intro@2` makes `out\/sheet-times\.jpg` of just those moments, in that order\. It takes every time that `still` takes\. With `--size tiktok` the file is `out\/sheet-times-tiktok\.jpg`/m);
+  assert.match(commands, /^\| `sheet \[project\] \[scene\]` \|.*`--times 3,12\.5,intro@2` makes `out\/sheet-times\.jpg` of just those moments, in that order\. It takes every time that `still` takes\. With `--size tiktok` the file is `out\/sheet-times-tiktok\.jpg`/m);
   assert.match(commands, /^\| `capture \[project\] <url>` \|.*`--name pricing` saves to `assets\/capture\/<site>\/pricing\/`/m);
   assert.ok(page('making-a-video').includes('explainroo sheet videos/<name> --times 3,intro@2.5,40'));
   const help = oneLine(run('--help').stdout);
