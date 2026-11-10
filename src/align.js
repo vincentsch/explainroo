@@ -667,9 +667,11 @@ export function alignWords(words, heard, duration, language = 'en', { sounds = n
   // A start is estimated, not measured, when Whisper wrote the word together
   // with the words before it, like "cem reais" as "R$100", so its start was
   // shared out from that heard word, and when no heard word gave it a time.
+  // Japanese and Chinese are read by characters, whatever Whisper's words, so
+  // there only a word without a heard time is estimated.
   out.forEach((word, wi) => {
     const from = startHeard[wi];
-    if (!spans[wi] || shared[wi] || (from >= 0 && !heardStart[from])) word.estimated = true;
+    if (!spans[wi] || (!cjk && (shared[wi] || (from >= 0 && !heardStart[from])))) word.estimated = true;
   });
   let k = 0;
   while (k < words.length) {
