@@ -459,12 +459,15 @@ test('set writes one setting into video.json, dotted keys reach into blocks, nul
   fs.writeFileSync(file, '{\n  "title": "Bees",\n  "theme": "paper",\n  "music": true\n}\n');
   const set = async (...args) => runAll(['set', dir, ...args]);
   for (const [key, value, said] of [
-    ['targetSeconds', '40', 'set targetSeconds to 40 in video.json'],
-    ['cover', 'intro@2', 'set cover to "intro@2" in video.json'],
-    ['sizes.shorts.pace', '1.15', 'set sizes.shorts.pace to 1.15 in video.json'],
-    ['sizes.shorts.captions', 'bold', 'set sizes.shorts.captions to "bold" in video.json'],
+    ['targetSeconds', '40', 'set targetSeconds to the number 40 in video.json'],
+    ['targetSeconds', '40', 'kept targetSeconds at the number 40 in video.json'],
+    ['cover', 'intro@2', 'set cover to the text "intro@2" in video.json'],
+    ['sizes.shorts.pace', '1.15', 'set sizes.shorts.pace to the number 1.15 in video.json'],
+    ['sizes.shorts.captions', 'bold', 'set sizes.shorts.captions to the text "bold" in video.json'],
     ['music', 'false', 'set music to false in video.json'],
-    ['clipBudget', '0.40', 'set clipBudget to 0.4 in video.json'],
+    // Text needs no quotes.
+    ['brand.accent', '#e8a24a', 'set brand.accent to the text "#e8a24a" in video.json'],
+    ['clipBudget', '0.40', 'set clipBudget to the number 0.4 in video.json'],
     ['title', 'null', 'took title out of video.json'],
   ]) {
     const r = await set(key, value);
@@ -472,10 +475,14 @@ test('set writes one setting into video.json, dotted keys reach into blocks, nul
     assert.equal(r.out, `${said}\n`);
   }
   // The keys keep their places, new ones come last, and so does the indentation.
-  assert.equal(fs.readFileSync(file, 'utf8'), '{\n  "theme": "paper",\n  "music": false,\n  "targetSeconds": 40,\n  "cover": "intro@2",\n  "sizes": {\n    "shorts": {\n      "pace": 1.15,\n      "captions": "bold"\n    }\n  },\n  "clipBudget": 0.4\n}\n');
+  assert.equal(fs.readFileSync(file, 'utf8'), '{\n  "theme": "paper",\n  "music": false,\n  "targetSeconds": 40,\n  "cover": "intro@2",\n  "sizes": {\n    "shorts": {\n      "pace": 1.15,\n      "captions": "bold"\n    }\n  },\n  "brand": {\n    "accent": "#e8a24a"\n  },\n  "clipBudget": 0.4\n}\n');
   // A whole block as JSON, and the JSON output.
   const json = JSON.parse((await set('sizes.tiktok', '{"captions": "bold", "pace": 1.2}', '--json')).out);
-  assert.deepEqual([json.key, json.value, json.changed], ['sizes.tiktok', { captions: 'bold', pace: 1.2 }, true]);
+  assert.deepEqual([json.key, json.value, json.type, json.changed], ['sizes.tiktok', { captions: 'bold', pace: 1.2 }, 'block', true]);
+  // A setting that changes its type says so.
+  const retyped = JSON.parse((await set('music', '{"volume": 0.3}', '--json')).out);
+  assert.deepEqual(retyped.retyped, { key: 'music', before: false, after: { volume: 0.3 } });
+  assert.equal((await set('music', 'true')).out, 'set music to true in video.json. music was the block {"volume": 0.3} and is now true\n');
   // A file on one line, or indented with tabs, keeps that.
   fs.writeFileSync(file, '{"theme":"paper"}');
   await set('fps', '25');
@@ -494,7 +501,7 @@ test('music.volume works without a style: set turns "music": true into a block, 
   fs.writeFileSync(file, '{\n  "theme": "midnight",\n  "music": true\n}\n');
   const r = await runAll(['set', dir, 'music.volume', '0.35']);
   assert.equal(r.code, 0, r.err);
-  assert.equal(r.out, 'set music.volume to 0.35 in video.json\n');
+  assert.equal(r.out, 'set music.volume to the number 0.35 in video.json. music was true and is now the block {"volume": 0.35}, with the same music\n');
   assert.equal(fs.readFileSync(file, 'utf8'), '{\n  "theme": "midnight",\n  "music": {\n    "volume": 0.35\n  }\n}\n');
   const { config } = loadProject(dir);
   assert.deepEqual([config.music.style, config.music.volume], [THEME_MUSIC.midnight, 0.35]);
