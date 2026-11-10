@@ -15,7 +15,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { ProjectError, hideSecrets } from './errors.js';
+import { ProjectError, hideSecrets, hideSecretsIn } from './errors.js';
 import { findService, localTime } from './services.js';
 import { LANGUAGES } from './models.js';
 import { isSize } from './project.js';
@@ -102,7 +102,7 @@ export function findJob(dir, id) {
 export function createJob(dir, key, { attempt = 1, ...fields }) {
   fs.mkdirSync(historyDir(dir, 'jobs'), { recursive: true });
   const now = new Date().toISOString();
-  const job = { key, kind: null, provider: null, attempt, job_id: null, status: 'requesting', estimated_usd: null, cost_usd: null, output: null, request: null, ...fields, created: now, updated: now };
+  const job = hideSecretsIn({ key, kind: null, provider: null, attempt, job_id: null, status: 'requesting', estimated_usd: null, cost_usd: null, output: null, request: null, ...fields, created: now, updated: now });
   const fd = fs.openSync(jobFile(dir, key, attempt), 'wx', 0o644);
   try {
     fs.writeSync(fd, JSON.stringify(job, null, 2) + '\n');
@@ -119,8 +119,8 @@ export function forgetJob(dir, job) {
 
 export function updateJob(dir, job, changes) {
   const file = jobFile(dir, job.key, job.attempt);
-  const next = { ...readJob(file, job.key, job.attempt), ...changes, updated: new Date().toISOString() };
-  if (next.error) next.error = hideSecrets(next.error);
+  // No key is ever saved, in any field: a job file can be committed with the project.
+  const next = hideSecretsIn({ ...readJob(file, job.key, job.attempt), ...changes, updated: new Date().toISOString() });
   writeAtomic(file, JSON.stringify(next, null, 2) + '\n');
   return next;
 }
@@ -221,8 +221,9 @@ function when(iso) {
 }
 
 // Text from a job file stays on one line, so it can't pose as another line of output.
+// Keys are hidden before it is cut to length.
 function oneLine(text, length) {
-  return String(text ?? '').replace(/[\s\p{Cc}]+/gu, ' ').slice(0, length);
+  return hideSecrets(String(text ?? '')).replace(/[\s\p{Cc}]+/gu, ' ').slice(0, length);
 }
 
 function saidBy(job) {
