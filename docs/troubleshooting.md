@@ -139,9 +139,11 @@ text. It finds text that is:
   that counts or text that writes itself, when it isn't all there by the end
   of its scene or by its `out`. It says how much is missing and which option
   changes that
-- text of two scenes in the same place during a `fade` or `zoom` between
-  them, for more than two frames. Give the scene `{transition=cut}` or
-  `{transition=push}`, which moves the scenes side by side
+- as a hint, different text of two scenes in the same place during a `zoom`
+  between them, for more than two frames, because the zoom shows the two at
+  different sizes. Give the scene `{transition=cut}` or `{transition=push}`,
+  which moves the scenes side by side. A `fade` that blends one text into
+  another is not a finding
 - a scene that shows only its background for more than 1.5 seconds, at the
   start or later, when everything has left and nothing new has come yet
 - a cover with only text on an empty background

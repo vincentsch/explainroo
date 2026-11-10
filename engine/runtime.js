@@ -1274,7 +1274,7 @@ export class Engine {
     this.cueNotes = null;
     this.cueErrors = null;
     for (const { scene, t, tex } of this.lateMath.values()) add('error', scene, t, `math "${tex}" was not collected at the start; keep TeX strings fixed and always call s.math with at and out for timing`);
-    if (!anyBroke) for (const f of this.transitionOverlaps()) add('warn', f.scene, f.t, f.message);
+    if (!anyBroke) for (const f of this.transitionOverlaps()) add('hint', f.scene, f.t, f.message);
     return issues;
   }
 
@@ -1295,17 +1295,19 @@ export class Engine {
     }
   }
 
-  // Text of two scenes in the same place during a fade or a zoom between them,
-  // for more than two frames, like a step label of each scene over the other.
-  // A slide, a push, a wipe and a brush show each part of the frame from one
-  // scene only, and a cut shows no two scenes at all.
+  // Different text of two scenes in the same place during a zoom between
+  // them, for more than two frames. A zoom shows the two at different sizes,
+  // so they read as doubled. A fade only blends one into the other, which is
+  // what a fade is for, and the same text in both scenes is one thing that
+  // stays. A slide, a push, a wipe and a brush show each part of the frame
+  // from one scene only, and a cut shows no two scenes at all.
   transitionOverlaps() {
     const found = [];
     const { W, H } = this;
     for (const sc of this.timeline.scenes) {
       const blend = this.blendIn(sc);
       const name = this.transitionFor(sc);
-      if (!blend || !['fade', 'zoom'].includes(name)) continue;
+      if (!blend || name !== 'zoom') continue;
       const prev = this.timeline.scenes[sc.index - 1];
       const frames = Math.ceil(blend * this.fps);
       let count = 0;
@@ -1323,6 +1325,7 @@ export class Engine {
         let pair = null;
         for (const A of sides[0].texts) {
           for (const B of sides[1].texts) {
+            if (String(A.text).trim() === String(B.text).trim()) continue;
             const a = box(A, sides[0].grow);
             const b = box(B, sides[1].grow);
             const ix = Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0);

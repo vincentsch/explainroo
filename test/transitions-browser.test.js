@@ -1,5 +1,5 @@
-// Scene changes never show the text of two scenes in one place: check warns when
-// a fade or a zoom does for more than two frames, a push moves the scenes side
+// Scene changes never show the text of two scenes in one place: check gives a
+// hint when a zoom does for more than two frames, a push moves the scenes side
 // by side, a zoom no longer lets the frame drawn before show through, and with
 // "defaults": "0.6" a step label comes after the transition into its scene.
 import test from 'node:test';
@@ -34,22 +34,24 @@ const LABELS = {
   second: "s.text('Air bends it', { y: 900, size: 64, at: 0, enter: 'none' });",
 };
 
-test('check warns when text of two scenes shows in one place during a fade or a zoom, and not with a push or a cut', { skip, timeout: 120000 }, async (t) => {
-  for (const transition of ['fade', 'zoom']) {
-    const issues = await inPage(project(t, {}, LABELS, transition), (page) => page.evaluate(() => window.explainroo.check(0.25)));
-    const found = issues.filter((i) => /show in the same place/.test(i.message));
-    assert.equal(found.length, 1, `${transition}: ${JSON.stringify(issues)}`);
-    assert.equal(found[0].level, 'warn');
-    assert.equal(found[0].scene, 'second');
-    assert.match(found[0].message, new RegExp(`^during the ${transition} from "first" into this scene, "Light is white" of "first" and "Air bends it" of this scene show in the same place for \\d+ frames, from 2\\.\\ds in the video; give the scene \\{transition=cut\\} or \\{transition=push\\}`));
-  }
-  for (const transition of ['push', 'cut', 'slide']) {
+test('check gives a hint when different text of two scenes shows in one place during a zoom, and not with a fade, a push or a cut', { skip, timeout: 120000 }, async (t) => {
+  const issues = await inPage(project(t, {}, LABELS, 'zoom'), (page) => page.evaluate(() => window.explainroo.check(0.25)));
+  const found = issues.filter((i) => /show in the same place/.test(i.message));
+  assert.equal(found.length, 1, JSON.stringify(issues));
+  assert.equal(found[0].level, 'hint');
+  assert.equal(found[0].scene, 'second');
+  assert.match(found[0].message, /^during the zoom from "first" into this scene, "Light is white" of "first" and "Air bends it" of this scene show in the same place for \d+ frames, from 2\.\ds in the video; give the scene \{transition=cut\} or \{transition=push\}/);
+  // A fade blends one text into the other, which is what it is for.
+  for (const transition of ['fade', 'push', 'cut', 'slide']) {
     const overlaps = await inPage(project(t, {}, LABELS, transition), (page) => page.evaluate(() => window.explainroo.transitionOverlaps()));
     assert.deepEqual(overlaps, [], transition);
   }
+  // The same text in the same place in both scenes stays, so it is no finding.
+  const same = { first: LABELS.first, second: LABELS.first };
+  assert.deepEqual(await inPage(project(t, {}, same, 'zoom'), (page) => page.evaluate(() => window.explainroo.transitionOverlaps())), []);
   // Text in different places is fine.
   const apart = { ...LABELS, second: "s.text('Air bends it', { y: 1500, size: 64, at: 0, enter: 'none' });" };
-  assert.deepEqual(await inPage(project(t, {}, apart, 'fade'), (page) => page.evaluate(() => window.explainroo.transitionOverlaps())), []);
+  assert.deepEqual(await inPage(project(t, {}, apart, 'zoom'), (page) => page.evaluate(() => window.explainroo.transitionOverlaps())), []);
 });
 
 test('a zoom draws the same frame whatever was drawn before it', { skip, timeout: 120000 }, async (t) => {
