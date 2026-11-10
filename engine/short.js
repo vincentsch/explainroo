@@ -611,7 +611,9 @@ export class Short {
   // get their own color. o: x, y, size, color (the box), textColor, keyColor,
   // rotate (degrees), border, at, out, sfx, id, area (where it may move to).
   // With "defaults": "0.6", a sticker that would cover the hook title while
-  // both show moves below it, inside `area`, which is s.safe by default.
+  // both show moves below it, inside `area`, which is s.safe by default, and
+  // it returns the box around the tilted sticker. `top` places the top edge of
+  // that box instead of `y`, so `top: card.bottom + 24` goes below a card.
   sticker(str, o = {}) {
     const s = this.s;
     const size = o.size ?? 56;
@@ -621,11 +623,15 @@ export class Short {
     const h = size * 1.5;
     const x = o.x ?? s.cx;
     const at = o.at ?? 0;
-    const y = s._v6 ? this.clearOfTitle(x, o.y ?? s.cy, w, h, o.rotate ?? -4, this.at(at), o.out === undefined ? Infinity : this.at(o.out), o.area ?? s.safe) : o.y ?? s.cy;
-    this.reg(o.id, x - w / 2, y - h / 2, w, h);
+    const rotate = o.rotate ?? -4;
+    const tilted = this.tilted(w, h, rotate);
+    const own = o.top !== undefined ? o.top + tilted.h / 2 : o.y ?? s.cy;
+    const y = s._v6 ? this.clearOfTitle(x, own, w, h, rotate, this.at(at), o.out === undefined ? Infinity : this.at(o.out), o.area ?? s.safe) : own;
+    const box = s._v6 ? geom(x, y, tilted.w, tilted.h) : geom(x, y, w, h);
+    this.reg(o.id, box.left, box.top, box.w, box.h);
     if (this.at(at) >= 0) this.enter(at, 0.35, o.sfx === undefined ? 'pop' : o.sfx, { label: words.map((wd) => wd.text).join(' ').slice(0, 20), chosen: o.sfx !== undefined, usual: 'pop' });
     const life = this.life(at, o.out, 0.38);
-    if (!life) return geom(x, y, w, h);
+    if (!life) return box;
     const bg = o.color ?? KEY;
     // With "defaults": "0.5", the keyword red is made to read on the sticker's color.
     const keyColor = o.keyColor ?? (newDefaults(this.s.engine.config) ? stickerKey(bg) : KEY_RED);
@@ -638,8 +644,16 @@ export class Short {
         this.text(wd.text, wx, y + size * 0.04, { size, weight: 900, color: wd.key ? keyColor : o.textColor ?? INK, bg, option: wd.key ? 'keyColor' : 'textColor', owner: own });
         wx += this.measure(wd.text, size, 900) + space;
       }
-    }, { rotate: o.rotate ?? -4, from: 0.4 }));
-    return geom(x, y, w, h);
+    }, { rotate, from: 0.4 }));
+    return box;
+  }
+
+  // The width and height of the box around a w by h box turned by `rotate` degrees.
+  tilted(w, h, rotate) {
+    const a = (rotate * Math.PI) / 180;
+    const cos = Math.abs(Math.cos(a));
+    const sin = Math.abs(Math.sin(a));
+    return { w: w * cos + h * sin, h: h * cos + w * sin };
   }
 
   // The height of a sticker that keeps it clear of the hook title: its own when

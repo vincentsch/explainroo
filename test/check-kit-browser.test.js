@@ -81,6 +81,21 @@ test('check warns about text and pictures under the watermark, also where the sc
   assert.deepEqual(messages(panels, 'picture', 'watermark'), []);
 });
 
+// The box a sticker returns, with "defaults": "0.6", is the box around it
+// tilted, and `top` places the top of that box. So a sticker placed right
+// below a card's box doesn't overlap the card.
+test('a sticker placed with top right below a card keeps clear of it, and returns its tilted box', { skip }, async (t) => {
+  const body = `const card = s.short.payoff({ title: 'Brewly', lines: ['Fresh beans every 2 weeks', 'First box half price'], y: s.safe.top + 320, at: -1 });
+    const st = s.short.sticker('Order *today*', { top: card.bottom + 12, at: -1 });
+    const right = s._v6 ? st.h > 84 + 20 && Math.abs(st.top - card.bottom - 12) < 0.01 : st.h === 84 && st.top > card.bottom + 12;
+    if (!right) throw new Error('the sticker returned ' + JSON.stringify(st));`;
+  for (const defaults of ['0.6', undefined]) {
+    const issues = await check(await project(t, { size: 'reels', defaults }, { below: body }));
+    const bad = issues.filter((i) => i.level === 'error' || /overlap|covers/.test(i.message));
+    assert.deepEqual(bad, [], `${defaults}: ${JSON.stringify(bad, null, 2)}`);
+  }
+});
+
 test('a drawing with a box counts as a shape over a hook title, also after the scene used the short-video kit', { skip }, async (t) => {
   const issues = await check(await project(t, { size: 'shorts', defaults: '0.6' }, {
     over: `const box = s.short.hook('Bees make honey', { at: -1 });

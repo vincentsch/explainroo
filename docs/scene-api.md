@@ -99,7 +99,9 @@ there for your own math.
 | `s.get(id)` | size and position of an element drawn earlier with that `id` |
 
 Most elements return `{ x, y, w, h, left, right, top, bottom }`, so you can
-place the next thing below or beside them.
+place the next thing below or beside them. The box is the element once it has
+arrived, without its entrance, soft shadow, `rotate` or `scale`, in scene
+pixels that the camera zooms as one.
 
 ## Options most elements take
 
@@ -123,9 +125,8 @@ one comes in. To swap one label for another in the same place, give the old
 one `exit: 'none'` and the new one the same time as its `at`.
 
 In `paper`, `chalk` and `blueprint`, shapes are drawn line by line and text
-is written out. In `clean` and `midnight`, shapes pop and text rises. In
-`editorial`, shapes fade in and text rises. In `studio`, shapes and text
-rise. Use `at: -1` for things that were already on screen in the previous scene. They
+is written out. In the other looks, shapes pop, fade or rise in, and text
+rises. Use `at: -1` for things that were already on screen in the previous scene. They
 are there from the start and make no sound.
 
 ## Text
