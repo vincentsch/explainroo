@@ -10,6 +10,7 @@ import { clipFrame, clipURL, soundURL, FIT_SPEEDS } from './clips.js';
 import { cuedSteps, smallRecording, smallPageText, talkZoomed, movingSteps, recordingClock, videoTime, sceneTime, cursorAt, viewAt, drawCursor, RING_SECONDS } from './recording.js';
 import { highlightLine, codeTokens, matchTokens, resolveCodeSteps, codeMorphState } from './code.js';
 import { ring, bounds, along, rayThrough } from './geometry.js';
+import { kitWord } from './words.js';
 
 // The size of body text, which s.text uses unless told otherwise, and arrow
 // labels with "defaults": "0.5".
@@ -146,6 +147,16 @@ export class Stage {
     if (Object.hasOwn(all, key)) return all[key];
     const close = suggest(String(key), Object.keys(all), 4);
     throw new SceneError(`s.str("${key}"): ${file} has no "${key}".${close.length ? ` Close keys: ${close.join(', ')}` : ''}`);
+  }
+
+  // A word that the kits and the formats draw when a scene gives none, like
+  // "Paso" for "step" in Spanish, in the language of the version being drawn.
+  kitWord(key) {
+    try {
+      return kitWord(key, this.lang);
+    } catch (e) {
+      throw new SceneError(e.message);
+    }
   }
 
   // ---------- time ----------

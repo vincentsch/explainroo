@@ -6,6 +6,7 @@
   "pace": 1.15,
   "music": true,
   "captions": "bold",
+  "transition": "push",
   "cover": "hook@0.6",
   "defaults": "0.6"
 }

@@ -196,3 +196,14 @@ test('formats add refuses a format with a link, a paid voice, a long guide or th
   assert.match(cli(t, ['formats', 'add', 'https://example.com/a.git', '--commit', 'main']).stderr, /--commit needs a commit id/);
   assert.match(cli(t, ['formats', 'add', 'ext::sh -c touch% /tmp/x']).stderr, /is no Git address/);
 });
+
+test('punch() of vertical-short works more than once in a scene, and the words keep to the largest zoom', async () => {
+  const { punch, wordArea } = await import('../formats/vertical-short/format.js');
+  const s = { cx: 540, cy: 960, safe: { x: 60, y: 200, w: 960, h: 1300 }, short: { punch: (at, o) => [{ at, ...o }, { at: at + o.hold, zoom: 1 }] } };
+  const keys = [...punch(s, 1), ...punch(s, 3, { zoom: 1.4 }), ...punch(s, 5, { zoom: 1.1 })];
+  assert.equal(keys.length, 6);
+  assert.deepEqual(keys.filter((k) => k.zoom > 1).map((k) => k.zoom), [1.25, 1.4, 1.1]);
+  const once = { ...s };
+  punch(once, 3, { zoom: 1.4 });
+  assert.deepEqual(wordArea(s), wordArea(once));
+});

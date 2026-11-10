@@ -6,7 +6,7 @@ import { getTheme, makeBackground, fontString, colorOf } from './themes.js';
 import { Pen } from './pen.js';
 import { drawTransition } from './transitions.js';
 import { buildPhrases, drawCaptions, buildChunks, drawBoldCaptions, captionHighlight } from './captions.js';
-import { AUDIO_FILE, clamp, hashStr, mulberry32, suggest, suggestColor, contrast, luminance, opaque, withAlpha, parseColor, mixColor, rgba, cssColor, newDefaults, accentNote } from './util.js';
+import { AUDIO_FILE, clamp, ease, hashStr, mulberry32, suggest, suggestColor, contrast, luminance, opaque, withAlpha, parseColor, mixColor, rgba, cssColor, newDefaults, accentNote } from './util.js';
 import { overlapDepth, holds, crosses, bounds, inside, toEdge, grow } from './geometry.js';
 import { layoutAreas } from './layout.js';
 import { loadClips, soundURL, ClipFrames, FREEZE_SECONDS, FIT_SPEEDS } from './clips.js';
@@ -15,6 +15,7 @@ import { CATCH_UP, fitViewport, PAGE_TEXT, PLAYED_TEXT } from './recording.js';
 import { Short } from './short.js';
 import { playbackTextIssue } from './readability.js';
 import { planCamera, cameraAt, cameraMoving, heldShot, continues, frameRect, backgroundShot } from './director.js';
+import { englishKitWord, kitWordHint } from './words.js';
 
 Stage.UI = UI;
 Stage.Short = Short;
@@ -301,6 +302,13 @@ export class Engine {
     const name = sc.transition === 'auto' ? this.theme.transition : sc.transition;
     if (this.transparent && ['slide', 'wipe', 'brush'].includes(name)) return 'fade';
     return name || 'fade';
+  }
+
+  // How long a scene shows together with the one before it at its start: the
+  // length of its transition, or 0 after a cut and for the first scene.
+  blendIn(sc) {
+    if (!sc || sc.index === 0 || sc.transition === 'none' || this.transitionFor(sc) === 'cut') return 0;
+    return Math.min(this.timeline.transitionSeconds, sc.dur * 0.5);
   }
 
   drawScene(ctx, index, t) {
@@ -667,7 +675,10 @@ export class Engine {
     const partial = fresh ? [...new Map(log.partial.map((p) => [p.name, p])).values()] : [];
     // Text still on its way in, like a name placed at: 0.
     const coming = texts.filter((x) => !x.problem && !x.settled && x.text.trim() && inside(x)).map((x) => x.text);
-    return { count: words + pictures + lines, picture: pictures > 0, onlyText: words > 0 && pictures + lines === 0, partial, coming };
+    // A recording, a clip, an image or a drawing, which "cover": "auto" looks
+    // for with "defaults": "0.6".
+    const media = log.shapes.some((s) => (s.kind === 'image' || s.kind === 'drawing') && s.settled && s.alpha > 0.95 && arrived(s) && (inside(s.box) || fillsFrame(s.box, this.W, this.H)));
+    return { count: words + pictures + lines, picture: pictures > 0, media, onlyText: words > 0 && pictures + lines === 0, partial, coming };
   }
 
   // The moment "cover": "auto" takes with "defaults": "0.5": the frame of the
@@ -675,8 +686,24 @@ export class Engine {
   // nothing still typing or counting, where a frame with a picture comes before
   // any frame without one, then a frame where nothing shows itself half way, and
   // the earliest of those. Seconds into the video.
+  // With "defaults": "0.6", it is the fullest frame of the first scene that
+  // shows a recording, a clip, an image or a drawing, a frame with one first,
+  // and the first scene's as before when no scene shows one.
   coverMoment() {
-    const sc = this.timeline.scenes[0];
+    if (newDefaults(this.config, '0.6')) {
+      for (const sc of this.timeline.scenes) {
+        if (!this.showsMedia(sc)) continue;
+        const best = this.fullestFrame(sc, true);
+        if (best.media) return best.T;
+      }
+    }
+    return this.fullestFrame(this.timeline.scenes[0]).T;
+  }
+
+  // The fullest frame of a scene, as the time in the video and what it shows.
+  // With `media`, a frame with a recording, a clip, an image or a drawing comes
+  // before any frame without one.
+  fullestFrame(sc, media = false) {
     const last = Math.max(0, Math.floor((sc.dur - 1e-6) * this.fps));
     // Every frame, or evenly spread frames of a long scene.
     const step = Math.max(1, Math.ceil((last + 1) / COVER_FRAMES));
@@ -684,9 +711,19 @@ export class Engine {
     for (let f = 0; f <= last; f += step) {
       const seen = this.framed(sc.index, f / this.fps);
       const fuller = seen.count > best?.count || (seen.count === best?.count && seen.partial.length < best.partial.length);
-      if (!best || (seen.picture && !best.picture) || (seen.picture === best.picture && fuller)) best = { T: sc.start + f / this.fps, ...seen };
+      const first = media && seen.media !== best?.media ? seen.media : seen.picture !== best?.picture ? seen.picture : fuller;
+      if (!best || first) best = { T: sc.start + f / this.fps, ...seen };
     }
-    return best.T;
+    return best;
+  }
+
+  // Whether some frame of a scene shows a recording, a clip, an image or a
+  // drawing, from up to 60 frames spread over it.
+  showsMedia(sc) {
+    const last = Math.max(0, Math.floor((sc.dur - 1e-6) * this.fps));
+    const step = Math.max(1, Math.ceil((last + 1) / 60));
+    for (let f = 0; f <= last; f += step) if (this.framed(sc.index, f / this.fps).media) return true;
+    return false;
   }
 
   // A hint when the first frame of the video shows only the background, or
@@ -707,7 +744,7 @@ export class Engine {
       const name = `"${text.length > 40 ? text.slice(0, 37) + '...' : text}"${more > 0 ? ` and ${more} more text${more > 1 ? 's' : ''}` : ''}`;
       return { level: 'hint', scene: sc.id, t: 0, message: `the first frame of the video shows ${name} still coming in, and Buffer, LinkedIn and other services use it as the thumbnail; give ${more > 0 ? 'them' : 'it'} at: -1 instead of at: 0, so ${more > 0 ? 'they are' : 'it is'} there from the first frame` };
     }
-    const T = this.coverMoment();
+    const T = this.fullestFrame(sc).T;
     const t = T - sc.start;
     if (!(this.framed(sc.index, t).count > 0)) return null;
     // What that frame shows, without the camera, in the order it was drawn.
@@ -907,6 +944,7 @@ export class Engine {
     this.soundsPlayed = new Map();
     // A short video: what changes the picture, in seconds of the video.
     const shortVideo = this.isShort();
+    const language = this.config.language || 'en';
     const changes = [];
     let anyBroke = false;
     for (const sc of this.timeline.scenes) {
@@ -950,6 +988,8 @@ export class Engine {
         const texts = laid.texts.filter((x) => x.alpha > 0.5);
         for (const tx of texts) {
           const label = short(tx.text);
+          const english = language !== 'en' ? englishKitWord(tx.text) : null;
+          if (english) once(`kitword:${sc.id}:${tx.text}`, () => add('hint', sc.id, t, kitWordHint(english, language)));
           // UI kit text (s.ui) may leave the frame on purpose while the
           // camera zooms or pans; app screens use smaller text than slides.
           const framed = !(tx.ui && tx.zoomed);
@@ -998,6 +1038,7 @@ export class Engine {
           }
         }
         for (const f of stickersOverTitles(laid.draw.shapes, solid)) once(`sticker:${sc.id}:${f.key}`, () => add('warn', sc.id, t, f.message));
+        for (const f of stickersOverPictures(laid.draw.shapes, solid, W, H)) once(`sticker:${sc.id}:${f.key}`, () => add('warn', sc.id, t, f.message));
         for (const f of shapeOverlaps(laid.draw.shapes)) once(`shapes:${sc.id}:${f.key}`, () => add('warn', sc.id, t, f.message));
         for (const f of textsIntoShapes(solid, laid.draw.shapes)) once(`shapes:${sc.id}:${f.key}`, () => add('warn', sc.id, t, f.message));
         for (const f of linesOverText(laid.draw.strokes, solid)) once(`line:${sc.id}:${f.key}`, () => add('warn', sc.id, t, f.message));
@@ -1233,7 +1274,73 @@ export class Engine {
     this.cueNotes = null;
     this.cueErrors = null;
     for (const { scene, t, tex } of this.lateMath.values()) add('error', scene, t, `math "${tex}" was not collected at the start; keep TeX strings fixed and always call s.math with at and out for timing`);
+    if (!anyBroke) for (const f of this.transitionOverlaps()) add('warn', f.scene, f.t, f.message);
     return issues;
+  }
+
+  // The texts a scene shows at `t`, as check logs them, with the camera off.
+  textsAt(index, t) {
+    const scratch = (this._framedCanvas ??= Object.assign(document.createElement('canvas'), { width: 16, height: 16 }));
+    const saved = { textLog: this.textLog, drawLog: this.drawLog, recorder: this.recorder };
+    this.textLog = [];
+    this.drawLog = drawLog();
+    this.recorder = null;
+    try {
+      this.drawScene(scratch.getContext('2d'), index, t);
+      return this.textLog.filter((x) => !x.problem && x.alpha > 0.3 && String(x.text).trim());
+    } catch {
+      return [];
+    } finally {
+      Object.assign(this, saved);
+    }
+  }
+
+  // Text of two scenes in the same place during a fade or a zoom between them,
+  // for more than two frames, like a step label of each scene over the other.
+  // A slide, a push, a wipe and a brush show each part of the frame from one
+  // scene only, and a cut shows no two scenes at all.
+  transitionOverlaps() {
+    const found = [];
+    const { W, H } = this;
+    for (const sc of this.timeline.scenes) {
+      const blend = this.blendIn(sc);
+      const name = this.transitionFor(sc);
+      if (!blend || !['fade', 'zoom'].includes(name)) continue;
+      const prev = this.timeline.scenes[sc.index - 1];
+      const frames = Math.ceil(blend * this.fps);
+      let count = 0;
+      let first = null;
+      for (let f = 0; f < frames; f++) {
+        const t = f / this.fps;
+        const e = ease.inOut(t / blend);
+        // Each side as the frame shows it: how much shows, and how much bigger.
+        const sides = [
+          { texts: this.textsAt(prev.index, sc.start + t - prev.start), weight: 1 - e, grow: name === 'zoom' ? 1 + 0.12 * e : 1 },
+          { texts: this.textsAt(sc.index, t), weight: e, grow: name === 'zoom' ? 0.94 + 0.06 * e : 1 },
+        ];
+        if (sides.some((side) => side.weight < 0.15)) continue;
+        const box = (x, k) => ({ x0: W / 2 + (x.x0 - W / 2) * k, x1: W / 2 + (x.x1 - W / 2) * k, y0: H / 2 + (x.y0 - H / 2) * k, y1: H / 2 + (x.y1 - H / 2) * k });
+        let pair = null;
+        for (const A of sides[0].texts) {
+          for (const B of sides[1].texts) {
+            const a = box(A, sides[0].grow);
+            const b = box(B, sides[1].grow);
+            const ix = Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0);
+            const iy = Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0);
+            const small = Math.min((a.x1 - a.x0) * (a.y1 - a.y0), (b.x1 - b.x0) * (b.y1 - b.y0)) || 1;
+            if (ix > 4 && iy > 4 && (ix * iy) / small > 0.15) pair ??= [A.text, B.text];
+          }
+        }
+        if (!pair) continue;
+        count++;
+        first ??= { t, pair };
+      }
+      if (count <= 2) continue;
+      const label = (text) => `"${text.length > 30 ? text.slice(0, 27) + '...' : text}"`;
+      const [a, b] = first.pair;
+      found.push({ scene: sc.id, t: Math.round(first.t * 100) / 100, message: `during the ${name} from "${prev.id}" into this scene, ${label(a)} of "${prev.id}" and ${label(b)} of this scene show in the same place for ${count} frames, from ${(sc.start + first.t).toFixed(1)}s in the video; give the scene {transition=cut} or {transition=push} in the script, or let one of them leave or come later` });
+    }
+    return found;
   }
 }
 
@@ -1426,6 +1533,30 @@ function stickersOverTitles(shapes, texts) {
   return found;
 }
 
+// Stickers that cover an icon, an image, a clip, a drawing or text that isn't
+// their own, also with overlap: true, which lets a sticker cover backgrounds
+// only. A picture that fills the frame is a background, and so is a faint
+// one, like the large copy of a subject behind the captions. The hook title
+// has a finding of its own.
+export function stickersOverPictures(shapes, texts, W, H) {
+  const found = [];
+  const pictures = shapes.filter((sh) => ['icon', 'image', 'drawing'].includes(sh.kind) && sh.settled && sh.alpha > 0.5 && !fillsFrame(sh.box, W, H));
+  for (const sh of shapes) {
+    if (sh.kind !== 'sticker' || !sh.settled || sh.alpha <= 0.95) continue;
+    const name = `the sticker "${sh.name.slice(0, 30)}"`;
+    for (const p of pictures) {
+      if (overlapDepth(sh.poly, p.poly) <= 4 && !holds(p.poly, sh.poly) && !holds(sh.poly, p.poly)) continue;
+      found.push({ key: `${sh.serial}/${p.kind}/${p.id ?? p.name}`, message: `${name} covers ${shapeName(p)}; move the sticker with x and y. overlap: true lets a sticker cover backgrounds only` });
+    }
+    for (const tx of texts) {
+      if (tx.owner === sh.serial || tx.role === 'title' || !tx.settled) continue;
+      if (overlapDepth(sh.poly, [[tx.x0, tx.y0], [tx.x1, tx.y0], [tx.x1, tx.y1], [tx.x0, tx.y1]]) <= 4) continue;
+      found.push({ key: `${sh.serial}/text/${tx.text}`, message: `${name} covers the text "${tx.text.slice(0, 30)}"; move the sticker with x and y` });
+    }
+  }
+  return found;
+}
+
 // Shapes that partly overlap: they reach more than 4 pixels into each other
 // and neither holds the other. Only shapes that have fully arrived count. Two
 // in the same group, or in one panel, are one piece; a dialog, an open menu or
@@ -1438,6 +1569,9 @@ export function shapeOverlaps(shapes) {
       const A = list[i];
       const B = list[j];
       if (A.group !== null && A.group === B.group) continue;
+      // A sticker over a picture has a finding of its own.
+      const picture = (x) => ['icon', 'image', 'drawing'].includes(x.kind);
+      if ((A.kind === 'sticker' && picture(B)) || (B.kind === 'sticker' && picture(A))) continue;
       const depth = overlapDepth(A.poly, B.poly);
       if (depth <= 4 || holds(A.poly, B.poly) || holds(B.poly, A.poly)) continue;
       const key = [shapeKey(A), shapeKey(B)].sort().join('/');

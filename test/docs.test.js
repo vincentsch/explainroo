@@ -445,6 +445,13 @@ test('every section of every topic stays under 12,000 bytes', () => {
   }
 });
 
+test('a long topic has sections, so --sections can list them, among them short-video and troubleshooting', () => {
+  for (const topic of topics) {
+    if (Buffer.byteLength(page(topic)) > 9000) assert.ok(sectionsOf(page(topic)).filter((s) => s.heading).length >= 2, `docs/${topic}.md is long and has no "## " sections`);
+  }
+  for (const topic of ['short-video', 'troubleshooting']) assert.ok(sectionsOf(page(topic)).filter((s) => s.heading).length >= 5, topic);
+});
+
 test('docs <topic> --sections lists the sections with their size, and docs <topic> <section> prints one', () => {
   for (const topic of topics) {
     const sections = sectionsOf(page(topic)).filter((s) => s.heading);

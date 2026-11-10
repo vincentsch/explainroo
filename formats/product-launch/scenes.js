@@ -78,6 +78,6 @@ export default {
 
   outro(s) {
     stage(s, null, { camera: [{ at: 0, zoom: 1.03, dur: s.dur, ease: 'linear' }] });
-    callToAction(s, { name: 'Acme Notes', action: 'Try it for free', url: 'acme.example', at: '#cta', urlAt: '#url' });
+    callToAction(s, { name: 'Acme Notes', url: 'acme.example', at: '#cta', urlAt: '#url' });
   },
 };

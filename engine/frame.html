@@ -168,6 +168,14 @@ window.explainrooReady = (async () => {
     coverCropIssue(T) {
       return engine.coverCropIssue(T);
     },
+    // Text of two scenes in one place during a transition, and the texts a
+    // scene shows at a moment, as check sees them.
+    transitionOverlaps() {
+      return engine.transitionOverlaps();
+    },
+    textsAt(index, t) {
+      return engine.textsAt(index, t).map(({ text, x0, y0, x1, y1, alpha }) => ({ text, x0, y0, x1, y1, alpha }));
+    },
     // check's hint about a first frame that shows nothing yet.
     firstFrameIssue() {
       return engine.firstFrameIssue();

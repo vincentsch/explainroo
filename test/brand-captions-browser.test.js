@@ -15,6 +15,7 @@ import { makeState, prepare } from '../src/pipeline.js';
 import { startServer } from '../src/server.js';
 import { layoutAreas } from '../engine/layout.js';
 import { THEMES } from '../engine/themes.js';
+import { contrast } from '../engine/util.js';
 import { runCli as cli } from './helpers/tiny-project.js';
 import { cachedVoice } from './helpers/cached-voice.js';
 
@@ -194,11 +195,20 @@ test('check names brand.accent, its contrast and the color used instead when sta
   assert.deepEqual(more, [], 'one hint for the whole video');
   assert.equal(starred.level, 'hint');
   assert.match(starred.message, /^brand\.accent #ffd23f is hard to read on the background \(1\.\d:1, below 3:1\), so \*starred\* words use #[0-9a-f]{6}, the same hue made darker$/);
-  // A slab hook in a short: white keywords on the accent read poorly, so the box keeps its red.
-  fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ ...SETTINGS, size: 'shorts', captions: false, defaults: '0.6', brand: { accent: '#f96932' } }));
+  // A slab hook in a short: white keywords on the accent read poorly, so the box
+  // keeps the accent's hue, made darker until white reads on it.
   fs.writeFileSync(path.join(dir, 'scenes.js'), "export default { intro(s) { s.short.hook('Solve it in *seconds*', { style: 'slab' }); } };");
-  cachedVoice(dir, 'intro');
-  assert.deepEqual((await accentHints()).map((i) => [i.level, i.message]), [['hint', 'brand.accent #f96932 is hard to read as the box behind white keywords in the hook (2.9:1, below 3:1), so their box uses #e5233d']]);
+  for (const [accent, ratio] of [['#f96932', '2.9'], ['#4dabf7', '2.4']]) {
+    fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ ...SETTINGS, size: 'shorts', captions: false, defaults: '0.6', brand: { accent } }));
+    cachedVoice(dir, 'intro');
+    const hints = await accentHints();
+    assert.equal(hints.length, 1, JSON.stringify(hints));
+    const used = new RegExp(`^brand\\.accent ${accent} is hard to read as the box behind white keywords in the hook \\(${ratio.replace('.', '\\.')}:1, below 3:1\\), so their box uses (#[0-9a-f]{6}), the same hue made darker$`).exec(hints[0].message)?.[1];
+    assert.ok(used, hints[0].message);
+    assert.ok(contrast('#ffffff', used) >= 3, `${used} reads behind white`);
+    const hue = (c) => { const [r, g, b] = [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16)); return Math.atan2(Math.sqrt(3) * (g - b), 2 * r - g - b) * 180 / Math.PI; };
+    assert.ok(Math.abs(hue(used) - hue(accent)) < 4, `${used} keeps the hue of ${accent}`);
+  }
   // An accent that reads gives no hint.
   fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ ...SETTINGS, size: 'shorts', captions: false, defaults: '0.6', brand: { accent: '#b8400a' } }));
   cachedVoice(dir, 'intro');

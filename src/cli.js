@@ -8,7 +8,7 @@ import { normWord, ScriptError } from './script.js';
 import { prepare, makeState, outdatedLine, outdatedRenders, VERSION } from './pipeline.js';
 import { render } from './render.js';
 import { exportPlayer } from './export.js';
-import { check, formatVerify, heardEveryTime, NEARLY_LISTED, NEARLY_SHORT, nearlyText, untimed, stills, sheet, unconfirmedLine, unconfirmedWords, verify } from './qa.js';
+import { check, formatVerify, heardEveryTime, NEARLY_LISTED, nearlyShort, nearlyText, untimed, stills, sheet, unconfirmedLine, unconfirmedWords, verify } from './qa.js';
 import { startServer, ROOT } from './server.js';
 import { VOICES, LANGUAGES, voiceLanguage, loadTTS, TTS_SAMPLE_RATE } from './models.js';
 import { phonemize, generateSpeech } from './phonemes.js';
@@ -669,7 +669,7 @@ export function shownIssues(issues, verbose) {
   const rest = issues.filter((i) => i.key !== 'nearly');
   const where = near.length === 1 ? `scene ${near[0].scene}` : `${near.length} scenes`;
   const listed = near.every((i) => i.nearly) ? `${nearlyText(untimed(near.flatMap((i) => i.nearly)))}, in the speech check of ${where}` : `${words} words only nearly matched in the speech check of ${where}`;
-  rest.splice(at, 0, { level: 'hint', scene: null, t: null, message: `${listed}. ${NEARLY_SHORT}` });
+  rest.splice(at, 0, { level: 'hint', scene: null, t: null, message: `${listed}. ${nearlyShort(near.flatMap((i) => i.nearly ?? []))}` });
   return rest;
 }
 

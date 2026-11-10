@@ -29,13 +29,19 @@ has five scenes, and each one has a job.
   headline at the top. Put `*stars*` around the words that get the accent.
 - `body(s)` is the free area under the headline.
 - `nameCard(s, name, promise, { at, promiseAt, icon })` shows the name big
-  in the middle, with an icon in a tile above it. Keep `at: -1`, so the first
-  frame shows it.
+  in the middle, with an icon in a tile above it, or without an icon a small
+  "New" label, in the video's language unless `eyebrow` says something else.
+  Keep `at: -1`, so the first frame shows it.
 - `appWindow(s, { url, at }, (x, y, w, h) => { ... })` draws a browser window
   in the free area. Draw the page inside it with `s.ui`.
 - `featureCards(s, [{ icon, title, text, at }])` shows cards one by one.
   Three cards fit best. Find icons with `explainroo icons <word>`.
-- `callToAction(s, { name, action, url, at, urlAt })` is the last frame.
+- `callToAction(s, { name, action, url, at, urlAt })` is the last frame. Its
+  button says "Try it for free" in the video's language unless `action` says
+  something else.
+
+The scenes change with `"transition": "push"`, so the headlines of two
+scenes never show in one place.
 
 Time each card, click and list to a `[#marker]` in `script.md`, so it shows
 when the voice says it.

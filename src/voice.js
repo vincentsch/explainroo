@@ -179,13 +179,14 @@ export function withHeard(info, language, accept) {
     const at = newly[k] ? unmatched.indexOf(w.text) : -1;
     if (at !== -1) unmatched.splice(at, 1);
   });
-  const names = new Set(info.words.filter((w, k) => taken[k]).map((w) => w.text));
+  // Near matches name a word without the punctuation around it.
+  const names = new Set(info.words.filter((w, k) => taken[k]).map((w) => bareWord(w.text)));
   return {
     ...info,
     words: info.words.map((w, k) => (newly[k] ? { ...w, matched: true } : w)),
     matchRate: Math.min(1, round((info.matchRate ?? 0) + gained / total)),
     unmatched,
-    nearly: (info.nearly ?? []).filter((n) => !names.has(n.word)),
+    nearly: (info.nearly ?? []).filter((n) => !names.has(bareWord(n.word))),
   };
 }
 

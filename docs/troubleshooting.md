@@ -1,10 +1,33 @@
 # Things that break
 
+## Installing and running
+
 - `npx --yes explainroo` that prints nothing and stops. On Linux, installing
   explainroo makes ONNX Runtime download its graphics card files from GitHub,
   and when that download fails, `npx` says nothing. explainroo doesn't use
   those files. Run the command again with `ONNXRUNTIME_NODE_INSTALL_CUDA=skip`
   in front of it.
+- A render that stops with a closed browser or `EPIPE` on a busy computer.
+  Run it again with fewer pages, for example `render --workers 2`.
+- Running explainroo on one project from two computers at once, or from a
+  container and its host, through a network drive, a synced folder or a
+  shared mount. Its locks only work within one computer, so a purchase or a
+  post there isn't protected from a second run.
+- "Another run is busy" when no other explainroo command runs, for example
+  after a crash on Windows, where the process id went to another program.
+  Each lock is a folder: in the project's `history/locks/` for posts, clip
+  purchases and files put in place, and for sign-ins in `locks/` next to the
+  keys file that `explainroo doctor` prints. Move that folder away only while
+  no explainroo command runs.
+- Long video clips fill `build/clips/` with frames, taken once at the
+  project's fps and at most 1920 pixels wide. Trim footage to the part you
+  show before you add it. Deleting `build/clips/` is safe.
+- Screen recordings often have a variable frame rate. explainroo converts
+  them to the project's fps, so a frame can repeat or drop. Record at a fixed
+  frame rate when the motion matters.
+
+## Scene code
+
 - Calling an element only sometimes, like `if (s.t > 3) s.box(...)`. Always
   call it, and use `at` and `out` for the timing. The sound effects and the
   checks depend on this.
@@ -17,7 +40,12 @@
 - Random values from anything other than `s.rand()`, `s.noise()` or
   `Math.random()` inside the scene function. Only those three come out the
   same on every render.
-- Text in AI images. Put words on screen with `s.text`.
+- Elements inside `s.group`. Each one makes its sound at its own `at`, even
+  while the group is still hidden. Give them the group's `at`, or
+  `sfx: false`.
+
+## Narration and cues
+
 - A cue word that is spoken twice. `at: 'writes'` means the first time, and
   `check` lists such words as hints. Write `'writes#2'` for the second time,
   or a `[#marker]`. Write `'writes#1'` when you mean the first time, and the
@@ -26,15 +54,16 @@
   as "visitors". `at: 'visitor'` then waits for the next plain "visitor".
   Use a `[#marker]` there. A French or Italian article is different:
   `at: 'ombre'` finds "l'ombre".
-- Elements inside `s.group`. Each one makes its sound at its own `at`, even
-  while the group is still hidden. Give them the group's `at`, or
-  `sfx: false`.
 - Words that sound like other words. When the speech check hears "plain" as
   "plane", it counts the word and lists it as sounding the same, so it needs
   no fix. In German it can't tell, and `{shown|spoken}` cannot fix that, so
   reword the sentence there. For acronyms that are spelled out letter by letter, write
   `{API|A, P, I}`. Do not write `A.P.I.`, because the voice reads the dots
   like a web address.
+
+## Pictures and text
+
+- Text in AI images. Put words on screen with `s.text`.
 - Growing a shape by changing `w` or `h` over time in the hand-drawn looks.
   The outline is drawn fresh every frame, so it wobbles. Animate `scale`
   instead.
@@ -58,28 +87,12 @@
 - Colored text in `paper` and `clean`. Green, orange and red are light enough
   for shapes but often too light for text. `check` warns about low contrast.
   It suggests a readable color and shows its contrast ratio.
-- Long video clips fill `build/clips/` with frames, taken once at the
-  project's fps and at most 1920 pixels wide. Trim footage to the part you
-  show before you add it. Deleting `build/clips/` is safe.
-- Screen recordings often have a variable frame rate. explainroo converts
-  them to the project's fps, so a frame can repeat or drop. Record at a fixed
-  frame rate when the motion matters.
 - Exact geometry in `paper`, `chalk` and `blueprint`. Their outlines are
   hand drawn, so a circle's edge wanders a little from its radius. When a
   line has to meet an outline exactly, like a radius that ends on the
   circle, draw both with `s.draw`.
-- A render that stops with a closed browser or `EPIPE` on a busy computer.
-  Run it again with fewer pages, for example `render --workers 2`.
-- Running explainroo on one project from two computers at once, or from a
-  container and its host, through a network drive, a synced folder or a
-  shared mount. Its locks only work within one computer, so a purchase or a
-  post there isn't protected from a second run.
-- "Another run is busy" when no other explainroo command runs, for example
-  after a crash on Windows, where the process id went to another program.
-  Each lock is a folder: in the project's `history/locks/` for posts, clip
-  purchases and files put in place, and for sign-ins in `locks/` next to the
-  keys file that `explainroo doctor` prints. Move that folder away only while
-  no explainroo command runs.
+
+## What check finds in text
 
 `check` looks at text and math formulas, and an arrow's label counts as
 text. It finds text that is:
@@ -103,9 +116,13 @@ text. It finds text that is:
 - crossed by the line of an arrow or of a mark from `s.annotate`
 - cut at the edge of the frame by the camera while the shot holds still
 
-It also finds:
+## What else check finds
+
+`check` also finds:
 
 - shapes that partly overlap: boxes, cards, panels, images, icons and stickers
+- a sticker that covers an icon, an image, a clip, a drawing or text, also
+  with `overlap: true`, which lets a sticker cover backgrounds only
 - shapes in the caption band, and on Shorts, TikTok and Reels shapes outside
   the content area. A shape that fills the whole frame is a background and
   doesn't count. With `"defaults": "0.6"` a tall video's pictures may fill
@@ -122,6 +139,9 @@ It also finds:
   that counts or text that writes itself, when it isn't all there by the end
   of its scene or by its `out`. It says how much is missing and which option
   changes that
+- text of two scenes in the same place during a `fade` or `zoom` between
+  them, for more than two frames. Give the scene `{transition=cut}` or
+  `{transition=push}`, which moves the scenes side by side
 - a scene that shows only its background for more than 1.5 seconds, at the
   start or later, when everything has left and nothing new has come yet
 - a cover with only text on an empty background
@@ -144,6 +164,8 @@ It also finds:
   start, so one run shows all of its findings. A marker needs its `#`, as in
   `at: '#listen'`. When a cue without it has the name of a marker in that
   scene, the error asks first whether you meant the marker
+
+## How check names elements
 
 A finding names the element it is about by what it shows, like the box
 "Your phone", with its `id` when it has one. An element with neither is named

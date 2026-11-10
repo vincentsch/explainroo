@@ -95,9 +95,13 @@ uses the video's language to check the finished sound too.
 
 If a symbol, short form or word sounds wrong, use `{shown|spoken}` in
 `script.md` and run `voice` again. Put the pronunciation in the same
-language. The speech check accepts digits for numbers. Outside English and
-German, it does not try to match spelled numbers to digits. Write the digits,
-or use an override whose spoken text has digits when that helps the check.
+language. The speech check accepts digits for numbers. In English, German,
+Spanish, French, Italian and Brazilian Portuguese it also matches spelled
+numbers to digits, so "cinco" heard for `5`, or "treinta y cinco" for `35`, is
+confirmed. Outside English and German this covers whole numbers from 0 to
+9,999, simple decimals like "tres coma cinco" and percentages. It doesn't in
+Hindi, Japanese and Mandarin, or for larger numbers. When a digit is heard as
+a word there, `voice` names the override with that word, like `{5|cinco}`.
 
 In the languages that use espeak-ng, the speech check also counts a word heard
 as another word with the same sound, like "haya" for "halla", and lists it as
@@ -260,6 +264,12 @@ adds one, like `script.es.md`. One `scenes.js` draws them all. Put on-screen
 text in `strings.json` and `strings.<lang>.json` and read it with `s.str('key')`.
 Nested groups become dotted keys like `'intro.title'`. Word cues differ between
 languages, so give each script the same `[#markers]`.
+
+The words that the kits and the formats draw when a scene gives none, like
+"STEP" in `s.short.step()`, "New" and "Try it for free", come in the video's
+language with `"defaults": "0.6"`. `s.kitWord(key)` gives one, with the keys
+`step`, `new` and `try-free`. An option a scene sets wins, and `check` gives a
+hint when a video in another language shows one of these words in English.
 
 Add `--lang es` to the commands from `voice` to `publish`. Spanish builds in
 `build/es/` and writes to `out/es/`. `"languages": { "es": { ... } }` holds

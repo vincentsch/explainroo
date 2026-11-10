@@ -13,6 +13,7 @@ import { ffmpegPath } from '../src/ffmpeg.js';
 import { loadProject } from '../src/project.js';
 import { runCli as cli } from './helpers/tiny-project.js';
 import { cachedVoice } from './helpers/cached-voice.js';
+import { suggestColor } from '../engine/util.js';
 
 let chrome;
 try { chrome = findChrome(); } catch {}
@@ -101,14 +102,17 @@ test('pills, chips and toasts read on a phone with "defaults": "0.6", and check 
   assert.ok(old.some((m) => /^warn "Monthly" is 20px, hard to read/.test(m)), old.join('\n'));
 });
 
-test('the hook\'s keywords take brand.accent where it reads, and keep their red where it does not', { skip, timeout: 120000 }, async (t) => {
+test('the hook\'s keywords take brand.accent where it reads, and a darker shade of its hue where it does not', { skip, timeout: 120000 }, async (t) => {
   const accent = '#da5c2b';
   const branded = await still(project(t, PLAIN_HOOK, { defaults: '0.6', brand: { accent } }), 'hook@0.5');
   assert.ok(count(branded, accent) > 5000, `${count(branded, accent)}`);
   assert.ok(count(branded, '#e5233d') < 500);
-  // White keywords don't read on a light yellow, so the red stays.
+  // White keywords don't read on a light yellow, so the box takes the same
+  // yellow made darker until white reads on it, and not the kit's red.
   const light = await still(project(t, PLAIN_HOOK, { defaults: '0.6', brand: { accent: '#ffe066' } }), 'hook@0.5');
-  assert.ok(count(light, '#e5233d') > 5000, `${count(light, '#e5233d')}`);
+  const shade = suggestColor('#ffe066', '#ffffff', 100).color;
+  assert.ok(count(light, shade) > 5000, `${shade}: ${count(light, shade)}`);
+  assert.ok(count(light, '#e5233d') < 500, `${count(light, '#e5233d')}`);
   // Without "defaults": "0.6", brand.accent leaves the hook as it was.
   const old = await still(project(t, PLAIN_HOOK, { brand: { accent } }), 'hook@0.5');
   assert.ok(count(old, accent) < 500);

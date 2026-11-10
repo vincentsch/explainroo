@@ -68,12 +68,29 @@ export const NEARLY_LISTED = 2;
 // The near matches as check and verify print them: the list with its advice,
 // or, for more than NEARLY_LISTED words without `verbose`, the words without
 // their times.
-export function nearlyLine(nearly, verbose = false) {
-  if (verbose || nearly.length <= NEARLY_LISTED) return `${nearlyText(nearly)}. ${nearlyAdvice(nearly)}`;
-  return `${nearlyText(untimed(nearly))}. ${NEARLY_SHORT}`;
+export function nearlyLine(nearly, verbose = false, heard = true) {
+  if (verbose || nearly.length <= NEARLY_LISTED) return `${nearlyText(nearly)}. ${nearlyAdvice(nearly, heard)}`;
+  return `${nearlyText(untimed(nearly))}. ${nearlyShort(nearly, heard)}`;
 }
 
 export const NEARLY_SHORT = 'No fix is needed unless one of them sounds wrong when you listen, and --verbose adds their times';
+
+// NEARLY_SHORT with the line for video.json that stops naming the words.
+export function nearlyShort(nearly, heard = true) {
+  const line = heard ? nearlyHeard(nearly) : '';
+  return line ? `${NEARLY_SHORT}. ${line}` : NEARLY_SHORT;
+}
+
+// The "heard" line for video.json that accepts the near matches as they were
+// heard, so check and verify stop naming them, or '' when none can go there.
+// Two words heard as one have no line.
+export function nearlyHeard(nearly) {
+  const seen = new Map();
+  for (const n of nearly) if (!n.joined && n.heard && !seen.has(n.word)) seen.set(n.word, { word: n.word, heard: bareWord(n.heard) });
+  if (!seen.size) return '';
+  const one = seen.size === 1;
+  return `If ${one ? 'it is' : 'they are'} said right, add this to video.json, and check and verify stop naming ${one ? 'it' : 'them'}: ${heardEntry([...seen.values()])}`;
+}
 
 // The near matches without their times, so the same word heard the same way
 // shows once, with how often.
@@ -83,10 +100,12 @@ export function untimed(nearly) {
 
 // What to do about words that only nearly matched or sounded the same: nothing,
 // unless they sound wrong at the times the list gives.
-export function nearlyAdvice(nearly) {
+// With `heard`, it also gives the line for video.json that accepts them.
+export function nearlyAdvice(nearly, heard = true) {
   const one = nearly.length === 1 || (nearly.length === 2 && nearly[0].joined && nearly[1].joined);
   const timed = nearly.some((n) => typeof n.time === 'number');
-  return `No fix is needed unless ${one ? 'it sounds' : 'one of them sounds'} wrong when you listen${timed ? ` at ${one ? 'that time' : 'those times'}` : ''}.`;
+  const line = heard ? nearlyHeard(nearly) : '';
+  return `No fix is needed unless ${one ? 'it sounds' : 'one of them sounds'} wrong when you listen${timed ? ` at ${one ? 'that time' : 'those times'}` : ''}.${line ? ` ${line}` : ''}`;
 }
 
 // The time in the video of each near match of a scene, from the scene's words in
@@ -235,6 +254,7 @@ export function unconfirmedWords(project, v, every = new Map()) {
     const quote = heardQuote(v, language, [k]);
     let advice;
     if (hasOverride(word)) advice = unconfirmedAdvice([{ word, heard }], false, script);
+    else if (heard && /\p{N}/u.test(word.text) && /\p{L}/u.test(heard) && !/\p{N}/u.test(heard)) advice = `It may be the number said as a word, which the speech check can't read here. If the voice says it right, write it as {${bareWord(word.text)}|${bareWord(heard)}} in ${script}.`;
     else if (heard && !hasPhonemizer(language) && soundsAlike(normWord(heard), normWord(word.text))) advice = `"${heard}" may sound the same, and in this language the speech check can't compare sounds, so {shown|spoken} can't help. Reword the sentence.`;
     else if (shortWord(word.text)) advice = `"${bareWord(word.text)}" is a short, common word, so a spelling hint can't change how it sounds. Reword the sentence.`;
     else if (every.has(normWord(word.text))) advice = `If the voice says it wrong, write it as {${bareWord(word.text)}|spoken spelling} in ${script}. ${everyTimeAdvice(every.get(normWord(word.text)))}`;
@@ -502,6 +522,7 @@ export async function verify(project, { file = null, report: reportFile = null, 
   // chunk of a long file ("(bell dings)"), and per scene the report can say
   // where the voice is hard to follow.
   let speech = null;
+  let music = null;
   if (a) {
     const wav = path.join(project.paths.build, 'verify-16k.wav');
     await ffmpeg(['-loglevel', 'error', '-i', video, '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', wav]);
@@ -538,6 +559,7 @@ export async function verify(project, { file = null, report: reportFile = null, 
       }
       const rate = total ? matched / total : 1;
       speech = { matchRate: Math.round(rate * 1000) / 1000, transcript: texts.join(' '), scenes, nearly, unconfirmed };
+      if (project.config.music && timeline.voiceSpans?.length) music = musicLevel(samples, 16000, timeline.voiceSpans, duration);
     } else {
       // The whole file at once, so a word that only nearly matched has no scene.
       const heard = await transcribe(samples, { log, language: project.config.language });
@@ -560,6 +582,7 @@ export async function verify(project, { file = null, report: reportFile = null, 
     blackSegments: blacks,
     silences,
     speech,
+    ...(project.config.music ? { music } : {}),
     issues,
     ...verdictOf(issues),
   };
@@ -578,6 +601,60 @@ export async function verify(project, { file = null, report: reportFile = null, 
     report: relativeFile(project.dir, target),
   });
   return report;
+}
+
+// How loud the music is in a video with narration: its level in the pauses of
+// the narration and how far under the voice it sits, both in dB, as
+// { pauses, under }, or { heard: false } when no music can be heard there.
+// `spans` are the times the voice speaks, from the timeline. A pause counts
+// from 0.15 s after the voice to 0.15 s before it speaks again, without the
+// music's fade in and out, and a short sound effect in a pause doesn't count.
+// Null when the narration has no pause long enough to measure.
+export const MUSIC_UNHEARD_DB = -60;
+export function musicLevel(samples, rate, spans, duration) {
+  const BLOCK = Math.round(rate * 0.05);
+  const merged = [];
+  for (const sp of [...spans].sort((a, b) => a.start - b.start)) {
+    const last = merged.at(-1);
+    if (last && sp.start <= last.end) last.end = Math.max(last.end, sp.end);
+    else merged.push({ ...sp });
+  }
+  const pauses = [];
+  let from = 1.5;
+  for (const sp of [...merged, { start: duration - 0.5 + 0.15, end: Infinity }]) {
+    const a = from;
+    const b = sp.start - 0.15;
+    if (b - a >= 0.2) pauses.push([a, b]);
+    from = Math.max(from, sp.end + 0.15);
+  }
+  const blocks = (list) => list.flatMap(([a, b]) => {
+    const out = [];
+    for (let i = Math.max(0, Math.floor(a * rate)); i + BLOCK <= Math.min(samples.length, b * rate); i += BLOCK) {
+      let sum = 0;
+      for (let k = i; k < i + BLOCK; k++) sum += samples[k] * samples[k];
+      out.push(sum / BLOCK);
+    }
+    return out;
+  });
+  const quiet = blocks(pauses);
+  const loud = blocks(merged.map((sp) => [sp.start, sp.end]));
+  if (quiet.length < 10 || !loud.length) return null;
+  const db = (power) => 10 * Math.log10(Math.max(power, 1e-12));
+  const middle = [...quiet].sort((a, b) => a - b)[Math.floor(quiet.length / 2)];
+  const kept = quiet.filter((p) => p <= middle * 4);
+  const music = db(kept.reduce((n, p) => n + p, 0) / kept.length);
+  const voice = db(loud.reduce((n, p) => n + p, 0) / loud.length);
+  if (music < MUSIC_UNHEARD_DB) return { heard: false };
+  return { heard: true, pauses: Math.round(music), under: Math.round(voice - music) };
+}
+
+// What verify says about the music of a report, or '' for a video without music.
+export function musicLine(r) {
+  if (!r || !('music' in r)) return '';
+  const { music } = r;
+  if (!music) return 'music: not measured, because the narration has no pause long enough';
+  if (!music.heard) return 'music: none can be heard in the pauses of the narration';
+  return `music: about ${music.under} dB under the voice, at ${music.pauses} dB in the pauses of the narration`;
 }
 
 // The stretches of black frames of a video, as [start, end] in seconds.
@@ -618,6 +695,7 @@ export function formatVerify(r, { verbose = false } = {}) {
   return [
     `${r.file}: ${r.duration}s, ${r.video ? `${r.video.width}x${r.video.height}` : 'no video'}, loudness ${r.loudness?.integrated ?? '?'} LUFS, true peak ${dbtp(r.loudness?.truePeak)}`,
     r.speech ? `narration understood: ${Math.round(r.speech.matchRate * 100)}%${nearly}` : '',
+    musicLine(r),
     ...r.issues.map((i) => `${i.level.toUpperCase().padEnd(5)} ${i.message}`),
     r.verdict ?? verdictOf(r.issues).verdict,
   ].filter(Boolean).join('\n');

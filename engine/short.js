@@ -9,7 +9,7 @@
 // block. A scene that wants a move sets s.camera with punch() or drift().
 
 import { fontStack, colorOf } from './themes.js';
-import { contrast, cssColor, opaque, suggestColor, newDefaults, mixColor, accentNote } from './util.js';
+import { contrast, cssColor, opaque, suggestColor, newDefaults, mixColor, accentNote, luminance } from './util.js';
 
 const INK = '#0b0b10';
 const KEY = '#ffd43b';
@@ -202,7 +202,7 @@ export class Short {
     c.fillStyle = color;
     c.fillText(t, x, y);
     const w = c.measureText(t).width;
-    this.log(t, x, y, w, size, c.textAlign, { fg: color, bg: o.bg ?? null, option: o.option, role: o.role });
+    this.log(t, x, y, w, size, c.textAlign, { fg: color, bg: o.bg ?? null, option: o.option, role: o.role, owner: o.owner });
     c.restore();
     return w;
   }
@@ -211,11 +211,12 @@ export class Short {
   // checked for overlaps on its own, and text on the base layer gets the size
   // rule of slides.
   // `role` is 'title' for the words of a hook, which stickers must not cover.
-  log(str, x, y, w, size, align, { fg = null, bg = null, option = null, role = null } = {}) {
+  // `owner` is the shape whose own words these are, like a sticker's.
+  log(str, x, y, w, size, align, { fg = null, bg = null, option = null, role = null, owner = null } = {}) {
     if (!String(str).trim() || this.hidden) return;
     const x0 = align === 'center' ? x - w / 2 : align === 'right' ? x - w : x;
     const layer = this.s.ui._layer + 1;
-    this.s._logText({ text: String(str), x0, y0: y - 0.58 * size, x1: x0 + w, y1: y + 0.58 * size, size, fg: /^#/.test(fg) ? fg : null, bg, ui: layer === 1 ? 0 : layer, zoomed: this.s._camMoved, option, role });
+    this.s._logText({ text: String(str), x0, y0: y - 0.58 * size, x1: x0 + w, y1: y + 0.58 * size, size, fg: /^#/.test(fg) ? fg : null, bg, ui: layer === 1 ? 0 : layer, zoomed: this.s._camMoved, option, role, owner });
   }
 
   // The color behind text at height y of the frame: what the backdrop or s.bg
@@ -483,7 +484,7 @@ export class Short {
     const plain = style === 'plain' && newDefaults(s.engine.config) ? plainColors(s.theme, this.behind(y), size) : null;
     // With "defaults": "0.6", keywords take brand.accent where it reads.
     const brand = v6 ? this.brandKey(style, y, size) : null;
-    if (v6 && !brand && lines.some((l) => l.words.some((w) => w.key))) this.brandKeyNote(style, y, size, o, plain);
+    if (v6 && brand && lines.some((l) => l.words.some((w) => w.key))) this.brandKeyNote(style, y, size, o, brand);
     if (o.kicker) place(() => this.kicker(o.kicker, { x, y: kickerY, size: kickerSize, color: o.kickerColor, icon: o.kickerIcon, at: first ? -1 : a, out: o.out }));
     if (!life) return geom(x, y, maxLineW, blockH);
     const c = this.c;
@@ -538,33 +539,34 @@ export class Short {
     return lines;
   }
 
-  // brand.accent for the keywords of a hook, when it is set and reads: as the
-  // box behind white keywords on a slab, or as the keywords' own color on what
-  // is behind them. Null otherwise.
+  // brand.accent for the keywords of a hook, when it is set: as the box behind
+  // white keywords on a slab, or as the keywords' own color on what is behind
+  // them. Where it reads too poorly, it keeps its hue, made darker behind white
+  // keywords, or darker or lighter on what is behind them, until it reads. Null
+  // without a brand accent.
   brandKey(style, y, size) {
     const accent = cssColor(this.s.engine.config.brand?.accent ?? '');
     if (!accent) return null;
-    const min = size >= 48 ? 3 : 4.5;
-    if (style === 'slab') return contrast('#ffffff', accent) >= min ? accent : null;
+    if (style === 'slab') return suggestColor(accent, '#ffffff', size)?.color ?? null;
     const behind = cssColor(style === 'stroke' ? INK : this.behind(y));
-    return behind && contrast(accent, behind) >= min ? accent : null;
+    return behind ? suggestColor(accent, opaque(behind, '#ffffff'), size)?.color ?? null : null;
   }
 
-  // A hint for check when brand.accent is set and the hook's keywords don't
-  // use it, because it reads too poorly: the color, its contrast and the color
-  // used instead. Keywords with their own keyBg or keyColor need none.
-  brandKeyNote(style, y, size, o, plain) {
+  // A hint for check when brand.accent is set and the hook's keywords use
+  // another shade of it, because it reads too poorly: the color, its contrast
+  // and the shade used instead. Keywords with their own keyBg or keyColor need none.
+  brandKeyNote(style, y, size, o, used) {
     const accent = cssColor(this.s.engine.config.brand?.accent ?? '');
-    if (!accent || (style === 'slab' ? o.keyBg : o.keyColor)) return;
+    if (!accent || !used || used === accent || (style === 'slab' ? o.keyBg : o.keyColor)) return;
     const min = size >= 48 ? 3 : 4.5;
     const name = this.s.engine.config.brand.accent;
     if (style === 'slab') {
-      this.s._hint(accentNote(name, contrast('#ffffff', accent), min, 'as the box behind white keywords in the hook', `their box uses ${KEY_BOX}`), `brand accent hook ${style}`);
+      this.s._hint(accentNote(name, contrast('#ffffff', accent), min, 'as the box behind white keywords in the hook', `their box uses ${used}, the same hue made darker`), `brand accent hook ${style}`);
       return;
     }
-    const behind = cssColor(style === 'stroke' ? INK : this.behind(y));
-    if (!behind) return;
-    this.s._hint(accentNote(name, contrast(accent, behind), min, `on what is behind the hook's keywords`, `they use ${plain?.key ?? KEY}`), `brand accent hook ${style}`);
+    const behind = opaque(cssColor(style === 'stroke' ? INK : this.behind(y)), '#ffffff');
+    const how = luminance(used) < luminance(accent) ? 'darker' : 'lighter';
+    this.s._hint(accentNote(name, contrast(accent, behind), min, `on what is behind the hook's keywords`, `they use ${used}, the same hue made ${how}`), `brand accent hook ${style}`);
   }
 
   // The kicker's size: 44 in a tall frame and 40 in others with
@@ -628,11 +630,11 @@ export class Short {
     const keyColor = o.keyColor ?? (newDefaults(this.s.engine.config) ? stickerKey(bg) : KEY_RED);
     this.s.ui.over(() => this.popIn(life, x, y, () => {
       this.roundRect(x - w / 2, y - h / 2, w, h, size * 0.22, bg, { shadow: { color: 'rgba(0,0,0,0.35)', blur: 16, y: 8 }, stroke: o.border, strokeW: 5 });
-      if (!this.hidden) this.s._logShape('sticker', { x, y, w, h }, this.s._unsettled === 0, o, words.map((wd) => wd.text).join(' '));
+      const own = this.hidden ? null : this.s._logShape('sticker', { x, y, w, h }, this.s._unsettled === 0, o, words.map((wd) => wd.text).join(' '));
       let wx = x - tw / 2;
       const space = this.measure(' ', size, 900);
       for (const wd of words) {
-        this.text(wd.text, wx, y + size * 0.04, { size, weight: 900, color: wd.key ? keyColor : o.textColor ?? INK, bg, option: wd.key ? 'keyColor' : 'textColor' });
+        this.text(wd.text, wx, y + size * 0.04, { size, weight: 900, color: wd.key ? keyColor : o.textColor ?? INK, bg, option: wd.key ? 'keyColor' : 'textColor', owner: own });
         wx += this.measure(wd.text, size, 900) + space;
       }
     }, { rotate: o.rotate ?? -4, from: 0.4 }));
@@ -745,12 +747,17 @@ export class Short {
     const x = o.x ?? s.cx;
     const y = o.y ?? s.safe.top + (s._v6 ? Math.max(40, size * 0.9) : 40);
     const color = o.color ?? KEY;
-    const label = `${String(o.word ?? 'STEP').toUpperCase()} ${n}/${total}`;
+    // The word comes from the video's language, with "defaults": "0.6".
+    const label = `${String(o.word ?? (s._v6 ? s.kitWord('step') : 'STEP')).toUpperCase()} ${n}/${total}`;
     const at = o.at ?? -1;
     const a = this.at(at);
     if (a >= 0) this.enter(a, 0.3, o.sfx === undefined ? 'blip' : o.sfx, { label, pitch: n, chosen: o.sfx !== undefined, usual: 'blip' });
     const life = this.life(at, o.out, 0.3);
     if (!life) return;
+    // With "defaults": "0.6", it comes after the transition into the scene,
+    // so the step labels of two scenes never show at once.
+    const shown = this.afterBlend();
+    if (shown <= 0) return;
     const tw = this.measure(label, size, 900, 1.5);
     const dotR = size * 0.2;
     const dotsW = total * dotR * 2 + (total - 1) * dotR * 1.4;
@@ -758,8 +765,10 @@ export class Short {
     const w = tw + dotsW + extra + size * 1.9;
     const h = size * 1.7;
     const left = x - w / 2;
+    // Where it is, so a sticker can keep clear of it.
+    this.stepBox = { x0: left, y0: y - h / 2, x1: left + w, y1: y + h / 2 };
     this.s.ui.over(() => this.screen(() => {
-      this.c.globalAlpha *= 1 - life.q;
+      this.c.globalAlpha *= (1 - life.q) * shown;
       this.roundRect(left, y - h / 2, w, h, h / 2, alpha(INK, 0.82), { shadow: { color: 'rgba(0,0,0,0.3)', blur: 14, y: 4 } });
       this.text(label, left + size * 0.6, y + 1, { size, weight: 900, color, tracking: 1.5, bg: INK });
       let dx = left + size * 0.6 + tw + size * 0.55 + dotR;
@@ -778,7 +787,11 @@ export class Short {
   progress(o = {}) {
     const s = this.s;
     const p = clamp(s.T / Math.max(0.1, s.video.duration));
+    // Like step(), it comes after the transition into the scene.
+    const shown = this.afterBlend();
+    if (shown <= 0) return;
     this.screen(() => {
+      this.c.globalAlpha *= shown;
       const x = o.x ?? s.safe.left;
       const w = o.w ?? s.safe.w;
       const y = o.y ?? s.safe.top - 14;
@@ -786,6 +799,15 @@ export class Short {
       this.roundRect(x, y, w, h, h / 2, alpha('#ffffff', 0.22));
       this.roundRect(x, y, Math.max(h, w * p), h, h / 2, o.color ?? KEY);
     });
+  }
+
+  // With "defaults": "0.6", 0 while the scene's transition blends it with the
+  // scene before, then up to 1 within 0.15 seconds. 1 before 0.6.
+  afterBlend() {
+    const s = this.s;
+    if (!s._v6) return 1;
+    const blend = s.engine.blendIn?.(s.scene) ?? 0;
+    return blend ? clamp((s.t - blend) / 0.15) : 1;
   }
 
   // ---------- payoff ----------

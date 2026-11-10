@@ -65,7 +65,7 @@ export function benefits(s, items) {
 }
 
 // The offer on the brand color: the name, a button with the action and the address.
-export function offer(s, { name, action = 'Try it for free', url, at = 0 } = {}) {
+export function offer(s, { name, action = s.kitWord('try-free'), url, at = 0 } = {}) {
   const ui = stage(s);
   const u = unit(s);
   ui.wipe(at);

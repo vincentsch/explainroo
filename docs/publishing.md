@@ -43,7 +43,7 @@ The folder is `out/package/<platform>/`:
 | `post.json` | everything settled for this platform, see below |
 | `description.txt` | the words for the platform's text box, ready to paste |
 | `video.srt` and `video.vtt` | captions, when the video has narration |
-| `video.cover.jpg` | the cover picture, without captions. With `"cover": "auto"` it is the fullest frame of the first scene, see `explainroo docs settings`. A new `cover` needs no new render, so the package keeps the video and writes only the cover. `package` prints `Cover: made again from hook@5.2`, or `Cover: unchanged` when the picture is the same |
+| `video.cover.jpg` | the cover picture, without captions. With `"cover": "auto"` it is the fullest frame of the first scene, or with `"defaults": "0.6"` of the first scene with a recording, clip, image or drawing, see `explainroo docs settings`. A new `cover` needs no new render, so the package keeps the video and writes only the cover. `package` prints `Cover: made again from hook@5.2`, or `Cover: unchanged` when the picture is the same |
 | `video.chapters.txt` | chapters, on YouTube only, when scenes name them |
 | `credits.txt` | one credit per line |
 | `report.json` | the `verify` report of `video.mp4` |

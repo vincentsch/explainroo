@@ -23,6 +23,6 @@ export default {
   },
 
   offer(s) {
-    offer(s, { name: 'Acme Invoices', action: 'Try it for free', url: 'acme.example', at: '#cta' });
+    offer(s, { name: 'Acme Invoices', url: 'acme.example', at: '#cta' });
   },
 };

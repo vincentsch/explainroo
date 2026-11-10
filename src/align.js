@@ -6,6 +6,7 @@ import { japaneseReadings, hasPhonemizer, soundsOf } from './phonemes.js';
 import { isScale, readGerman, saysOne } from './german.js';
 import { decimalDigits, numberGroups, numberValue, sameUnitWord, unitReading } from './units.js';
 import { mathReading } from './math-words.js';
+import { spelledNumbers, spelledToken } from './spelled-numbers.js';
 
 const require = createRequire(import.meta.url);
 
@@ -239,10 +240,14 @@ function readWords(list, language, other = []) {
   const merged = list.map((word, i) => (lead[i] === i ? list.filter((_, k) => lead[k] === i).map((w) => String(w).trim()).join('') : ''));
   const number = (text) => (language === 'de' ? readGerman([text], normWord)[0] : expand(text, language));
   const base = language === 'de' ? readGerman(merged, normWord) : merged.map((w) => expand(w, language));
+  // Spelled numbers, like "treinta y cinco" for "35". The words after the first
+  // read nothing, like the thousands above.
+  const spelled = spelledNumbers(merged, language, normWord);
   return merged.map((word, i) => {
     if (lead[i] !== i) return null;
+    if (spelled[i]) return spelled[i].length ? spelled[i] : null;
     const maths = mathReading(word, i ? list[i - 1] : null, list[i + 1] ?? null, language, number, other);
-    if (maths) return maths;
+    if (maths) return maths.map((t) => spelledToken(t, language));
     const unit = unitReading(word, i ? list[i - 1] : null, language, other);
     const tokens = unit ? [...(unit.number === null ? [] : number(unit.number)), ...unit.tokens] : base[i];
     return tokens.map((t) => sameUnitWord(t, language));
@@ -340,6 +345,12 @@ export function alignWords(words, heard, duration, language = 'en', { sounds = n
   const H = [];
   read(joined.map((h) => h.text), tokens.map((t) => t.norm)).forEach((parts, source) => {
     const h = joined[source];
+    // A heard word that belongs to the number before it, like "cinco" in
+    // "treinta y cinco", makes that number last until its end.
+    if (parts === null) {
+      if (H.length) H[H.length - 1].end = h.end;
+      return;
+    }
     const step = (h.end - h.start) / Math.max(1, parts.length);
     parts.forEach((p, k) => H.push({ text: p, norm: p, start: h.start + k * step, end: h.start + (k + 1) * step, source }));
   });

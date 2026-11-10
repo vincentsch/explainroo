@@ -20,7 +20,7 @@ export { ProjectError };
 
 export const THEMES = Object.keys(LOOKS);
 export const MUSIC_STYLES = ['warm', 'upbeat', 'calm', 'tech', 'playful'];
-export const TRANSITIONS = ['auto', 'fade', 'slide', 'wipe', 'zoom', 'brush', 'cut'];
+export const TRANSITIONS = ['auto', 'fade', 'slide', 'push', 'wipe', 'zoom', 'brush', 'cut'];
 export const THEME_MUSIC = Object.fromEntries(THEMES.map((name) => [name, LOOKS[name].music]));
 const ASPECTS = { '16:9': [1920, 1080], '9:16': [1080, 1920], '1:1': [1080, 1080], '4:5': [1080, 1350] };
 

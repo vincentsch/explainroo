@@ -200,10 +200,11 @@ the kicker and the title move down together. `area` sets another box to stay
 in, like the part of `s.safe` that a zoom keeps on screen.
 
 Keywords are yellow by default, and with `"defaults": "0.6"` they take
-`brand.accent` from `video.json` when it reads: as the box behind the white
-keywords of a slab, or as their color on what is behind them. When it doesn't
-read, `check` gives a hint with the color, its contrast and the color used
-instead. With
+`brand.accent` from `video.json`: as the box behind the white keywords of a
+slab, or as their color on what is behind them. When it doesn't read, it keeps
+its hue, made darker behind white keywords, or darker or lighter on what is
+behind them, until it reaches 3:1, and `check` gives a hint with the color, its
+contrast and the shade used instead. With
 `"defaults": "0.5"`, a `'plain'` hook
 picks colors that read on what is behind it. On a light look the keywords take
 the look's accent, made darker if it needs that. When the look's ink is too
@@ -223,16 +224,19 @@ A tilted box with bold text for one fact, like "*2* days". `x`, `y`,
 4.5:1 on the box's color with `"defaults": "0.5"`), `rotate` (degrees, -4 by default), `border`,
 `at`, `out`, `sfx`, `id`, `overlap`, `area`. `check` measures the text and the
 keywords against the box's color, and warns when the sticker partly covers
-another shape. `overlap: true` says that is meant. It covers pictures and
-backgrounds only: `check` always warns when a sticker covers words of the hook
-title. With `"defaults": "0.6"`, a sticker that would cover the title while both
+another shape. `overlap: true` says that is meant, for backgrounds only:
+`check` always warns when a sticker covers an icon, an image, a clip, a
+drawing, other text or words of the hook title. With `"defaults": "0.6"`, a sticker that would cover the title while both
 show moves below it, when that fits in `area` (`s.safe` by default).
 
 ### `step(n, total, options)`
 
 "STEP 2/4" with dots at the top of the content area, outside the camera. Step
-`n` fills at `at`. `word` replaces "STEP", like `word: s.str('step')` in a video
-in several languages. Also `label`, `x`, `y`, `size` (48 with
+`n` fills at `at`. With `"defaults": "0.6"`, the word is in the video's
+language, like "PASO 2/4" in Spanish. `word` sets another one, like
+`word: 'FASE'`. With `"defaults": "0.6"`, it comes after the transition into
+its scene, so the labels of two scenes never show at once, and so does
+`progress()`. Also `label`, `x`, `y`, `size` (48 with
 `"defaults": "0.6"`, which reads well on a phone, and 34 before), `color`,
 `at`, `out`, `sfx`.
 
