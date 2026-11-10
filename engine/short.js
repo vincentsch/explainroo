@@ -216,7 +216,7 @@ export class Short {
     if (!String(str).trim() || this.hidden) return;
     const x0 = align === 'center' ? x - w / 2 : align === 'right' ? x - w : x;
     const layer = this.s.ui._layer + 1;
-    this.s._logText({ text: String(str), x0, y0: y - 0.58 * size, x1: x0 + w, y1: y + 0.58 * size, size, fg: /^#/.test(fg) ? fg : null, bg, ui: layer === 1 ? 0 : layer, zoomed: this.s._camMoved, option, role, owner });
+    this.s._logText({ text: String(str), x0, y0: y - 0.58 * size, x1: x0 + w, y1: y + 0.58 * size, size, fg: /^#/.test(fg) ? fg : null, bg, ui: layer === 1 ? 0 : layer, zoomed: this.s._camMoved, option, role, owner, short: true });
   }
 
   // The color behind text at height y of the frame: what the backdrop or s.bg
@@ -630,7 +630,7 @@ export class Short {
     const keyColor = o.keyColor ?? (newDefaults(this.s.engine.config) ? stickerKey(bg) : KEY_RED);
     this.s.ui.over(() => this.popIn(life, x, y, () => {
       this.roundRect(x - w / 2, y - h / 2, w, h, size * 0.22, bg, { shadow: { color: 'rgba(0,0,0,0.35)', blur: 16, y: 8 }, stroke: o.border, strokeW: 5 });
-      const own = this.hidden ? null : this.s._logShape('sticker', { x, y, w, h }, this.s._unsettled === 0, o, words.map((wd) => wd.text).join(' '));
+      const own = this.hidden ? null : this.s._logShape('sticker', { x, y, w, h }, this.s._unsettled === 0, o, words.map((wd) => wd.text).join(' '), { short: true });
       let wx = x - tw / 2;
       const space = this.measure(' ', size, 900);
       for (const wd of words) {
@@ -848,7 +848,7 @@ export class Short {
     if (!life) return geom(x, y, w, h);
     this.s.ui.over(() => this.popIn(life, x, y, () => {
       this.roundRect(x - w / 2, top, w, h, 40, card, { shadow: { color: 'rgba(0,0,0,0.35)', blur: 40, y: 18 } });
-      if (!this.hidden) this.s._logShape('card', { x, y: top + h / 2, w, h }, this.s._unsettled === 0, o, o.title ?? '', { call });
+      if (!this.hidden) this.s._logShape('card', { x, y: top + h / 2, w, h }, this.s._unsettled === 0, o, o.title ?? '', { call, short: true });
       const icy = top + pad + iconR;
       // The icon breathes a little.
       const pulse = 1 + 0.04 * Math.sin(s.t * 3.2);

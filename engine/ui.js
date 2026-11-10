@@ -79,6 +79,8 @@ export class UI {
     };
     this._layer = 0;
     this._layers = 0;
+    // How many panels are being drawn, for the shapes they hold.
+    this._panels = 0;
   }
 
   // The canvas, or a stand-in that draws nothing while a group is hidden.
@@ -261,7 +263,7 @@ export class UI {
     }
     c.restore();
     // check compares cards with other shapes once they have arrived.
-    if (!this.hidden) this.s._logShape('card', { x: x + w / 2, y: y + h / 2, w, h }, this.s._unsettled === 0, o, o.name ?? '', { border: o.border === false ? 0 : o.borderWidth ?? 1.5, call });
+    if (!this.hidden) this.s._logShape('card', { x: x + w / 2, y: y + h / 2, w, h }, this.s._unsettled === 0, o, o.name ?? '', { border: o.border === false ? 0 : o.borderWidth ?? 1.5, call, kit: true });
   }
 
   // A card that pops up at `at`, then fn(x, y, w, h) draws inside it.
@@ -295,10 +297,12 @@ export class UI {
     if (moving) s._unsettled++;
     s._groups.push(serial);
     s._seen('panel');
+    this._panels++;
     try {
       this.card(x, y, w, h, { ...o, _call: call });
       if (fn) fn(x, y, w, h);
     } finally {
+      this._panels--;
       s._groups.pop();
       if (moving) s._unsettled--;
       c.restore();

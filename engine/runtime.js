@@ -512,20 +512,13 @@ export class Engine {
   // of the frame the app leaves free.
   drawWatermark(ctx, text) {
     const th = this.theme;
-    const m = Math.min(this.W, this.H);
-    const size = Math.round(m * 0.028);
-    const margin = Math.round(m * 0.028);
+    const { size, font, w, padX, h, x, y } = this.watermarkPlace(ctx, text);
     ctx.save();
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
-    ctx.font = fontString(th, 'body', size, th.fonts.body.family === 'Inter' ? 600 : th.fonts.body.family === 'Kalam' ? 700 : undefined);
+    ctx.font = font;
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
-    const w = ctx.measureText(text).width;
-    const padX = size * 0.6;
-    const h = size * 1.6;
-    const x = this.appArea ? this.appArea.right : this.W - margin;
-    const y = this.appArea ? this.appArea.top + h / 2 : this.H - margin - h / 2;
     ctx.fillStyle = withAlpha(th.bg, 0.72);
     ctx.beginPath();
     ctx.roundRect(x - w - padX * 2, y - h / 2, w + padX * 2, h, h / 2);
@@ -533,6 +526,35 @@ export class Engine {
     ctx.fillStyle = withAlpha(th.ink, 0.82);
     ctx.fillText(text, x - padX, y + size * 0.04);
     ctx.restore();
+  }
+
+  // Where the watermark sits: its font, the width of its words, and the
+  // right end and middle of its backing.
+  watermarkPlace(ctx, text) {
+    const th = this.theme;
+    const m = Math.min(this.W, this.H);
+    const size = Math.round(m * 0.028);
+    const margin = Math.round(m * 0.028);
+    const font = fontString(th, 'body', size, th.fonts.body.family === 'Inter' ? 600 : th.fonts.body.family === 'Kalam' ? 700 : undefined);
+    ctx.save();
+    ctx.font = font;
+    const w = ctx.measureText(text).width;
+    ctx.restore();
+    const padX = size * 0.6;
+    const h = size * 1.6;
+    const x = this.appArea ? this.appArea.right : this.W - margin;
+    const y = this.appArea ? this.appArea.top + h / 2 : this.H - margin - h / 2;
+    return { size, font, w, padX, h, x, y };
+  }
+
+  // The box of the watermark's backing in the frame, for check, or null
+  // without a watermark.
+  watermarkBox() {
+    const text = this.config.watermark;
+    if (!text) return null;
+    const scratch = (this._framedCanvas ??= Object.assign(document.createElement('canvas'), { width: 16, height: 16 }));
+    const { w, padX, h, x, y } = this.watermarkPlace(scratch.getContext('2d'), text);
+    return { x0: x - w - padX * 2, y0: y - h / 2, x1: x, y1: y + h / 2, text };
   }
 
   // Runs every scene over its duration without keeping pixels, collecting the
@@ -917,6 +939,9 @@ export class Engine {
     // Where content may go: the frame, its margin, the content area of a
     // platform size and the caption band.
     const areas = { W, H, margin, app: this.appArea, band: this.captionBand, format: this.config.format, safe: this.safeArea };
+    // Text and pictures stay out from under the watermark, also where the
+    // scene's own camera zooms them there.
+    const watermark = this.watermarkBox();
     // With "defaults": "0.6", pictures in a tall frame of Shorts, TikTok or
     // Reels may run into the parts the app covers and behind the captions, as
     // long as they stay on the frame. Text keeps to s.safe.
@@ -1004,8 +1029,12 @@ export class Engine {
           if (english) once(`kitword:${sc.id}:${tx.text}`, () => add('hint', sc.id, t, kitWordHint(english, language)));
           // UI kit text (s.ui) may leave the frame on purpose while the
           // camera zooms or pans; app screens use smaller text than slides.
-          const framed = !(tx.ui && tx.zoomed);
-          if (tx.x0 < -1 || tx.y0 < -1 || tx.x1 > W + 1 || tx.y1 > H + 1) {
+          // The short-video kit draws titles and stickers, not app screens.
+          const framed = !(tx.ui && tx.zoomed && !tx.short);
+          const covered = framed && tx.alpha > 0.95 && tx.settled ? underWatermark(tx, watermark) : null;
+          if (covered) {
+            once(`watermark:${sc.id}:${tx.text}`, () => add('warn', sc.id, t, watermarkMessage(`"${label}"`, tx, covered, this.sceneCamera), same('watermark', tx)));
+          } else if (tx.x0 < -1 || tx.y0 < -1 || tx.x1 > W + 1 || tx.y1 > H + 1) {
             if (framed) once(`off:${sc.id}:${tx.text}`, () => add('error', sc.id, t, `"${label}" runs off the frame (${Math.round(tx.x0)},${Math.round(tx.y0)} to ${Math.round(tx.x1)},${Math.round(tx.y1)} in a ${W}x${H} frame)`, same('off', tx)));
           } else if (this.appArea) {
             // On Shorts, TikTok and Reels: outside the content area, s.safe.
@@ -1075,7 +1104,12 @@ export class Engine {
         for (const sh of laid.draw.shapes) {
           if (!sh.settled || sh.alpha <= 0.95) continue;
           const drawing = sh.kind === 'drawing';
-          if (!drawing && (fillsFrame(sh.box, W, H) || (sh.ui && sh.zoomed))) continue;
+          if (!drawing && (fillsFrame(sh.box, W, H) || (sh.ui && sh.zoomed && !sh.short))) continue;
+          const covered = underWatermark(sh.box, watermark, true);
+          if (covered) {
+            once(`drawing-watermark:${sc.id}:${shapeKey(sh)}`, () => add('warn', sc.id, t, watermarkMessage(shapeName(sh), sh.box, covered, this.sceneCamera, true)));
+            continue;
+          }
           if (roomy && !drawing) continue;
           const message = roomy ? offFrame(shapeName(sh), sh.box, W, H) : edgeMessage(shapeName(sh), sh.box, areas, { edge: drawing });
           if (message) once(`drawing-edge:${sc.id}:${shapeKey(sh)}`, () => add('warn', sc.id, t, message));
@@ -1502,6 +1536,32 @@ function zoomCause(b, cam, areas, band) {
   return `. The camera's zoom of ${zoom}x pushes it there, and without the zoom it fits: zoom less, or move it toward the point the camera zooms onto`;
 }
 
+// The watermark's box when `b` reaches more than 4 pixels under it, or null.
+// With `part`, a box counts only when the watermark covers at least a twentieth
+// of it, so a large picture may run behind the watermark.
+function underWatermark(b, mark, part = false) {
+  if (!mark) return null;
+  const ix = Math.min(b.x1, mark.x1) - Math.max(b.x0, mark.x0);
+  const iy = Math.min(b.y1, mark.y1) - Math.max(b.y0, mark.y0);
+  if (ix <= 4 || iy <= 4) return null;
+  if (part && ix * iy < 0.05 * (b.x1 - b.x0) * (b.y1 - b.y0)) return null;
+  return mark;
+}
+
+// What check says about text or a picture with the box `b` under the
+// watermark, and whether the zoom of the scene's own camera puts it there.
+function watermarkMessage(name, b, mark, cam, part = false) {
+  const R = Math.round;
+  const message = `${name} is under the "${mark.text}" watermark (${R(mark.x0)},${R(mark.y0)} to ${R(mark.x1)},${R(mark.y1)}), which covers it`;
+  if (cam && cam.zoom > 1.001 && !cam.rotate) {
+    const back = (x, y) => [cam.x + (x - cam.cx) / cam.zoom, cam.y + (y - cam.cy) / cam.zoom];
+    const [x0, y0] = back(b.x0, b.y0);
+    const [x1, y1] = back(b.x1, b.y1);
+    if (!underWatermark({ x0, y0, x1, y1 }, mark, part)) return `${message}. The camera's zoom of ${Math.round(cam.zoom * 100) / 100}x pushes it there, and without the zoom it is clear of it: zoom less, or move it toward the point the camera zooms onto`;
+  }
+  return `${message}; move it clear of the watermark`;
+}
+
 // The first two words spoken between `from` and `to` in the video, as cues
 // with their times in their scene, like "twitch" at 1.6s. A word said more than
 // once in its scene is named with its number, like "fills#2". A word of
@@ -1751,13 +1811,14 @@ export function linesOverText(strokes, texts) {
 // outside or from inside. The line counts as wide as it is drawn, so a word
 // sitting on a box's border is found also where the browser measures letters a
 // little smaller. Text fully inside or fully outside, a shape's own text, text in
-// the same group, app screens, arrow labels (which have a check of their own)
-// and overlap: true on either don't count.
+// the same group, app screens, arrow labels (which have a check of their own),
+// stickers (which have one too) and overlap: true on either don't count. The
+// titles and cards of the short-video kit are no app screens, so they count.
 export function textsIntoShapes(texts, shapes) {
-  const list = shapes.filter((s) => s.settled && s.alpha > 0.95 && !s.overlap && !s.cover && !s.ui);
+  const list = shapes.filter((s) => s.settled && s.alpha > 0.95 && !s.overlap && !s.cover && !(s.ui && !s.short) && s.kind !== 'sticker');
   const found = [];
   for (const tx of texts) {
-    if (!tx.settled || tx.alpha <= 0.95 || tx.block || tx.ui || tx.overlap || (tx.owner !== null && tx.owner !== undefined)) continue;
+    if (!tx.settled || tx.alpha <= 0.95 || tx.block || (tx.ui && !tx.short) || tx.overlap || (tx.owner !== null && tx.owner !== undefined)) continue;
     const box = [[tx.x0, tx.y0], [tx.x1, tx.y0], [tx.x1, tx.y1], [tx.x0, tx.y1]];
     for (const sh of list) {
       if ((tx.shape !== null && tx.shape === sh.serial) || (sh.group !== null && sh.group === tx.group)) continue;
@@ -1767,7 +1828,8 @@ export function textsIntoShapes(texts, shapes) {
       const depth = overlapDepth(outer, box);
       if (depth <= 4 || holds(inner, box) || holds(box, outer)) continue;
       const label = tx.text.length > 40 ? tx.text.slice(0, 37) + '...' : tx.text;
-      found.push({ key: `${shapeKey(sh)}/${tx.text}`, message: `"${label}" and ${shapeName(sh)} partly overlap, by ${Math.round(depth)}px; move them apart, or give one of them overlap: true if that is meant` });
+      // A drawing that moves is one finding, by its call.
+      found.push({ key: `${sh.call ?? shapeKey(sh)}/${tx.text}`, message: `"${label}" and ${shapeName(sh)} partly overlap, by ${Math.round(depth)}px; move them apart, or give one of them overlap: true if that is meant` });
     }
   }
   return found;

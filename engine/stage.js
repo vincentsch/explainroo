@@ -464,7 +464,7 @@ export class Stage {
   // current transform. `o.overlap: true` says it may overlap other shapes.
   // `border` is the width of the line drawn on its outline, half of which lies
   // outside it. Returns its number in the scene, so its own text can say whose it is.
-  _logShape(kind, { x = 0, y = 0, w, h, round = false }, settled, o = {}, name = '', { border = 0, call = null, partial = null } = {}) {
+  _logShape(kind, { x = 0, y = 0, w, h, round = false }, settled, o = {}, name = '', { border = 0, call = null, partial = null, short = false, kit = false } = {}) {
     const log = this.engine.drawLog;
     const serial = ++this._shapeCalls;
     if (!log || this._suppress > 0 || !(w > 0) || !(h > 0)) return serial;
@@ -473,8 +473,16 @@ export class Stage {
     const poly = this._designPoints(local);
     const m = this._matrix();
     const edge = border > 0 ? (border / 2) * Math.hypot(m.a, m.b) : 0;
-    log.shapes.push({ kind, name: String(name ?? ''), id: o.id === undefined || o.id === null ? null : String(o.id), serial, poly, box: bounds(poly), edge, call, partial, settled, alpha: this.ctx.globalAlpha, group: this._groups[0] ?? null, overlap: o.overlap === true, cover: this._cover > 0, ui: this._ui ? this._ui._layer + 1 : 0, zoomed: !!this._camMoved, order: log.order++ });
+    log.shapes.push({ kind, name: String(name ?? ''), id: o.id === undefined || o.id === null ? null : String(o.id), serial, poly, box: bounds(poly), edge, call, partial, settled, alpha: this.ctx.globalAlpha, group: this._groups[0] ?? null, overlap: o.overlap === true, cover: this._cover > 0, ui: this._appShape(kit) ? this._ui._layer + 1 : 0, short, zoomed: !!this._camMoved, order: log.order++ });
     return serial;
+  }
+
+  // Whether a shape belongs to an app screen of the UI kit: a card of the kit
+  // itself (`kit`), or anything drawn in its panels or on its layers. Shapes
+  // drawn beside an app screen are not part of it.
+  _appShape(kit) {
+    const u = this._ui;
+    return !!u && (kit || u._layer > 0 || u._panels > 0);
   }
 
   // For check: something that shows itself bit by bit, like code that types
@@ -748,6 +756,8 @@ export class Stage {
       // A badge of the UI kit, whose words check measures like any text.
       badge: !!entry.badge,
       zoomed: !!entry.zoomed,
+      // Drawn by the short-video kit, which makes no app screens.
+      short: !!entry.short,
       element: entry.element ?? null,
     });
   }

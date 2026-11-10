@@ -25,7 +25,9 @@ above the app's bottom band, and the watermark moves to the top right corner.
 `s.safe` is the content area, and `s.cx` and `s.cy` are its center. `check`
 warns about text, shapes and arrows outside it. With `"defaults": "0.6"`
 only text has to stay in it: pictures and backgrounds may fill `s.full`, the
-whole frame, behind the captions and the app's buttons. Plain `9:16` has no
+whole frame, behind the captions and the app's buttons. On every size,
+`check` warns about text or a picture under the watermark, also where the
+zoom of the scene's `s.camera` puts it there. Plain `9:16` has no
 such margins, so use it only when the video is not meant for those apps.
 
 Vertical videos have little room. Stack things instead of putting them side
