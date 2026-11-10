@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { findEnv, settingsEnvFile } from '../env.js';
-import { ProjectError, ServiceError, rememberSecret, thrownOutcome } from '../errors.js';
+import { ProjectError, ServiceError, hideSecrets, rememberSecret, thrownOutcome } from '../errors.js';
 import { serviceUrl } from '../services.js';
 
 function findKey(dir) {
@@ -80,7 +80,7 @@ async function image(dir, { model, text, refs = [], aspect }, { log = () => {}, 
   const url = message?.images?.[0]?.image_url?.url;
   const [, mime, b64] = /^data:([^;]+);base64,(.*)$/s.exec(typeof url === 'string' ? url : '') || [];
   if (!b64) {
-    const said = typeof message?.content === 'string' ? message.content.slice(0, 300) : '';
+    const said = typeof message?.content === 'string' ? hideSecrets(message.content).slice(0, 300) : '';
     throw new ServiceError(`the model returned no image${said ? `. It said: "${said}"` : ''}. Try another wording or the other model.`, 'failed', { cost_usd });
   }
   return {
@@ -165,7 +165,7 @@ async function videoStatus(dir, id, { timeout = 60000 } = {}) {
     throw new ServiceError('OpenRouter sent an answer that could not be read', 'later');
   }
   const error = typeof json?.error === 'string' ? json.error : json?.error?.message;
-  return { status: String(json?.status), cost_usd: typeof json?.usage?.cost === 'number' ? json.usage.cost : null, error: error ? String(error).slice(0, 300) : null };
+  return { status: String(json?.status), cost_usd: typeof json?.usage?.cost === 'number' ? json.usage.cost : null, error: error ? hideSecrets(error).slice(0, 300) : null };
 }
 
 // Writes a finished clip to `file`. A partial file doesn't stay behind.
