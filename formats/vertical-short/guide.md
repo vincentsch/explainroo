@@ -51,12 +51,16 @@ feed, and keeps it for a product too.
   subject below the captions, edge to edge in `s.full`. `hookFrame`, `beats`
   and `payoff` call it, so the tall frame is never empty at the bottom. The
   apps cover part of it with their buttons, so nothing there must be read.
-- `fact(s, '*20%*', { at })` puts one fact on a tilted sticker. It moves below the
-  hook title when it would cover it.
-- `punch(s, at)` gives camera keys for a fast zoom. Use it as
-  `s.camera(punch(s, '#back'))`, first in the scene. Then `fact()` and
+- `fact(s, '*20%*', { at })` puts one fact on a tilted sticker. It finds a
+  free place near its `x` and `y`, clear of the hook title and of the
+  pictures that `hookFrame` and `beats` drew, so call it after them. `check`
+  warns when a sticker still covers an icon, a picture or text.
+- `punch(s, at)` gives camera keys for a fast zoom, held for a second. Use it
+  as `s.camera(punch(s, '#back'))`, first in the scene. Then `fact()` and
   `beats()` keep their words in the content area at that zoom: a sticker moves
-  in and a long label gets smaller.
+  in and a long label gets smaller. A scene can punch more than once: put the
+  keys in one call, like `s.camera([...punch(s, '#one'), ...punch(s, '#two')])`,
+  at least 1.5 seconds apart.
 - `backdrop(s, { glow, pattern })` draws the background of a scene.
 - `payoff(s, title, lines, { icon })` is the closing card, with `icon` as
   its echo.
@@ -66,10 +70,8 @@ text out of the apps' buttons.
 
 ## Scene changes
 
-The scenes change with `"transition": "push"` from `video.json`: the new
-scene pushes the old one out, fast. A fade would show the words of two scenes
-in one place. `{transition=cut}` on a scene in `script.md` cuts there instead,
-which suits a hard turn in the story.
+`"transition": "push"` in `video.json` pushes the old scene out, so the words
+of two scenes never show in one place. `{transition=cut}` on a scene cuts.
 
 ## Check before you render
 

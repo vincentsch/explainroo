@@ -1038,6 +1038,7 @@ export class Engine {
           }
         }
         for (const f of stickersOverTitles(laid.draw.shapes, solid)) once(`sticker:${sc.id}:${f.key}`, () => add('warn', sc.id, t, f.message));
+        for (const f of stickersOverPictures(laid.draw.shapes, solid, W, H)) once(`sticker:${sc.id}:${f.key}`, () => add('warn', sc.id, t, f.message));
         for (const f of shapeOverlaps(laid.draw.shapes)) once(`shapes:${sc.id}:${f.key}`, () => add('warn', sc.id, t, f.message));
         for (const f of textsIntoShapes(solid, laid.draw.shapes)) once(`shapes:${sc.id}:${f.key}`, () => add('warn', sc.id, t, f.message));
         for (const f of linesOverText(laid.draw.strokes, solid)) once(`line:${sc.id}:${f.key}`, () => add('warn', sc.id, t, f.message));
@@ -1523,6 +1524,30 @@ function stickersOverTitles(shapes, texts) {
   return found;
 }
 
+// Stickers that cover an icon, an image, a clip, a drawing or text that isn't
+// their own, also with overlap: true, which lets a sticker cover backgrounds
+// only. A picture that fills the frame is a background, and so is a faint
+// one, like the large copy of a subject behind the captions. The hook title
+// has a finding of its own.
+export function stickersOverPictures(shapes, texts, W, H) {
+  const found = [];
+  const pictures = shapes.filter((sh) => ['icon', 'image', 'drawing'].includes(sh.kind) && sh.settled && sh.alpha > 0.5 && !fillsFrame(sh.box, W, H));
+  for (const sh of shapes) {
+    if (sh.kind !== 'sticker' || !sh.settled || sh.alpha <= 0.95) continue;
+    const name = `the sticker "${sh.name.slice(0, 30)}"`;
+    for (const p of pictures) {
+      if (overlapDepth(sh.poly, p.poly) <= 4 && !holds(p.poly, sh.poly) && !holds(sh.poly, p.poly)) continue;
+      found.push({ key: `${sh.serial}/${p.kind}/${p.id ?? p.name}`, message: `${name} covers ${shapeName(p)}; move the sticker with x and y. overlap: true lets a sticker cover backgrounds only` });
+    }
+    for (const tx of texts) {
+      if (tx.owner === sh.serial || tx.role === 'title' || !tx.settled) continue;
+      if (overlapDepth(sh.poly, [[tx.x0, tx.y0], [tx.x1, tx.y0], [tx.x1, tx.y1], [tx.x0, tx.y1]]) <= 4) continue;
+      found.push({ key: `${sh.serial}/text/${tx.text}`, message: `${name} covers the text "${tx.text.slice(0, 30)}"; move the sticker with x and y` });
+    }
+  }
+  return found;
+}
+
 // Shapes that partly overlap: they reach more than 4 pixels into each other
 // and neither holds the other. Only shapes that have fully arrived count. Two
 // in the same group, or in one panel, are one piece; a dialog, an open menu or
@@ -1535,6 +1560,9 @@ export function shapeOverlaps(shapes) {
       const A = list[i];
       const B = list[j];
       if (A.group !== null && A.group === B.group) continue;
+      // A sticker over a picture has a finding of its own.
+      const picture = (x) => ['icon', 'image', 'drawing'].includes(x.kind);
+      if ((A.kind === 'sticker' && picture(B)) || (B.kind === 'sticker' && picture(A))) continue;
       const depth = overlapDepth(A.poly, B.poly);
       if (depth <= 4 || holds(A.poly, B.poly) || holds(B.poly, A.poly)) continue;
       const key = [shapeKey(A), shapeKey(B)].sort().join('/');

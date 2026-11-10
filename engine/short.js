@@ -202,7 +202,7 @@ export class Short {
     c.fillStyle = color;
     c.fillText(t, x, y);
     const w = c.measureText(t).width;
-    this.log(t, x, y, w, size, c.textAlign, { fg: color, bg: o.bg ?? null, option: o.option, role: o.role });
+    this.log(t, x, y, w, size, c.textAlign, { fg: color, bg: o.bg ?? null, option: o.option, role: o.role, owner: o.owner });
     c.restore();
     return w;
   }
@@ -211,11 +211,12 @@ export class Short {
   // checked for overlaps on its own, and text on the base layer gets the size
   // rule of slides.
   // `role` is 'title' for the words of a hook, which stickers must not cover.
-  log(str, x, y, w, size, align, { fg = null, bg = null, option = null, role = null } = {}) {
+  // `owner` is the shape whose own words these are, like a sticker's.
+  log(str, x, y, w, size, align, { fg = null, bg = null, option = null, role = null, owner = null } = {}) {
     if (!String(str).trim() || this.hidden) return;
     const x0 = align === 'center' ? x - w / 2 : align === 'right' ? x - w : x;
     const layer = this.s.ui._layer + 1;
-    this.s._logText({ text: String(str), x0, y0: y - 0.58 * size, x1: x0 + w, y1: y + 0.58 * size, size, fg: /^#/.test(fg) ? fg : null, bg, ui: layer === 1 ? 0 : layer, zoomed: this.s._camMoved, option, role });
+    this.s._logText({ text: String(str), x0, y0: y - 0.58 * size, x1: x0 + w, y1: y + 0.58 * size, size, fg: /^#/.test(fg) ? fg : null, bg, ui: layer === 1 ? 0 : layer, zoomed: this.s._camMoved, option, role, owner });
   }
 
   // The color behind text at height y of the frame: what the backdrop or s.bg
@@ -629,11 +630,11 @@ export class Short {
     const keyColor = o.keyColor ?? (newDefaults(this.s.engine.config) ? stickerKey(bg) : KEY_RED);
     this.s.ui.over(() => this.popIn(life, x, y, () => {
       this.roundRect(x - w / 2, y - h / 2, w, h, size * 0.22, bg, { shadow: { color: 'rgba(0,0,0,0.35)', blur: 16, y: 8 }, stroke: o.border, strokeW: 5 });
-      if (!this.hidden) this.s._logShape('sticker', { x, y, w, h }, this.s._unsettled === 0, o, words.map((wd) => wd.text).join(' '));
+      const own = this.hidden ? null : this.s._logShape('sticker', { x, y, w, h }, this.s._unsettled === 0, o, words.map((wd) => wd.text).join(' '));
       let wx = x - tw / 2;
       const space = this.measure(' ', size, 900);
       for (const wd of words) {
-        this.text(wd.text, wx, y + size * 0.04, { size, weight: 900, color: wd.key ? keyColor : o.textColor ?? INK, bg, option: wd.key ? 'keyColor' : 'textColor' });
+        this.text(wd.text, wx, y + size * 0.04, { size, weight: 900, color: wd.key ? keyColor : o.textColor ?? INK, bg, option: wd.key ? 'keyColor' : 'textColor', owner: own });
         wx += this.measure(wd.text, size, 900) + space;
       }
     }, { rotate: o.rotate ?? -4, from: 0.4 }));
@@ -764,6 +765,8 @@ export class Short {
     const w = tw + dotsW + extra + size * 1.9;
     const h = size * 1.7;
     const left = x - w / 2;
+    // Where it is, so a sticker can keep clear of it.
+    this.stepBox = { x0: left, y0: y - h / 2, x1: left + w, y1: y + h / 2 };
     this.s.ui.over(() => this.screen(() => {
       this.c.globalAlpha *= (1 - life.q) * shown;
       this.roundRect(left, y - h / 2, w, h, h / 2, alpha(INK, 0.82), { shadow: { color: 'rgba(0,0,0,0.3)', blur: 14, y: 4 } });

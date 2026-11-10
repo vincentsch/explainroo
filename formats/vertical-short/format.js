@@ -6,6 +6,14 @@
 // The zoom of each scene's punch(), so the words stay in s.safe at that zoom.
 const ZOOMS = new WeakMap();
 
+// The pictures and titles of each scene that a fact() sticker keeps clear of,
+// as { x0, y0, x1, y1, from, until } with the seconds they show.
+const TAKEN = new WeakMap();
+function take(s, box, from = -Infinity, until = Infinity) {
+  if (!TAKEN.has(s)) TAKEN.set(s, []);
+  TAKEN.get(s).push({ ...box, from, until });
+}
+
 // A hundredth of the short side of the content area, for sizes.
 export function unit(s) {
   return Math.min(s.safe.w, s.safe.h) / 100;
@@ -64,11 +72,16 @@ export function hookFrame(s, title, { icon, color = colors(s).accent, kicker } =
   backdrop(s);
   const area = wordArea(s);
   const box = s.short.hook(title, { y: s.safe.y + s.safe.h * 0.2, kicker, area, at: 0 });
+  take(s, { x0: box.left, y0: box.top, x1: box.right, y1: box.bottom });
   if (icon) {
-    // The subject fills the room below the title.
+    // The subject fills the lower part of the room below the title, and
+    // leaves a band under the title for a fact() sticker.
     const room = area.bottom - box.bottom;
+    const size = Math.min(unit(s) * 48, room * 0.52);
+    const y = area.bottom - room * 0.04 - size / 2;
     echo(s, icon, { color, at: -1 });
-    s.icon(icon, { x: s.cx, y: box.bottom + room / 2, size: Math.min(unit(s) * 48, room * 0.8), color, at: -1 });
+    s.icon(icon, { x: s.cx, y, size, color, at: -1 });
+    take(s, { x0: s.cx - size / 2, y0: y - size / 2, x1: s.cx + size / 2, y1: y + size / 2 });
   }
 }
 
@@ -87,26 +100,65 @@ export function beats(s, items, { y = s.safe.y + s.safe.h * 0.55 } = {}) {
     const at = Math.min(y, area.bottom - size / 2 - label * 1.5);
     echo(s, it.icon, { color: it.color, at: it.at, out: next, exit });
     s.icon(it.icon, { x: s.cx, y: at, size, color: it.color ?? colors(s).accent, label: it.label, labelSize: label, labelColor: '#ffffff', at: it.at, out: next, exit, enter: 'pop' });
+    // The icon with its label under it.
+    take(s, { x0: s.cx - size / 2, y0: at - size / 2, x1: s.cx + size / 2, y1: at + size / 2 + label * 2 }, s.time(it.at), next === undefined ? Infinity : s.time(next));
   });
 }
 
-// One fact on a tilted sticker, like "*20%*". It may sit on the subject's corner,
-// and it moves below the hook title when it would cover it. It moves in and gets
-// smaller where it needs to, so it stays in s.safe at the zoom of the scene's
-// punch().
+// One fact on a tilted sticker, like "*20%*". It keeps clear of the hook title
+// and of the pictures that hookFrame() and beats() drew before it while both
+// show, so call it after them. It goes to the free place nearest to x and y,
+// and gets smaller where it needs to, so it stays in s.safe at the zoom of the
+// scene's punch(). Where no place is free, it stays at x and y, and check
+// says what it covers.
 export function fact(s, text, { at, x = s.cx + s.safe.w * 0.24, y = s.safe.y + s.safe.h * 0.42, out } = {}) {
   const area = wordArea(s);
-  const { size, w } = fitLine(s, String(text).replace(/\*/g, ''), unit(s) * 11, 900, area.w * 0.96 - unit(s) * 11);
-  const half = { w: (w + size * 0.9) / 2, h: size * 0.75 + w * 0.04 };
+  const u = unit(s);
+  const fitted = fitLine(s, String(text).replace(/\*/g, ''), u * 11, 900, area.w * 0.96 - u * 11);
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-  s.short.sticker(text, { x: clamp(x, area.left + half.w, area.right - half.w), y: clamp(y, area.top + half.h, area.bottom - half.h), size, at, out, area, overlap: true });
+  const from = s.time(at ?? 0);
+  const until = out === undefined ? Infinity : s.time(out);
+  const taken = (TAKEN.get(s) ?? []).filter((b) => b.from < until && b.until > from);
+  // The step label at the top, when the scene shows one.
+  if (s.short.stepBox) taken.push(s.short.stepBox);
+  const gap = u * 2;
+  // The free place nearest to x and y for the sticker at `k` times its size,
+  // or null. With `anyway`, x and y when nothing is free.
+  const near = (k, anyway = false) => {
+    const size = fitted.size * k;
+    const w = fitted.w * k;
+    const half = { w: (w + size * 0.9) / 2, h: size * 0.75 + w * 0.04 };
+    const free = (px, py) => taken.every((b) => px + half.w + gap <= b.x0 || px - half.w - gap >= b.x1 || py + half.h + gap <= b.y0 || py - half.h - gap >= b.y1);
+    const place = (px, py) => ({ x: clamp(px, area.left + half.w, area.right - half.w), y: clamp(py, area.top + half.h, area.bottom - half.h), size });
+    const first = place(x, y);
+    if (anyway || free(first.x, first.y)) return first;
+    let best = null;
+    let far = Infinity;
+    for (let py = area.top + half.h; py <= area.bottom - half.h; py += u * 2) {
+      for (const px of [x, s.cx, area.left + half.w, area.right - half.w]) {
+        const p = place(px, py);
+        const d = Math.hypot(p.x - x, p.y - y);
+        if (d < far && free(p.x, p.y)) {
+          far = d;
+          best = p;
+        }
+      }
+    }
+    return best;
+  };
+  // Smaller where it needs that to fit, and where nothing is free, at x and y.
+  const spot = near(1) ?? near(0.85) ?? near(0.7) ?? near(0.6) ?? near(1, true);
+  s.short.sticker(text, { x: spot.x, y: spot.y, size: spot.size, at, out, area, overlap: true });
 }
 
-// A fast zoom onto the middle on a cue, for a turn in the story. Put it in
-// s.camera([...]) first in the scene: then fact() and beats() keep their words
-// in s.safe at this zoom. The point it zooms onto stays where it is.
+// A fast zoom onto the middle on a cue, for a turn in the story, held for a
+// second and back. Put it in s.camera([...]) first in the scene: then fact()
+// and beats() keep their words in s.safe at this zoom. The point it zooms onto
+// stays where it is. Several punches go in one s.camera, like
+// s.camera([...punch(s, 'a'), ...punch(s, 'b')]), at least 1.5 seconds apart,
+// and the words keep to the largest zoom.
 export function punch(s, at, { zoom = 1.25 } = {}) {
-  ZOOMS.set(s, Math.max(1, zoom));
+  ZOOMS.set(s, Math.max(ZOOMS.get(s) ?? 1, zoom));
   const p = pivot(s);
   return s.short.punch(at, { x: p.x - (p.x - s.cx) / zoom, y: p.y - (p.y - s.cy) / zoom, zoom, hold: 1 });
 }

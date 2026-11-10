@@ -40,6 +40,9 @@ has five scenes, and each one has a job.
   button says "Try it for free" in the video's language unless `action` says
   something else.
 
+The scenes change with `"transition": "push"`, so the headlines of two
+scenes never show in one place.
+
 Time each card, click and list to a `[#marker]` in `script.md`, so it shows
 when the voice says it.
 

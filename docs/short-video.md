@@ -224,9 +224,9 @@ A tilted box with bold text for one fact, like "*2* days". `x`, `y`,
 4.5:1 on the box's color with `"defaults": "0.5"`), `rotate` (degrees, -4 by default), `border`,
 `at`, `out`, `sfx`, `id`, `overlap`, `area`. `check` measures the text and the
 keywords against the box's color, and warns when the sticker partly covers
-another shape. `overlap: true` says that is meant. It covers pictures and
-backgrounds only: `check` always warns when a sticker covers words of the hook
-title. With `"defaults": "0.6"`, a sticker that would cover the title while both
+another shape. `overlap: true` says that is meant, for backgrounds only:
+`check` always warns when a sticker covers an icon, an image, a clip, a
+drawing, other text or words of the hook title. With `"defaults": "0.6"`, a sticker that would cover the title while both
 show moves below it, when that fits in `area` (`s.safe` by default).
 
 ### `step(n, total, options)`

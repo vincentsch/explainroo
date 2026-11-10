@@ -121,6 +121,8 @@ text. It finds text that is:
 `check` also finds:
 
 - shapes that partly overlap: boxes, cards, panels, images, icons and stickers
+- a sticker that covers an icon, an image, a clip, a drawing or text, also
+  with `overlap: true`, which lets a sticker cover backgrounds only
 - shapes in the caption band, and on Shorts, TikTok and Reels shapes outside
   the content area. A shape that fills the whole frame is a background and
   doesn't count. With `"defaults": "0.6"` a tall video's pictures may fill
