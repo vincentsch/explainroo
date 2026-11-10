@@ -901,7 +901,8 @@ export class Engine {
 
   // The rules of a short: the voice starts in the first second, and the picture
   // changes at least every SHORT_CHANGE seconds. The stretch after the last
-  // words is the payoff's hold, which may stay still.
+  // words is the payoff's hold, which may stay still, and so is the hold that
+  // targetSeconds adds at the end of a scene.
   shortHints(changes, add) {
     const scenes = this.timeline.scenes;
     const first = scenes.find((sc) => sc.voice);
@@ -909,9 +910,11 @@ export class Engine {
     const spoken = scenes.filter((sc) => sc.voice).at(-1);
     const end = spoken ? spoken.voice.start + spoken.voice.dur : this.timeline.duration;
     const points = [...new Set(changes.filter((x) => x <= end).map((x) => Math.round(x * 100) / 100)), end].sort((a, b) => a - b);
+    const added = scenes.filter((sc) => sc.added > 0).map((sc) => [sc.start + sc.dur - sc.added, sc.start + sc.dur]);
+    const held = (a, b) => added.reduce((n, [from, to]) => n + Math.max(0, Math.min(b, to) - Math.max(a, from)), 0);
     for (let i = 1; i < points.length; i++) {
       const gap = points[i] - points[i - 1];
-      if (gap <= SHORT_CHANGE + 0.05) continue;
+      if (gap - held(points[i - 1], points[i]) <= SHORT_CHANGE + 0.05) continue;
       const sc = scenes.findLast((x) => x.start <= points[i - 1] + 1e-6) ?? scenes[0];
       const from = points[i - 1] - sc.start;
       const words = stretchWords(scenes, points[i - 1], points[i], sc);
