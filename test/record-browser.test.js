@@ -7,6 +7,7 @@ import { findChrome, launch } from '../src/browser.js';
 import { formatInspect, formatRecord, inspect, keyDelay, record } from '../src/record.js';
 import { loadProject } from '../src/project.js';
 import { withEngine } from '../src/pipeline.js';
+import http from 'node:http';
 import { execFileSync } from 'node:child_process';
 import { ffmpeg, ffmpegPath, probe } from '../src/ffmpeg.js';
 import { serveDemoApp } from './fixtures/demo-app/serve.js';
@@ -633,4 +634,42 @@ test('record says when a zoom\'s element is larger than the frame, and when the 
   const size = async (file) => (await probe(file)).streams.map((st) => [st.width, st.height])[0];
   assert.deepEqual(await size(path.join(dir, 'build/record/invoice/step-5.png')), [480, 270]);
   assert.match(formatRecord(rec), /\nstep 3 \(zoom "#sums"\): almost all of what the zoom shows is one colour/);
+});
+
+// A page of its own for one test, served on this machine.
+async function servePage(t, html) {
+  const server = http.createServer((req, res) => {
+    res.setHeader('Content-Type', 'text/html');
+    res.end(html);
+  });
+  await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
+  t.after(() => new Promise((ok) => server.close(ok)));
+  return `http://127.0.0.1:${server.address().port}/`;
+}
+
+test('blur beats the page\'s own inline filter, and a secret the page keeps sharp stops the recording', { skip: !chrome }, async (t) => {
+  // The page's inline style says filter: none !important on the secret.
+  const url = await servePage(t, '<html><body style="margin:0;background:white"><div class="secret" style="position:absolute;left:60px;top:40px;width:360px;height:120px;filter:none!important;color:black;font:44px monospace">SECRET TOKEN</div></body></html>');
+  const dir = project(t, { url, viewport: { width: 640, height: 360 }, blur: [{ selector: '.secret' }], steps: [{ do: 'wait', seconds: 0.5 }] });
+  const r = await record(dir, 'invoice');
+  assert.deepEqual(r.notes, []);
+  const log = JSON.parse(fs.readFileSync(path.join(dir, r.log), 'utf8'));
+  assert.deepEqual(log.blur, [{ selector: '.secret', found: true }]);
+  // Sharp black letters would leave black pixels. Blurred, they are grey at most.
+  const frame = path.join(dir, 'frame.png');
+  await ffmpeg(['-loglevel', 'error', '-ss', String(log.start + 0.2), '-i', path.join(dir, r.video), '-frames:v', '1', frame]);
+  const darkest = rgbAt(frame, 60, 40, 360, 120).reduce((a, b) => Math.min(a, b), 255);
+  assert.ok(darkest > 60, `darkest pixel of the secret: ${darkest}`);
+  assert.ok(darkest < 235, 'the blurred letters still show as grey');
+  // Here the secret gets its class late, and the page's slow transition on
+  // filter keeps it sharp for a long time after the blur is set. The
+  // recording stops at the step where that shows, and keeps the last video.
+  const sharp = await servePage(t, '<html><head><style>div { transition: filter 100s linear; }</style></head><body style="margin:0;background:white"><div id="t" style="font:44px monospace">SECRET TOKEN</div><script>setTimeout(() => document.getElementById("t").className = "secret", 300)</script></body></html>');
+  fs.writeFileSync(path.join(dir, 'recordings/invoice.json'), JSON.stringify({ url: sharp, viewport: { width: 640, height: 360 }, blur: [{ selector: '.secret' }], steps: [{ do: 'wait', seconds: 1 }] }));
+  const kept = fs.readFileSync(path.join(dir, r.log), 'utf8');
+  await assert.rejects(record(dir, 'invoice'), (e) => {
+    assert.match(e.message, /^recordings\/invoice\.json (at the start|step 1 \(wait\)): blur 1 \(selector "\.secret"\) matched an element that is not blurred, because the page's own style keeps it sharp\. The secret would show in the video, so record stopped and kept no new video\. Blur an element around it instead, or hide it in the app while you record\.$/);
+    return true;
+  });
+  assert.equal(fs.readFileSync(path.join(dir, r.log), 'utf8'), kept);
 });

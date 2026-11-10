@@ -146,7 +146,9 @@ records.
   no cookies or stored data from an earlier run. For a site that needs a
   login, `--keep-profile` keeps the profile for the next run.
 - `blur` blurs elements by CSS selector or exact text on every page, before
-  anything is recorded. Use it for real email addresses and keys.
+  anything is recorded. Use it for real email addresses and keys. When the
+  page's own style keeps a matched element sharp, `record` stops and keeps
+  no video.
 - `viewport` is 1920 x 1080 by default, which is too large for most
   videos. Pick it from the size the page plays at: the content area, less
   a small margin and the bar of the browser frame that `s.recording` draws.
