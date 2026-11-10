@@ -31,6 +31,7 @@ Write the steps of a recording in `recordings/<name>.json`:
     { "do": "click", "text": "Accept cookies", "before": true },
     { "do": "click", "text": "New invoice", "cue": "#new" },
     { "do": "type", "text": "Amount", "value": "2400", "press": "Tab" },
+    { "do": "press", "key": "Enter", "cue": "#add" },
     { "do": "zoom", "selector": "form", "cue": "#check" },
     { "do": "click", "text": "Save invoice", "cue": "save" },
     { "do": "zoom" },
@@ -53,7 +54,21 @@ and placeholder, a `text` and a `selector` that find only it, and its box.
 Copy the text or the selector into the step as it is. Use the viewport of
 your script, because the page may lay itself out differently in another
 size. `--json` gives the same list as JSON, and `--keep-profile` opens the
-page with the kept profile, for a page behind a login.
+page with the kept profile, for a page behind a login. Without the project
+folder, `record --inspect <url>` opens the page in `en-US` at 1920 x 1080,
+and `--viewport` and `--locale de-DE` change that.
+
+Fields that look like a text box but aren't an `input`, like the math
+editor of a graphing calculator, are listed too: elements with
+`contenteditable` or `role="textbox"`, and the visible element around a
+hidden input, as a "field around a hidden textarea". A click on that element
+focuses the input, so its selector works for `click` and `type`. The last
+lines name the element that has the focus after the page loads, which is
+where a `press` step without an element presses its key.
+
+`--selector ".expression"` says what a selector matches: how many elements,
+how many of them are visible, and each visible one with its words and box.
+Use it to try a selector before it goes into a step. It goes with `--text`.
 
 A zoom or a scroll often goes to plain content, like a heading, a section of
 results or a chart. `--all` adds the visible headings, sections and images to
@@ -64,7 +79,10 @@ seconds for the words, for a page that shows its results a moment after it
 opens. Pick the one whose box holds what the voice talks about.
 
 Then run `explainroo record videos/<name> <name>`. It runs the steps in a
-browser of its own and saves `assets/recordings/<name>.webm` and its step
+browser of its own, which asks sites for the project's `language`: `en-US`
+for `en`, `es-ES`, `fr-FR`, `it-IT`, `pt-BR`, `hi-IN`, `ja-JP`, `zh-CN` or
+`de-DE`. `"locale": "en-GB"` in the script sets another one. The first line
+of `record` and the step log name it. It saves `assets/recordings/<name>.webm` and its step
 log, `assets/recordings/<name>.log.json`. The video shows only the page,
 with no browser bars or pop-ups. `record` needs Playwright's own ffmpeg, and
 the first recording downloads it and says so. `explainroo doctor --fetch
@@ -89,7 +107,9 @@ records.
 - `open` goes to `url`, an address or a path. `click`, `hover` and `type`
   move the pointer to the element. `type` clicks the field and types
   `value` at 14 characters a second, or at `cps`, and `press` presses a key
-  after it. `scroll` takes `y` in pixels
+  after it. `press` presses `key`, like `"Enter"`, or a combination like
+  `"Control+A"`, where the focus is, or on its element when it has `text` or
+  a `selector`. `scroll` takes `y` in pixels
   or the element to scroll to the middle of the window. `wait` takes
   `seconds` or the element to wait for. `zoom` moves in on the element, and
   without one back out. `mark` names a moment with `name`.
@@ -102,7 +122,11 @@ records.
   times closer. `"scale": 2` on a zoom step sets how close it goes. It
   holds the middle of the element in view. `"align": "left"` holds its left
   edge instead, for a wide row whose words start at the left, and `right`,
-  `top` and `bottom` work the same way.
+  `top` and `bottom` work the same way. A corner, like `top-left`, holds
+  two edges, for a tall list whose first rows are at its top. When the
+  element is larger than what the zoom shows, `record` says so for that
+  step. When almost all of what a zoom shows is one colour, `record` warns
+  with the step and its picture, because the zoom may show empty space.
 - A pointer move takes about 0.6 seconds, and a scroll of one window height
   about 1 second. `"pace": 1.5` in the script makes moves, scrolls and
   typing faster, from 0.5 to 2. `"duration": 1.2` on a step sets the seconds
@@ -111,8 +135,9 @@ records.
 - `cue` is a spoken word or a `[#marker]` of the scene that plays it.
   Several steps may share one cue, like a `zoom` and the `type` after it.
   They run in order, and the first lands on the cue. A cue only changes
-  playback, so a new cue needs no new recording. Any other change to the
-  script does, and `check` says so.
+  playback, so a new cue needs no new recording. A change to the steps in
+  `recordings/<name>.json` other than `cue` does, and so does a change to
+  its `url`, `viewport`, `locale`, `pace` or `blur`. `check` says so.
 - Steps with `"before": true` run before the video starts, like closing a
   cookie banner or logging in. A step before the video that finds nothing
   is skipped, in every run, with or without `--keep-profile`, so it can
@@ -123,24 +148,31 @@ records.
 - `blur` blurs elements by CSS selector or exact text on every page, before
   anything is recorded. Use it for real email addresses and keys.
 - `viewport` is 1920 x 1080 by default, which is too large for most
-  videos. Pick it from the content area the recording plays in: the same
-  shape, about 1.8 times smaller. Then the page's 16 px text plays at about
-  29 px. These are the numbers for a recording that fills the content area:
+  videos. Pick it from the size the page plays at: the content area, less
+  a small margin and the bar of the browser frame that `s.recording` draws.
+  The viewport has that shape and is about 1.8 times smaller, so the page's
+  16 px text plays at about 29 px. These are the numbers for a recording
+  that fills the content area in a `browser` frame:
 
-  | Size | Content area | Viewport |
-  | --- | --- | --- |
-  | 16:9 (`youtube`) | 1768 x 928 | 982 x 516 |
-  | 4:5 (`instagram`, `linkedin`) | 928 x 977 | 516 x 542 |
-  | `shorts` with bold captions | 885 x 732 | 492 x 406 |
-  | `tiktok`, its package with bold captions | 745 x 863 | 414 x 480 |
-  | `reels` with bold captions | 896 x 751 | 498 x 418 |
+  | Size | Content area | Played size | Viewport |
+  | --- | --- | --- | --- |
+  | 16:9 (`youtube`) | 1768 x 928 | 1697 x 829 | 942 x 460 |
+  | 4:5 (`instagram`, `linkedin`) | 928 x 977 | 891 x 872 | 494 x 484 |
+  | `shorts` with bold captions | 885 x 732 | 848 x 654 | 472 x 364 |
+  | `tiktok`, its package with bold captions | 745 x 863 | 715 x 769 | 398 x 428 |
+  | `reels` with bold captions | 896 x 751 | 860 x 669 | 478 x 372 |
 
   A page this narrow may lay itself out as on a phone, which often reads
-  best in a tall video. `check` warns when a recording's 16 px text would
-  play under 24 px, and names a viewport that fits where it plays. A zoom
-  makes the text larger only while it holds. A recording that plays at
-  under 60% of its size with no zoom step gets its own warning, which names
-  the zoom step to add.
+  best in a tall video. An app with a side panel or a canvas, like a
+  graphing calculator or a design tool, needs room: record it bigger, at
+  1280 wide or more, and zoom on the parts the narration names. `check`
+  warns when a recording's 16 px text would play under 24 px. It names the
+  content area, the size the page plays at, and a viewport that fits. A
+  zoom makes the text larger only while it holds. When every `type` step
+  and every step with a `cue` on an element plays inside a zoom, the
+  warning becomes a hint that says where the whole page plays small. A
+  recording that plays at under 60% of its size with no zoom step gets its
+  own warning, which names the zoom step to add.
 
 The step log has the time of each step in seconds of the video, and the
 `box` of its element in pixels of the video: `x` and `y` are its middle,

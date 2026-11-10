@@ -15,21 +15,22 @@ import { ffmpeg, probe } from './ffmpeg.js';
 import { selfCommand } from './history.js';
 import { dropClipFrames } from './clips.js';
 import { ease, suggest } from '../engine/util.js';
-import { ZOOM_ALIGNS, ZOOM_SECONDS, ZOOM_SCALES } from '../engine/recording.js';
+import { ZOOM_ALIGNS, ZOOM_SECONDS, ZOOM_SCALES, coverRect, focusRect } from '../engine/recording.js';
 
-export const STEP_KINDS = ['open', 'click', 'type', 'hover', 'scroll', 'wait', 'zoom', 'mark'];
+export const STEP_KINDS = ['open', 'click', 'type', 'press', 'hover', 'scroll', 'wait', 'zoom', 'mark'];
 // The keys each kind of step takes, besides do, cue, before and the element.
 const STEP_KEYS = {
   open: ['url'],
   click: ['duration'],
   type: ['value', 'press', 'cps', 'duration'],
+  press: ['key', 'duration'],
   hover: ['duration'],
   scroll: ['y', 'duration'],
   wait: ['seconds'],
   zoom: ['scale', 'align'],
   mark: ['name'],
 };
-const ELEMENT = { click: 'needs', type: 'needs', hover: 'needs', scroll: 'may', wait: 'may', zoom: 'may', open: 'no', mark: 'no' };
+const ELEMENT = { click: 'needs', type: 'needs', press: 'may', hover: 'needs', scroll: 'may', wait: 'may', zoom: 'may', open: 'no', mark: 'no' };
 const COMMON = ['do', 'cue', 'before', 'text', 'selector', 'nth'];
 // How long a step looks for its element before it fails.
 const FIND_SECONDS = 10;
@@ -45,6 +46,18 @@ export const SCROLL_SECONDS = 1;
 export const TYPE_CPS = 14;
 const CPS_RANGE = [2, 60];
 const PACES = [0.5, 2];
+// The language the browser asks sites for, from the project's language. A
+// script's "locale" sets another one.
+export const LOCALES = { en: 'en-US', es: 'es-ES', fr: 'fr-FR', it: 'it-IT', 'pt-br': 'pt-BR', hi: 'hi-IN', ja: 'ja-JP', zh: 'zh-CN', de: 'de-DE' };
+export const DEFAULT_LOCALE = LOCALES.en;
+export const isLocale = (v) => typeof v === 'string' && /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(v);
+
+// The locale of a project's recordings, from the language in its video.json.
+export function projectLocale(dir) {
+  let language;
+  try { language = JSON.parse(fs.readFileSync(path.join(dir, 'video.json'), 'utf8')).language; } catch {}
+  return LOCALES[language ?? 'en'] ?? DEFAULT_LOCALE;
+}
 
 const quoted = (v) => JSON.stringify(v);
 // A small object as one line of JSON with spaces, like { "do": "scroll", "text": "Pricing" }.
@@ -85,7 +98,8 @@ export function stepTarget(step) {
 
 export function stepLabel(step, n) {
   const target = step.text ?? step.selector;
-  return `step ${n} (${step.do}${target !== undefined ? ` ${quoted(target)}` : step.name !== undefined ? ` ${quoted(step.name)}` : ''})`;
+  const key = step.do === 'press' ? ` ${quoted(step.key)}${target !== undefined ? ' on' : ''}` : '';
+  return `step ${n} (${step.do}${key}${target !== undefined ? ` ${quoted(target)}` : step.name !== undefined ? ` ${quoted(step.name)}` : ''})`;
 }
 
 // The line record prints for a step that ran: its label, and what it found,
@@ -115,10 +129,11 @@ export function readRecordingScript(dir, name) {
 export function checkRecordingScript(script, rel = 'the recording script') {
   const fail = (m) => { throw new ProjectError(`${rel}: ${m}`); };
   if (!script || typeof script !== 'object' || Array.isArray(script)) fail('must be an object like { "url": "http://localhost:3000/", "steps": [...] }');
-  const unknown = Object.keys(script).filter((k) => !['url', 'viewport', 'pace', 'steps', 'blur'].includes(k));
-  if (unknown.length) fail(`unknown key ${quoted(unknown[0])}. The keys are url, viewport, pace, steps and blur`);
+  const unknown = Object.keys(script).filter((k) => !['url', 'viewport', 'locale', 'pace', 'steps', 'blur'].includes(k));
+  if (unknown.length) fail(`unknown key ${quoted(unknown[0])}. The keys are url, viewport, locale, pace, steps and blur`);
   const url = checkUrl(script.url, fail, 'url');
   const viewport = checkViewport(script.viewport, fail);
+  if (script.locale !== undefined && !isLocale(script.locale)) fail('locale must be a language tag like "en-US" or "de-DE", the language the browser asks the site for');
   const pace = script.pace ?? 1;
   if (typeof pace !== 'number' || !(pace >= PACES[0] && pace <= PACES[1])) fail(`pace must be a number from ${PACES[0]} to ${PACES[1]}: 2 moves the pointer, scrolls and types twice as fast, 0.5 half as fast`);
   if (!Array.isArray(script.steps) || !script.steps.length) fail('steps must be a list with at least one step, like [{ "do": "click", "text": "New invoice" }]');
@@ -168,6 +183,11 @@ export function checkRecordingScript(script, rel = 'the recording script') {
         step.press = raw.press;
       }
     }
+    if (raw.do === 'press') {
+      if (typeof raw.key !== 'string' || !raw.key.trim()) bad('a press step needs "key", a key name like "Enter" or a combination like "Control+A"');
+      step.key = raw.key;
+      if (raw.duration !== undefined && !has.length) bad('a press step without an element moves no pointer, so it takes no duration');
+    }
     if (raw.do === 'scroll') {
       if (raw.y !== undefined && has.length) bad('give y or the element to scroll to, not both');
       if (raw.y === undefined && !has.length) bad('a scroll step needs "y", the pixels to scroll down (negative goes up), or the element to scroll to');
@@ -195,7 +215,7 @@ export function checkRecordingScript(script, rel = 'the recording script') {
     }
     if (raw.align !== undefined) {
       if (!has.length) bad('a zoom without an element goes back out, so it takes no align');
-      if (!ZOOM_ALIGNS.includes(raw.align)) bad(`align must be one of ${ZOOM_ALIGNS.join(', ')}: the side of the element the zoom holds in view, like "left" for a row whose words start at the left`);
+      if (!ZOOM_ALIGNS.includes(raw.align)) bad(`align must be one of ${ZOOM_ALIGNS.join(', ')}: the side or corner of the element the zoom holds in view, like "left" for a row whose words start at the left, or "top-left" for a tall list whose first rows are at its top`);
       if (raw.align !== 'center') step.align = raw.align;
     }
     if (raw.do === 'mark') {
@@ -216,7 +236,7 @@ export function checkRecordingScript(script, rel = 'the recording script') {
       blur.push({ [keys[0]]: b[keys[0]] });
     }
   }
-  return { url: url.href, viewport, pace, steps, blur };
+  return { url: url.href, viewport, ...(script.locale !== undefined ? { locale: script.locale } : {}), pace, steps, blur };
 }
 
 // The window a recording or an inspection runs in, 1920 x 1080 by default.
@@ -268,7 +288,7 @@ function pageSetup(blur) {
   window.__explainrooBlurSeen = seen;
   const selectors = blur.map((b, i) => ({ ...b, i })).filter((b) => b.selector);
   const texts = blur.map((b, i) => ({ ...b, i })).filter((b) => b.text);
-  const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
+  const norm = (s) => String(s ?? '').replace(/[\u200b-\u200d\ufeff]/g, '').replace(/\s+/g, ' ').trim();
   const STYLE = 'filter: blur(9px) !important;';
   const style = document.createElement('style');
   style.textContent = selectors.map((b) => `${b.selector} { ${STYLE} }`).join('\n');
@@ -311,7 +331,7 @@ function pageSetup(blur) {
 // the words the page shows, for the message when it isn't there. With `all`,
 // it keeps every match in window.__explainrooHits and returns their number.
 function findInPage({ text, selector, nth = 1, forTyping = false, all = false }) {
-  const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
+  const norm = (s) => String(s ?? '').replace(/[\u200b-\u200d\ufeff]/g, '').replace(/\s+/g, ' ').trim();
   const visible = (el) => {
     const r = el.getBoundingClientRect();
     return r.width > 1 && r.height > 1 && el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true });
@@ -412,7 +432,7 @@ function findInPage({ text, selector, nth = 1, forTyping = false, all = false })
 function matchedInPage() {
   const el = window.__explainrooTarget;
   if (!el?.isConnected) return null;
-  const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
+  const norm = (s) => String(s ?? '').replace(/[\u200b-\u200d\ufeff]/g, '').replace(/\s+/g, ' ').trim();
   // A field goes by its label, as it is empty before a type step types.
   const label = [...(el.labels ?? [])].map((l) => norm([...l.childNodes].filter((c) => c.nodeType === 3).map((c) => c.textContent).join(' ')) || norm(l.innerText)).find(Boolean);
   const shown = el.matches('input, textarea, select') ? label || norm(el.getAttribute('aria-label')) || norm(el.getAttribute('placeholder')) : norm(el.innerText);
@@ -444,6 +464,17 @@ function coverInPage({ x, y }) {
   const words = String(hit.innerText ?? '').replace(/\s+/g, ' ').trim();
   const classes = [...hit.classList].slice(0, 3).map((c) => `.${c}`).join('');
   return `<${hit.tagName.toLowerCase()}${hit.id ? `#${hit.id}` : ''}${classes}>${words ? ` with the words "${words.length > 40 ? words.slice(0, 37) + '...' : words}"` : ''}`;
+}
+
+// Focuses the element findInPage found last, and says whether it, or
+// something inside it, has the focus now. A wrapper that can't take the focus
+// itself needs a click instead.
+function focusTarget() {
+  const el = window.__explainrooTarget;
+  if (!el?.isConnected) return false;
+  el.focus?.({ preventScroll: true });
+  const a = document.activeElement;
+  return !!a && a !== document.body && (a === el || el.contains(a));
 }
 
 // How far the window has to scroll down, less than 0 for up, to put the
@@ -537,6 +568,7 @@ function shiftTimes(out, by) {
 // The browser profile of a run. Every run starts from an empty profile, so
 // nothing a site stored in an earlier run shows. --keep-profile keeps one
 // profile per project, so a login or a closed banner stays for the next run.
+// Without a project, dir is null and the profile is always a new one.
 function browserProfile(dir, keepProfile) {
   const profiles = path.join(cacheRoot(), 'record', 'profiles');
   fs.mkdirSync(profiles, { recursive: true });
@@ -564,13 +596,15 @@ export async function record(dirArg, name, { log = () => {}, keepProfile = false
   const profile = browserProfile(dir, keepProfile);
   const videos = fs.mkdtempSync(path.join(cacheRoot(), 'record', 'video-'));
   const { width, height } = script.viewport;
-  log(`recording ${script.url} at ${width}x${height}${keepProfile ? ', with the profile of earlier runs' : ''}`);
+  const locale = script.locale ?? projectLocale(dir);
+  log(`recording ${script.url} at ${width}x${height} in ${locale}${keepProfile ? ', with the profile of earlier runs' : ''}`);
   let context;
   try {
     try {
       context = await launchProfile(profile, {
         viewport: { width, height },
         deviceScaleFactor: 1,
+        locale,
         recordVideo: { dir: videos, size: { width, height } },
         acceptDownloads: false,
       }, BROWSER_ARGS);
@@ -708,7 +742,7 @@ export async function record(dirArg, name, { log = () => {}, keepProfile = false
         }
       }
       const entry = { step: n, do: step.do, start: round(now()) };
-      for (const k of ['text', 'selector', 'nth', 'name', 'cue', 'before', 'scale', 'align']) if (step[k] !== undefined) entry[k] = step[k];
+      for (const k of ['text', 'selector', 'nth', 'name', 'key', 'cue', 'before', 'scale', 'align']) if (step[k] !== undefined) entry[k] = step[k];
       // What the step found, kept in the log and said in its line, so a wrong
       // match shows right after recording.
       const matched = async () => {
@@ -756,6 +790,32 @@ export async function record(dirArg, name, { log = () => {}, keepProfile = false
           await sleep(400);
           if (step.do === 'click') entry.changed = before === null || before !== await state();
         }
+      } else if (step.do === 'press') {
+        // On its element, the pointer goes there first, and the key goes to
+        // the element, or into what a click on it focuses, like the hidden
+        // field of a math editor. Without one, it goes where the focus is.
+        if (step.text !== undefined || step.selector !== undefined) {
+          const box = await clear(step, n, await find(step, n), false);
+          entry.box = roundBox(box);
+          await matched();
+          const move = await moveTo({ x: box.x, y: box.y }, step.duration ?? MOVE_SECONDS / script.pace);
+          if (move) entry.move = move;
+          await sleep(220);
+          if (!(await page.evaluate(focusTarget))) {
+            await page.mouse.down();
+            await sleep(70);
+            await page.mouse.up();
+            entry.click = round(now());
+          }
+          await sleep(150);
+        }
+        const before = await state();
+        entry.t = round(now());
+        await page.keyboard.press(step.key).catch((e) => fail(step, n, `can't press ${quoted(step.key)}: ${e.message.split('\n')[0]}. Key names are like Enter, Tab, Escape or ArrowDown, and a combination is like "Control+A".`));
+        await sleep(300);
+        await settle();
+        await sleep(400);
+        entry.changed = before === null || before !== await state();
       } else if (step.do === 'scroll') {
         entry.t = entry.start;
         if (step.y !== undefined) await scrollBy(step.y, step.duration);
@@ -808,6 +868,7 @@ export async function record(dirArg, name, { log = () => {}, keepProfile = false
       url: script.url,
       width,
       height,
+      locale,
       duration: round(duration),
       start,
       end,
@@ -834,9 +895,17 @@ export async function record(dirArg, name, { log = () => {}, keepProfile = false
     if (readLog(old)) fs.rmSync(old, { force: true });
     dropClipFrames(dir, `assets/recordings/${name}.webm`);
     const rel = (p) => path.relative(dir, p).split(path.sep).join('/');
-    const shots = await stepShots(webm, out, path.join(dir, 'build', 'record', name));
-    const notes = [...skipped, ...missed.map((b) => `blur ${b.i + 1} (${b.selector !== undefined ? `selector ${quoted(b.selector)}` : `text ${quoted(b.text)}`}) matched nothing on any page. Check it, or take it out.`)];
-    return { name, video: rel(webm), log: rel(json), duration: out.duration, start: out.start, steps: steps.length, width, height, notes,
+    const { shots, blank } = await stepShots(webm, out, path.join(dir, 'build', 'record', name));
+    const zoomNotes = [];
+    for (const st of steps.filter((x) => x.do === 'zoom' && x.box)) {
+      const label = stepLabel(script.steps[st.step - 1], st.step);
+      const view = zoomView(st, out);
+      const over = st.box.w > view.w + 1 || st.box.h > view.h + 1;
+      if (over) zoomNotes.push(`${label}: the element is ${st.box.w}x${st.box.h}, larger than the ${Math.round(view.w)}x${Math.round(view.h)} of the page the zoom shows, so the zoom shows ${st.align ? `its ${st.align.replace('-', ' ')} part` : 'its middle'} and leaves the rest out. ${st.align ? 'Zoom' : 'Hold the part the narration names in view with "align", like "top-left", or zoom'} on a smaller element inside it, which "--inspect --text" lists.`);
+      if (blank.has(st.step)) zoomNotes.push(`${label}: almost all of what the zoom shows is one colour, so it may show empty space. Look at ${rel(shots[st.step])}${over ? '' : ', and hold the part with words in view with "align", or zoom on a smaller element'}.`);
+    }
+    const notes = [...skipped, ...zoomNotes, ...missed.map((b) => `blur ${b.i + 1} (${b.selector !== undefined ? `selector ${quoted(b.selector)}` : `text ${quoted(b.text)}`}) matched nothing on any page. Check it, or take it out.`)];
+    return { name, video: rel(webm), log: rel(json), duration: out.duration, start: out.start, steps: steps.length, width, height, locale, notes,
       matched: steps.filter((st) => st.match).map((st) => ({ step: st.step, do: st.do, ...st.match, ...(shots[st.step] ? { picture: rel(shots[st.step]) } : {}) })),
       ...(Object.keys(shots).length ? { pictures: rel(path.join(dir, 'build', 'record', name)) } : {}) };
   } finally {
@@ -850,28 +919,66 @@ export async function record(dirArg, name, { log = () => {}, keepProfile = false
 const SHOT_SIZE = { w: 480, h: 320 };
 const SHOT_ROOM = 12;
 
+// The part of the video a zoom step shows once it has arrived, in a frame
+// of the video's own shape.
+function zoomView(st, log) {
+  return focusRect(st.box, coverRect(log.width, log.height, log.width / log.height), log.width, log.height, st.scale, st.align);
+}
+
 // The moment of the video that shows what a step found: a click as the
 // pointer gets there, before it presses, typing and a scroll once they are
-// done, a wait once it found its element, a hover and a zoom as they start.
+// done, a wait once it found its element, a zoom once it has arrived, and a
+// hover and a key press as they start.
 function shotTime(st) {
   if (st.do === 'type' || st.do === 'scroll') return st.until ?? st.end;
   if (st.do === 'wait') return st.end;
+  if (st.do === 'zoom') return Math.min(st.end, st.t + ZOOM_SECONDS);
   if (st.do === 'click') return Math.max(st.start, Math.min(st.move?.t1 ?? st.t, st.t - 0.1));
   return st.t;
 }
 
+// How much of a zoom's picture one colour may cover before record warns, and
+// how far a pixel may be from that colour, per channel, to count as it.
+const BLANK_SHARE = 0.985;
+const BLANK_SPREAD = 12;
+
+// Whether almost all of an image is one colour, read at a small size.
+async function oneColour(file) {
+  const { stdout } = await ffmpeg(['-loglevel', 'error', '-i', file, '-vf', 'scale=96:-2:flags=area,format=rgb24', '-f', 'rawvideo', '-'], { binary: true });
+  const n = Math.floor(stdout.length / 3);
+  if (!n) return false;
+  const counts = new Map();
+  for (let i = 0; i < n; i++) {
+    const key = (stdout[i * 3] >> 4) << 8 | (stdout[i * 3 + 1] >> 4) << 4 | stdout[i * 3 + 2] >> 4;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  const top = [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
+  const want = [(top >> 8) * 16 + 8, ((top >> 4) & 15) * 16 + 8, (top & 15) * 16 + 8];
+  let same = 0;
+  for (let i = 0; i < n; i++) {
+    if ([0, 1, 2].every((c) => Math.abs(stdout[i * 3 + c] - want[c]) <= BLANK_SPREAD)) same++;
+  }
+  return same / n >= BLANK_SHARE;
+}
+
 // A small picture of each step's element, cut from the video at shotTime, in
-// `folder`/step-<n>.png. The pictures of an earlier run go first. Returns the
-// files by step number; a picture that fails is left out.
+// `folder`/step-<n>.png. A zoom's picture shows what the zoom shows. The
+// pictures of an earlier run go first. Returns the files by step number, and
+// the zoom steps whose picture is almost all one colour; a picture that fails
+// is left out.
 async function stepShots(video, log, folder) {
   fs.rmSync(folder, { recursive: true, force: true });
   const shots = {};
+  const blank = new Set();
   for (const st of log.steps) {
     if (!st.box || st.before) continue;
-    const x0 = Math.max(0, Math.floor(st.box.x - st.box.w / 2 - SHOT_ROOM));
-    const y0 = Math.max(0, Math.floor(st.box.y - st.box.h / 2 - SHOT_ROOM));
-    const x1 = Math.min(log.width, Math.ceil(st.box.x + st.box.w / 2 + SHOT_ROOM));
-    const y1 = Math.min(log.height, Math.ceil(st.box.y + st.box.h / 2 + SHOT_ROOM));
+    const view = st.do === 'zoom' ? zoomView(st, log) : null;
+    const room = view ? 0 : SHOT_ROOM;
+    const area = view ? { x: view.x + view.w / 2, y: view.y + view.h / 2, w: view.w, h: view.h } : st.box;
+    const x0 = Math.max(0, Math.floor(area.x - area.w / 2 - room));
+    const y0 = Math.max(0, Math.floor(area.y - area.h / 2 - room));
+    const x1 = Math.min(log.width, Math.ceil(area.x + area.w / 2 + room));
+    const y1 = Math.min(log.height, Math.ceil(area.y + area.h / 2 + room));
     const w = x1 - x0;
     const h = y1 - y0;
     if (w < 2 || h < 2) continue;
@@ -881,10 +988,13 @@ async function stepShots(video, log, folder) {
     const at = Math.max(0, Math.min(log.duration - 0.05, shotTime(st)));
     try {
       await ffmpeg(['-loglevel', 'error', '-y', '-ss', String(at), '-i', video, '-frames:v', '1', '-vf', `crop=${w}:${h}:${x0}:${y0},scale=${Math.max(2, Math.round(w * k))}:${Math.max(2, Math.round(h * k))}`, file]);
-      if (fs.existsSync(file)) shots[st.step] = file;
+      if (fs.existsSync(file)) {
+        shots[st.step] = file;
+        if (view && await oneColour(file).catch(() => false)) blank.add(st.step);
+      }
     } catch {}
   }
-  return shots;
+  return { shots, blank };
 }
 
 // --- inspect ---------------------------------------------------------------
@@ -939,11 +1049,14 @@ const SELECTOR_SCRIPT = `window.__explainrooSelector = ${selectorInPage.toString
 
 // Lists every visible element of the page a person can click or type into,
 // with what a step finds it by: a text that finds it, with nth when it is not
-// the first match, and a CSS selector that matches only it. findInPage has to
-// be in the page as window.__explainrooFind.
-function inspectInPage({ limit, all = false, holding = null }) {
+// the first match, and a CSS selector that matches only it. A field whose
+// input is hidden, like a math editor that types into a textarea of no size,
+// is listed by the visible element around the input, which a click focuses.
+// It also says which element has the focus, and with `selector` what that
+// selector matches. findInPage has to be in the page as window.__explainrooFind.
+function inspectInPage({ limit, all = false, holding = null, selector = null }) {
   const find = window.__explainrooFind;
-  const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
+  const norm = (s) => String(s ?? '').replace(/[\u200b-\u200d\ufeff]/g, '').replace(/\s+/g, ' ').trim();
   const visible = (el) => {
     const r = el.getBoundingClientRect();
     return r.width > 1 && r.height > 1 && el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true });
@@ -1011,6 +1124,49 @@ function inspectInPage({ limit, all = false, holding = null }) {
   };
   const top = (el) => el.getBoundingClientRect().top + scrollY;
   const order = (a, b) => top(a) - top(b) || a.getBoundingClientRect().left - b.getBoundingClientRect().left;
+  // A text field that takes typing but shows no box of its own, and the
+  // visible element around it that stands for it, a few levels up at most.
+  const TEXT_INPUT = 'textarea, input:not([type]), input[type=text], input[type=search], input[type=email], input[type=url], input[type=tel], input[type=number], input[type=password]';
+  const hiddenInput = (el) => {
+    if (!el.matches(TEXT_INPUT) || getComputedStyle(el).display === 'none') return false;
+    const r = el.getBoundingClientRect();
+    return r.width < 4 || r.height < 4 || !visible(el);
+  };
+  const wrapperOf = (input) => {
+    for (let up = input.parentElement, i = 0; up && up !== document.body && i < 4; up = up.parentElement, i++) {
+      const r = up.getBoundingClientRect();
+      if (r.width >= 16 && r.height >= 10 && visible(up)) return r.width * r.height <= (innerWidth * innerHeight) / 3 ? up : null;
+    }
+    return null;
+  };
+  const wrapped = new Map();
+  for (const input of document.body.querySelectorAll(TEXT_INPUT)) {
+    if (!hiddenInput(input)) continue;
+    const w = wrapperOf(input);
+    if (w && !wrapped.has(w)) wrapped.set(w, input.tagName.toLowerCase());
+  }
+  const field = (el) => (wrapped.has(el) ? { kind: 'field', hidden_input: wrapped.get(el) } : {});
+  // The element with the focus after the page loads, where a press step
+  // without an element presses its key: a hidden input goes by the element
+  // around it.
+  const active = document.activeElement && document.activeElement !== document.body && document.activeElement !== document.documentElement ? document.activeElement : null;
+  const focused = active && hiddenInput(active) ? wrapperOf(active) ?? active : active;
+  const focus = focused ? describe(focused, field(focused)) : null;
+  // With `selector`, what it matches: every element, and the visible ones,
+  // which a step takes from the top.
+  let probe;
+  if (selector !== null) {
+    let found = null;
+    try { found = [...document.querySelectorAll(selector)]; } catch {}
+    if (!found) probe = { css: selector, error: 'invalid' };
+    else {
+      const shown = found.filter(visible);
+      const around = found.filter(hiddenInput).map(wrapperOf).find(Boolean);
+      probe = { css: selector, matches: found.length, visible: shown.length, elements: shown.slice(0, limit).map((el) => describe(el, field(el))),
+        ...(!shown.length && around ? { around: describe(around, field(around)) } : {}) };
+    }
+    if (holding === null) return { title: document.title, focus, selector: probe };
+  }
   // With `holding`, the elements that hold those words: the smallest one, and
   // the larger ones around it, each a zoom or scroll target of its own.
   if (holding !== null) {
@@ -1031,9 +1187,9 @@ function inspectInPage({ limit, all = false, holding = null }) {
         last = r;
       }
     }
-    return { title: document.title, total: entries.length, matches: smallest.length, elements: entries.slice(0, limit) };
+    return { title: document.title, focus, ...(probe ? { selector: probe } : {}), total: entries.length, matches: smallest.length, elements: entries.slice(0, limit) };
   }
-  const found = [...document.body.querySelectorAll(CLICKABLE)].filter(visible);
+  const found = [...new Set([...document.body.querySelectorAll(CLICKABLE), ...wrapped.keys()])].filter(visible);
   // A link around a button with the same words is one thing to click.
   const list = found.filter((el) => !found.some((o) => o !== el && el.contains(o) && norm(o.innerText) === norm(el.innerText)));
   // With `all`, also what a zoom or a scroll goes to: headings, sections and images.
@@ -1055,9 +1211,10 @@ function inspectInPage({ limit, all = false, holding = null }) {
   const every = [...list, ...content].sort(order);
   return {
     title: document.title,
+    focus,
     total: every.length,
     ...(all ? { content: content.length } : {}),
-    elements: every.slice(0, limit).map((el) => describe(el, all ? { group: clickable.has(el) ? 'click' : 'content' } : {})),
+    elements: every.slice(0, limit).map((el) => describe(el, { ...field(el), ...(all ? { group: clickable.has(el) ? 'click' : 'content' } : {}) })),
   };
 }
 
@@ -1068,19 +1225,24 @@ const INSPECT_PRINTED = 200;
 const HOLDING_SECONDS = 15;
 
 // Opens a page in the browser record uses and lists what a step can click or
-// type into, so a script never has to guess a button.
-export async function inspect(dirArg, url, { viewport, keepProfile = false, all = false, holding = null, log = () => {} } = {}) {
-  const dir = findProjectDir(dirArg);
+// type into, so a script never has to guess a button. Without a project
+// (dirArg null), it opens the page in en-US, or in `locale`.
+export async function inspect(dirArg, url, { viewport, locale, keepProfile = false, all = false, holding = null, selector = null, log = () => {} } = {}) {
+  const dir = dirArg === null ? null : findProjectDir(dirArg);
   const fail = (m) => { throw new ProjectError(m); };
   const address = checkUrl(url, fail, '--inspect').href;
   if (holding !== null && (typeof holding !== 'string' || !holding.trim())) fail('--text needs the words to look for, like --text "Solutions"');
+  if (selector !== null && (typeof selector !== 'string' || !selector.trim())) fail('--selector needs a CSS selector to try, like --selector ".dcg-math-field"');
+  if (locale !== undefined && !isLocale(locale)) fail('--locale must be a language tag like en-US or de-DE');
+  if (keepProfile && !dir) fail('--keep-profile opens the page with the kept profile of a project, so put the project folder first: explainroo record videos/<name> --inspect <url> --keep-profile');
   const size = checkViewport(viewport, (m) => fail(m.replace('viewport must be like { "width": 1920, "height": 1080 }', '--viewport must be like 1280x720').replace(/^viewport\.(width|height)/, '--viewport $1')));
+  const lang = locale ?? (dir ? projectLocale(dir) : DEFAULT_LOCALE);
   const profile = browserProfile(dir, keepProfile);
-  log(`opening ${address} at ${size.width}x${size.height}${keepProfile ? ', with the profile of earlier runs' : ''}`);
+  log(`opening ${address} at ${size.width}x${size.height} in ${lang}${keepProfile ? ', with the profile of earlier runs' : ''}`);
   let context;
   try {
     try {
-      context = await launchProfile(profile, { viewport: size, deviceScaleFactor: 1, acceptDownloads: false }, BROWSER_ARGS);
+      context = await launchProfile(profile, { viewport: size, deviceScaleFactor: 1, locale: lang, acceptDownloads: false }, BROWSER_ARGS);
     } catch (e) {
       if (/ProcessSingleton|profile.*in use|SingletonLock/i.test(e.message)) throw new ProjectError('a recording of this project is running and uses its browser profile. Wait for it to finish.');
       throw e;
@@ -1096,33 +1258,61 @@ export async function inspect(dirArg, url, { viewport, keepProfile = false, all 
     await page.evaluate(() => document.fonts?.ready.then(() => true)).catch(() => {});
     await sleep(500);
     await page.evaluate(`window.__explainrooFind = ${findInPage.toString()}`);
-    let r = await page.evaluate(inspectInPage, { limit: INSPECT_LIMIT, all, holding });
+    const look = () => page.evaluate(inspectInPage, { limit: INSPECT_LIMIT, all, holding, selector });
+    let r = await look();
+    if (r.selector?.error) fail(`--selector ${quoted(selector)} is not a valid CSS selector`);
     // Words a page shows only once its scripts have worked, like the results
-    // of a search, get a while longer to come.
-    for (const until = Date.now() + HOLDING_SECONDS * 1000; holding !== null && !r.matches && Date.now() < until;) {
+    // of a search, get a while longer to come, and so does a selector's match.
+    const waiting = () => (holding !== null && !r.matches) || (selector !== null && !r.selector.visible);
+    for (const until = Date.now() + HOLDING_SECONDS * 1000; waiting() && Date.now() < until;) {
       await sleep(500);
-      r = await page.evaluate(inspectInPage, { limit: INSPECT_LIMIT, all, holding });
+      r = await look();
     }
-    return { url: page.url(), title: r.title, viewport: size, ...(holding !== null ? { text: holding, matches: r.matches } : all ? { all: true, content: r.content } : {}), total: r.total, elements: r.elements };
+    return { url: page.url(), title: r.title, viewport: size, locale: lang, focus: r.focus,
+      ...(selector !== null ? { selector: r.selector } : {}),
+      ...(holding !== null ? { text: holding, matches: r.matches } : all ? { all: true, content: r.content } : {}),
+      ...(selector === null || holding !== null ? { total: r.total, elements: r.elements } : {}) };
   } finally {
     if (context) await context.close().catch(() => {});
     if (!keepProfile) fs.rmSync(profile, { recursive: true, force: true });
   }
 }
 
+const cut = (v) => (v.length > 60 ? `${v.slice(0, 57)}...` : v);
+// What an element of inspect shows, like: editor "Note", aria-label "Note text".
+function shown(e) {
+  const said = [e.words ? quoted(cut(e.words)) : '', e.alt ? `alt ${quoted(cut(e.alt))}` : '', e.aria_label && e.aria_label !== e.words ? `aria-label ${quoted(cut(e.aria_label))}` : '', e.placeholder && e.placeholder !== e.words ? `placeholder ${quoted(cut(e.placeholder))}` : ''].filter(Boolean).join(', ');
+  const kind = e.hidden_input ? `field around a hidden ${e.hidden_input}` : e.kind;
+  return `${kind}${said ? ` ${said}` : ''}`;
+}
+const where = (e) => `at ${e.box.x},${e.box.y}, ${e.box.w}x${e.box.h}${e.in_view ? '' : ', outside the window'}`;
+const findBy = (e) => (e.text !== undefined ? `text ${quoted(e.text)}${e.nth ? `, nth ${e.nth}` : ''}, or selector ${e.selector}` : `selector ${e.selector}`);
+const listed = (e, i) => {
+  // Around the words of --text, each larger element is one step further in.
+  const pad = ' '.repeat(2 * (e.level ?? 0));
+  return `${String(i + 1).padStart(3)}. ${pad}${e.level ? 'in ' : ''}${shown(e)}  ${where(e)}\n     ${pad}${findBy(e)}`;
+};
+
+// What --selector matches: how many elements, how many of them show, and each
+// visible one.
+function formatSelector(r) {
+  const p = r.selector;
+  const of = `the selector ${quoted(p.css)}`;
+  if (!p.matches) return [`${of} matches nothing on the page, also after ${HOLDING_SECONDS} s`];
+  const head = `${of} matches ${p.matches} element${p.matches === 1 ? '' : 's'}, ${p.visible === p.matches ? (p.matches === 1 ? 'and it is visible' : 'all visible') : `${p.visible} of them visible`}${p.visible ? ', from the top' : ''}`;
+  const around = p.around ? [`A step leaves hidden elements out. The visible element around the hidden one, which a click focuses, is ${shown(p.around)}  ${where(p.around)}, selector ${p.around.selector}`] : [];
+  const pick = p.visible > 1 ? ['A step with this selector takes the first visible one, and "nth": 2 the second.'] : [];
+  return [head, ...p.elements.slice(0, INSPECT_PRINTED).map(listed), ...around, ...pick];
+}
+
 export function formatInspect(r) {
-  const cut = (v) => (v.length > 60 ? `${v.slice(0, 57)}...` : v);
-  const lines = r.elements.slice(0, INSPECT_PRINTED).map((e, i) => {
-    const said = [e.words ? quoted(cut(e.words)) : '', e.alt ? `alt ${quoted(cut(e.alt))}` : '', e.aria_label && e.aria_label !== e.words ? `aria-label ${quoted(cut(e.aria_label))}` : '', e.placeholder && e.placeholder !== e.words ? `placeholder ${quoted(cut(e.placeholder))}` : ''].filter(Boolean).join(', ');
-    const where = `at ${e.box.x},${e.box.y}, ${e.box.w}x${e.box.h}${e.in_view ? '' : ', outside the window'}`;
-    const by = e.text !== undefined ? `text ${quoted(e.text)}${e.nth ? `, nth ${e.nth}` : ''}, or selector ${e.selector}` : `selector ${e.selector}`;
-    // Around the words of --text, each larger element is one step further in.
-    const pad = ' '.repeat(2 * (e.level ?? 0));
-    const kind = e.level ? `in ${e.kind}` : e.kind;
-    return `${String(i + 1).padStart(3)}. ${pad}${kind}${said ? ` ${said}` : ''}  ${where}\n     ${pad}${by}`;
-  });
+  const size = `${r.viewport.width}x${r.viewport.height} in ${r.locale}`;
+  const focus = r.focus
+    ? `After the page loads, the focus is on ${shown(r.focus)}, ${findBy(r.focus)}, so a press step without an element presses its key there.`
+    : 'After the page loads, no element has the focus.';
+  if (r.elements === undefined) return [`${r.url} at ${size}: ${formatSelector(r)[0]}`, ...formatSelector(r).slice(1), focus].join('\n');
+  const lines = r.elements.slice(0, INSPECT_PRINTED).map(listed);
   const more = r.total > lines.length ? [`and ${r.total - lines.length} more${r.elements.length > lines.length ? ', which --json lists' : ''}`] : [];
-  const size = `${r.viewport.width}x${r.viewport.height}`;
   const head = r.text !== undefined
     ? r.matches
       ? `${r.url} at ${size}: ${r.matches} element${r.matches === 1 ? '' : 's'} hold${r.matches === 1 ? 's' : ''} ${quoted(r.text)}, each with the larger ones around it, from the top`
@@ -1133,12 +1323,12 @@ export function formatInspect(r) {
   const tail = r.text !== undefined || r.all
     ? 'A step takes the text or the selector as it is, like { "do": "zoom", "selector": "#results", "align": "left" }. An element outside the window needs a scroll step to it first.'
     : 'A step takes the text or the selector as it is, like { "do": "click", "text": "Save" }. An element outside the window needs a scroll step to it first. --all also lists headings, sections and images, and --text "<words>" the elements that hold those words.';
-  return [head, ...lines, ...more, tail].join('\n');
+  return [head, ...lines, ...more, ...(r.selector ? formatSelector(r) : []), focus, tail].join('\n');
 }
 
 export function formatRecord(r) {
   return [
-    `recorded ${r.steps} step${r.steps === 1 ? '' : 's'}, ${r.duration.toFixed(1)} s at ${r.width}x${r.height}`,
+    `recorded ${r.steps} step${r.steps === 1 ? '' : 's'}, ${r.duration.toFixed(1)} s at ${r.width}x${r.height} in ${r.locale}`,
     `video: ${r.video}`,
     `step log: ${r.log}`,
     ...(r.pictures ? [`what each step found: ${r.pictures}/step-<n>.png. Open them to check that every step found the right element.`] : []),

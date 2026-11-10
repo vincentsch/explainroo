@@ -109,9 +109,11 @@ Product demos
   record <project> <name>  run recordings/<name>.json in a browser of its own and save the video with a log
                         of every step in assets/recordings/, for s.recording in a scene. Every run starts
                         with an empty browser profile, and --keep-profile keeps cookies and stored data for
-                        the next run, for a site that needs a login. "record <project> --inspect <url>" lists
-                        what a step can click or type into, with a text and a selector for each (--viewport).
-                        --all adds headings, sections and images, and --text "<words>" lists what holds them
+                        the next run, for a site that needs a login. The browser speaks the project's language.
+                        "record [project] --inspect <url>" lists what a step can click or type into, with a
+                        text and a selector for each, and what has the focus (--viewport, --locale). --all adds
+                        headings, sections and images, --text "<words>" lists what holds them, and
+                        --selector "<css>" says what that selector matches
 
 Images (optional, costs money, needs an OpenRouter key from "explainroo connect openrouter")
   image [project] <name> "<what to draw>"   save an illustration as assets/<name>.png
@@ -284,14 +286,17 @@ export async function main(argv) {
       case 'record': {
         if (flags.inspect !== undefined) {
           const url = textFlag(flags, 'inspect');
-          if (pos.length !== 1) throw new ProjectError('usage: explainroo record <project> --inspect <url> [--all] [--text "<words>"] [--viewport 1280x720] [--keep-profile] [--json]. It lists what a step can click or type into, and records nothing.');
+          if (pos.length > 1) throw new ProjectError('usage: explainroo record [project] --inspect <url> [--all] [--text "<words>"] [--selector "<css>"] [--viewport 1280x720] [--locale en-US] [--keep-profile] [--json]. It lists what a step can click or type into, and records nothing.');
           if (flags.all && flags.text !== undefined) throw new ProjectError('--text lists only the elements that hold its words, so leave out --all');
-          const r = await inspect(pos[0], url, { viewport: viewportFlag(flags), keepProfile: !!flags['keep-profile'], all: !!flags.all, holding: flags.text === undefined ? null : textFlag(flags, 'text'), log });
+          if (flags.all && flags.selector !== undefined) throw new ProjectError('--selector says only what that selector matches, so leave out --all');
+          const r = await inspect(pos[0] ?? null, url, { viewport: viewportFlag(flags), locale: flags.locale === undefined ? undefined : textFlag(flags, 'locale'), keepProfile: !!flags['keep-profile'], all: !!flags.all,
+            holding: flags.text === undefined ? null : textFlag(flags, 'text'), selector: flags.selector === undefined ? null : textFlag(flags, 'selector'), log });
           print(formatInspect(r), r);
           return 0;
         }
         if (flags.viewport !== undefined) throw new ProjectError('--viewport goes with --inspect. A recording takes its viewport from recordings/<name>.json.');
-        if (flags.all || flags.text !== undefined) throw new ProjectError(`--${flags.all ? 'all' : 'text'} goes with --inspect <url>, which lists what is on a page.`);
+        const inspectOnly = ['all', 'text', 'selector', 'locale'].find((k) => flags[k] !== undefined && flags[k] !== false);
+        if (inspectOnly) throw new ProjectError(`--${inspectOnly} goes with --inspect <url>, which lists what is on a page.${inspectOnly === 'locale' ? ' A recording takes its locale from the project\'s language, or from "locale" in recordings/<name>.json.' : ''}`);
         if (pos.length !== 2) throw new ProjectError('usage: explainroo record <project> <name> [--keep-profile] [--json], or explainroo record <project> --inspect <url>. The script is recordings/<name>.json in the project.');
         const r = await record(pos[0], pos[1], { log, keepProfile: !!flags['keep-profile'] });
         print(formatRecord(r), r);

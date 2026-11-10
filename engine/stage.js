@@ -7,7 +7,7 @@ import { colorOf, tintOf, fontString } from './themes.js';
 import { scalePath, quadD, polyD, pathLength, pointAt, parsePath, absolutize, samplePath } from './pathdata.js';
 import { layoutText, lineStartX } from './text.js';
 import { clipFrame, clipURL, soundURL, FIT_SPEEDS } from './clips.js';
-import { cuedSteps, smallRecording, smallPageText, movingSteps, recordingClock, videoTime, sceneTime, cursorAt, viewAt, drawCursor, RING_SECONDS } from './recording.js';
+import { cuedSteps, smallRecording, smallPageText, talkZoomed, movingSteps, recordingClock, videoTime, sceneTime, cursorAt, viewAt, drawCursor, RING_SECONDS } from './recording.js';
 import { highlightLine, codeTokens, matchTokens, resolveCodeSteps, codeMorphState } from './code.js';
 import { ring, bounds, along, rayThrough } from './geometry.js';
 
@@ -1657,9 +1657,12 @@ export class Stage {
     if (this.engine.planning) this.engine.manualCamera = true;
     const ratio = log.width / log.height;
     const bar = o.frame === 'browser' || o.frame === 'window' ? 1.075 : o.frame === 'phone' ? 1.03 : 1;
-    // The area it plays in, for the viewport check names: the size it was
-    // given, or the safe area without the bar of a frame.
-    const area = o.w === undefined && o.h === undefined ? { w: this.safe.w, h: this.safe.h / bar, fill: 0.96 } : { w: o.w ?? o.h * ratio, h: o.h ?? o.w / ratio, fill: 1 };
+    // The content area it plays in, the size it was given or the safe area,
+    // and the most of it the page can take, for the viewport check names:
+    // without a size, that is the safe area less the bar of a frame and a
+    // small margin.
+    const area = o.w === undefined && o.h === undefined ? { w: this.safe.w, h: this.safe.h } : { w: o.w ?? o.h * ratio, h: o.h ?? o.w / ratio };
+    const room = o.w === undefined && o.h === undefined ? { w: area.w * 0.96, h: (area.h / bar) * 0.96 } : area;
     // Without a size it fills what the safe area holds, with the bar of a
     // browser or window frame, which _picture puts on top.
     if (o.w === undefined && o.h === undefined) {
@@ -1700,7 +1703,7 @@ export class Stage {
       const n = this._recordingSeq = (this._recordingSeq || 0) + 1;
       const label = (step) => {
         const st = log.steps.find((x) => x.step === step);
-        const target = st.text ?? st.selector ?? st.name;
+        const target = st.text ?? st.selector ?? st.name ?? st.key;
         return `step ${step} (${st.do}${target !== undefined ? ` "${target}"` : ''})`;
       };
       const after = steps.filter((st) => st.t >= from && sceneTime(clock, st.t) > out + 0.05);
@@ -1708,7 +1711,11 @@ export class Stage {
         late: clock.late.map((l) => ({ ...l, label: label(l.step), cue: cued.find((c) => c.step === l.step).cue })),
         cut: after.length ? { first: label(after[0].step), count: after.length, at: sceneTime(clock, after[0].t) } : null, fit: o.speed === 'fit', speed,
         small: smallRecording(log, { w: o.w ?? o.h * (log.width / log.height), h: o.h ?? o.w / (log.width / log.height), from, zoom: o.zoom !== false }), width: log.width, height: log.height,
-        text: smallPageText(log, { w: o.w ?? o.h * (log.width / log.height), h: o.h ?? o.w / (log.width / log.height) }), area,
+        text: smallPageText(log, { w: o.w ?? o.h * (log.width / log.height), h: o.h ?? o.w / (log.width / log.height) }), area, room,
+        played: { w: o.w ?? o.h * ratio, h: o.h ?? o.w / ratio }, frame: bar > 1 ? o.frame : null,
+        // Where the page plays whole, when every step the narration talks
+        // about plays inside a zoom: then small text matters less.
+        unzoomed: o.zoom === false ? null : talkZoomed(steps.filter((st) => st.t >= from), { cues: o.cues, end: Infinity, from })?.map((sp) => ({ from: Math.max(at, sceneTime(clock, sp.from)), to: Math.min(out, sceneTime(clock, sp.to)) })).filter((sp) => sp.to - sp.from > 0.1),
         // What moves the picture, for the look a short takes at still stretches.
         moving: movingSteps(steps.filter((st) => st.t >= from), { zoom: o.zoom !== false, noted: !!log.changes }).map((m) => ({ from: sceneTime(clock, m.from), to: sceneTime(clock, m.to) })).filter((m) => m.to >= at && m.from < out) });
       // Each step shows something new, for check's look at quiet stretches.

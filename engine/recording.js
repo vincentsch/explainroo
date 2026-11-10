@@ -63,11 +63,33 @@ export function movingSteps(steps, { zoom = true, noted = true } = {}) {
     else if (st.do === 'type' || st.do === 'scroll') span = [st.t, st.until ?? st.t];
     else if (st.do === 'zoom') span = zoom ? [st.t, st.t + ZOOM_SECONDS] : null;
     else if (st.do === 'open') span = [st.t, st.t];
-    else if (st.do === 'click' || st.do === 'hover') span = st.changed ? [st.t, st.t] : null;
+    else if (st.do === 'click' || st.do === 'hover' || st.do === 'press') span = st.changed ? [st.t, st.t] : null;
     else if (st.do === 'wait') span = st.changed ? [st.end, st.end] : null;
     if (span) out.push({ step: st.step, from: span[0], to: Math.max(span[0], span[1]) });
   }
   return out;
+}
+
+// Whether every step the narration talks about plays inside a zoom: each type
+// step, and each step on an element with a cue, from `cues` or its own. Then
+// the stretches of the video, in its seconds, where the page plays whole,
+// [{ from, to }], from `from` to `end`; else null.
+export function talkZoomed(steps, { cues, from = 0, end }) {
+  const zooms = steps.filter((st) => st.do === 'zoom').sort((a, b) => a.t - b.t);
+  const inside = (st) => zooms.filter((z) => z.t <= st.t).at(-1)?.box !== undefined;
+  const cueOf = (st) => cues?.[st.name] ?? cues?.[st.step] ?? st.cue;
+  const talked = steps.filter((st) => st.do === 'type' || (cueOf(st) !== undefined && (st.text !== undefined || st.selector !== undefined)));
+  if (!talked.length || !talked.every(inside)) return null;
+  const spans = [];
+  let whole = from;
+  for (const z of zooms) {
+    if (z.box && whole !== null) {
+      if (z.t > whole) spans.push({ from: whole, to: z.t });
+      whole = null;
+    } else if (!z.box && whole === null) whole = z.t;
+  }
+  if (whole !== null && end > whole) spans.push({ from: whole, to: end });
+  return spans;
 }
 
 // Whether a recording shown w x h plays at under SMALL_SHOWN of its size with
@@ -193,8 +215,8 @@ export function zoomScale(box, base, scale) {
   return clamp(ZOOM_FIT * Math.min(base.w / Math.max(1, box.w), base.h / Math.max(1, box.h)), ZOOM_RANGE[0], ZOOM_RANGE[1]);
 }
 
-// The sides a zoom may hold its element by.
-export const ZOOM_ALIGNS = ['center', 'left', 'right', 'top', 'bottom'];
+// The sides and corners a zoom may hold its element by.
+export const ZOOM_ALIGNS = ['center', 'left', 'right', 'top', 'bottom', 'top-left', 'top-right', 'bottom-left', 'bottom-right'];
 // How much room a zoom held by one side leaves between that side and the edge
 // of the view, as a part of the view.
 const ALIGN_ROOM = 0.04;
@@ -202,17 +224,19 @@ const ALIGN_ROOM = 0.04;
 // The view a zoom on `box` (center and size in video pixels) moves to: in the
 // shape of `base`, zoomScale times closer, around the box and inside the video.
 // `align` holds one side of the box in view instead of its middle, like
-// 'left' for a wide element whose words start at its left.
+// 'left' for a wide element whose words start at its left, or a corner, like
+// 'top-left' for a tall list whose first rows are at its top.
 export function focusRect(box, base, width, height, scale, align = 'center') {
   const aspect = base.w / base.h;
   const w = base.w / zoomScale(box, base, scale);
   const h = w / aspect;
   let x = box.x - w / 2;
   let y = box.y - h / 2;
-  if (align === 'left') x = box.x - box.w / 2 - w * ALIGN_ROOM;
-  if (align === 'right') x = box.x + box.w / 2 + w * ALIGN_ROOM - w;
-  if (align === 'top') y = box.y - box.h / 2 - h * ALIGN_ROOM;
-  if (align === 'bottom') y = box.y + box.h / 2 + h * ALIGN_ROOM - h;
+  const sides = align.split('-');
+  if (sides.includes('left')) x = box.x - box.w / 2 - w * ALIGN_ROOM;
+  if (sides.includes('right')) x = box.x + box.w / 2 + w * ALIGN_ROOM - w;
+  if (sides.includes('top')) y = box.y - box.h / 2 - h * ALIGN_ROOM;
+  if (sides.includes('bottom')) y = box.y + box.h / 2 + h * ALIGN_ROOM - h;
   return { x: clamp(x, 0, width - w), y: clamp(y, 0, height - h), w, h };
 }
 

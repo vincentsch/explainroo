@@ -280,7 +280,7 @@ test('inspect lists what a step can click or type into, and every text and selec
   assert.equal(invoices.selector, 'a[href="#/invoices"]');
   assert.ok(r.elements.every((e) => e.in_view && e.box.w > 0), 'the page fits the window');
   const text = formatInspect(r);
-  assert.match(text, /^http:\/\/127\.0\.0\.1:\d+\/#\/notes at 1280x720: 7 elements to click or type into, from the top\n/);
+  assert.match(text, /^http:\/\/127\.0\.0\.1:\d+\/#\/notes at 1280x720 in en-US: 7 elements to click or type into, from the top\n/);
   assert.match(text, /\n {2}\d\. editor "Write the note here, or paste one\.", aria-label "Note text" {2}at \d+,\d+, 720x220\n {5}text "Write the note here, or paste one\.", or selector div\[aria-label="Note text"\]\n/);
 
   // A form: a field goes by the words of its label, and each selector matches
@@ -349,19 +349,45 @@ test('check warns about a recording that plays small with no zoom, and names the
     return withEngine(loadProject(dir), timeline, { scale: 0.25 }, async (page) => (await page.evaluate(() => window.explainroo.check(0.25))).filter((i) => /plays at/.test(i.message)).map((i) => i.message));
   };
   writeLog();
-  // Shown 768 pixels wide, its 16 px text plays under 24 px, and check names a
-  // viewport of the shape it plays in. 1.5 times its size is enough.
-  const text = async (o) => withEngine(loadProject(dir), timeline, { scale: 0.25 }, async (page) => (await page.evaluate(() => window.explainroo.check(0.25))).filter((i) => /16px text/.test(i.message)).map((i) => i.message));
+  // Shown 1200 pixels wide, its 16 px text plays under 24 px, and check names
+  // the content area, the size it plays at, and a viewport of the shape it
+  // plays in. 1.5 times its size is enough.
+  const text = async () => withEngine(loadProject(dir), timeline, { scale: 0.25 }, async (page) => (await page.evaluate(() => window.explainroo.check(0.25))).filter((i) => /16px text/.test(i.message)).map((i) => `${i.level}: ${i.message}`));
   writeLog();
   fs.writeFileSync(path.join(dir, 'scenes.js'), "export default { demo(s) { s.recording('invoice', { w: 1200 }); } };");
-  assert.deepEqual(await text(), ['recording "invoice" plays 1280 pixels of page in 1200, so the page\'s 16px text shows 15px tall, under 24px and hard to read on a phone. A zoom helps only while it holds. Record it with "viewport": { "width": 666, "height": 376 } in recordings/invoice.json: that shape fits the 1200x675 it plays in, and its 16px text shows about 29px tall']);
+  assert.deepEqual(await text(), ['warn: recording "invoice" plays its 1280x720 page at 1200x675 in a content area of 1200x675, so the page\'s 16px text shows 15px tall, under 24px and hard to read on a phone. A zoom helps only while it holds. Record it with "viewport": { "width": 666, "height": 376 } in recordings/invoice.json: that shape fits the 1200x675 the page can take there, and its 16px text shows about 29px tall']);
   // Where even the smallest viewport plays small, it has to show larger.
   fs.writeFileSync(path.join(dir, 'scenes.js'), "export default { demo(s) { s.recording('invoice', { w: 768 }); } };");
-  assert.deepEqual(await text(), ['recording "invoice" plays 1280 pixels of page in 768, so the page\'s 16px text shows 10px tall, under 24px and hard to read on a phone. A zoom helps only while it holds. Show it larger: in 768x432, even the smallest viewport, { "width": 568, "height": 320 }, plays its 16px text at about 22px']);
+  assert.deepEqual(await text(), ['warn: recording "invoice" plays its 1280x720 page at 768x432 in a content area of 768x432, so the page\'s 16px text shows 10px tall, under 24px and hard to read on a phone. A zoom helps only while it holds. Show it larger: in the 768x432 the page can take there, even the smallest viewport, { "width": 568, "height": 320 }, plays its 16px text at about 22px']);
+  // Without a size, it fills the safe area, less a small margin and the bar of its frame.
   fs.writeFileSync(path.join(dir, 'scenes.js'), "export default { demo(s) { s.recording('invoice'); } };");
-  assert.deepEqual(await text(), ['recording "invoice" plays 1280 pixels of page in 1584, so the page\'s 16px text shows 20px tall, under 24px and hard to read on a phone. A zoom helps only while it holds. Record it with "viewport": { "width": 982, "height": 516 } in recordings/invoice.json: that shape fits the 1768x928 it plays in, and its 16px text shows about 28px tall']);
+  assert.deepEqual(await text(), ['warn: recording "invoice" plays its 1280x720 page at 1584x891 in a content area of 1768x928, so the page\'s 16px text shows 20px tall, under 24px and hard to read on a phone. A zoom helps only while it holds. Record it with "viewport": { "width": 942, "height": 494 } in recordings/invoice.json: that shape fits the 1697x891 the page can take there, and its 16px text shows about 29px tall']);
+  fs.writeFileSync(path.join(dir, 'scenes.js'), "export default { demo(s) { s.recording('invoice', { frame: 'browser' }); } };");
+  assert.deepEqual(await text(), ['warn: recording "invoice" plays its 1280x720 page at 1473x829 in a content area of 1768x928, with its browser frame, so the page\'s 16px text shows 18px tall, under 24px and hard to read on a phone. A zoom helps only while it holds. Record it with "viewport": { "width": 942, "height": 460 } in recordings/invoice.json: that shape fits the 1697x829 the page can take there, and its 16px text shows about 29px tall']);
+  // The viewport it names plays its text at about 29 px in that frame, and check is quiet.
   fs.writeFileSync(path.join(dir, 'scenes.js'), "export default { demo(s) { s.recording('invoice', { w: 1920 }); } };");
   assert.deepEqual(await text(), []);
+  // When every type step and every cued step on an element plays inside a
+  // zoom, it is a hint that names where the page plays whole.
+  const zoomed = [
+    { step: 1, do: 'click', text: 'Accept', before: true, start: 0.1, t: 0.2, end: 0.3 },
+    { step: 2, do: 'zoom', selector: 'form', start: 0.9, t: 1, end: 1.4, box: { x: 600, y: 300, w: 600, h: 300 } },
+    { step: 3, do: 'click', text: 'New invoice', cue: '#new', start: 1.4, t: 1.5, click: 1.5, end: 2, box: { x: 1100, y: 80, w: 140, h: 44 } },
+    { step: 4, do: 'type', selector: '#amount', start: 2, t: 2.6, click: 2.4, end: 3, box: { x: 600, y: 300, w: 400, h: 44 } },
+    { step: 5, do: 'zoom', start: 3, t: 3, end: 3.2 },
+  ];
+  fs.writeFileSync(path.join(dir, 'assets/recordings/invoice.log.json'), JSON.stringify({ version: 1, url: 'http://127.0.0.1:4500/', width: 1280, height: 720, duration: 4, start: 0.5, end: 3.5, cursor: { x: 640, y: 360 }, steps: zoomed, blur: [] }));
+  fs.writeFileSync(path.join(dir, 'scenes.js'), "export default { demo(s) { s.recording('invoice', { frame: 'browser' }); } };");
+  const [hint] = await text();
+  assert.match(hint, /^hint: recording "invoice" plays its 1280x720 page at 1473x829 in a content area of 1768x928, with its browser frame, so the page's 16px text shows 18px tall where it doesn't zoom, from 0\.0 to 0\.5s and 2\.5 to 4\.0s of the scene\. Every type step and every cued step on an element plays inside a zoom, so that is fine when the viewer needs to read nothing there\. For larger text everywhere: record it with "viewport": \{ "width": 942, "height": 460 \}/);
+  // zoom: false keeps the zooms out, so it warns again.
+  fs.writeFileSync(path.join(dir, 'scenes.js'), "export default { demo(s) { s.recording('invoice', { frame: 'browser', zoom: false }); } };");
+  assert.match((await text())[0], /^warn: /);
+  // A log made from other steps asks for a new recording, and says what needs one.
+  fs.writeFileSync(path.join(dir, 'assets/recordings/invoice.log.json'), JSON.stringify({ version: 1, url: 'http://127.0.0.1:4500/', width: 1280, height: 720, duration: 4, start: 0.5, end: 3.5, cursor: { x: 640, y: 360 }, script: 'made-from-old', steps: zoomed, blur: [] }));
+  const changed = await withEngine(loadProject(dir), timeline, { scale: 0.25 }, async (page) => (await page.evaluate(() => window.explainroo.check(0.25))).filter((i) => /changed after/.test(i.message)).map((i) => i.message));
+  assert.deepEqual(changed, ['recordings/invoice.json changed after recording "invoice" was made: a change to its steps other than a cue, or to its url, viewport, locale, pace or blur, needs a new recording; run "explainroo record <project> invoice" again']);
+  writeLog();
   // 700 pixels wide is 55% of the 1280 of the video.
   assert.deepEqual(await findings({ w: 700 }), ['recording "invoice" plays at 55% of its size, 1280 pixels wide in 700, and none of its steps zooms in, so its text is small to read. Add a zoom step to recordings/invoice.json before step 2, like { "do": "zoom", "text": "New invoice", "cue": "#new" }, and record it again']);
   // From 60% on it's fine, and so is a zoom step.
@@ -441,7 +467,7 @@ test('inspect --all lists headings, sections and images, and --text what holds t
   assert.equal(all.total, plain.total + content.length);
   assert.deepEqual(content.map((e) => e.kind), ['h1', 'table']);
   assert.deepEqual([content[0].words, content[0].text, content[0].selector], ['Invoices', 'Invoices', 'h1']);
-  assert.match(formatInspect(all), /^http:\/\/127\.0\.0\.1:\d+\/#\/invoices at 1280x720: \d+ elements, \d+ to click or type into, and 2 of the headings, sections and images to zoom or scroll to, from the top\n/);
+  assert.match(formatInspect(all), /^http:\/\/127\.0\.0\.1:\d+\/#\/invoices at 1280x720 in en-US: \d+ elements, \d+ to click or type into, and 2 of the headings, sections and images to zoom or scroll to, from the top\n/);
   const held = await inspect(dir, `${app.url}#/invoices`, { viewport, holding: 'total' });
   assert.equal(held.matches, 1);
   assert.deepEqual(held.elements.map((e) => [e.level, e.kind]), [[0, 'p'], [1, 'main']]);
@@ -483,4 +509,120 @@ test('in a short, typing, scrolling, zooming and a click that changes the page c
   // A log from before counts each step at its time, as it did.
   writeLog(steps.map(({ until, changed, ...st }) => st));
   assert.deepEqual(await still(), ["the picture doesn't change for 4.0s, from 1.0s", "the picture doesn't change for 2.2s, from 6.8s"]);
+});
+
+test('the browser asks sites for the project\'s language, and a script\'s locale wins', { skip: !chrome }, async (t) => {
+  const app = await serveDemoApp();
+  t.after(app.close);
+  const dir = project(t, { url: `${app.url}#/sums`, viewport: { width: 1280, height: 720 }, locale: 'de-DE', steps: [{ do: 'wait', text: 'Eine Zeile pro Rechnung.' }] });
+  fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ theme: 'clean', language: 'es', voice: { provider: 'recording', src: 'assets/n.wav' } }));
+  const viewport = { width: 1280, height: 720 };
+  const r = await inspect(dir, `${app.url}#/sums`, { viewport });
+  assert.equal(r.locale, 'es-ES');
+  assert.match(app.languages.at(-1), /^es-ES\b/);
+  assert.match(formatInspect(r), /^http:\/\/127\.0\.0\.1:\d+\/#\/sums at 1280x720 in es-ES: /);
+  // The script's locale wins, and the step log and the first lines name it.
+  const lines = [];
+  const rec = await record(dir, 'invoice', { log: (l) => lines.push(l) });
+  assert.match(app.languages.at(-1), /^de-DE\b/);
+  assert.match(lines[0], /^recording http:\/\/127\.0\.0\.1:\d+\/#\/sums at 1280x720 in de-DE$/);
+  assert.match(formatRecord(rec), /^recorded 1 step, \d+\.\d s at 1280x720 in de-DE\n/);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(dir, rec.log), 'utf8')).locale, 'de-DE');
+  // Without a project, inspect opens the page in en-US at 1920x1080, unless told otherwise.
+  const bare = await inspect(null, `${app.url}#/sums`);
+  assert.deepEqual([bare.locale, bare.viewport], ['en-US', { width: 1920, height: 1080 }]);
+  assert.match(app.languages.at(-1), /^en-US\b/);
+  const german = await inspect(null, `${app.url}#/sums`, { locale: 'de-DE', viewport, holding: 'Eine Zeile' });
+  assert.deepEqual([german.locale, german.matches], ['de-DE', 1]);
+  await assert.rejects(inspect(null, app.url, { locale: 'German' }), /--locale must be a language tag like en-US or de-DE/);
+  await assert.rejects(inspect(null, app.url, { keepProfile: true }), /--keep-profile opens the page with the kept profile of a project, so put the project folder first/);
+});
+
+test('inspect lists a field that types into a hidden input, names the focus, and says what a selector matches', { skip: !chrome }, async (t) => {
+  const app = await serveDemoApp();
+  t.after(app.close);
+  const viewport = { width: 1280, height: 720 };
+  const r = await inspect(null, `${app.url}#/sums`, { viewport });
+  // The line of the sum editor shows no box of its own input, so it goes by
+  // the element around the textarea, which a click focuses.
+  const fields = r.elements.filter((e) => e.kind === 'field');
+  assert.equal(fields.length, 1);
+  assert.equal(fields[0].hidden_input, 'textarea');
+  assert.ok(fields[0].box.w > 300 && fields[0].box.h >= 30, JSON.stringify(fields[0].box));
+  assert.equal(r.focus.selector, fields[0].selector);
+  const text = formatInspect(r);
+  assert.match(text, /\n {2}\d\. field around a hidden textarea {2}at \d+,\d+, \d+x\d+\n {5}selector \S+\n/);
+  assert.match(text, /\nAfter the page loads, the focus is on field around a hidden textarea, selector \S+, so a press step without an element presses its key there\.\n/);
+  // A page whose focus stays on the body says so.
+  assert.match(formatInspect(await inspect(null, `${app.url}#/invoices`, { viewport })), /\nAfter the page loads, no element has the focus\.\n/);
+
+  // --selector says how many elements match, how many show, and each visible one.
+  const cells = await inspect(null, `${app.url}#/invoices`, { viewport, selector: 'td' });
+  assert.equal(cells.elements, undefined);
+  assert.deepEqual([cells.selector.matches, cells.selector.visible, cells.selector.elements.length], [12, 12, 12]);
+  assert.deepEqual([cells.selector.elements[0].words, cells.selector.elements[1].words], ['#1041', 'Harbor Books']);
+  assert.match(formatInspect(cells), /^http:\/\/127\.0\.0\.1:\d+\/#\/invoices at 1280x720 in en-US: the selector "td" matches 12 elements, all visible, from the top\n {2}1\. td "#1041" {2}at \d+,\d+, \d+x\d+\n/);
+  assert.match(formatInspect(cells), /\nA step with this selector takes the first visible one, and "nth": 2 the second\.\n/);
+  // A hidden input matches but doesn't show, and the element around it is named.
+  const hidden = await inspect(null, `${app.url}#/sums`, { viewport, selector: '.sum-input textarea' });
+  assert.deepEqual([hidden.selector.matches, hidden.selector.visible], [1, 0]);
+  assert.equal(hidden.selector.around.selector, fields[0].selector);
+  assert.match(formatInspect(hidden), /: the selector "\.sum-input textarea" matches 1 element, 0 of them visible\nA step leaves hidden elements out\. The visible element around the hidden one, which a click focuses, is field around a hidden textarea {2}at /);
+  // --text and --selector go together.
+  const both = await inspect(null, `${app.url}#/invoices`, { viewport, holding: 'total', selector: 'p.total' });
+  assert.deepEqual([both.matches, both.selector.matches, both.selector.visible], [1, 1, 1]);
+  assert.match(formatInspect(both), /holds "total".*\n[\s\S]*\nthe selector "p\.total" matches 1 element, and it is visible, from the top\n {2}1\. p "Total \$2,430"/);
+  await assert.rejects(inspect(null, app.url, { selector: 'td[' }), /--selector "td\[" is not a valid CSS selector/);
+
+  // The selector inspect gives clicks and types into that field, and a
+  // press step presses keys where the focus is, or on its element.
+  const dir = project(t, { url: `${app.url}#/sums`, viewport, steps: [
+    { do: 'type', selector: fields[0].selector, value: '2+2' },
+    { do: 'press', key: 'Enter', cue: 'next' },
+    { do: 'press', key: '5' },
+    { do: 'wait', text: '5' },
+    { do: 'press', key: 'Enter', selector: '.sum-field' },
+    { do: 'zoom', selector: '.sum', nth: 3 },
+  ] });
+  const lines = [];
+  const rec = await record(dir, 'invoice', { log: (l) => lines.push(l) });
+  const log = JSON.parse(fs.readFileSync(path.join(dir, rec.log), 'utf8'));
+  const [typed, enter, five, , onFirst] = log.steps;
+  assert.equal(typed.match.tag, 'span');
+  assert.deepEqual([enter.key, enter.cue, enter.changed, enter.box, enter.move], ['Enter', 'next', true, undefined, undefined]);
+  assert.deepEqual([five.key, five.changed], ['5', true]);
+  // On an element that can't take the focus itself, the press clicks it first.
+  assert.ok(onFirst.click < onFirst.t && onFirst.box, JSON.stringify(onFirst));
+  assert.ok(lines.includes('step 2 (press "Enter")'), lines.join('\n'));
+  assert.ok(lines.some((l) => l.startsWith('step 5 (press "Enter" on ".sum-field"): <span>')), lines.join('\n'));
+  // A key that isn't one stops with the step.
+  fs.writeFileSync(path.join(dir, 'recordings/invoice.json'), JSON.stringify({ url: `${app.url}#/sums`, viewport, steps: [{ do: 'press', key: 'Entr' }] }));
+  await assert.rejects(record(dir, 'invoice'), /step 1 \(press "Entr"\): can't press "Entr": .*Key names are like Enter, Tab, Escape or ArrowDown, and a combination is like "Control\+A"\./);
+});
+
+test('record says when a zoom\'s element is larger than the frame, and when the zoom shows almost one colour', { skip: !chrome }, async (t) => {
+  const app = await serveDemoApp();
+  t.after(app.close);
+  const viewport = { width: 1280, height: 720 };
+  const dir = project(t, { url: `${app.url}#/sums`, viewport, steps: [
+    { do: 'click', text: 'Accept', before: true },
+    { do: 'type', selector: '.sum-field', value: '1250 + 860 + 320 = 2430' },
+    { do: 'zoom', selector: '#sums' },
+    { do: 'zoom' },
+    { do: 'zoom', selector: '#sums', align: 'top-left', scale: 2.5 },
+  ] });
+  const rec = await record(dir, 'invoice');
+  // The list is 900 pixels tall in a window of 720, and its middle is empty.
+  assert.deepEqual(rec.notes.filter((n) => n.startsWith('step 3 ')), [
+    'step 3 (zoom "#sums"): the element is 420x900, larger than the 914x514 of the page the zoom shows, so the zoom shows its middle and leaves the rest out. Hold the part the narration names in view with "align", like "top-left", or zoom on a smaller element inside it, which "--inspect --text" lists.',
+    'step 3 (zoom "#sums"): almost all of what the zoom shows is one colour, so it may show empty space. Look at build/record/invoice/step-3.png.',
+  ]);
+  // Held by its top left corner, the zoom shows the first line, with its words.
+  assert.deepEqual(rec.notes.filter((n) => n.startsWith('step 5 ')), [
+    'step 5 (zoom "#sums"): the element is 420x900, larger than the 512x288 of the page the zoom shows, so the zoom shows its top left part and leaves the rest out. Zoom on a smaller element inside it, which "--inspect --text" lists.',
+  ]);
+  // The picture of a zoom step is what the zoom shows.
+  const size = async (file) => (await probe(file)).streams.map((st) => [st.width, st.height])[0];
+  assert.deepEqual(await size(path.join(dir, 'build/record/invoice/step-5.png')), [480, 270]);
+  assert.match(formatRecord(rec), /\nstep 3 \(zoom "#sums"\): almost all of what the zoom shows is one colour/);
 });

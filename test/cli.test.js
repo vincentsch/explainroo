@@ -299,10 +299,15 @@ test('every command refuses a flag it does not take, and takes every flag it rea
   assert.equal(fs.readdirSync(dir).length, 0);
 });
 
-test('record --inspect takes a project and an address, and --viewport, --all and --text go only with it', async (t) => {
+test('record --inspect takes a project or none and an address, and --viewport, --all, --text, --selector and --locale go only with it', async (t) => {
   const { tinyProject } = await import('./helpers/tiny-project.js');
   const dir = tinyProject(t, {}, { narrated: false });
-  assert.match((await run(['record', dir, 'demo', '--inspect', 'http://127.0.0.1:9/'])).err, /usage: explainroo record <project> --inspect <url> \[--all\] \[--text "<words>"\] \[--viewport 1280x720\]/);
+  assert.match((await run(['record', dir, 'demo', '--inspect', 'http://127.0.0.1:9/'])).err, /usage: explainroo record \[project\] --inspect <url> \[--all\] \[--text "<words>"\] \[--selector "<css>"\] \[--viewport 1280x720\] \[--locale en-US\]/);
+  assert.match((await run(['record', dir, '--inspect', 'http://127.0.0.1:9/', '--all', '--selector', 'td'])).err, /--selector says only what that selector matches, so leave out --all/);
+  assert.match((await run(['record', dir, 'demo', '--selector', 'td'])).err, /--selector goes with --inspect <url>, which lists what is on a page\./);
+  assert.match((await run(['record', dir, 'demo', '--locale', 'de-DE'])).err, /--locale goes with --inspect <url>, which lists what is on a page\. A recording takes its locale from the project's language, or from "locale" in recordings\/<name>\.json\./);
+  assert.match((await run(['record', '--inspect', 'http://127.0.0.1:9/', '--locale', 'German'])).err, /--locale must be a language tag like en-US or de-DE/);
+  assert.match((await run(['record', '--inspect', 'http://127.0.0.1:9/', '--keep-profile'])).err, /--keep-profile opens the page with the kept profile of a project, so put the project folder first/);
   assert.match((await run(['record', dir, '--inspect', 'http://127.0.0.1:9/', '--all', '--text', 'Total'])).err, /--text lists only the elements that hold its words, so leave out --all/);
   assert.match((await run(['record', dir, '--inspect', 'http://127.0.0.1:9/', '--text'])).err, /--text needs a value/);
   assert.match((await run(['record', dir, 'demo', '--all'])).err, /--all goes with --inspect <url>, which lists what is on a page\./);

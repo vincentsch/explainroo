@@ -1130,7 +1130,7 @@ export class Engine {
             : "speed: 'fit' plays it slower, so it ends with the scene, and loop: true repeats it"}`));
         }
         if (e.kind === 'recording') {
-          if (e.changed) once(`recording-changed:${e.name}`, () => add('warn', sc.id, e.at, `recordings/${e.name}.json changed after recording "${e.name}" was made; run "explainroo record <project> ${e.name}" again`));
+          if (e.changed) once(`recording-changed:${e.name}`, () => add('warn', sc.id, e.at, `recordings/${e.name}.json changed after recording "${e.name}" was made: a change to its steps other than a cue, or to its url, viewport, locale, pace or blur, needs a new recording; run "explainroo record <project> ${e.name}" again`));
           for (const l of e.late) once(`recording-late:${sc.id}:${e.key}:${l.step}`, () => add('warn', sc.id, l.cueAt, `recording "${e.name}" ${l.label} comes ${l.by.toFixed(1)}s after its cue "${l.cue}", because the steps before it take longer, also at ${CATCH_UP} times the speed; cue a later word, start the recording earlier with at, or record fewer or quicker steps with the script's pace, a step's duration or a type step's cps`));
           if (e.small) {
             const size = `recording "${e.name}" plays at ${Math.round(e.small.shown * 100)}% of its size, ${e.width} pixels wide in ${Math.round(e.width * e.small.shown)}`;
@@ -1140,11 +1140,20 @@ export class Engine {
               : `${size}, and none of its steps zooms in, so its text is small to read. Add a zoom step to recordings/${e.name}.json${e.small.before ? ` before step ${e.small.before}` : ''}, like ${zoom}, and record it again`));
           }
           else if (e.text) {
-            const fit = fitViewport(e.area.w, e.area.h);
-            const then = Math.round(PAGE_TEXT * Math.min(e.area.w / fit.width, e.area.h / fit.height) * e.area.fill);
-            once(`recording-text:${sc.id}:${e.key}`, () => add('warn', sc.id, e.at, `recording "${e.name}" plays ${e.width} pixels of page in ${Math.round(e.width * e.text.shown)}, so the page's ${PAGE_TEXT}px text shows ${Math.round(e.text.px)}px tall, under ${PLAYED_TEXT}px and hard to read on a phone. A zoom helps only while it holds. ${then < PLAYED_TEXT
-              ? `Show it larger: in ${Math.round(e.area.w)}x${Math.round(e.area.h)}, even the smallest viewport, { "width": ${fit.width}, "height": ${fit.height} }, plays its ${PAGE_TEXT}px text at about ${then}px`
-              : `Record it with "viewport": { "width": ${fit.width}, "height": ${fit.height} } in recordings/${e.name}.json: that shape fits the ${Math.round(e.area.w)}x${Math.round(e.area.h)} it plays in, and its ${PAGE_TEXT}px text shows about ${then}px tall`}`));
+            // The viewport that fits the most of the content area the page
+            // can play at, less the bar of its frame.
+            const fit = fitViewport(e.room.w, e.room.h);
+            const then = Math.round(PAGE_TEXT * Math.min(e.room.w / fit.width, e.room.h / fit.height));
+            const px = (b) => `${Math.round(b.w)}x${Math.round(b.h)}`;
+            const room = `${px(e.room)} the page can take there`;
+            const plays = `recording "${e.name}" plays its ${e.width}x${e.height} page at ${px(e.played)} in a content area of ${px(e.area)}${e.frame ? `, with its ${e.frame} frame` : ''}, so the page's ${PAGE_TEXT}px text shows ${Math.round(e.text.px)}px tall`;
+            const fix = then < PLAYED_TEXT
+              ? `Show it larger: in the ${room}, even the smallest viewport, { "width": ${fit.width}, "height": ${fit.height} }, plays its ${PAGE_TEXT}px text at about ${then}px`
+              : `Record it with "viewport": { "width": ${fit.width}, "height": ${fit.height} } in recordings/${e.name}.json: that shape fits the ${room}, and its ${PAGE_TEXT}px text shows about ${then}px tall`;
+            const spans = e.unzoomed?.map((sp) => `${sp.from.toFixed(1)} to ${sp.to.toFixed(1)}s`);
+            once(`recording-text:${sc.id}:${e.key}`, () => (e.unzoomed
+              ? add('hint', sc.id, e.at, `${plays} where it doesn't zoom${spans.length ? `, from ${spans.join(' and ')} of the scene` : ''}. Every type step and every cued step on an element plays inside a zoom, so that is fine when the viewer needs to read nothing there. For larger text everywhere: ${fix[0].toLowerCase()}${fix.slice(1)}`)
+              : add('warn', sc.id, e.at, `${plays}, under ${PLAYED_TEXT}px and hard to read on a phone. A zoom helps only while it holds. ${fix}`)));
           }
           if (e.cut) once(`recording-cut:${sc.id}:${e.key}`, () => add('warn', sc.id, e.out, `recording "${e.name}" is cut off at ${e.out.toFixed(1)}s: ${e.cut.first}${e.cut.count > 1 ? ` and ${e.cut.count - 1} more step${e.cut.count > 2 ? 's' : ''}` : ''} would come at ${e.cut.at.toFixed(1)}s. ${e.fit ? `speed: 'fit' goes no faster than ${FIT_SPEEDS[1]} times; make the narration longer or record fewer steps` : "speed: 'fit' plays it faster, so it ends with the scene, or the narration can be longer"}`));
         }

@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { checkRecordingScript, readRecordingScript, scriptHash, stepLabel, stepLine, videoOffset, wholeHash } from '../src/record.js';
+import { checkRecordingScript, readRecordingScript, scriptHash, stepLabel, stepLine, videoOffset, wholeHash, projectLocale, LOCALES } from '../src/record.js';
 import { ffmpeg } from '../src/ffmpeg.js';
-import { cuedSteps, recordingClock, videoTime, sceneTime, cursorAt, viewAt, focusRect, coverRect, zoomScale, fitViewport, smallPageText, movingSteps, ZOOM_SECONDS, ZOOM_RANGE, CATCH_UP } from '../engine/recording.js';
+import { cuedSteps, recordingClock, videoTime, sceneTime, cursorAt, viewAt, focusRect, coverRect, zoomScale, fitViewport, smallPageText, talkZoomed, movingSteps, ZOOM_SECONDS, ZOOM_RANGE, CATCH_UP } from '../engine/recording.js';
 import { makeState } from '../src/pipeline.js';
 import { loadProject } from '../src/project.js';
 
@@ -80,6 +80,31 @@ test('a recording script names the step and what to write for each mistake', () 
   fails({ url: URL, steps: [{ do: 'zoom', scale: 2 }] }, /a zoom without an element goes back out, so it takes no scale/);
   fails({ url: URL, steps: [{ do: 'type', text: 'Note', value: 'Hi', cps: 100 }] }, /step 1: cps must be the characters it types a second, from 2 to 60\. 14 is the default, and the script's pace makes it faster or slower/);
   fails({ url: URL, steps: [{ do: 'click', text: 'Save', cps: 10 }] }, /a click step has no "cps"/);
+  fails({ url: URL, steps: [{ do: 'press' }] }, /step 1: a press step needs "key", a key name like "Enter" or a combination like "Control\+A"/);
+  fails({ url: URL, steps: [{ do: 'press', key: 'Enter', value: 'x' }] }, /a press step has no "value"/);
+  fails({ url: URL, steps: [{ do: 'press', key: 'Enter', duration: 1 }] }, /a press step without an element moves no pointer, so it takes no duration/);
+  fails({ url: URL, locale: 'English', steps: [{ do: 'mark', name: 'a' }] }, /locale must be a language tag like "en-US" or "de-DE"/);
+});
+
+test('a press step presses a key where the focus is, or on its element, and a script may set its own locale', (t) => {
+  const s = checkRecordingScript({ url: URL, locale: 'de-DE', steps: [{ do: 'press', key: 'Enter', cue: 'next' }, { do: 'press', key: 'Control+A', selector: '.math', duration: 0.4 }] });
+  assert.equal(s.locale, 'de-DE');
+  assert.deepEqual(s.steps, [{ do: 'press', key: 'Enter', cue: 'next' }, { do: 'press', key: 'Control+A', selector: '.math', duration: 0.4 }]);
+  assert.equal(stepLabel(s.steps[0], 1), 'step 1 (press "Enter")');
+  assert.equal(stepLabel(s.steps[1], 2), 'step 2 (press "Control+A" on ".math")');
+  // Without a locale, the script takes none, and record takes the project's language.
+  assert.equal(checkRecordingScript({ url: URL, steps: [{ do: 'mark', name: 'a' }] }).locale, undefined);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-locale-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ title: 'T' }));
+  assert.equal(projectLocale(dir), 'en-US');
+  for (const [language, locale] of Object.entries({ es: 'es-ES', fr: 'fr-FR', it: 'it-IT', 'pt-br': 'pt-BR', hi: 'hi-IN', ja: 'ja-JP', zh: 'zh-CN', de: 'de-DE' })) {
+    fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ title: 'T', language }));
+    assert.equal(projectLocale(dir), locale);
+  }
+  assert.equal(Object.keys(LOCALES).length, 9);
+  // A press that changes the page moves the picture, and one that doesn't, doesn't.
+  assert.deepEqual(movingSteps([{ step: 1, do: 'press', start: 0, t: 0.5, end: 1, changed: true }, { step: 2, do: 'press', start: 1, t: 1.2, end: 2, changed: false }]), [{ step: 1, from: 0.5, to: 0.5 }]);
 });
 
 test('readRecordingScript says where the script goes and lists the ones there', (t) => {
@@ -311,18 +336,28 @@ test('a zoom holds the side of its element that align names', () => {
   assert.equal(viewAt(log, 1 + ZOOM_SECONDS, 16 / 9).x, left.x);
   const s = checkRecordingScript({ url: URL, steps: [{ do: 'zoom', selector: '.results', align: 'left' }, { do: 'zoom', text: 'Total', align: 'center' }] });
   assert.deepEqual(s.steps, [{ do: 'zoom', selector: '.results', align: 'left' }, { do: 'zoom', text: 'Total' }]);
-  fails({ url: URL, steps: [{ do: 'zoom', text: 'Total', align: 'middle' }] }, /step 1: align must be one of center, left, right, top, bottom: the side of the element the zoom holds in view/);
+  fails({ url: URL, steps: [{ do: 'zoom', text: 'Total', align: 'middle' }] }, /step 1: align must be one of center, left, right, top, bottom, top-left, top-right, bottom-left, bottom-right: the side or corner of the element the zoom holds in view/);
+  // A corner holds both of its sides: the top left of a tall list shows its first rows.
+  const list = { x: 300, y: 400, w: 400, h: 700 };
+  const corner = focusRect(list, base, 1280, 720, 2, 'top-left');
+  assert.deepEqual([corner.x, corner.y], [focusRect(list, base, 1280, 720, 2, 'left').x, focusRect(list, base, 1280, 720, 2, 'top').y]);
+  const low = focusRect(list, base, 1280, 720, 2, 'bottom-right');
+  assert.deepEqual([low.x, low.y], [focusRect(list, base, 1280, 720, 2, 'right').x, focusRect(list, base, 1280, 720, 2, 'bottom').y]);
+  assert.deepEqual(checkRecordingScript({ url: URL, steps: [{ do: 'zoom', selector: '.list', align: 'top-left' }] }).steps[0].align, 'top-left');
   fails({ url: URL, steps: [{ do: 'zoom', align: 'left' }] }, /step 1: a zoom without an element goes back out, so it takes no align/);
   fails({ url: URL, steps: [{ do: 'click', text: 'Save', align: 'left' }] }, /step 1: a click step has no "align"/);
 });
 
 test('a viewport fits the area a recording plays in, so 16 px page text plays at about 29 px', () => {
-  // The content areas of the docs' table.
+  // The docs' table: what a browser frame leaves of each content area, less
+  // the margin, and the viewport that fits it.
+  const room = (w, h) => [w * 0.96, (h / 1.075) * 0.96];
+  assert.deepEqual(fitViewport(...room(1768, 928)), { width: 942, height: 460 });
+  assert.deepEqual(fitViewport(...room(928, 977)), { width: 494, height: 484 });
+  assert.deepEqual(fitViewport(...room(885, 732)), { width: 472, height: 364 });
+  assert.deepEqual(fitViewport(...room(745, 863)), { width: 398, height: 428 });
+  assert.deepEqual(fitViewport(...room(896, 751)), { width: 478, height: 372 });
   assert.deepEqual(fitViewport(1768, 928), { width: 982, height: 516 });
-  assert.deepEqual(fitViewport(928, 977), { width: 516, height: 542 });
-  assert.deepEqual(fitViewport(885, 732), { width: 492, height: 406 });
-  assert.deepEqual(fitViewport(745, 863), { width: 414, height: 480 });
-  assert.deepEqual(fitViewport(896, 751), { width: 498, height: 418 });
   // A small area keeps its shape at 320 pixels or more.
   assert.deepEqual(fitViewport(400, 200), { width: 640, height: 320 });
   const log = { width: 1280, height: 720 };
@@ -330,6 +365,33 @@ test('a viewport fits the area a recording plays in, so 16 px page text plays at
   assert.equal(smallPageText(log, { w: 1920, h: 1080 }), null);
   const small = smallPageText({ width: 1920, height: 1080 }, { w: 1697, h: 955 });
   assert.equal(Math.round(small.px), 14);
+});
+
+test('small text matters less where every typed and cued step plays inside a zoom', () => {
+  const box = { x: 300, y: 200, w: 300, h: 60 };
+  const steps = [
+    { step: 1, do: 'mark', name: 'open', cue: '#open', t: 0 },
+    { step: 2, do: 'zoom', selector: '.row', cue: '#type', t: 2, box },
+    { step: 3, do: 'type', selector: '.field', t: 3, until: 5, box },
+    { step: 4, do: 'zoom', cue: '#wave', t: 6 },
+    { step: 5, do: 'wait', seconds: 1, t: 7 },
+    { step: 6, do: 'zoom', selector: '.row', cue: '#second', t: 9, box },
+    { step: 7, do: 'click', selector: '.next', cue: 'next', t: 10, box },
+    { step: 8, do: 'type', selector: '.field', t: 11, until: 12, box },
+    { step: 9, do: 'zoom', cue: '#tall', t: 13 },
+  ];
+  // A mark and a zoom out with a cue name no element, so the page plays whole there on purpose.
+  assert.deepEqual(talkZoomed(steps, { from: 0.5, end: 16 }), [{ from: 0.5, to: 2 }, { from: 6, to: 9 }, { from: 13, to: 16 }]);
+  // A cued click outside a zoom, or a type step outside one, keeps the warning.
+  const outside = steps.map((st) => (st.step === 6 ? { ...st, t: 10.5 } : st));
+  assert.equal(talkZoomed(outside, { from: 0, end: 16 }), null);
+  assert.equal(talkZoomed(steps.filter((st) => st.step !== 2), { from: 0, end: 16 }), null);
+  // cues from s.recording count too, by mark name or step number.
+  assert.equal(talkZoomed([{ step: 1, do: 'click', selector: '.a', t: 1, box }, { step: 2, do: 'zoom', selector: '.b', t: 2, box }], { from: 0, end: 3 }), null);
+  assert.equal(talkZoomed([{ step: 1, do: 'click', selector: '.a', t: 1, box }, { step: 2, do: 'zoom', selector: '.b', t: 2, box }], { cues: { 1: 'now' }, from: 0, end: 3 }), null);
+  assert.deepEqual(talkZoomed([{ step: 1, do: 'zoom', selector: '.b', t: 1, box }, { step: 2, do: 'click', selector: '.a', t: 2, box }], { cues: { 2: 'now' }, from: 0, end: 3 }), [{ from: 0, to: 1 }]);
+  // With nothing the narration talks about, there is nothing to excuse.
+  assert.equal(talkZoomed([{ step: 1, do: 'zoom', selector: '.b', t: 1, box }], { from: 0, end: 3 }), null);
 });
 
 test('the steps that move the picture are typing, scrolls, zooms and what changes the page', () => {

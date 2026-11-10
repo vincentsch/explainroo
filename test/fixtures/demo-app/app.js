@@ -50,8 +50,34 @@ const pages = {
     <div class="editor" contenteditable="true" role="textbox" aria-label="Note text"><div class="line"><span class="ed-placeholder" contenteditable="false">Write the note here, or paste one.</span></div></div>`,
   // A page that shows its results a moment after it opens, like a search.
   search: () => `<h1>Search</h1><p class="sub">Looking through the invoices.</p><div id="results"></div>`,
+  // A sum editor that types into a hidden textarea of no size, the way math
+  // editors do, with the focus in its first line when the page opens. Enter
+  // adds a line. The list is taller than its lines, with room to add more.
+  sums: () => `<h1>Sums</h1><p class="sub">${navigator.language === 'de-DE' ? 'Eine Zeile pro Rechnung.' : 'One line per invoice.'}</p><div class="sums" id="sums">${sumLine()}</div>`,
   settings: () => `<h1>Settings</h1><p class="sub">Invoices go out from <span class="email">jane.doe@example.com</span>.</p>`,
 };
+
+function sumLine() {
+  return '<div class="sum"><span class="sum-field"><span class="sum-input"><textarea autocomplete="off"></textarea></span><span class="sum-shown"></span></span></div>';
+}
+
+// A line of the sum editor takes the keys of its hidden textarea and shows them.
+function sumField(field) {
+  const input = field.querySelector('textarea');
+  field.addEventListener('mousedown', (e) => { e.preventDefault(); input.focus(); });
+  input.addEventListener('input', () => {
+    field.querySelector('.sum-shown').textContent += input.value;
+    input.value = '';
+  });
+  input.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    field.closest('.sum').insertAdjacentHTML('afterend', sumLine());
+    const next = field.closest('.sum').nextElementSibling.querySelector('.sum-field');
+    sumField(next);
+    next.querySelector('textarea').focus();
+  });
+}
 
 function show() {
   const route = location.hash.replace(/^#\/?/, '') || 'dashboard';
@@ -65,6 +91,8 @@ function show() {
       if (results) results.innerHTML = '<section class="hits"><h2>Results:</h2><p>#1043 Ridge Cycling, $860</p></section>';
     }, 2000);
   }
+  for (const f of document.querySelectorAll('.sum-field')) sumField(f);
+  document.querySelector('.sum-field textarea')?.focus();
   for (const b of document.querySelectorAll('.play')) {
     b.addEventListener('click', () => { document.getElementById('player').textContent = `Playing ${tracks[b.dataset.track]}`; });
   }
