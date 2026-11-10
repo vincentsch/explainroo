@@ -183,9 +183,19 @@ lists close words from the page and saves a picture of the page in
 `build/record/`. Fix the script from what the page shows or what
 `--inspect` lists, and never guess a button. Then play it with `s.recording`, which
 `explainroo docs scene-api recordings` explains. `from` skips the first
-seconds of the video. Write the narration around what the video shows, and
-look at stills. You can also show any screen recording with `s.clip` in a
-`browser` frame.
+seconds of the video, and `to` stops it, so one recording can play in several
+scenes. Write the narration around what the video shows, and look at stills.
+
+You can also show any screen recording with `s.clip` in a `browser` frame.
+One long file is enough for every scene, so there is no need to cut it into
+pieces first. This plays seconds 31 to 38.5 of it:
+
+```js
+s.clip('assets/take.mp4', { from: 31, to: 38.5, crop: [0, 120, 1280, 720], speed: 'fit' });
+```
+
+It shows only the part of the screen in `crop`, in the file's own pixels,
+and `speed: 'fit'` fits those seconds into the scene.
 
 ## Capture the live site
 
