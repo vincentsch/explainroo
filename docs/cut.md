@@ -36,7 +36,9 @@ a short "uh" between two words. Without it, a pause is 0.6 seconds or more.
 
 For a recording in another language, add `--language es`. cut doesn't write
 over a cut list that is already there, because it may hold your edits.
-`--force` writes it again from the recording.
+`--force` writes it again from the recording. When you edited the list, it
+first moves it to `talk.cut.old.md`, or `talk.cut.old-2.md` when that is
+there, and says so.
 
 ## Edit it
 

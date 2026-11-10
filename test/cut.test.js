@@ -227,6 +227,34 @@ test('cut writes the list, keeps it from being written over, and cuts the video 
   await assert.rejects(applyCut(video, { transcribe: listener(kept) }), /talk\.cut\.md was made from another version of talk\.mp4\. Run "explainroo cut .*talk\.mp4 --force" to write it again from this one\./);
 });
 
+test('cut --force moves an edited list aside, and writes over one as cut wrote it', { timeout: 120000 }, async (t) => {
+  const dir = tempDir(t);
+  const before = process.env.EXPLAINROO_CACHE;
+  process.env.EXPLAINROO_CACHE = path.join(dir, 'cache');
+  t.after(() => { if (before === undefined) delete process.env.EXPLAINROO_CACHE; else process.env.EXPLAINROO_CACHE = before; });
+  const video = await recording(dir);
+  await writeCut(video, { transcribe: listener(heardWords) });
+  const { list } = cutFiles(video);
+  const text = fs.readFileSync(list, 'utf8');
+  fs.writeFileSync(list, text.replace(' two.@1.30', ''));
+  const again = await writeCut(video, { force: true, transcribe: listener(heardWords) });
+  assert.equal(again.old, path.join(dir, 'talk.cut.old.md'));
+  assert.doesNotMatch(fs.readFileSync(again.old, 'utf8'), /two\.@1\.30/);
+  assert.match(formatCut(again), /talk\.cut\.md\nYour edited list is now talk\.cut\.old\.md, so you can copy your edits from there\.\n/);
+  assert.equal(fs.readFileSync(list, 'utf8'), text);
+  // A list as cut wrote it, also with other settings, is written over.
+  const same = await writeCut(video, { force: true, minGap: 0.3, transcribe: listener(heardWords) });
+  assert.equal(same.old, undefined);
+  assert.doesNotMatch(formatCut(same), /edited/);
+  // The next edited list gets a number.
+  fs.appendFileSync(list, 'edited\n');
+  const third = await writeCut(video, { force: true, transcribe: listener(heardWords) });
+  assert.equal(third.old, path.join(dir, 'talk.cut.old-2.md'));
+  assert.match(fs.readFileSync(third.old, 'utf8'), /min gap 0\.3s[\s\S]*edited\n$/);
+  assert.ok(fs.existsSync(again.old));
+  await assert.rejects(writeCut(video, { transcribe: listener(heardWords) }), /When you edited it, --force moves it to talk\.cut\.old\.md first\./);
+});
+
 test('after a cut, the words heard are compared with the words kept, both ways', async () => {
   const said = ['Hi,', 'first', 'you', 'open', 'the', 'page.'];
   const words = ['Hi,', 'Dari,', 'first', 'you', 'open', 'the', 'page.'].map((text, i) => ({ text, start: i * 0.4, end: i * 0.4 + 0.3 }));

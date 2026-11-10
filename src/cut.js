@@ -482,15 +482,41 @@ export async function writeCut(file, { language = 'en', force = false, minGap = 
   const { duration } = await videoInfo(video);
   const { list } = cutFiles(video);
   const name = path.basename(video);
-  if (fs.existsSync(list) && !force) throw new ProjectError(`${path.basename(list)} is already there and may hold your edits. Edit it and run "explainroo cut ${file} --apply", or add --force to write it again from the recording.`);
+  if (fs.existsSync(list) && !force) throw new ProjectError(`${path.basename(list)} is already there and may hold your edits. Edit it and run "explainroo cut ${file} --apply", or add --force to write it again from the recording. When you edited it, --force moves it to ${path.basename(list).replace(/\.md$/, '.old.md')} first.`);
   const sha256 = sha256File(video);
   const { words, quiet, levels } = await transcript(video, sha256, language, { log, transcribe });
   if (!words.length) throw new ProjectError(`the speech model heard no words in ${name}, so there is nothing to cut by`);
   const items = cutItems(words, duration, quiet, { levels, ...gapSizes(minGap) });
+  // An edited list moves aside before the new one takes its place.
+  const old = fs.existsSync(list) && !writtenByCut(fs.readFileSync(list, 'utf8'), name, duration) ? keepOld(list) : null;
   fs.writeFileSync(list, cutListText(name, items, { sha256, language, minGap }));
   const pauses = items.filter((i) => i.type === 'pause');
   const sounds = items.filter((i) => i.type === 'sound');
-  return { video, list, duration: Math.round(duration * 100) / 100, words: words.length, pauses: pauses.length, pauseSeconds: Math.round(pauses.reduce((n, p) => n + p.end - p.start, 0) * 10) / 10, sounds: sounds.length, soundsNearWords: sounds.filter((x) => x.holds).length, ...(minGap === null ? {} : { minGap }) };
+  return { video, list, duration: Math.round(duration * 100) / 100, words: words.length, pauses: pauses.length, pauseSeconds: Math.round(pauses.reduce((n, p) => n + p.end - p.start, 0) * 10) / 10, sounds: sounds.length, soundsNearWords: sounds.filter((x) => x.holds).length, ...(minGap === null ? {} : { minGap }), ...(old ? { old } : {}) };
+}
+
+// Whether a cut list is still as cut wrote it, from the saved transcript its
+// comment names. A list whose transcript isn't saved counts as edited.
+function writtenByCut(text, name, duration) {
+  const head = /video: .*, sha256 ([0-9a-f]+), language ([\w-]+)(?:, min gap ([\d.]+)s)?/.exec(text);
+  if (!head) return false;
+  const dir = path.join(cacheRoot(), 'cut');
+  const saved = fs.existsSync(dir) ? fs.readdirSync(dir).find((f) => f.startsWith(head[1]) && f.endsWith(`-${head[2]}.json`)) : null;
+  if (!saved) return false;
+  const { words, quiet, levels } = JSON.parse(fs.readFileSync(path.join(dir, saved), 'utf8'));
+  const minGap = head[3] === undefined ? null : Number(head[3]);
+  const items = cutItems(words, duration, quiet, { levels, ...gapSizes(minGap) });
+  return cutListText(name, items, { sha256: saved.slice(0, saved.length - `-${head[2]}.json`.length), language: head[2], minGap }) === text.replace(/\r\n/g, '\n');
+}
+
+// Moves a cut list to <name>.cut.old.md, or <name>.cut.old-2.md and on when
+// that is taken, and gives the new path.
+function keepOld(list) {
+  const base = list.slice(0, -'.md'.length);
+  let to = `${base}.old.md`;
+  for (let n = 2; fs.existsSync(to); n++) to = `${base}.old-${n}.md`;
+  fs.renameSync(list, to);
+  return to;
 }
 
 // The item that a kept word's join cut next to, as it stands in the cut list:
@@ -623,5 +649,6 @@ export function formatCut(r) {
   }
   const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
   const near = r.soundsNearWords ? `\n${r.soundsNearWords === 1 ? 'One sound starts' : `${r.soundsNearWords} sounds start`} right after a word and may hold the end of it, so listen before you delete ${r.soundsNearWords === 1 ? 'it' : 'them'}.` : '';
-  return `${r.list}\n${plural(r.words, 'word')}, ${plural(r.pauses, 'pause')} (${r.pauseSeconds} s) and ${plural(r.sounds, 'sound')} without words in ${r.duration.toFixed(1)} s. Delete words, pauses and sounds in it, then run: explainroo cut ${path.basename(r.video)} --apply${near}`;
+  const old = r.old ? `\nYour edited list is now ${path.basename(r.old)}, so you can copy your edits from there.` : '';
+  return `${r.list}${old}\n${plural(r.words, 'word')}, ${plural(r.pauses, 'pause')} (${r.pauseSeconds} s) and ${plural(r.sounds, 'sound')} without words in ${r.duration.toFixed(1)} s. Delete words, pauses and sounds in it, then run: explainroo cut ${path.basename(r.video)} --apply${near}`;
 }
