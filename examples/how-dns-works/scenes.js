@@ -64,7 +64,7 @@ export default {
     question(s, { at: -1 });
     you(s, { at: -1 });
     resolver(s, { at: 'resolver' });
-    s.arrow('you', 'resolver', { at: 'asks' });
+    s.arrow('you', 'resolver', { at: 'resolver' });
     s.note('run by your internet provider', { x: P.resolver.x, y: 735, size: 40, at: '#isp' });
     s.note('or a public one, like 1.1.1.1', { x: P.resolver.x, y: 800, size: 40, at: '#public', color: 'yellow' });
   },
@@ -74,8 +74,8 @@ export default {
     you(s, { at: -1 });
     resolver(s, { at: -1 });
     s.arrow('you', 'resolver', { at: -1 });
-    root(s, { at: '#root' });
-    s.arrow('resolver', 'root', { at: 'starts', bend: -0.1 });
+    root(s, { at: 'root#1' });
+    s.arrow('resolver', 'root', { at: 'root#1', bend: -0.1 });
     s.note("doesn't know the address", { x: P.root.x, y: P.root.y + 125, size: 36, at: 'address' });
     s.arrow('root', 'resolver', { at: '#tld', bend: 0.8, dashed: true, color: 'blue', label: 'ask the .com servers', labelColor: 'blue', labelOffset: 40 });
   },

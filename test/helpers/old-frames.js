@@ -23,10 +23,12 @@ function narrate(dir) {
   for (const [, id] of script.matchAll(/^## ([^\s{]+)/gm)) cachedVoice(dir, id);
 }
 
-// A copy of an example, with `settings` added to its video.json.
+// A copy of an example as it was when its frames were pinned, kept in
+// test/fixtures/projects so the example itself can change, with `settings`
+// added to its video.json.
 export function exampleCopy(t, name, settings = {}) {
   const dir = folder(t, name);
-  fs.cpSync(path.join(ROOT, 'examples', name), dir, { recursive: true, filter: (from) => !/[\\/](build|out|history)$/.test(from) });
+  fs.cpSync(path.join(ROOT, 'test', 'fixtures', 'projects', name), dir, { recursive: true });
   const file = path.join(dir, 'video.json');
   fs.writeFileSync(file, JSON.stringify({ ...JSON.parse(fs.readFileSync(file, 'utf8')), ...settings }, null, 2));
   narrate(dir);
