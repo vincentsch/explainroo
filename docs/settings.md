@@ -58,15 +58,17 @@ the file keeps its order.
 | `fonts` | none | the video's own font files, see `explainroo docs product-demos` |
 | `defaults` | none | `"0.6"` gives the project the defaults of explainroo 0.6, which include those of 0.5, see below. `init` writes it |
 
-### The defaults of a version
+## The defaults of a version
 
-Some defaults change how a video looks. So that a finished video comes out
-the same after an update, they apply only to a project with `"defaults"` in
-`video.json`. `init` writes `"defaults": "0.6"`. A project without the line
-keeps the look it had, frame for frame, also its cover, and a project with
-`"0.5"` keeps the look of explainroo 0.5. To give an older project the new
-look, set the line to `"0.6"`, then look at `still` and `sheet` again,
-because labels may move.
+The `"defaults"` line keeps a video looking the same when you update
+explainroo. A new version may draw some things in a new way, like the size of
+arrow labels, and it does so only in a project whose line names that version
+or a later one. `init` writes `"defaults": "0.6"`, so a project made now keeps
+the look of 0.6 after later updates. A project without the line keeps the look
+it had before 0.5, frame for frame, also its cover, and one with `"0.5"` keeps
+the look of explainroo 0.5. To give an older project the new look, set the
+line to `"0.6"`, then look at `still` and `sheet` again, because labels may
+move.
 
 `"0.5"` changes these, and `"0.6"` has them too:
 
@@ -117,7 +119,7 @@ because labels may move.
 
 `check` finds the same problems with or without the line.
 
-The looks:
+## The looks
 
 | Look | What it looks like | Transition | Music |
 |---|---|---|---|

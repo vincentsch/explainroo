@@ -202,6 +202,14 @@ test('init writes a neutral starter whose scenes match, with "defaults", and say
   const r = await runAll(['init', target, '--title', 'How Bees Make Honey']);
   assert.equal(r.code, 0, r.err);
   assert.match(r.out, /^next: write the narration in script\.md, then run ".+ voice .+bees"\. After that, draw each scene in scenes\.js and run ".+ check .+bees"\.$/m);
+  // One line says what the "defaults" line is for, and where its changes are listed.
+  assert.match(r.out, /^"defaults": "0\.6" in video\.json keeps this look when explainroo changes later\. ".+ docs settings defaults" lists what it changes\.$/m);
+  assert.equal(r.out.match(/"defaults"/g).length, 1);
+  const docs = await runAll(['docs', 'settings', 'defaults']);
+  assert.equal(docs.code, 0, docs.err);
+  assert.match(docs.out, /^## The defaults of a version\n\nThe `"defaults"` line keeps a video looking the same when you update\nexplainroo\./);
+  assert.match(docs.out, /^`"0\.5"` changes these, and `"0\.6"` has them too:$/m);
+  assert.match(docs.out, /^`"0\.6"` also changes these:$/m);
   const made = JSON.parse(fs.readFileSync(path.join(target, 'video.json'), 'utf8'));
   assert.equal(made.defaults, '0.6');
   assert.equal(made.theme, 'studio');
