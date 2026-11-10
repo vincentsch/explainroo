@@ -247,8 +247,8 @@ s.clip('assets/signup.mp4', { w: 1200, frame: 'browser', url: 'app.example.com',
 s.clip('assets/demo.mov', { x: 1400, y: 540, h: 600, from: 12.5, speed: 1.5, at: '#demo', out: 9 });
 ```
 
-Like an image, a clip has no frame and gets the look's shadow, corners and
-entrance, and `shadow: false`, `radius: 0` and `enter: 'none'` turn them off.
+A clip has no frame by default. `shadow: false`, `radius: 0` and
+`enter: 'none'` turn off the look's shadow, corners and entrance.
 
 - `full: true` fills the whole frame, edge to edge, for a clip behind the
   whole scene. It has no frame, shadow, corners or entrance, and it ignores
@@ -287,8 +287,8 @@ steps before take longer than the words. `check` warns about a step still
 late. Steps sharing a cue run in order, the first on the cue. `cues` sets
 cues by mark name or step number, and
 `r.times` has each step's scene time, by number and name. It also takes
-`cursor: false`, `zoom: false` and `sound: false` for the clicks. The
-automatic camera keeps out, as its zoom steps are the camera.
+`cursor: false`, `zoom: false` and `sound: false` for the clicks. Its zoom
+steps are the camera, so the automatic camera keeps out.
 
 ## Pointing things out
 
@@ -432,9 +432,8 @@ there on the first frame and camera punch-ins. Read
 
 ## Sound
 
-Elements make a sound when they enter. The look picks the sound. Drawn lines
-scribble, cards pop, arrows whoosh, list items play rising notes, numbers
-tick, typing clicks, and scenes change with a swipe. `sfx: false` silences
+Elements make a sound when they enter. The look picks the sound: drawn lines
+scribble, cards pop and scenes change with a swipe. `sfx: false` silences
 one element. `s.quiet()` at the top of a scene turns off the entrance sounds
 of everything after it in that scene, for example when twelve circles appear
 and one sound is enough. Give that one `sfx: true`. The chime of `s.ui.toast`
