@@ -216,7 +216,7 @@ export class Short {
     if (!String(str).trim() || this.hidden) return;
     const x0 = align === 'center' ? x - w / 2 : align === 'right' ? x - w : x;
     const layer = this.s.ui._layer + 1;
-    this.s._logText({ text: String(str), x0, y0: y - 0.58 * size, x1: x0 + w, y1: y + 0.58 * size, size, fg: /^#/.test(fg) ? fg : null, bg, ui: layer === 1 ? 0 : layer, zoomed: this.s._camMoved, option, role, owner });
+    this.s._logText({ text: String(str), x0, y0: y - 0.58 * size, x1: x0 + w, y1: y + 0.58 * size, size, fg: /^#/.test(fg) ? fg : null, bg, ui: layer === 1 ? 0 : layer, zoomed: this.s._camMoved, option, role, owner, short: true });
   }
 
   // The color behind text at height y of the frame: what the backdrop or s.bg
@@ -431,7 +431,9 @@ export class Short {
     const s = this.s;
     const v6 = s._v6;
     const style = o.style ?? 'slab';
-    const width = o.width ?? s.safe.w;
+    // With "defaults": "0.6", the title stays in `area`, s.safe by default.
+    const area = o.area ?? s.safe;
+    const width = o.width ?? (v6 ? area.w : s.safe.w);
     const maxLines = o.maxLines ?? 2;
     let size = o.size ?? (s.H > s.W ? 104 : 88);
     const minSize = o.minSize ?? 56;
@@ -460,11 +462,10 @@ export class Short {
       // With "defaults": "0.6", the kicker stays inside s.safe, below the
       // strip the watermark takes. When it would go above that, the kicker and
       // the title move down together.
-      const area = o.area ?? s.safe;
       const kh = kickerSize * 1.75;
       const above = o.kicker && o.kickerY === undefined ? kh + 14 : 0;
       y = o.y ?? area.top + (above ? 8 + above : 18) + blockH / 2;
-      if (above) y = Math.max(y, area.top + 8 + above + blockH / 2);
+      y = Math.max(y, area.top + (above ? 8 + above : 0) + blockH / 2);
       kickerY = o.kickerY ?? y - blockH / 2 - 14 - kh / 2;
     } else {
       y = o.y ?? s.safe.top + (o.kicker ? 64 : 0) + blockH / 2 + 18;
@@ -630,7 +631,7 @@ export class Short {
     const keyColor = o.keyColor ?? (newDefaults(this.s.engine.config) ? stickerKey(bg) : KEY_RED);
     this.s.ui.over(() => this.popIn(life, x, y, () => {
       this.roundRect(x - w / 2, y - h / 2, w, h, size * 0.22, bg, { shadow: { color: 'rgba(0,0,0,0.35)', blur: 16, y: 8 }, stroke: o.border, strokeW: 5 });
-      const own = this.hidden ? null : this.s._logShape('sticker', { x, y, w, h }, this.s._unsettled === 0, o, words.map((wd) => wd.text).join(' '));
+      const own = this.hidden ? null : this.s._logShape('sticker', { x, y, w, h }, this.s._unsettled === 0, o, words.map((wd) => wd.text).join(' '), { short: true });
       let wx = x - tw / 2;
       const space = this.measure(' ', size, 900);
       for (const wd of words) {
@@ -848,7 +849,7 @@ export class Short {
     if (!life) return geom(x, y, w, h);
     this.s.ui.over(() => this.popIn(life, x, y, () => {
       this.roundRect(x - w / 2, top, w, h, 40, card, { shadow: { color: 'rgba(0,0,0,0.35)', blur: 40, y: 18 } });
-      if (!this.hidden) this.s._logShape('card', { x, y: top + h / 2, w, h }, this.s._unsettled === 0, o, o.title ?? '', { call });
+      if (!this.hidden) this.s._logShape('card', { x, y: top + h / 2, w, h }, this.s._unsettled === 0, o, o.title ?? '', { call, short: true });
       const icy = top + pad + iconR;
       // The icon breathes a little.
       const pulse = 1 + 0.04 * Math.sin(s.t * 3.2);

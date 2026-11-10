@@ -29,6 +29,51 @@ function mix(a, b, p) {
   return `#${h(0)}${h(1)}${h(2)}`;
 }
 
+// A starred run of words, like *as you type*: a star right before a word and
+// one right after a word. A lone star, like in "5 * 3" or "*.js", stays.
+export const STARRED = /\*([^\s*](?:[^*]*?[^\s*])?)\*/g;
+
+// Text with *stars*: the text without them, and which of its characters were
+// starred.
+function markup(str) {
+  let plain = '';
+  const accent = [];
+  let last = 0;
+  const add = (text, on) => {
+    plain += text;
+    for (let i = 0; i < text.length; i++) accent.push(on);
+  };
+  for (const m of str.matchAll(STARRED)) {
+    add(str.slice(last, m.index), false);
+    add(m[1], true);
+    last = m.index + m[0].length;
+  }
+  add(str.slice(last), false);
+  return { plain, accent };
+}
+
+// The lines of `str` as [start, end], split at \n.
+function lineSpans(str) {
+  const spans = [];
+  let from = 0;
+  for (const line of str.split('\n')) {
+    spans.push([from, from + line.length]);
+    from += line.length + 1;
+  }
+  return spans;
+}
+
+// The part of marked-up text from `a` to `b` in runs of { text, accent }.
+function runsOf(m, a, b) {
+  const runs = [];
+  for (let i = a; i < b; i++) {
+    const on = !!m.accent[i];
+    if (runs.length && runs.at(-1).accent === on) runs.at(-1).text += m.plain[i];
+    else runs.push({ text: m.plain[i], accent: on });
+  }
+  return runs.length ? runs : [{ text: '', accent: false }];
+}
+
 const TONES = {
   gray: { bg: '#f2f4f7', fg: '#344054', ring: '#d0d5dd' },
   blue: { bg: '#eff8ff', fg: '#175cd3', ring: '#b2ddff' },
@@ -79,6 +124,8 @@ export class UI {
     };
     this._layer = 0;
     this._layers = 0;
+    // How many panels are being drawn, for the shapes they hold.
+    this._panels = 0;
   }
 
   // The canvas, or a stand-in that draws nothing while a group is hidden.
@@ -261,7 +308,7 @@ export class UI {
     }
     c.restore();
     // check compares cards with other shapes once they have arrived.
-    if (!this.hidden) this.s._logShape('card', { x: x + w / 2, y: y + h / 2, w, h }, this.s._unsettled === 0, o, o.name ?? '', { border: o.border === false ? 0 : o.borderWidth ?? 1.5, call });
+    if (!this.hidden) this.s._logShape('card', { x: x + w / 2, y: y + h / 2, w, h }, this.s._unsettled === 0, o, o.name ?? '', { border: o.border === false ? 0 : o.borderWidth ?? 1.5, call, kit: true });
   }
 
   // A card that pops up at `at`, then fn(x, y, w, h) draws inside it.
@@ -295,10 +342,12 @@ export class UI {
     if (moving) s._unsettled++;
     s._groups.push(serial);
     s._seen('panel');
+    this._panels++;
     try {
       this.card(x, y, w, h, { ...o, _call: call });
       if (fn) fn(x, y, w, h);
     } finally {
+      this._panels--;
       s._groups.pop();
       if (moving) s._unsettled--;
       c.restore();
@@ -467,7 +516,23 @@ export class UI {
     return s._v6 && s.H > s.W ? Math.max(40, size) : size;
   }
 
+  // With "defaults": "0.6", \n starts a new line and *stars* set words in the
+  // accent color (`accent`). `base` places the lines: from the top, around
+  // the middle, or up from the bottom. `lh` is the line height.
   text(str, x, y, o = {}) {
+    if (!this.s._v6) return this._line([{ text: String(str), accent: false }], x, y, o);
+    const m = markup(String(str));
+    const lines = lineSpans(m.plain);
+    if (lines.length === 1) return this._line(runsOf(m, 0, m.plain.length), x, y, o);
+    const size = o.size ?? 22;
+    const lh = o.lh ?? size * 1.25;
+    const base = o.base ?? 'middle';
+    const first = base === 'top' ? y : base === 'middle' ? y - ((lines.length - 1) * lh) / 2 : y - (lines.length - 1) * lh;
+    return Math.max(...lines.map(([a, b], i) => this._line(runsOf(m, a, b), x, first + i * lh, o)));
+  }
+
+  // One line of text in runs of { text, accent }.
+  _line(runs, x, y, o = {}) {
     const c = this.c;
     const size = o.size ?? 22;
     c.save();
@@ -479,13 +544,24 @@ export class UI {
     c.textBaseline = base;
     c.letterSpacing = `${o.tracking ?? 0}px`;
     c.globalAlpha *= o.alpha ?? 1;
-    let t = String(str);
-    if (o.maxW && c.measureText(t).width > o.maxW) {
+    let t = runs.map((r) => r.text).join('');
+    const cut = o.maxW && c.measureText(t).width > o.maxW;
+    if (cut) {
       while (t.length > 1 && c.measureText(t + '…').width > o.maxW) t = t.slice(0, -1);
       t = t.trimEnd() + '…';
     }
-    c.fillText(t, x, y);
     const w = c.measureText(t).width;
+    if (cut || !runs.some((r) => r.accent)) c.fillText(t, x, y);
+    else {
+      // Run by run from the left end, the starred ones in the accent color.
+      let left = align === 'center' ? x - w / 2 : align === 'right' ? x - w : x;
+      c.textAlign = 'left';
+      for (const r of runs) {
+        c.fillStyle = r.accent ? o.accent ?? this.colors.accent : o.color ?? this.colors.text;
+        c.fillText(r.text, left, y);
+        left += c.measureText(r.text).width;
+      }
+    }
     if (o.check !== false) this._log(t, x, y, w, size, align, base, o.badge);
     c.restore();
     return w;
@@ -505,6 +581,13 @@ export class UI {
   para(str, x, y, maxW, o = {}) {
     const size = o.size ?? 22;
     const lh = o.lh ?? size * 1.45;
+    if (this.s._v6) {
+      // *Stars* may run over the end of a line.
+      const m = markup(String(str));
+      const lines = this._wrapSpans(m.plain, maxW, size, o.weight ?? 400, o.font).filter(([a, b], i, all) => b > a || i < all.length - 1);
+      lines.forEach(([a, b], i) => this._line(runsOf(m, a, b), x, y + i * lh, { ...o, base: 'top' }));
+      return lines.length * lh;
+    }
     const lines = this._wrap(str, maxW, size, o.weight ?? 400, o.font).filter((l, i, a) => l || i < a.length - 1);
     lines.forEach((l, i) => this.text(l, x, y + i * lh, { ...o, base: 'top' }));
     return lines.length * lh;
@@ -535,55 +618,89 @@ export class UI {
     const size = o.size ?? 96;
     const family = this._family(o.font ?? 'headline');
     const tracking = o.tracking ?? -1;
-    const tokens = [];
-    let italic = false;
-    for (const raw of String(str).split(' ')) {
-      let w = raw;
-      const starts = w.startsWith('*');
-      if (starts) w = w.slice(1);
-      const ends = w.endsWith('*');
-      if (ends) w = w.slice(0, -1);
-      if (starts) italic = true;
-      tokens.push({ w, italic, accent: italic });
-      if (ends) italic = false;
+    // The lines of words, each word { w, italic, accent }.
+    const rows = [];
+    if (s._v6) {
+      // With "defaults": "0.6", \n starts a new line, and *stars* may run
+      // over it.
+      const m = markup(String(str));
+      for (const [from, to] of lineSpans(m.plain)) {
+        rows.push([...m.plain.slice(from, to).matchAll(/\S+/g)].map((w) => {
+          const accent = !!m.accent[from + w.index];
+          return { w: w[0], italic: accent, accent };
+        }));
+      }
+    } else {
+      const tokens = [];
+      let italic = false;
+      for (const raw of String(str).split(' ')) {
+        let w = raw;
+        const starts = w.startsWith('*');
+        if (starts) w = w.slice(1);
+        const ends = w.endsWith('*');
+        if (ends) w = w.slice(0, -1);
+        if (starts) italic = true;
+        tokens.push({ w, italic, accent: italic });
+        if (ends) italic = false;
+      }
+      rows.push(tokens);
     }
-    if (o.italic === false) tokens.forEach((t) => (t.italic = false));
-    const widths = tokens.map((t) => this.measure(t.w, size, o.weight ?? 400, family, t.italic, tracking));
+    if (o.italic === false) rows.flat().forEach((t) => (t.italic = false));
     const space = this.measure(' ', size, 400, family) * 0.9;
-    const total = widths.reduce((a, b) => a + b, 0) + space * (tokens.length - 1);
-    let cx = o.align === 'left' ? x : o.align === 'right' ? x - total : x - total / 2;
+    const lh = size * (o.lineHeight ?? 1.12);
+    const laid = rows.map((tokens, r) => {
+      const widths = tokens.map((t) => this.measure(t.w, size, o.weight ?? 400, family, t.italic, tracking));
+      const total = widths.reduce((a, b) => a + b, 0) + space * Math.max(0, tokens.length - 1);
+      const left = o.align === 'left' ? x : o.align === 'right' ? x - total : x - total / 2;
+      return { tokens, widths, total, left, y: y + r * lh };
+    });
+    const total = Math.max(...laid.map((l) => l.total));
+    const middle = o.align === 'left' ? x + total / 2 : o.align === 'right' ? x - total / 2 : x;
     const a = this.at(o.at ?? 0);
-    s._logLayout('headline', a, o.out === undefined ? Infinity : this.at(o.out), cx + total / 2, y - size * 0.35, total, size * 1.1, o.camera === false ? { camera: false } : null);
+    s._logLayout('headline', a, o.out === undefined ? Infinity : this.at(o.out), middle, y - size * 0.35 + ((rows.length - 1) * lh) / 2, total, size * 1.1 + (rows.length - 1) * lh, o.camera === false ? { camera: false } : null);
     const stagger = (o.stagger ?? 0.07) / s.pace;
     const dur = (o.dur ?? 0.7) / s.pace;
-    this._enter(a, dur + stagger * tokens.length, o.sfx);
+    const count = rows.reduce((n, r) => n + r.length, 0);
+    this._enter(a, dur + stagger * count, o.sfx);
     const k = this.k;
-    tokens.forEach((t, i) => {
-      const e = outCubic(clamp((s.t - (a + i * stagger)) / dur));
-      const q = o.out !== undefined ? this._p(this.at(o.out) + i * stagger * 0.4, 0.35, 'in') : 0;
-      const alpha = e * (1 - q);
-      if (alpha > 0.002) {
-        const blur = (1 - e) * 14 + q * 10;
-        const moving = e < 1 || q > 0;
-        if (moving) s._unsettled++;
-        c.save();
-        if (blur > 0.3) c.filter = `blur(${(blur * k).toFixed(2)}px)`;
-        this.text(t.w, cx, y + (1 - e) * 22 - q * 14, {
-          size,
-          font: family,
-          italic: t.italic,
-          weight: o.weight ?? 400,
-          color: t.accent ? o.accent ?? this.colors.accent : o.color ?? this.colors.ink,
-          alpha,
-          tracking,
-          base: 'alphabetic',
-        });
-        c.restore();
-        if (moving) s._unsettled--;
-      }
-      cx += widths[i] + space;
-    });
+    let i = -1;
+    for (const line of laid) {
+      let cx = line.left;
+      line.tokens.forEach((t, j) => {
+        i++;
+        this._headlineWord(t, cx, line.y, i, { a, dur, stagger, size, family, tracking, k, o });
+        cx += line.widths[j] + space;
+      });
+    }
     return total;
+  }
+
+  // One word of a headline, the `i`-th, blurring in.
+  _headlineWord(t, cx, y, i, { a, dur, stagger, size, family, tracking, k, o }) {
+    const s = this.s;
+    const c = this.c;
+    // With "defaults": "0.6", a headline from before the scene is all there.
+    const e = s._v6 && a < 0 ? 1 : outCubic(clamp((s.t - (a + i * stagger)) / dur));
+    const q = o.out !== undefined ? this._p(this.at(o.out) + i * stagger * 0.4, 0.35, 'in') : 0;
+    const alpha = e * (1 - q);
+    if (alpha <= 0.002) return;
+    const blur = (1 - e) * 14 + q * 10;
+    const moving = e < 1 || q > 0;
+    if (moving) s._unsettled++;
+    c.save();
+    if (blur > 0.3) c.filter = `blur(${(blur * k).toFixed(2)}px)`;
+    this.text(t.w, cx, y + (1 - e) * 22 - q * 14, {
+      size,
+      font: family,
+      italic: t.italic,
+      weight: o.weight ?? 400,
+      color: t.accent ? o.accent ?? this.colors.accent : o.color ?? this.colors.ink,
+      alpha,
+      tracking,
+      base: 'alphabetic',
+    });
+    c.restore();
+    if (moving) s._unsettled--;
   }
 
   // ---------- controls ----------
@@ -739,6 +856,27 @@ export class UI {
       c.fillStyle = this.colors.text;
       c.fillRect(x + pad + this.measure(last, size) + 2, y + pad + (lines.length - 1) * lh + (lh - size * 1.2) / 2, 2, size * 1.2);
     }
+  }
+
+  // Like _wrap, as [start, end] of each line in `str`.
+  _wrapSpans(str, maxW, size, weight = 400, font) {
+    const lines = [];
+    for (const [a, b] of lineSpans(str)) {
+      let start = null;
+      let end = a;
+      for (const w of str.slice(a, b).matchAll(/\S+/g)) {
+        const from = a + w.index;
+        const to = from + w[0].length;
+        if (start !== null && this.measure(str.slice(start, to), size, weight, font) > maxW) {
+          lines.push([start, end]);
+          start = null;
+        }
+        if (start === null) start = from;
+        end = to;
+      }
+      lines.push(start === null ? [a, a] : [start, end]);
+    }
+    return lines;
   }
 
   _wrap(str, maxW, size, weight = 400, font) {

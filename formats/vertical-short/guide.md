@@ -53,8 +53,8 @@ feed, and keeps it for a product too.
   apps cover part of it with their buttons, so nothing there must be read.
 - `fact(s, '*20%*', { at })` puts one fact on a tilted sticker. It finds a
   free place near its `x` and `y`, clear of the hook title and of the
-  pictures that `hookFrame` and `beats` drew, so call it after them. `check`
-  warns when a sticker still covers an icon, a picture or text.
+  pictures that `hookFrame` and `beats` drew, so call it after them, but not
+  of an `s.draw`. `check` warns when a sticker covers a picture or text.
 - `punch(s, at)` gives camera keys for a fast zoom, held for a second. Use it
   as `s.camera(punch(s, '#back'))`, first in the scene. Then `fact()` and
   `beats()` keep their words in the content area at that zoom: a sticker moves

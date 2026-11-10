@@ -34,7 +34,8 @@
 - Changing the TeX in `s.math` over time. Use fixed strings for each formula,
   and give each one its own `at` and `out`.
 - An arrow or annotation that points to an `id` drawn later in the function.
-- `s.camera()` after other elements. It has to come first.
+- `s.camera()` after other elements. The camera moves only what is drawn
+  after it, so it has to come first. `check` gives a hint when it doesn't.
 - An `at` later than the end of the scene. Make the scene longer with
   `{hold=2}` or `{min=6}` in the script.
 - Random values from anything other than `s.rand()`, `s.noise()` or

@@ -6,6 +6,10 @@
 // The zoom of each scene's punch(), so the words stay in s.safe at that zoom.
 const ZOOMS = new WeakMap();
 
+// The hook title of each scene, as { x0, y0, x1, y1 }, so a punch() called
+// after it keeps it in s.safe.
+const WORDS = new WeakMap();
+
 // The pictures and titles of each scene that a fact() sticker keeps clear of,
 // as { x0, y0, x1, y1, from, until } with the seconds they show.
 const TAKEN = new WeakMap();
@@ -34,6 +38,26 @@ export function wordArea(s) {
   const right = p.x + (s.safe.x + s.safe.w - p.x) / z;
   const bottom = p.y + (s.safe.y + s.safe.h - p.y) / z;
   return { left, top, right, bottom, w: right - left, h: bottom - top };
+}
+
+// The size of a fact() sticker's words, in units, and the sizes it tries,
+// from its own down to the smallest, where no place is free.
+const FACT_SIZE = 11;
+const FACT_SCALES = [1, 0.85, 0.7, 0.6];
+
+// Half the width and height of a fact() sticker with words `w` wide at
+// `size`, tilted.
+function stickerHalf(size, w) {
+  return { w: (w + size * 0.9) / 2, h: size * 0.75 + w * 0.04 };
+}
+
+// The height of the band a fact() sticker needs at its smallest, with the
+// widest words that fit `area` and the gap it keeps on both sides.
+function factBand(s, area) {
+  const u = unit(s);
+  const k = FACT_SCALES.at(-1);
+  const half = stickerHalf(u * FACT_SIZE * k, (area.w * 0.96 - u * FACT_SIZE) * k);
+  return half.h * 2 + u * 2 * 3;
 }
 
 // A line of `text` in `font` at `size`: the size that fits `width`, and its width.
@@ -73,11 +97,12 @@ export function hookFrame(s, title, { icon, color = colors(s).accent, kicker } =
   const area = wordArea(s);
   const box = s.short.hook(title, { y: s.safe.y + s.safe.h * 0.2, kicker, area, at: 0 });
   take(s, { x0: box.left, y0: box.top, x1: box.right, y1: box.bottom });
+  WORDS.set(s, { x0: box.left, y0: box.top, x1: box.right, y1: box.bottom });
   if (icon) {
     // The subject fills the lower part of the room below the title, and
-    // leaves a band under the title for a fact() sticker.
+    // leaves a band under the title where a fact() sticker fits.
     const room = area.bottom - box.bottom;
-    const size = Math.min(unit(s) * 48, room * 0.52);
+    const size = Math.max(unit(s) * 16, Math.min(unit(s) * 48, room * 0.52, room * 0.96 - factBand(s, area)));
     const y = area.bottom - room * 0.04 - size / 2;
     echo(s, icon, { color, at: -1 });
     s.icon(icon, { x: s.cx, y, size, color, at: -1 });
@@ -114,7 +139,7 @@ export function beats(s, items, { y = s.safe.y + s.safe.h * 0.55 } = {}) {
 export function fact(s, text, { at, x = s.cx + s.safe.w * 0.24, y = s.safe.y + s.safe.h * 0.42, out } = {}) {
   const area = wordArea(s);
   const u = unit(s);
-  const fitted = fitLine(s, String(text).replace(/\*/g, ''), u * 11, 900, area.w * 0.96 - u * 11);
+  const fitted = fitLine(s, String(text).replace(/\*/g, ''), u * FACT_SIZE, 900, area.w * 0.96 - u * FACT_SIZE);
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
   const from = s.time(at ?? 0);
   const until = out === undefined ? Infinity : s.time(out);
@@ -126,16 +151,26 @@ export function fact(s, text, { at, x = s.cx + s.safe.w * 0.24, y = s.safe.y + s
   // or null. With `anyway`, x and y when nothing is free.
   const near = (k, anyway = false) => {
     const size = fitted.size * k;
-    const w = fitted.w * k;
-    const half = { w: (w + size * 0.9) / 2, h: size * 0.75 + w * 0.04 };
-    const free = (px, py) => taken.every((b) => px + half.w + gap <= b.x0 || px - half.w - gap >= b.x1 || py + half.h + gap <= b.y0 || py - half.h - gap >= b.y1);
+    const half = stickerHalf(size, fitted.w * k);
+    // A little less than the gap, so a place right next to a box is free.
+    const free = (px, py) => taken.every((b) => px + half.w + gap <= b.x0 + 0.5 || px - half.w - gap >= b.x1 - 0.5 || py + half.h + gap <= b.y0 + 0.5 || py - half.h - gap >= b.y1 - 0.5);
     const place = (px, py) => ({ x: clamp(px, area.left + half.w, area.right - half.w), y: clamp(py, area.top + half.h, area.bottom - half.h), size });
     const first = place(x, y);
     if (anyway || free(first.x, first.y)) return first;
     let best = null;
     let far = Infinity;
-    for (let py = area.top + half.h; py <= area.bottom - half.h; py += u * 2) {
-      for (const px of [x, s.cx, area.left + half.w, area.right - half.w]) {
+    // Steps down the area, and the places right next to each box, where the
+    // only free band may be.
+    const rows = [];
+    for (let py = area.top + half.h; py <= area.bottom - half.h; py += u * 2) rows.push(py);
+    const cols = [x, s.cx, area.left + half.w, area.right - half.w];
+    for (const b of taken) {
+      rows.push(b.y1 + gap + half.h, b.y0 - gap - half.h);
+      cols.push(b.x1 + gap + half.w, b.x0 - gap - half.w);
+    }
+    for (const py of rows) {
+      if (py < area.top + half.h - 0.5 || py > area.bottom - half.h + 0.5) continue;
+      for (const px of cols) {
         const p = place(px, py);
         const d = Math.hypot(p.x - x, p.y - y);
         if (d < far && free(p.x, p.y)) {
@@ -147,7 +182,9 @@ export function fact(s, text, { at, x = s.cx + s.safe.w * 0.24, y = s.safe.y + s
     return best;
   };
   // Smaller where it needs that to fit, and where nothing is free, at x and y.
-  const spot = near(1) ?? near(0.85) ?? near(0.7) ?? near(0.6) ?? near(1, true);
+  let spot = null;
+  for (const k of FACT_SCALES) spot ??= near(k);
+  spot ??= near(1, true);
   s.short.sticker(text, { x: spot.x, y: spot.y, size: spot.size, at, out, area, overlap: true });
 }
 
@@ -156,10 +193,17 @@ export function fact(s, text, { at, x = s.cx + s.safe.w * 0.24, y = s.safe.y + s
 // and beats() keep their words in s.safe at this zoom. The point it zooms onto
 // stays where it is. Several punches go in one s.camera, like
 // s.camera([...punch(s, 'a'), ...punch(s, 'b')]), at least 1.5 seconds apart,
-// and the words keep to the largest zoom.
+// and the words keep to the largest zoom. A hook title drawn before the punch
+// stays in s.safe too: the punch zooms in no further than that allows.
 export function punch(s, at, { zoom = 1.25 } = {}) {
-  ZOOMS.set(s, Math.max(ZOOMS.get(s) ?? 1, zoom));
   const p = pivot(s);
+  const title = WORDS.get(s);
+  if (title) {
+    // How far each side of the title may move out from the pivot.
+    const most = (room, reach) => (reach > 0 ? room / reach : Infinity);
+    zoom = Math.max(1, Math.min(zoom, most(p.y - s.safe.top, p.y - title.y0), most(s.safe.bottom - p.y, title.y1 - p.y), most(p.x - s.safe.left, p.x - title.x0), most(s.safe.right - p.x, title.x1 - p.x)));
+  }
+  ZOOMS.set(s, Math.max(ZOOMS.get(s) ?? 1, zoom));
   return s.short.punch(at, { x: p.x - (p.x - s.cx) / zoom, y: p.y - (p.y - s.cy) / zoom, zoom, hold: 1 });
 }
 

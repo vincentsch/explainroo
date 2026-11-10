@@ -194,10 +194,11 @@ block), `size`, `width`, `maxLines`, `upper: false`, `color`, `keyColor`,
 `kickerSize`, `kickerY`, `at`, `out`, `sfx`, `id`, and `screen: true`, which
 keeps the title still while the camera moves. It returns the block's box.
 
-With `"defaults": "0.6"`, the kicker is 44 pixels in a tall frame and stays
-inside `s.safe`, below the watermark. When `y` would put it above `s.safe`,
-the kicker and the title move down together. `area` sets another box to stay
-in, like the part of `s.safe` that a zoom keeps on screen.
+With `"defaults": "0.6"`, the kicker is 44 pixels in a tall frame. The title
+and the kicker stay inside `s.safe`, below the watermark: the title is no
+wider than `s.safe`, and when `y` would put either above it, they move down
+together. `area` sets another box to stay in, like the part of `s.safe` that
+a zoom keeps on screen.
 
 Keywords are yellow by default, and with `"defaults": "0.6"` they take
 `brand.accent` from `video.json`: as the box behind the white keywords of a

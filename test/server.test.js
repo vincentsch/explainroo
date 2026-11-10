@@ -295,7 +295,7 @@ test('clip endpoints only read video assets and keep the cache inside build', as
     const responses = await Promise.all(Array.from({ length: 4 }, () => request(server.port, { path: '/__clip/info?path=assets/ok.mp4' })));
     assert.ok(responses.every((r) => r.status === 200));
     const info = JSON.parse(responses[0].body);
-    assert.deepEqual(info, { frames: 6, fps: 30, width: 80, height: 60, duration: 0.2, hasAudio: true });
+    assert.deepEqual(info, { frames: 6, fps: 30, width: 80, height: 60, duration: 0.2, hasAudio: true, still: [] });
     assert.equal(fs.readdirSync(path.join(dir, 'build/clips')).length, 1);
     const frame = await fetch(`${server.url}/__clip/frame?path=assets/ok.mp4&frame=999`);
     assert.equal(frame.headers.get('content-type'), 'image/jpeg');

@@ -65,3 +65,24 @@ test('music ducks under clip sound with the same envelope as narration', async (
   assert.deepEqual(clip.getChannelData(0), voice.getChannelData(0));
   assert.deepEqual(clip.getChannelData(1), voice.getChannelData(1));
 });
+
+test('a clip holds still where no part of its picture shows something new, and a blinking cursor shows nothing new', async () => {
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const { ffmpeg } = await import('../src/ffmpeg.js');
+  const { stillSpans } = await import('../src/clips.js');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-still-'));
+  try {
+    // A square moves for a second, then a cursor blinks next to it for two.
+    const graph = "color=white:s=320x180:r=30:d=3[bg];color=black:s=40x40:r=30:d=3[box];[bg][box]overlay=x='min(t,1)*200':y=60,drawbox=x=20:y=20:w=4:h=30:color=black:t=fill:enable='gte(t,1)*lt(mod(t,1),0.5)'";
+    await ffmpeg(['-loglevel', 'error', '-filter_complex', graph, '-q:v', '2', '-start_number', '0', path.join(dir, '%08d.jpg')]);
+    const spans = await stillSpans(dir, 30, 90);
+    assert.equal(spans.length, 1, JSON.stringify(spans));
+    assert.ok(Math.abs(spans[0][0] - 1) < 0.1 && spans[0][1] === 3, JSON.stringify(spans));
+    // One frame is a still picture.
+    assert.deepEqual(await stillSpans(dir, 30, 1), [[0, 0.033]]);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
