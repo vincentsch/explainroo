@@ -306,7 +306,8 @@ function textIssue(s) {
 // What check and verify print for a video file: the file, its frames and speech,
 // each finding, and the verdict last.
 export function formatVideoCheck(r, { verbose = false } = {}) {
-  const nearly = r.speech?.nearly?.length ? `, ${nearlyLine(r.speech.nearly, verbose)}` : '';
+  // A video file has no video.json, so no "heard" line.
+  const nearly = r.speech?.nearly?.length ? `, ${nearlyLine(r.speech.nearly, verbose, false)}` : '';
   return [
     `${r.file}: ${r.duration}s, ${r.video ? `${r.video.width}x${r.video.height}` : 'no video'}, ${r.loudness ? `loudness ${r.loudness.integrated ?? '?'} LUFS, true peak ${dbtp(r.loudness.truePeak)}` : 'no sound'}`,
     r.text ? `read ${r.text.frames} frame${r.text.frames === 1 ? '' : 's'}, ${r.text.step} s apart, for blank frames and small text` : '',

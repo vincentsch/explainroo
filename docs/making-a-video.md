@@ -54,7 +54,8 @@ user. Read it first.
    know often end up there. `check` and `verify` give each one its time in the
    video. When there are more than two, they only count them, and `--verbose`
    lists them. No fix is needed unless one sounds wrong when you listen at its
-   time.
+   time. The hint names a `"heard"` line, like `"heard": {"sine": ["sign"]}`.
+   With it in `video.json`, `check` and `verify` stop naming the word.
    Before it makes the narration, `voice` prints how long the video will be
    about.
    Only the scenes you changed are made again. `check`, `still`, `sheet`,

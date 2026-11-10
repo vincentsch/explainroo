@@ -211,7 +211,7 @@ test('verify lists near matches next to the rate, by scene, and without scenes f
   // Each with its time in the video: the scene's start and where it was heard in the scene.
   assert.deepEqual(r.speech.nearly, [{ scene: 'intro', word: 'Soundroo', heard: 'Soundru', time: 0.2 }, { scene: 'outro', word: 'Codex', heard: 'codecs', time: 1.2 }]);
   assert.deepEqual(r.speech.scenes, [{ id: 'intro', matchRate: 1, nearly: [{ word: 'Soundroo', heard: 'Soundru', time: 0.2 }] }, { id: 'outro', matchRate: 1, nearly: [{ word: 'Codex', heard: 'codecs', time: 1.2 }] }]);
-  assert.match(formatVerify(r), /^narration understood: 100%, 2 words only nearly matched: Soundroo at 0\.2 s \(heard "Soundru"\), Codex at 1\.2 s \(heard "codecs"\)\. No fix is needed unless one of them sounds wrong when you listen at those times\.$/m);
+  assert.match(formatVerify(r), /^narration understood: 100%, 2 words only nearly matched: Soundroo at 0\.2 s \(heard "Soundru"\), Codex at 1\.2 s \(heard "codecs"\)\. No fix is needed unless one of them sounds wrong when you listen at those times\. If they are said right, add this to video\.json, and check and verify stop naming them: "heard": \{"Soundroo": \["Soundru"\], "Codex": \["codecs"\]\}$/m);
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(project.paths.out, 'report.json'), 'utf8')).speech.nearly, r.speech.nearly);
   // Without a timeline that fits the file, verify listens to the whole file.
   fs.rmSync(path.join(project.paths.build, 'timeline.json'));
@@ -261,7 +261,8 @@ test('near matches with their times give each time, and say no fix is needed unl
   assert.equal(nearlyText([{ word: 'Tides', heard: 'Tide', time: 11.4 }, { word: 'slow', heard: 'slowed', time: 11.6 }]), '2 words only nearly matched: Tides at 11.4 s (heard "Tide"), slow at 11.6 s (heard "slowed")');
   assert.equal(nearlyText([1.5, 9, 20.25, 31, 40].map((time) => ({ word: 'main', heard: 'Maine', time }))), '5 words only nearly matched: main at 1.5 s, 9.0 s and 20.3 s and 2 more times (heard "Maine")');
   assert.equal(nearlyText([{ word: 'See', heard: 'Seacosts', joined: true, time: 3 }, { word: 'costs', heard: 'Seacosts', joined: true, time: 3.2 }]), '2 words only nearly matched: See costs at 3.0 s (heard "Seacosts")');
-  assert.equal(nearlyAdvice([{ word: 'Tides', heard: 'Tide', time: 11.4 }]), 'No fix is needed unless it sounds wrong when you listen at that time.');
+  assert.equal(nearlyAdvice([{ word: 'Tides', heard: 'Tide', time: 11.4 }]), 'No fix is needed unless it sounds wrong when you listen at that time. If it is said right, add this to video.json, and check and verify stop naming it: "heard": {"Tides": ["Tide"]}');
+  assert.equal(nearlyAdvice([{ word: 'Tides', heard: 'Tide', time: 11.4 }], false), 'No fix is needed unless it sounds wrong when you listen at that time.');
   assert.equal(nearlyAdvice([{ word: 'See', joined: true, time: 3 }, { word: 'costs', joined: true, time: 3.2 }]), 'No fix is needed unless it sounds wrong when you listen at that time.');
   assert.equal(nearlyAdvice([{ word: 'a', time: 1 }, { word: 'b', time: 2 }]), 'No fix is needed unless one of them sounds wrong when you listen at those times.');
   assert.equal(nearlyAdvice([{ word: 'a' }]), 'No fix is needed unless it sounds wrong when you listen.');
@@ -280,8 +281,8 @@ test('check gives each near match of a scene its time in the video, as a hint', 
   const { issues, speech } = speechFindings(project, voices, timeline);
   const at = (scene, k) => { const sc = timeline.scenes.find((s) => s.id === scene); return Math.round((sc.start + sc.words[k].start) * 10) / 10; };
   assert.deepEqual(issues.filter((i) => i.level === 'hint').map((i) => [i.scene, i.message]), [
-    ['intro', `understood 100%, 1 word only nearly matched: Soundroo at ${at('intro', 1).toFixed(1)} s (heard "Soundru"). No fix is needed unless it sounds wrong when you listen at that time.`],
-    ['outro', `understood 100%, 2 words only nearly matched: Codex at ${at('outro', 1).toFixed(1)} s and ${at('outro', 4).toFixed(1)} s (heard "codecs"). No fix is needed unless one of them sounds wrong when you listen at those times.`],
+    ['intro', `understood 100%, 1 word only nearly matched: Soundroo at ${at('intro', 1).toFixed(1)} s (heard "Soundru"). No fix is needed unless it sounds wrong when you listen at that time. If it is said right, add this to video.json, and check and verify stop naming it: "heard": {"Soundroo": ["Soundru"]}`],
+    ['outro', `understood 100%, 2 words only nearly matched: Codex at ${at('outro', 1).toFixed(1)} s and ${at('outro', 4).toFixed(1)} s (heard "codecs"). No fix is needed unless one of them sounds wrong when you listen at those times. If it is said right, add this to video.json, and check and verify stop naming it: "heard": {"Codex": ["codecs"]}`],
   ]);
   assert.deepEqual(speech.find((s) => s.scene === 'outro').nearly.map((n) => n.time), [at('outro', 1), at('outro', 4)]);
 });
@@ -298,9 +299,9 @@ test('more than two near matches are named without their times, --verbose adds t
   const { formatVideoCheck } = await import('../src/video-check.js');
   const nearly = [{ scene: 'intro', word: 'purr', heard: 'pur', time: 0.2 }, { scene: 'how', word: 'soothe', heard: 'sooth', time: 3.1 }, { scene: 'how', word: 'past', heard: 'pass', time: 4.4 }];
   const r = { file: '/v/video.mp4', duration: 9, video: { width: 1080, height: 1920 }, loudness: { integrated: -14, truePeak: -1.5 }, speech: { matchRate: 1, nearly }, issues: [], verdict: 'passed' };
-  assert.match(formatVerify(r), /^narration understood: 100%, 3 words only nearly matched: purr \(heard "pur"\), soothe \(heard "sooth"\), past \(heard "pass"\)\. No fix is needed unless one of them sounds wrong when you listen, and --verbose adds their times$/m);
+  assert.match(formatVerify(r), /^narration understood: 100%, 3 words only nearly matched: purr \(heard "pur"\), soothe \(heard "sooth"\), past \(heard "pass"\)\. No fix is needed unless one of them sounds wrong when you listen, and --verbose adds their times\. If they are said right, add this to video\.json, and check and verify stop naming them: "heard": \{"purr": \["pur"\], "soothe": \["sooth"\], "past": \["pass"\]\}$/m);
   assert.match(formatVerify(r, { verbose: true }), /^narration understood: 100%, 3 words only nearly matched: purr at 0\.2 s \(heard "pur"\), soothe at 3\.1 s \(heard "sooth"\), past at 4\.4 s \(heard "pass"\)\./m);
-  assert.match(formatVideoCheck(r), /^speech understood: 100% of the script, 3 words only nearly matched: purr \(heard "pur"\), soothe .*\. No fix is needed/m);
+  assert.match(formatVideoCheck(r), /^speech understood: 100% of the script, 3 words only nearly matched: purr \(heard "pur"\), soothe .*\. No fix is needed unless one of them sounds wrong when you listen, and --verbose adds their times$/m);
   // Two are still listed.
   assert.match(formatVerify({ ...r, speech: { matchRate: 1, nearly: nearly.slice(0, 2) } }), /2 words only nearly matched: purr at 0\.2 s \(heard "pur"\), soothe at 3\.1 s/);
 
@@ -311,7 +312,29 @@ test('more than two near matches are named without their times, --verbose adds t
     { level: 'hint', scene: 'how', t: null, key: 'nearly', words: 2, nearly: nearly.slice(1), message: 'understood 100%, 2 words only nearly matched: soothe, past' },
     { level: 'hint', scene: 'how', t: 2, message: 'another hint' },
   ];
-  assert.deepEqual(shownIssues(issues, false).map((i) => i.message), ['a warning', '3 words only nearly matched: purr (heard "pur"), soothe (heard "sooth"), past (heard "pass"), in the speech check of 2 scenes. No fix is needed unless one of them sounds wrong when you listen, and --verbose adds their times', 'another hint']);
+  assert.deepEqual(shownIssues(issues, false).map((i) => i.message), ['a warning', '3 words only nearly matched: purr (heard "pur"), soothe (heard "sooth"), past (heard "pass"), in the speech check of 2 scenes. No fix is needed unless one of them sounds wrong when you listen, and --verbose adds their times. If they are said right, add this to video.json, and check and verify stop naming them: "heard": {"purr": ["pur"], "soothe": ["sooth"], "past": ["pass"]}', 'another hint']);
   assert.equal(shownIssues(issues, true), issues);
   assert.equal(shownIssues(issues.slice(0, 2), false).length, 2);
+});
+
+test('the "heard" line that a near match hint names keeps check and verify quiet about it', async (t) => {
+  const run = async (settings) => {
+    const dir = cachedProject(t, '# Demo\n\n## intro\nTry Soundroo.\n', { intro: { transcript: 'Try Soundru.' } }, settings);
+    const project = loadProject(dir);
+    const voices = await synthesize(project, { transcribe: () => { throw new Error('no voice should be made'); } });
+    const hints = speechFindings(project, voices).issues.filter((i) => i.key === 'nearly');
+    fs.mkdirSync(project.paths.out, { recursive: true });
+    await ffmpeg(['-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=white:s=320x180:d=1:r=24', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=1', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', path.join(project.paths.out, 'video.mp4')]);
+    fs.writeFileSync(path.join(project.paths.build, 'timeline.json'), JSON.stringify({ duration: 1, scenes: [{ id: 'intro', start: 0, dur: 1 }] }));
+    const r = await verify(project, { transcribe: async () => ({ text: 'Try Soundru.', words: [{ text: 'Try', start: 0, end: 0.15 }, { text: 'Soundru.', start: 0.2, end: 0.35 }] }) });
+    return { hints, verified: r.speech.nearly };
+  };
+  const loud = await run({});
+  assert.equal(loud.hints.length, 1);
+  const line = /add this to video\.json, and check and verify stop naming it: "heard": (\{.*\})$/.exec(loud.hints[0].message)?.[1];
+  assert.equal(line, '{"Soundroo": ["Soundru"]}');
+  assert.equal(loud.verified.length, 1);
+  const quiet = await run({ heard: JSON.parse(line) });
+  assert.deepEqual(quiet.hints, []);
+  assert.deepEqual(quiet.verified, []);
 });

@@ -68,12 +68,29 @@ export const NEARLY_LISTED = 2;
 // The near matches as check and verify print them: the list with its advice,
 // or, for more than NEARLY_LISTED words without `verbose`, the words without
 // their times.
-export function nearlyLine(nearly, verbose = false) {
-  if (verbose || nearly.length <= NEARLY_LISTED) return `${nearlyText(nearly)}. ${nearlyAdvice(nearly)}`;
-  return `${nearlyText(untimed(nearly))}. ${NEARLY_SHORT}`;
+export function nearlyLine(nearly, verbose = false, heard = true) {
+  if (verbose || nearly.length <= NEARLY_LISTED) return `${nearlyText(nearly)}. ${nearlyAdvice(nearly, heard)}`;
+  return `${nearlyText(untimed(nearly))}. ${nearlyShort(nearly, heard)}`;
 }
 
 export const NEARLY_SHORT = 'No fix is needed unless one of them sounds wrong when you listen, and --verbose adds their times';
+
+// NEARLY_SHORT with the line for video.json that stops naming the words.
+export function nearlyShort(nearly, heard = true) {
+  const line = heard ? nearlyHeard(nearly) : '';
+  return line ? `${NEARLY_SHORT}. ${line}` : NEARLY_SHORT;
+}
+
+// The "heard" line for video.json that accepts the near matches as they were
+// heard, so check and verify stop naming them, or '' when none can go there.
+// Two words heard as one have no line.
+export function nearlyHeard(nearly) {
+  const seen = new Map();
+  for (const n of nearly) if (!n.joined && n.heard && !seen.has(n.word)) seen.set(n.word, { word: n.word, heard: bareWord(n.heard) });
+  if (!seen.size) return '';
+  const one = seen.size === 1;
+  return `If ${one ? 'it is' : 'they are'} said right, add this to video.json, and check and verify stop naming ${one ? 'it' : 'them'}: ${heardEntry([...seen.values()])}`;
+}
 
 // The near matches without their times, so the same word heard the same way
 // shows once, with how often.
@@ -83,10 +100,12 @@ export function untimed(nearly) {
 
 // What to do about words that only nearly matched or sounded the same: nothing,
 // unless they sound wrong at the times the list gives.
-export function nearlyAdvice(nearly) {
+// With `heard`, it also gives the line for video.json that accepts them.
+export function nearlyAdvice(nearly, heard = true) {
   const one = nearly.length === 1 || (nearly.length === 2 && nearly[0].joined && nearly[1].joined);
   const timed = nearly.some((n) => typeof n.time === 'number');
-  return `No fix is needed unless ${one ? 'it sounds' : 'one of them sounds'} wrong when you listen${timed ? ` at ${one ? 'that time' : 'those times'}` : ''}.`;
+  const line = heard ? nearlyHeard(nearly) : '';
+  return `No fix is needed unless ${one ? 'it sounds' : 'one of them sounds'} wrong when you listen${timed ? ` at ${one ? 'that time' : 'those times'}` : ''}.${line ? ` ${line}` : ''}`;
 }
 
 // The time in the video of each near match of a scene, from the scene's words in
