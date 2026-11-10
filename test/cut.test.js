@@ -5,8 +5,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { ffmpeg, probe } from '../src/ffmpeg.js';
-import { BREATH, applyCut, compareCut, cutFiles, cutItems, cutListText, formatCut, gapSizes, joinSound, keptParts, partFrames, quietStretches, readCutList, writeCut } from '../src/cut.js';
+import { AUDIO_CODECS, MOST_LIMITED, PEAK_CEILING, ffmpeg, finishMix, loudness, probe } from '../src/ffmpeg.js';
+import { BREATH, applyCut, moveRange, compareCut, cutFiles, cutItems, cutListText, formatCut, gapSizes, joinSound, keptParts, partFrames, quietStretches, readCutList, writeCut } from '../src/cut.js';
 import { checkVideo } from '../src/video-check.js';
 import { ASR_MODEL, TTS_MODEL, cacheRoot } from '../src/models.js';
 import { sha256File } from '../src/history.js';
@@ -30,10 +30,10 @@ const WORDS = [
 const QUIET = [[0, 0.8], [1.2, 1.3], [1.7, 2.9], [3.3, 3.4], [3.9, 4.0], [4.4, 5.2]];
 const heardWords = WORDS.filter((w) => !w.unheard).map(({ text, start, end }) => ({ text, start, end }));
 
-async function recording(dir) {
+async function recording(dir, words = WORDS, d = 5.2) {
   const file = path.join(dir, 'talk.mp4');
-  const tones = WORDS.map((w) => `between(t,${w.start},${w.end})*0.3*sin(2*PI*${w.hz}*t)`).join('+');
-  await ffmpeg(['-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc=s=320x180:d=5.2:r=25', '-f', 'lavfi', '-i', `aevalsrc='${tones}':s=48000:d=5.2`,
+  const tones = words.map((w) => `between(t,${w.start},${w.end})*0.3*sin(2*PI*${w.hz}*t)`).join('+');
+  await ffmpeg(['-loglevel', 'error', '-f', 'lavfi', '-i', `testsrc=s=320x180:d=${d}:r=25`, '-f', 'lavfi', '-i', `aevalsrc='${tones}':s=48000:d=${d}`,
     '-pix_fmt', 'yuv420p', '-c:v', 'libx264', '-c:a', 'aac', '-b:a', '192k', '-shortest', file]);
   return file;
 }
@@ -76,16 +76,26 @@ test('the cut list has a line a sentence, and reading it back keeps what is left
   ]);
   // Untouched, everything stays.
   const round = (keep) => keep.map((k) => (typeof k === 'number' ? Math.round(k * 1000) / 1000 : k));
-  assert.deepEqual(round(readCutList(text, items)), [0.8, true, true, 1.2, true, true, true, 0.8]);
+  assert.deepEqual(round(readCutList(text, items).keep), [0.8, true, true, 1.2, true, true, true, 0.8]);
   const edited = text.replace('[pause 0.80s @0.00]', '[pause 0.2s @0.00]').replace(' two.@1.30', '').replace('[pause 1.20s @1.70] ', '').replace('[sound 0.70s @3.30] ', '');
-  const keep = readCutList(edited, items);
+  const { keep } = readCutList(edited, items);
   assert.deepEqual(round(keep), [0.2, true, false, BREATH, true, false, true, 0.8]);
   const parts = keptParts(items, keep, 5.2).map((p) => [p.start.t, p.end.t].map((t) => Math.round(t * 1000) / 1000));
   assert.deepEqual(parts, [[0.6, 1.3], [1.7, 1.825], [2.775, 3.3], [4, 5.2]]);
   // A word that wasn't there, a word moved up and a word with a new time stop with the line.
   assert.throws(() => readCutList(`${edited}\nAnd five.\n`, items, 'talk.cut.md'), /talk\.cut\.md line \d+: "And" has no time, so it is not a word of the recording\. The cut only takes words out/);
   assert.throws(() => readCutList(edited.replace('One,@0.80', 'four.@4.00 One,@0.80').replace(' four.@4.00\n', '\n'), items, 'talk.cut.md'), /"One,@0\.80" comes before a word that stands earlier in the list\. The cut keeps the order of the recording, so it can't move words\./);
-  assert.throws(() => readCutList(edited.replace('Three@2.90', 'Three@2.95'), items, 'talk.cut.md'), /"Three@2\.95" is not in the recording\. Leave the words, pauses and sounds as cut wrote them, and only delete them\./);
+  // A word's time moves within its range, and a time outside it stops with the range.
+  const moved = readCutList(edited.replace('Three@2.90', 'Three@3.05'), items, 'talk.cut.md');
+  assert.deepEqual([...moved.moved], [[4, 3.05]]);
+  assert.deepEqual(moved.keep, keep);
+  assert.equal(moved.lines.get(4), lines.indexOf('[pause 1.20s @1.70] Three@2.90 [sound 0.70s @3.30] four.@4.00') + 1);
+  assert.throws(() => readCutList(edited.replace('Three@2.90', 'Three@3.40'), items, 'talk.cut.md'), /talk\.cut\.md line \d+: "Three@3\.40" can move between 2\.90 and 3\.30, from the end of the word before it to its own end\. cut wrote it as Three@2\.90\./);
+  assert.throws(() => readCutList(edited.replace('Three@2.90', 'Tree@3.00'), items, 'talk.cut.md'), /"Tree@3\.00" is not a word that cut wrote\. Leave the words as cut wrote them: delete them, or move a word's time to fix where it starts\./);
+  assert.throws(() => readCutList(edited.replace('[pause 0.2s @0.00]', '[pause 0.2s @0.10]'), items, 'talk.cut.md'), /talk\.cut\.md line \d+: cut wrote no pause at 0\.10 s\. Leave the time of a pause as it is, and change only its seconds\./);
+  for (const err of [() => readCutList(edited.replace('Three@2.90', 'Three@3.40'), items), () => readCutList(edited.replace('Three@2.90', 'Tree@3.00'), items)]) {
+    assert.throws(err, (e) => !/not in the recording/.test(e.message));
+  }
 });
 
 // The levels of a recording in 10 ms steps, from [from, to, dBFS] stretches over a
@@ -118,8 +128,8 @@ test('a word keeps the sound that joins it, and a sound right after a word says 
   assert.match(text, /^\[pause 1\.00s @0\.00\] so@1\.00 \[sound 0\.80s @1\.60 may hold the end of "so"\] then@2\.40 \[pause 0\.90s @2\.60\]$/m);
   assert.match(text, /A sound that "may hold the\nend" of a word can be the last sound of that word, so listen before you delete it\./);
   // The note reads back, and a length keeps that much of the sound from its start.
-  assert.deepEqual(readCutList(text, um).map((k) => (typeof k === 'number' ? Math.round(k * 100) / 100 : k)), [1, true, true, true, 0.9]);
-  const shorter = readCutList(text.replace('[sound 0.80s', '[sound 0.20s'), um);
+  assert.deepEqual(readCutList(text, um).keep.map((k) => (typeof k === 'number' ? Math.round(k * 100) / 100 : k)), [1, true, true, true, 0.9]);
+  const shorter = readCutList(text.replace('[sound 0.80s', '[sound 0.20s'), um).keep;
   assert.equal(shorter[2], 0.2);
   const parts = keptParts(um, shorter, 3.5).map((p) => [p.start.t, p.end.t].map((t) => Math.round(t * 1000) / 1000));
   assert.deepEqual(parts, [[0, 1.8], [2.4, 3.5]]);
@@ -216,15 +226,155 @@ test('cut writes the list, keeps it from being written over, and cuts the video 
   assert.deepEqual(r.speech.extra, []);
   const info = await probe(r.out);
   assert.ok(Math.abs(Number(info.format.duration) - r.after) < 0.1);
-  assert.match(formatCut(r), /talk\.cut\.mp4\n5\.2 s cut to 2\.\d s, with 3 joins\. The speech model heard 100% of the words the list keeps\.\nCheck the video with: explainroo verify talk\.cut\.mp4$/);
+  assert.match(formatCut(r), /talk\.cut\.mp4\n5\.2 s cut to 2\.\d s, with 3 joins\. The speech model heard 100% of the words the list keeps\.\nThe sound is at -1[34]\.\d LUFS, with its peak at -\d+\.\d dBTP\.\nThe joins, with where talk\.mp4 stops and starts again, as planned from the word times and where it landed at a quiet moment:\n  0\.\d\d s in the cut: stops at 1\.\d\d s \(planned 1\.30\), starts at 1\.\d\d s \(planned 1\.\d\d\), before \[pause [^\n]*\n.*\n  1\.\d\d s in the cut: stops at 3\.\d\d s \(planned 3\.30\), starts at 3\.\d\d s \(planned 4\.00\), before four\.@4\.00 on line \d+\nCheck the video with: explainroo verify talk\.cut\.mp4$/);
+  // The joins in the report: each where it was planned and where it landed. The
+  // first stops before the deleted "two.", so it doesn't go past its start.
+  assert.equal(r.joinList.length, 3);
+  assert.deepEqual(dry.joinList, r.joinList);
+  assert.equal(r.joinList[0].out.planned, 1.3);
+  assert.ok(r.joinList[0].out.landed <= 1.3 && r.joinList[0].out.landed >= 1.1, JSON.stringify(r.joinList[0]));
+  assert.equal(r.joinList[2].next, 'four.@4.00');
+  assert.equal(fs.readFileSync(files.list, 'utf8').split('\n')[r.joinList[2].line - 1].includes('four.@4.00'), true);
+  // The loudness it reached: -14 LUFS, as verify measures it.
+  assert.ok(Math.abs(r.loudness.integrated + 14) <= 0.5, `loudness ${r.loudness.integrated}`);
+  assert.equal(dry.loudness, undefined);
   // verify passes on the cut: the sound is leveled and held under the peak ceiling.
   const checked = await checkVideo(r.out);
   assert.equal(checked.passed, true, JSON.stringify(checked.issues));
   assert.ok(checked.loudness.truePeak <= -1, `true peak ${checked.loudness.truePeak}`);
+  assert.ok(Math.abs(checked.loudness.integrated - r.loudness.integrated) < 0.2, `verify measured ${checked.loudness.integrated}`);
 
   // The list belongs to that recording: another version of the file stops.
   fs.appendFileSync(video, Buffer.from([0]));
   await assert.rejects(applyCut(video, { transcribe: listener(kept) }), /talk\.cut\.md was made from another version of talk\.mp4\. Run "explainroo cut .*talk\.mp4 --force" to write it again from this one\./);
+});
+
+test('a join never reaches into a deleted word, and one at a moved word is right there', () => {
+  // "sorry" as the speech model times it ends where "first" starts, and "page."
+  // comes after a short gap.
+  const items = [
+    { type: 'word', text: 'Sorry,', start: 0, end: 1.4 },
+    { type: 'word', text: 'first', start: 1.4, end: 1.9 },
+    { type: 'word', text: 'the', start: 2.0, end: 2.2 },
+    { type: 'word', text: 'page.', start: 2.5, end: 2.9 },
+  ];
+  const parts = keptParts(items, [false, true, false, true], 3);
+  // After the deleted "Sorry," the join can't go earlier than its end.
+  assert.deepEqual(parts[0].start, { t: 1.4, lo: 1.4, hi: 1.4, i: 1 });
+  // Before the deleted "the" it stops at its start, and after it, between its end and "page.".
+  assert.deepEqual(parts[0].end, { t: 2.0, lo: 1.8, hi: 2.0, i: 2 });
+  assert.deepEqual(parts[1].start, { t: 2.5, lo: 2.3, hi: 2.5, i: 3 });
+  // A word with a moved time has its join there.
+  const moved = items.map((item, i) => (i === 1 ? { ...item, start: 1.62, moved: true } : item));
+  assert.deepEqual(keptParts(moved, [false, true, false, true], 3)[0].start, { t: 1.62, lo: 1.62, hi: 1.62, i: 1 });
+  // Kept words next to a deleted sound still look a little around the word.
+  const sound = [{ type: 'word', text: 'so', start: 0, end: 0.5 }, { type: 'sound', start: 0.5, end: 1 }, { type: 'word', text: 'then', start: 1, end: 1.4 }];
+  assert.deepEqual(keptParts(sound, [true, false, true], 1.5)[1].start, { t: 1, lo: 0.8, hi: 1.03, i: 2 });
+  // A word may move from the end of the word before it to its own end.
+  assert.deepEqual(moveRange(items, 1), { lo: 1.4, hi: 1.9 });
+  assert.deepEqual(moveRange(items, 3), { lo: 2.2, hi: 2.9 });
+});
+
+test('a word heard right after a deleted one names the time to move, and the moved time cuts there', { timeout: 120000 }, async (t) => {
+  const dir = tempDir(t);
+  const before = process.env.EXPLAINROO_CACHE;
+  process.env.EXPLAINROO_CACHE = path.join(dir, 'cache');
+  t.after(() => { if (before === undefined) delete process.env.EXPLAINROO_CACHE; else process.env.EXPLAINROO_CACHE = before; });
+  // "Sorry," runs on to 1.6 s, but the speech model starts "first" at 1.4 s.
+  const words = [
+    { text: 'One.', start: 0.5, end: 0.9, hz: 300 },
+    { text: 'Sorry,', start: 1.2, end: 1.6, hz: 400 },
+    { text: 'first', start: 1.62, end: 1.9, hz: 500 },
+    { text: 'page.', start: 2.3, end: 2.7, hz: 600 },
+  ];
+  const heard = [{ text: 'One.', start: 0.5, end: 0.9 }, { text: 'Sorry,', start: 1.2, end: 1.4 }, { text: 'first', start: 1.4, end: 1.9 }, { text: 'page.', start: 2.3, end: 2.7 }];
+  const video = await recording(dir, words, 3.4);
+  await writeCut(video, { transcribe: listener(heard) });
+  const { list } = cutFiles(video);
+  const text = fs.readFileSync(list, 'utf8');
+  fs.writeFileSync(list, text.replace('Sorry,@1.20 ', ''));
+  const line = fs.readFileSync(list, 'utf8').split('\n').findIndex((l) => l.includes('first@1.40')) + 1;
+  // The cut keeps a bit of "Sorry," that the speech model hears as "Ri".
+  const dry = await applyCut(video, { dryRun: true, transcribe: listener([{ text: 'One.', start: 0.5, end: 0.9 }, { text: 'Ri', start: 1.0, end: 1.1 }, { text: 'first', start: 1.2, end: 1.5 }, { text: 'page.', start: 1.9, end: 2.3 }]) });
+  const join = dry.joinList.find((j) => j.next === 'first@1.40');
+  assert.deepEqual(join.in, { planned: 1.4, landed: 1.4 });
+  assert.equal(join.line, line);
+  assert.ok(Math.abs(join.at - 1.05) < 0.1, `join at ${join.at} s in the cut`);
+  assert.deepEqual(dry.speech.extra.map((x) => [x.word, x.cut]), [['Ri', { word: 'Sorry', side: 'before', kept: 'first@1.40', line, upTo: 1.9 }]]);
+  assert.ok(Math.abs(dry.speech.extra[0].original - 1.4) < 0.1, `Ri at ${dry.speech.extra[0].original} s`);
+  const said = formatCut(dry);
+  assert.match(said, new RegExp(`It heard "Ri" at 1\\.0 s \\(1\\.\\d\\d s in talk\\.mp4\\), which the list doesn't keep\\. The join before first@1\\.40 may sit in "Sorry", which you deleted, because the speech model can put a word's start too early\\. Move the time of first@1\\.40 on line ${line} later, up to 1\\.90, to where the word starts, and try again\\.`));
+  assert.doesNotMatch(said, /delete the word next to it/);
+  assert.match(said, new RegExp(`  1\\.\\d\\d s in the cut: stops at [01]\\.\\d\\d s \\(planned 1\\.20\\), starts at 1\\.40 s \\(planned 1\\.40\\), before first@1\\.40 on line ${line}\\n`));
+  // Two words heard at one join make one line, and a kept word it missed there
+  // gets no advice to keep the deleted word.
+  const cut = { word: 'Sorry', side: 'before', kept: 'first@1.40', line, upTo: 1.9 };
+  const both = formatCut({ ...dry, speech: { matchRate: 0.75, missing: [{ word: 'first', time: 1.1, original: 1.4, next: { item: 'Sorry,@1.20', side: 'before', type: 'word' } }], extra: [{ word: 'Ri', time: 1.0, original: 1.4, cut }, { word: 'first', time: 1.2, original: 1.6, cut }] } });
+  assert.equal(both.match(/Move the time of first@1\.40/g).length, 1);
+  assert.match(both, /It heard "Ri" at 1\.0 s \(1\.40 s in talk\.mp4\), "first" at 1\.2 s \(1\.60 s in talk\.mp4\), which the list doesn't keep\. The join before first@1\.40/);
+  assert.doesNotMatch(both, /Keep it/);
+  // Moved to where the word starts, the join is there.
+  fs.writeFileSync(list, fs.readFileSync(list, 'utf8').replace('first@1.40', 'first@1.62'));
+  const fixed = await applyCut(video, { dryRun: true, transcribe: listener([{ text: 'One.', start: 0.5, end: 0.9 }, { text: 'first', start: 1.1, end: 1.4 }, { text: 'page.', start: 1.8, end: 2.2 }]) });
+  assert.deepEqual(fixed.joinList.find((j) => j.next === 'first@1.62').in, { planned: 1.62, landed: 1.62 });
+  assert.deepEqual(fixed.speech.extra, []);
+  assert.ok(Math.abs(dry.after - fixed.after - 0.22) < 0.05, `${dry.after} then ${fixed.after}`);
+  // Outside its range it stops with the range, and says nothing about the recording.
+  fs.writeFileSync(list, fs.readFileSync(list, 'utf8').replace('first@1.62', 'first@2.00'));
+  await assert.rejects(applyCut(video, { dryRun: true, transcribe: listener([]) }), new RegExp(`talk\\.cut\\.md line ${line}: "first@2\\.00" can move between 1\\.40 and 1\\.90, from the end of the word before it to its own end\\.`));
+
+});
+
+test('a recording is leveled to -14 LUFS, unless the peak limit holds it quieter, and says what it reached', { timeout: 120000 }, async (t) => {
+  const dir = tempDir(t);
+  // Speech-like sound: a tone at -26 dBFS that comes and goes 3 times a second.
+  const even = path.join(dir, 'even.wav');
+  await ffmpeg(['-loglevel', 'error', '-f', 'lavfi', '-i', "aevalsrc='0.05*sin(2*PI*220*t)*(0.6+0.4*sin(2*PI*3*t))':s=48000:d=8", '-c:a', 'pcm_s16le', even]);
+  const out = path.join(dir, 'even-out.wav');
+  await finishMix(even, out, -14, AUDIO_CODECS.mp4, { gain: true });
+  const leveled = await loudness(out);
+  assert.ok(Math.abs(leveled.integrated + 14) <= 0.5, `loudness ${leveled.integrated}`);
+  assert.ok(leveled.truePeak <= PEAK_CEILING + 0.05, `peak ${leveled.truePeak}`);
+  // A quiet tone with a loud clap: the limiter would take more than MOST_LIMITED
+  // dB off it, so the sound stays under -14 LUFS.
+  const clap = path.join(dir, 'clap.wav');
+  await ffmpeg(['-loglevel', 'error', '-f', 'lavfi', '-i', "aevalsrc='0.01*sin(2*PI*220*t)+between(t,4,4.004)*0.95*sin(2*PI*1000*t)':s=48000:d=8", '-c:a', 'pcm_s16le', clap]);
+  const held = path.join(dir, 'clap-out.wav');
+  const r = await finishMix(clap, held, -14, AUDIO_CODECS.mp4, { gain: true });
+  const quiet = await loudness(held);
+  assert.ok(quiet.integrated < -15, `loudness ${quiet.integrated}`);
+  assert.ok(r.gain <= PEAK_CEILING + MOST_LIMITED + 0.5, `gain ${r.gain}`);
+  const line = (integrated) => formatCut({ video: '/v/talk.mp4', list: '/v/talk.cut.md', out: '/v/talk.cut.mp4', before: 9, after: 6, joins: 0, joinList: [], loudness: { integrated, truePeak: -1.2, target: -14 }, speech: { matchRate: 1, missing: [], extra: [] } });
+  assert.match(line(-14.2), /\nThe sound is at -14\.2 LUFS, with its peak at -1\.2 dBTP\.\n/);
+  assert.match(line(-17.5), /\nThe sound is at -17\.5 LUFS, with its peak at -1\.2 dBTP\. Its loudest moments are far above the rest, so the peak limit of -1 dBTP holds it under -14 LUFS\.\n/);
+});
+
+test('cut --force moves an edited list aside, and writes over one as cut wrote it', { timeout: 120000 }, async (t) => {
+  const dir = tempDir(t);
+  const before = process.env.EXPLAINROO_CACHE;
+  process.env.EXPLAINROO_CACHE = path.join(dir, 'cache');
+  t.after(() => { if (before === undefined) delete process.env.EXPLAINROO_CACHE; else process.env.EXPLAINROO_CACHE = before; });
+  const video = await recording(dir);
+  await writeCut(video, { transcribe: listener(heardWords) });
+  const { list } = cutFiles(video);
+  const text = fs.readFileSync(list, 'utf8');
+  fs.writeFileSync(list, text.replace(' two.@1.30', ''));
+  const again = await writeCut(video, { force: true, transcribe: listener(heardWords) });
+  assert.equal(again.old, path.join(dir, 'talk.cut.old.md'));
+  assert.doesNotMatch(fs.readFileSync(again.old, 'utf8'), /two\.@1\.30/);
+  assert.match(formatCut(again), /talk\.cut\.md\nYour edited list is now talk\.cut\.old\.md, so you can copy your edits from there\.\n/);
+  assert.equal(fs.readFileSync(list, 'utf8'), text);
+  // A list as cut wrote it, also with other settings, is written over.
+  const same = await writeCut(video, { force: true, minGap: 0.3, transcribe: listener(heardWords) });
+  assert.equal(same.old, undefined);
+  assert.doesNotMatch(formatCut(same), /edited/);
+  // The next edited list gets a number.
+  fs.appendFileSync(list, 'edited\n');
+  const third = await writeCut(video, { force: true, transcribe: listener(heardWords) });
+  assert.equal(third.old, path.join(dir, 'talk.cut.old-2.md'));
+  assert.match(fs.readFileSync(third.old, 'utf8'), /min gap 0\.3s[\s\S]*edited\n$/);
+  assert.ok(fs.existsSync(again.old));
+  await assert.rejects(writeCut(video, { transcribe: listener(heardWords) }), /When you edited it, --force moves it to talk\.cut\.old\.md first\./);
 });
 
 test('after a cut, the words heard are compared with the words kept, both ways', async () => {
