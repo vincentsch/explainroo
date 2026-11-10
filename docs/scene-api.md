@@ -456,5 +456,6 @@ For product demos in a brand's own colors and fonts, run
 Color names: `accent`, `ink`, `muted`, `bg`, `surface`, `red`, `orange`,
 `yellow`, `green`, `teal`, `blue`, `purple`, `pink`, `gray`. Each look has its
 own version of each color.
-`s.color(name)` returns the CSS color and `s.tint(name)` the light fill. The
+`s.color(c)` takes a color name or any CSS color, like `'#c2410c'`, and
+returns the CSS color. `s.tint(c)` gives the light fill. The
 font roles are `display`, `body`, `hand` and `mono`.

@@ -1,6 +1,6 @@
-// Line charts with several series, numbers in the video's language and the
-// terminal's cursor. Each case draws scene bodies in a real page and reads the
-// text check logs, or compares pixels.
+// Line charts with several series, numbers in the video's language, the
+// terminal's cursor and s.color. Each case draws scene bodies in a real page
+// and reads the text check logs, or compares pixels.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -136,3 +136,9 @@ test('s.terminal takes cursor: false, and with "defaults": "0.6" no empty prompt
   assert.notEqual(typed.pixels, typedHidden.pixels);
 });
 
+test('s.color takes a look\'s color name or any CSS color', { skip, timeout: 120000 }, async (t) => {
+  const [r] = await draw(t, { theme: 'studio' }, [`return [s.color('accent'), s.color('blue'), s.color('#c2410c'), s.color('rgb(10, 20, 30)'), s.color('hsl(200 50% 40%)'), s.color('rebeccapurple')];`]);
+  const theme = await import('../engine/themes.js');
+  const studio = theme.getTheme('studio');
+  assert.deepEqual(r.value, [theme.colorOf(studio, 'accent'), studio.colors.blue, '#c2410c', 'rgb(10, 20, 30)', 'hsl(200 50% 40%)', 'rebeccapurple']);
+});
