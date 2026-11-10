@@ -161,7 +161,7 @@ the picture.
 `"camera": "still"` in `video.json` turns the camera off for the whole video.
 `check` checks the layout as you wrote it. It also judges text at the size the
 camera shows it, and warns about text or a shape that a held shot cuts at the
-edge. Stills, sheets and renders show the camera.
+edge, and about a table of texts whose header it leaves out. Stills, sheets and renders show the camera.
 
 The final render adds motion blur to frames where something moves, like a
 film camera. Drafts skip it. `"motionBlur": false` turns it off.

@@ -1107,6 +1107,13 @@ export class Engine {
               });
             }
           }
+          // A table of texts, which the shot shows only in part: some rows
+          // without the header, or some columns without the others.
+          if (held && filmed.texts.length === laid.texts.length) {
+            for (const f of cutTables(laid.texts, filmed.texts, onScreen, inFrame)) {
+              once(`table:${sc.id}:${f.key}`, () => add('warn', sc.id, t, `the camera shows only part of the table with "${short(f.shown)}" while it holds still: ${f.out} ${f.count > 1 ? 'are' : 'is'} out of the shot; keep this scene still with s.camera([]), or point the camera with s.focus`));
+            }
+          }
           if (held && filmed.draw.shapes.length === laid.draw.shapes.length) {
             laid.draw.shapes.forEach((sh, i) => {
               const shot = filmed.draw.shapes[i];
@@ -1493,6 +1500,70 @@ function edgeMessage(name, b, { W, H, margin, app, band, format, safe }, { edge 
   if (edge && !app && (b.x0 < margin || b.y0 < margin || b.x1 > W - margin || b.y1 > H - margin)) return `${name} comes closer than ${margin}px to the edge (${where})`;
   if (banded) return `${name} runs into the caption band (y ${Math.round(band.top)} to ${Math.round(band.bottom)}), where captions can cover it; keep it above s.safe.bottom (${Math.round(safe.bottom)})`;
   return null;
+}
+
+// Texts on their own, not on a box or as an arrow's label, that line up in
+// rows and columns, at least two of each with two texts or more, make a
+// table. A shot that shows part of a column and leaves the rest of it out,
+// or cuts it, cuts the table. Each finding names a text the shot shows, the
+// texts of those columns it leaves out from the top left, and a key for the
+// table.
+function cutTables(laid, filmed, onScreen, inFrame) {
+  const free = [];
+  laid.forEach((tx, i) => {
+    if (tx.alpha > 0.95 && tx.settled && !tx.block && !tx.ui && !tx.shape && tx.owner === null && !tx.partial && String(tx.text).trim() && inFrame(tx)) free.push({ tx, shot: filmed[i] });
+  });
+  const mid = (a, b) => Math.abs((a.y0 + a.y1) / 2 - (b.y0 + b.y1) / 2) <= Math.min(a.y1 - a.y0, b.y1 - b.y0) * 0.2;
+  const near = (u, v) => Math.abs(u - v) <= 3;
+  const column = (a, b) => near((a.x0 + a.x1) / 2, (b.x0 + b.x1) / 2) || near(a.x0, b.x0) || near(a.x1, b.x1);
+  // A cell shares its row with another text and its column with another, so
+  // a title centered over the table is no part of it.
+  const cells = free.filter((c) => free.some((d) => d !== c && mid(c.tx, d.tx)) && free.some((d) => d !== c && column(c.tx, d.tx)));
+  // Tables are the groups of cells linked by a shared row or column.
+  const parent = cells.map((_, i) => i);
+  const root = (i) => (parent[i] === i ? i : (parent[i] = root(parent[i])));
+  for (let i = 0; i < cells.length; i++) {
+    for (let j = i + 1; j < cells.length; j++) {
+      if (mid(cells[i].tx, cells[j].tx) || column(cells[i].tx, cells[j].tx)) parent[root(i)] = root(j);
+    }
+  }
+  const tables = new Map();
+  cells.forEach((cell, i) => {
+    const k = root(i);
+    if (!tables.has(k)) tables.set(k, []);
+    tables.get(k).push(cell);
+  });
+  const found = [];
+  for (const list of tables.values()) {
+    // Two rows of two or more, and two columns of two or more.
+    const lines = (same) => {
+      const groups = [];
+      for (const c of list) {
+        const g = groups.find((x) => same(x[0].tx, c.tx));
+        if (g) g.push(c);
+        else groups.push([c]);
+      }
+      return groups.filter((g) => g.length >= 2);
+    };
+    const columns = lines(column);
+    if (lines(mid).length < 2 || columns.length < 2) continue;
+    // A column the shot splits, like rows without their header. A close-up
+    // of whole columns, like one side of a comparison, is fine.
+    const split = columns.filter((g) => g.some((c) => onScreen(c.shot)) && g.some((c) => !inFrame(c.shot)));
+    if (!split.length) continue;
+    const order = (a, b) => a.tx.y0 - b.tx.y0 || a.tx.x0 - b.tx.x0;
+    const left = [...new Set(split.flat().filter((c) => !inFrame(c.shot)))].sort(order);
+    const shown = split.flat().filter((c) => inFrame(c.shot)).sort(order);
+    const names = left.slice(0, 2).map((c) => `"${String(c.tx.text).slice(0, 30)}"`);
+    const more = left.length - names.length;
+    found.push({
+      key: [...list].sort(order)[0].tx.text,
+      shown: (shown[0] ?? split.flat().filter((c) => onScreen(c.shot)).sort(order)[0]).tx.text,
+      out: more > 0 ? `${names.join(', ')} and ${more} more` : names.join(' and '),
+      count: left.length,
+    });
+  }
+  return found;
 }
 
 // The canvas calls that put something on it.

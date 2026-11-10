@@ -114,7 +114,9 @@ text. It finds text that is:
   outside is fine. A shape's own text, text in its group and `overlap: true`
   don't count
 - crossed by the line of an arrow or of a mark from `s.annotate`
-- cut at the edge of the frame by the camera while the shot holds still
+- cut at the edge of the frame by the camera while the shot holds still,
+  the words of charts too. For a table of texts in rows and columns, a held
+  shot that shows some rows without the header counts as cut. Keep that scene still with `s.camera([])`
 
 ## What else check finds
 

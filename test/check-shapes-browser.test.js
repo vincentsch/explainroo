@@ -442,3 +442,56 @@ test('the first-frame hint also names a text placed at: 0 that is still coming i
   assert.match(kicker?.message ?? '', /shows "TABSLIP" still coming in.*give it at: -1 instead of at: 0/);
   assert.equal(await first({ intro: `s.icon('laptop', { y: 700, size: 200, at: -1 }); s.text('Tabslip', { y: 300, size: 60, at: -1 }); s.text('Later', { y: 400, at: 1 });` }), null);
 });
+
+test('check warns when a held shot shows only part of a table of texts, like its rows without the header, and not when the scene keeps still', { skip, timeout: 120000 }, async (t) => {
+  // A table of French sums whose rows come one by one, on the times of the
+  // narration it was written for. The camera moves in on the new rows.
+  const table = (still) => `${still ? 's.camera([]);' : ''}
+    const { top, h, w } = s.safe;
+    const u = Math.min(w, h) / 100;
+    const xs = [s.cx - w * 0.3, s.cx, s.cx + w * 0.3];
+    const ys = [top + h * 0.12, top + h * 0.36, top + h * 0.58, top + h * 0.8];
+    const head = { size: u * 5, color: 'muted', at: 0.35 };
+    s.text('Année', { x: xs[0], y: ys[0], ...head });
+    s.text('Intérêts (5 %)', { x: xs[1], y: ys[0], ...head });
+    s.text('Capital', { x: xs[2], y: ys[0], ...head });
+    s.line([[s.cx - w * 0.45, ys[0] + u * 6], [s.cx + w * 0.45, ys[0] + u * 6]], { color: 'muted', width: 3, at: 0.35 });
+    const big = u * 7.5;
+    s.text('Départ', { x: xs[0], y: ys[1], size: big, at: 0.69 });
+    s.text('—', { x: xs[1], y: ys[1], size: big, color: 'muted', at: 0.69 });
+    s.text('1 000 €', { x: xs[2], y: ys[1], size: big, bold: true, color: 'blue', at: 0.69 });
+    s.text('Année 1', { x: xs[0], y: ys[2], size: big, at: 2.565 });
+    s.text('+ 50 €', { x: xs[1], y: ys[2], size: big, color: 'green', at: 3.73 });
+    s.text('1 050 €', { x: xs[2], y: ys[2], size: big, bold: true, color: 'blue', at: 6.07 });
+    s.text('Année 2', { x: xs[0], y: ys[3], size: big, at: 8.12 });
+    s.text('+ 52,50 €', { x: xs[1], y: ys[3], size: big, color: 'green', at: 12.2 });
+    s.text('1 102,50 €', { x: xs[2], y: ys[3], size: big, bold: true, color: 'blue', at: 12.9 });`;
+  const settings = { camera: 'auto', theme: 'studio', defaults: '0.6' };
+  const issues = await check(project(t, settings, { exemple: table(false) }, { dur: 15.9 }));
+  const cut = issues.filter((i) => i.message.startsWith('the camera shows only part of the table'));
+  assert.equal(cut.length, 1, JSON.stringify(issues));
+  assert.equal(cut[0].level, 'warn');
+  assert.match(cut[0].message, /^the camera shows only part of the table with "[^"]+" while it holds still: "Année"(, | and )"Intérêts \(5 %\)"( and \d more)? are out of the shot; keep this scene still with s\.camera\(\[\]\), or point the camera with s\.focus$/);
+  assert.ok(cut[0].t > 3 && cut[0].t < 6.5, String(cut[0].t));
+  // A close-up of one side of a comparison shows whole columns, which is fine.
+  const sides = await check(project(t, { camera: 'auto', theme: 'studio', defaults: '0.6' }, {
+    compare: `s.text('1900', { x: 480, y: 420, size: 120, at: 0 });
+    s.text('No leap day', { x: 480, y: 580, size: 48, at: 0 });
+    s.text('2000', { x: 1440, y: 420, size: 120, at: 3 });
+    s.text('February 29', { x: 1440, y: 580, size: 48, at: 3 });`,
+  }, { dur: 8 }), (page) => page.evaluate(() => window.explainroo.cameras()));
+  assert.deepEqual(sides.issues.filter((i) => i.message.includes('part of the table')), []);
+  assert.ok(sides.more.compare.moves.some((m) => m.to.x === 1440 && m.to.z > 2), 'the camera holds on one side');
+  const still = await check(project(t, { ...settings, camera: 'still' }, { exemple: table(true) }, { dur: 15.9 }));
+  assert.deepEqual(still.filter((i) => i.message.includes('part of the table')), []);
+});
+
+test('check sees the words of a chart, so a held shot that cuts them is found like any text', { skip }, async (t) => {
+  // As with the sliding card: the camera measures the chart where it ends up.
+  const issues = await check(project(t, { camera: 'auto' }, {
+    chart: `s.text('Title', { x: 300, y: 300, size: 60, at: 0 });
+    s.lineChart({ Compound: [1, 2, 4], Simple: [1, 2, 3] }, { labels: ['Mon', 'Tue', 'Wed'], x: Math.max(500, 1500 - s.t * 400), y: 700, w: 400, h: 250, at: 0, dur: 0.3 });`,
+  }, { dur: 5 }));
+  const cut = issues.filter((i) => i.message.startsWith('the camera cuts off'));
+  assert.ok(cut.some((i) => /^the camera cuts off "(Mon|Tue|Wed|Compound|Simple)"/.test(i.message)), JSON.stringify(issues));
+});

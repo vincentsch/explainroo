@@ -2218,6 +2218,8 @@ export class Stage {
           const val = (o.format ?? ((v) => (Number.isInteger(v) ? String(Math.round(v)) : v.toFixed(1))))(d.value * g);
           const txt = `${o.prefix ?? ''}${val}${o.suffix ?? ''}`;
           ctx.fillText(txt, cx, base - bh * g - 12);
+          const vw = ctx.measureText(txt).width;
+          this._logText({ text: txt, x0: cx - vw / 2, y0: base - bh * g - 12 - vs, x1: cx + vw / 2, y1: base - bh * g - 12, size: vs, fg: ctx.fillStyle, bg: null, settled: g >= 1 && this._settled(axisLife) });
           ctx.restore();
         }
       }
@@ -2403,7 +2405,11 @@ export class Stage {
           ctx.fillStyle = colorOf(th, 'ink');
           ctx.textAlign = Math.cos(mid) > 0.2 ? 'left' : Math.cos(mid) < -0.2 ? 'right' : 'center';
           ctx.textBaseline = 'middle';
-          ctx.fillText(txt, Math.cos(mid) * lr, Math.sin(mid) * lr);
+          const [lx, ly] = [Math.cos(mid) * lr, Math.sin(mid) * lr];
+          ctx.fillText(txt, lx, ly);
+          const lw = ctx.measureText(txt).width;
+          const x0 = ctx.textAlign === 'left' ? lx : ctx.textAlign === 'right' ? lx - lw : lx - lw / 2;
+          this._logText({ text: txt, x0, y0: ly - ls / 2, x1: x0 + lw, y1: ly + ls / 2, size: ls, fg: ctx.fillStyle, bg: null, settled: this._settled(life) });
         }
       }
       a0 += full;
