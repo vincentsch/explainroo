@@ -1,5 +1,6 @@
-// Line charts with several series and numbers in the video's language. Each
-// case draws scene bodies in a real page and reads the text check logs.
+// Line charts with several series, numbers in the video's language and the
+// terminal's cursor. Each case draws scene bodies in a real page and reads the
+// text check logs, or compares pixels.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -117,5 +118,21 @@ test('with "defaults": "0.6", s.number writes the number the way the video\'s la
   assert.deepEqual(old.map(text), ['1,050 €', '52.50 %', '1,500,000', 'EUR 1.050', '1.050']);
   const [wrong] = await draw(t, {}, [`s.number(5, { locale: 'not a tag', at: 0 });`]);
   assert.equal(wrong.error, 'number: locale "not a tag" is not a language tag; use one like "fr-FR" or "de-DE"');
+});
+
+test('s.terminal takes cursor: false, and with "defaults": "0.6" no empty prompt line follows the last output', { skip, timeout: 120000 }, async (t) => {
+  // The lower part of the window, where the cursor would blink under the last line.
+  const area = [300, 540, 1320, 140];
+  const shown = `s.terminal(['$ ls', 'a.json  b.json'], { at: 0, rows: 4 }); return null;`;
+  const hidden = `s.terminal(['$ ls', 'a.json  b.json'], { at: 0, rows: 4, cursor: false }); return null;`;
+  // At 3 seconds the cursor's blink is on.
+  const [oldShown, oldHidden] = await draw(t, {}, [shown, hidden], { at: 3, area });
+  assert.notEqual(oldShown.pixels, oldHidden.pixels, 'without the line the cursor still blinks under the output');
+  const [newShown, newHidden] = await draw(t, { defaults: '0.6' }, [shown, hidden], { at: 3, area });
+  assert.equal(newShown.pixels, newHidden.pixels, 'with "defaults": "0.6" no cursor under the last output');
+  // A command that is still typing keeps its cursor, unless cursor: false.
+  const typing = `s.terminal(['$ npm install --save-dev something-long-to-type'], { at: 2.5, rows: 4 CURSOR }); return null;`;
+  const [typed, typedHidden] = await draw(t, { defaults: '0.6' }, [typing.replace('CURSOR', ''), typing.replace('CURSOR', ', cursor: false')], { at: 3, area: [0, 0, 1920, 1080] });
+  assert.notEqual(typed.pixels, typedHidden.pixels);
 });
 

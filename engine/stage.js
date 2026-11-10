@@ -2759,6 +2759,10 @@ export class Stage {
         cursor = { x: left, y: top + row * lh, typing: false };
       }
     }
+    // cursor: false shows no cursor. With "defaults": "0.6" a terminal whose
+    // last line is output has no empty prompt line under it once it is shown.
+    const last = timed[timed.length - 1];
+    if (o.cursor === false || (this._v6 && last && last.cmd === undefined && this.t >= last.start)) cursor = null;
     if (cursor && (cursor.typing || Math.floor(this.T * 2) % 2 === 0)) {
       ctx.fillStyle = T.fg;
       ctx.globalAlpha *= 0.85;
