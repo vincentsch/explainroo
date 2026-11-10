@@ -166,9 +166,13 @@ export function withHeard(info, language, accept) {
   if (!accept || !Object.keys(accept).length || !Array.isArray(info?.words)) return info;
   const again = realign(info, language, accept);
   if (!again) return info;
-  const keys = new Set(Object.keys(accept).map(normWord));
+  // A key of two words, like "ape lo", covers both words.
+  const keyOf = (word) => String(word).trim().split(/\s+/).map(normWord).join(' ');
+  const keys = new Set(Object.keys(accept).map(keyOf));
   const own = (w) => keys.has(normWord(w.text)) || keys.has(normWord(w.spoken ?? w.text));
-  const taken = info.words.map((w, k) => own(w) && again.aligned[k].matched && !again.aligned[k].nearly);
+  const pair = (a, b) => !!a && !!b && (keys.has(`${normWord(a.text)} ${normWord(b.text)}`) || keys.has(`${normWord(a.spoken ?? a.text)} ${normWord(b.spoken ?? b.text)}`));
+  const listed = (w, k) => own(w) || pair(w, info.words[k + 1]) || pair(info.words[k - 1], w);
+  const taken = info.words.map((w, k) => listed(w, k) && again.aligned[k].matched && !again.aligned[k].nearly);
   if (!taken.some(Boolean)) return info;
   const newly = info.words.map((w, k) => taken[k] && !w.matched);
   const tokens = (w) => Math.max(1, spokenWords(w.spoken ?? w.text).length);

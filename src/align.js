@@ -311,7 +311,11 @@ export function alignWords(words, heard, duration, language = 'en', { sounds = n
       joined.push({ ...h, text: t });
     }
   }
-  const accepted = accept ? new Map(Object.entries(accept).map(([word, forms]) => [normWord(word), forms])) : null;
+  // A key of two words, like "ape lo", keeps one space between them.
+  const keyOf = (word) => String(word).trim().split(/\s+/).map(normWord).join(' ');
+  const pairKey = (a, b) => `${normWord(a)} ${normWord(b)}`;
+  const accepted = accept ? new Map(Object.entries(accept).map(([word, forms]) => [keyOf(word).includes(' ') ? keyOf(word) : normWord(word), forms])) : null;
+  const acceptedForms = (forms) => forms.map((f) => read(String(f).split(/\s+/)).filter(Boolean).flat().join('')).filter(Boolean);
   const tokens = [];
   const pieces = words.map((w) => String(w.spoken).split(/\s+/));
   const spoken = read(pieces.flat(), joined.map((h) => normWord(h.text)));
@@ -336,7 +340,11 @@ export function alignWords(words, heard, duration, language = 'en', { sounds = n
     const first = tokens.findIndex((t) => t.wi === wi);
     if (shown && shown !== parts.join('')) tokens[first].shown = shown;
     const forms = accepted && (accepted.get(normWord(w.display ?? w.spoken)) ?? accepted.get(normWord(w.spoken)));
-    if (forms) tokens[first].accepted = forms.map((f) => read(String(f).split(/\s+/)).filter(Boolean).flat().join('')).filter(Boolean);
+    if (forms) tokens[first].accepted = acceptedForms(forms);
+    // Two words with forms of their own, like "ape lo": ["apelo"].
+    const next = words[wi + 1];
+    const both = accepted && next && (accepted.get(pairKey(w.display ?? w.spoken, next.display ?? next.spoken)) ?? accepted.get(pairKey(w.spoken, next.spoken)));
+    if (both) tokens[first].acceptedPair = acceptedForms(both);
     // A spelling hint, like {soundroo.com|sound roo dot com}, and a word with a
     // hyphen, like "arc-en-ciel", may be heard as several words.
     if (w.display !== undefined && String(w.display).replace(/\s+/g, ' ') !== String(w.spoken).replace(/\s+/g, ' ')) tokens[first].override = true;
@@ -508,6 +516,23 @@ export function alignWords(words, heard, duration, language = 'en', { sounds = n
           move[e + 1][j + L] = 9;
           length[e + 1][j + L] = L;
           near[e + 1][j + L] = 0;
+        }
+      }
+      // Two words heard as one of the forms "heard" gives for them, over one to
+      // three heard words, like "ape lo" as "apelo".
+      if (!cjk && i < T && j < N && tokens[i].acceptedPair && groupEnd[i] + 1 < T) {
+        const e = groupEnd[groupEnd[i] + 1];
+        const longest = Math.max(...tokens[i].acceptedPair.map((f) => f.length));
+        let said = '';
+        for (let L = 1; L <= 3 && j + L <= N; L++) {
+          said += H[j + L - 1].norm;
+          if (said.length > longest) break;
+          if (tokens[i].acceptedPair.includes(said) && c - STEP < cost[e + 1][j + L]) {
+            cost[e + 1][j + L] = c - STEP;
+            move[e + 1][j + L] = 9;
+            length[e + 1][j + L] = L;
+            near[e + 1][j + L] = 0;
+          }
         }
       }
       // Two neighbouring words heard as one word, exactly or nearly, like "See
