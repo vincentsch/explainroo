@@ -87,6 +87,11 @@ my-format/
   assets/       files the example uses, if any
 ```
 
+A format may hold more files, like a look file that `video.json` names or
+modules that `format.js` imports. `init --format` copies every file into the
+new project in the same place, apart from `format.json` and `guide.md`. The
+guide goes in as `format.md`, and `video.json` gets the title and the flags.
+
 `format.json` looks like this:
 
 ```json

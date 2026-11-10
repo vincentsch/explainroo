@@ -25,8 +25,9 @@ export const BUILT_IN = path.join(ROOT, 'formats');
 export const GUIDE_LIMIT = 4096;
 const NAME = /^[a-z0-9][a-z0-9-]{0,39}$/;
 const NEEDED = ['format.json', 'guide.md', 'video.json', 'script.md', 'scenes.js'];
-// What init copies into a new project. format.md is the guide.
-const COPIED = ['script.md', 'scenes.js', 'format.js'];
+// What init leaves out of a new project: the files that only describe the
+// format. The guide goes in as format.md, and video.json comes from init.
+const DESCRIBES = ['format.json', 'guide.md', 'video.json'];
 
 export function installedRoot() {
   return path.join(cacheRoot(), 'formats');
@@ -143,33 +144,31 @@ function retitle(script, title) {
   return /^# .*$/m.test(script) ? script.replace(/^# .*$/m, `# ${title}`) : `# ${title}\n\n${script}`;
 }
 
-function copyTree(from, to) {
-  fs.mkdirSync(to, { recursive: true });
-  for (const entry of fs.readdirSync(from, { withFileTypes: true })) {
-    if (entry.name.startsWith('.')) continue;
-    const a = path.join(from, entry.name);
-    const b = path.join(to, entry.name);
-    if (entry.isDirectory()) copyTree(a, b);
-    else if (entry.isFile()) fs.copyFileSync(a, b);
-  }
-}
-
 // Fills a new project folder from a format. `config` is what init settled from
-// the format's video.json and the flags.
+// the format's video.json and the flags. Every other file of the format comes
+// along in its own place, like a look file or a module that format.js imports.
 export function startFromFormat(f, target, config) {
   fs.mkdirSync(path.join(target, 'assets'), { recursive: true });
   fs.writeFileSync(path.join(target, 'video.json'), JSON.stringify(config, null, 2) + '\n');
-  for (const file of COPIED) {
-    const from = path.join(f.dir, file);
-    if (!fs.existsSync(from)) continue;
-    const text = fs.readFileSync(from, 'utf8');
-    fs.writeFileSync(path.join(target, file), file === 'script.md' ? retitle(text, config.title) : text);
+  for (const file of f.files) {
+    if (DESCRIBES.includes(file)) continue;
+    const to = path.join(target, ...file.split('/'));
+    fs.mkdirSync(path.dirname(to), { recursive: true });
+    if (file === 'script.md') fs.writeFileSync(to, retitle(fs.readFileSync(path.join(f.dir, 'script.md'), 'utf8'), config.title));
+    else fs.copyFileSync(path.join(f.dir, ...file.split('/')), to);
   }
-  if (fs.existsSync(path.join(f.dir, 'assets'))) copyTree(path.join(f.dir, 'assets'), path.join(target, 'assets'));
   fs.writeFileSync(path.join(target, 'format.md'), `<!-- The guide of the format "${f.name}" ${f.version} by ${f.author}. -->\n\n${f.guide}`);
   // Someone else's format gets its credit in every package of the video.
   if (f.author.trim().toLowerCase() !== 'explainroo') {
-    fs.writeFileSync(path.join(target, 'post.json'), JSON.stringify({ credits: [`Format: ${f.name} by ${f.author}`] }, null, 2) + '\n');
+    const credit = `Format: ${f.name} by ${f.author}`;
+    const file = path.join(target, 'post.json');
+    let post = {};
+    try {
+      post = JSON.parse(fs.readFileSync(file, 'utf8'));
+    } catch {}
+    if (!post || typeof post !== 'object' || Array.isArray(post)) post = {};
+    const credits = Array.isArray(post.credits) ? post.credits : [];
+    fs.writeFileSync(file, JSON.stringify({ ...post, credits: credits.includes(credit) ? credits : [...credits, credit] }, null, 2) + '\n');
   }
 }
 
