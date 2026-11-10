@@ -53,6 +53,7 @@ const SAME = {
     centimeter: 'centimeters', centimetre: 'centimeters', centimetres: 'centimeters', millimeter: 'millimeters', millimetre: 'millimeters', millimetres: 'millimeters',
     kilogram: 'kilograms', kilo: 'kilograms', kilos: 'kilograms', gram: 'grams', gramme: 'grams', grammes: 'grams',
     second: 'seconds', millisecond: 'milliseconds', degree: 'degrees', euro: 'euros', dollar: 'dollars', pound: 'pounds',
+    real: 'reais', reals: 'reais',
   },
   es: {
     kilometro: 'kilometros', metro: 'metros', centimetro: 'centimetros', milimetro: 'milimetros', kilogramo: 'kilogramos', kilo: 'kilogramos', kilos: 'kilogramos',

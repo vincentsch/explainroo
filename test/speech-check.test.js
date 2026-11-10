@@ -159,6 +159,10 @@ for (const [language, [script, transcript]] of Object.entries(MONEY_CASES)) {
 test('"cem reais" heard as "R$ 100,00" is confirmed, and another amount is not', () => {
   assert.equal(alignWords(words('Com cem reais, você'), said('Com R$ 100,00, você'), 3, 'pt-br').matchRate, 1);
   assert.equal(alignWords(words('Com um real'), said('Com R$1'), 3, 'pt-br').matchRate, 1);
+  // In English the real is "real" for one and "reais" or "reals" for more.
+  assert.equal(alignWords(words('It costs one real today.'), said('It costs R$1 today.'), 3, 'en').matchRate, 1);
+  assert.equal(alignWords(words('It costs one real today.'), said('It costs 1 R$ today.'), 3, 'en').matchRate, 1);
+  assert.equal(alignWords(words('It costs two reals today.'), said('It costs R$2 today.'), 3, 'en').matchRate, 1);
   assert.deepEqual(missed('Com cem reais', alignWords(words('Com cem reais'), said('Com R$200'), 3, 'pt-br')), ['cem']);
   assert.deepEqual(missed('Com cem reais', alignWords(words('Com cem reais'), said('Com US$100'), 3, 'pt-br')), ['reais']);
 });
