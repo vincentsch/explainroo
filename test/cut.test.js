@@ -325,6 +325,34 @@ test('a word heard right after a deleted one names the time to move, and the mov
 
 });
 
+test('--out never writes over the video it cuts, also through a link, and writes through a temporary file', { timeout: 120000 }, async (t) => {
+  const dir = tempDir(t);
+  const before = process.env.EXPLAINROO_CACHE;
+  process.env.EXPLAINROO_CACHE = path.join(dir, 'cache');
+  t.after(() => { if (before === undefined) delete process.env.EXPLAINROO_CACHE; else process.env.EXPLAINROO_CACHE = before; });
+  const video = await recording(dir);
+  await writeCut(video, { transcribe: listener(heardWords) });
+  const hash = sha256File(video);
+  const linked = path.join(dir, 'alias.mp4');
+  fs.symlinkSync(video, linked);
+  const hard = path.join(dir, 'hard.mp4');
+  fs.linkSync(video, hard);
+  const sub = path.join(dir, 'sub');
+  fs.mkdirSync(sub);
+  for (const out of [video, linked, hard, path.join(sub, '..', 'talk.mp4')]) {
+    await assert.rejects(applyCut(video, { out, transcribe: listener(heardWords) }), /--out has to be another file than the video you cut/, out);
+  }
+  assert.equal(sha256File(video), hash);
+  // Another file is written over, by a rename of the finished file into place.
+  const other = path.join(sub, 'other.mp4');
+  fs.writeFileSync(other, 'old');
+  const r = await applyCut(video, { out: other, transcribe: listener(heardWords) });
+  assert.equal(r.out, other);
+  assert.ok(Number((await probe(other)).format.duration) > 4);
+  assert.deepEqual(fs.readdirSync(sub), ['other.mp4']);
+  assert.equal(sha256File(video), hash);
+});
+
 test('a recording is leveled toward -14 LUFS under the peak limit, and cut says what it reached', { timeout: 120000 }, async (t) => {
   const dir = tempDir(t);
   // Speech-like sound: a tone at -26 dBFS that comes and goes 3 times a second,
