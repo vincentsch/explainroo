@@ -299,6 +299,29 @@ test('every command refuses a flag it does not take, and takes every flag it rea
   assert.equal(fs.readdirSync(dir).length, 0);
 });
 
+// A word a command would ignore stops it with its usage, before anything runs.
+// Commands that take a list keep taking it.
+test('a command that takes a fixed number of words stops on one more, and sheet names its scenes', async (t) => {
+  const { tinyProject } = await import('./helpers/tiny-project.js');
+  const dir = tinyProject(t, {}, { narrated: false });
+  const render = await run(['render', dir, 'final']);
+  assert.equal(render.code, 1);
+  assert.equal(render.err, 'error: render takes one project, so it would ignore "final". Usage: explainroo render [project] [options]\n');
+  assert.match((await run(['sheet', dir, 'intro', 'outro'])).err, /^error: sheet takes a project and a scene, so it would ignore "outro"\. Usage: explainroo sheet \[project\] \[scene\] \[options\]\n$/);
+  assert.match((await run(['themes', 'dark', 'light'])).err, /^error: themes takes no words, so it would ignore "dark" and "light"\./);
+  assert.match((await run(['verify', dir, 'twice'])).err, /verify takes one project or one video file/);
+  assert.match((await run(['init', path.join(dir, 'a'), 'b'])).err, /init takes one folder, so it would ignore "b"/);
+  // An unknown scene names the scenes, before any narration is made.
+  const nosuch = await run(['sheet', dir, 'nosuch']);
+  assert.equal(nosuch.code, 1);
+  assert.match(nosuch.err, /^error: there is no scene "nosuch" in script\.md\. Its scenes are: intro\n$/);
+  assert.match((await run(['sheet', dir, 'intro', '--scene', 'outro'])).err, /the scene is named twice, as "intro" and with --scene outro\. Leave out one of them\./);
+  assert.equal(fs.existsSync(path.join(dir, 'build')), false);
+  // Lists stay lists.
+  const { extraWords } = await import('../src/cli.js');
+  for (const cmd of ['still', 'words', 'icons', 'say', 'docs', 'image']) assert.equal(extraWords(cmd, ['a', 'b', 'c', 'd']), null);
+});
+
 test('record --inspect takes a project or none and an address, and --viewport, --all, --text, --selector and --locale go only with it', async (t) => {
   const { tinyProject } = await import('./helpers/tiny-project.js');
   const dir = tinyProject(t, {}, { narrated: false });

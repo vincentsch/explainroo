@@ -66,7 +66,8 @@ Make a video
   preview [project]     live preview in your browser, reloads on save (--port, --size, --no-watermark)
   still [project] [t…]  PNG stills: "12.5", "scene", "scene@2.4" (default: end of every scene; --size,
                         --no-watermark, --transparent)
-  sheet [project]       contact sheet of the whole video (--scene id, --every s, --size, --no-watermark).
+  sheet [project] [scene]  contact sheet of the whole video, or of one scene as out/sheet-<scene>.jpg
+                        (--every s, --size, --no-watermark).
                         --times 3,12.5,intro@2 makes out/sheet-times.jpg of just those moments, written
                         like the times of still
   check [project]       find layout, timing and pronunciation problems (--view-width pixels, --size, --no-watermark).
@@ -250,6 +251,8 @@ export async function main(argv) {
   try {
     const refused = unknownFlag(cmd, flags);
     if (refused) throw new ProjectError(refused);
+    const extra = extraWords(cmd, pos);
+    if (extra) throw new ProjectError(extra);
     switch (cmd) {
       case 'init': return init(pos[0], flags, print);
       case 'set': {
@@ -368,8 +371,13 @@ export async function main(argv) {
         return 0;
       }
       case 'sheet': {
-        const { project } = runProject(pos[0], flags);
-        const r = await sheet(project, { scene: flags.scene, every: num(flags.every, 'every'), times: timesFlag(flags), cols: num(flags.cols, 'cols'), large: !!flags.large, log });
+        // sheet <project> <scene> is the sheet of that scene, the same as --scene.
+        // One word is the project, unless the current folder is one and the word isn't.
+        const isProject = pos.length === 2 || !fs.existsSync('video.json') || (pos[0] && fs.existsSync(path.join(pos[0], 'video.json')));
+        const { project } = runProject(isProject ? pos.shift() : undefined, flags);
+        const flagScene = textFlag(flags, 'scene');
+        if (pos[0] !== undefined && flagScene !== undefined && flagScene !== pos[0]) throw new ProjectError(`the scene is named twice, as "${pos[0]}" and with --scene ${flagScene}. Leave out one of them.`);
+        const r = await sheet(project, { scene: pos[0] ?? flagScene, every: num(flags.every, 'every'), times: timesFlag(flags), cols: num(flags.cols, 'cols'), large: !!flags.large, log });
         const marked = r.marked.length ? `, ${r.marked.length} marked "camera moving" or "drawing in" under the frame` : '';
         print(`${r.file} (${r.frames} frames${marked})`, r);
         return 0;
@@ -652,6 +660,26 @@ function videoArg(arg) {
   if (typeof arg !== 'string' || !VIDEO_FILE.test(arg)) return false;
   if (!isVideoFile(arg)) throw new ProjectError(`${arg} does not exist`);
   return true;
+}
+
+// What each command takes before its flags, for the commands that take a fixed
+// number of words there. A word more would be ignored, so it stops the command
+// with its usage. Commands that take a list, like still and words, aren't here,
+// and those with a usage message of their own check it themselves.
+const POSITIONALS = {
+  init: [1, 'one folder'], voice: [1, 'one project'], preview: [1, 'one project'], sheet: [2, 'a project and a scene'],
+  check: [1, 'one project or one video file'], render: [1, 'one project'], package: [1, 'one project'], share: [1, 'one project'],
+  clean: [1, 'one project'], export: [1, 'one project'], verify: [1, 'one project or one video file'], images: [1, 'one project'],
+  voices: [1, 'one project'], themes: [0, 'no words'], sizes: [0, 'no words'], doctor: [1, 'one project'], services: [1, 'one step'],
+  history: [1, 'one project'],
+};
+
+export function extraWords(cmd, pos) {
+  if (!Object.hasOwn(POSITIONALS, cmd)) return null;
+  const [most, takes] = POSITIONALS[cmd];
+  if (pos.length <= most) return null;
+  const extra = pos.slice(most).map((w) => `"${w}"`);
+  return `${cmd} takes ${takes}, so it would ignore ${allOf(extra)}. Usage: explainroo ${COMMAND_HELP[cmd].usage}`;
 }
 
 // The flags check and verify take for a video file without a project.

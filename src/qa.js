@@ -434,6 +434,9 @@ const LARGE_FRAME = 640;
 // `large` makes frames 640 pixels wide, 3 to a row, big enough to read labels.
 export async function sheet(project, { scene = null, every = null, times: moments = null, cols = null, large = false, log = () => {} } = {}) {
   if (moments && (scene || (every !== null && every !== undefined))) throw new ProjectError(`--times picks the moments itself, so it can't go with --${scene ? 'scene' : 'every'}. Leave out one of them.`);
+  // An unknown scene stops before any narration is made.
+  const ids = project.script.scenes.map((s) => s.id);
+  if (scene && !ids.includes(scene)) throw new ProjectError(`there is no scene "${scene}" in ${scriptName(project)}. Its scenes are: ${ids.join(', ')}`);
   const { timeline } = await prepare(project, { log });
   let times = [];
   let labels = [];
@@ -444,7 +447,6 @@ export async function sheet(project, { scene = null, every = null, times: moment
     labels = list.map((x) => x.label);
   } else if (scene) {
     const sc = timeline.scenes.find((s) => s.id === scene);
-    if (!sc) throw new Error(`no scene "${scene}". Scenes: ${timeline.scenes.map((s) => s.id).join(', ')}`);
     const step = every ?? Math.max(0.25, Math.min(1, sc.dur / 16));
     for (let t = 0; t < sc.dur - 0.01; t += step) {
       times.push(sc.start + t);

@@ -95,7 +95,7 @@ user. Read it first.
    ```bash
    explainroo still videos/<name>                 # the end of each scene
    explainroo still videos/<name> intro@2.5 12.0  # any moment
-   explainroo sheet videos/<name> --scene intro   # one scene over time
+   explainroo sheet videos/<name> intro           # one scene over time
    explainroo sheet videos/<name>                 # the whole video
    explainroo sheet videos/<name> --times 3,intro@2.5,40  # moments to compare
    ```
