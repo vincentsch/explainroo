@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { clipFrame, ClipFrames } from '../engine/clips.js';
 import { renderSoundtrack } from '../engine/audio/soundtrack.js';
+import { sourceSize } from '../src/clips.js';
 
 const info = { fps: 30, frames: 90, duration: 3 };
 
@@ -64,4 +65,31 @@ test('music ducks under clip sound with the same envelope as narration', async (
   const clip = await renderSoundtrack({ ...opts, clips: [{ data: new Float32Array(8000), sampleRate: 8000, start: 1, end: 2, duration: 1, from: 0, volume: 0.6, speed: 1 }] });
   assert.deepEqual(clip.getChannelData(0), voice.getChannelData(0));
   assert.deepEqual(clip.getChannelData(1), voice.getChannelData(1));
+});
+
+test('with to, a clip plays up to that second of the file, holds the frame before it, and loops back to from', () => {
+  assert.equal(clipFrame(info, 0.5, { from: 1, to: 2 }), 45);
+  assert.equal(clipFrame(info, 5, { from: 1, to: 2 }), 59);
+  assert.equal(clipFrame(info, 1.5, { from: 1, to: 2, loop: true }), 45);
+  assert.equal(clipFrame(info, 2.25, { at: 1, from: 1, to: 2, speed: 2, loop: true }), 45);
+  // A to at the end of the file is the file's last frame.
+  assert.equal(clipFrame(info, 9, { to: 3 }), 89);
+});
+
+test('clip sound with to stops there, and a loop repeats only the part', async () => {
+  const sr = 1000;
+  const data = Float32Array.from({ length: 3 * sr }, (_, i) => (i < sr ? 0.1 : i < 2 * sr ? 0.2 : 0.3));
+  const clip = { data, sampleRate: sr, start: 0, end: 3, duration: 3, from: 1, to: 2, loop: false, volume: 1, speed: 1 };
+  const once = (await renderSoundtrack({ duration: 3, sampleRate: sr, clips: [clip] })).getChannelData(0);
+  assert.ok(Math.abs(once[500] - 0.2) < 1e-6);
+  assert.equal(once[1500], 0);
+  const looped = (await renderSoundtrack({ duration: 3, sampleRate: sr, clips: [{ ...clip, loop: true }] })).getChannelData(0);
+  for (const i of [500, 1500, 2500]) assert.ok(Math.abs(looped[i] - 0.2) < 1e-6, String(i));
+});
+
+test('a clip knows the size of its file, which a crop is given in, also when its frames are smaller', () => {
+  assert.deepEqual(sourceSize({ width: 1280, height: 720 }, 1280, 720), { width: 1280, height: 720 });
+  assert.deepEqual(sourceSize({ width: 3840, height: 2160 }, 1920, 1080), { width: 3840, height: 2160 });
+  // A video turned on its side plays tall.
+  assert.deepEqual(sourceSize({ width: 3840, height: 2160 }, 1920, 3413), { width: 2160, height: 3840 });
 });

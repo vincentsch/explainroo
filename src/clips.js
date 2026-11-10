@@ -41,5 +41,21 @@ export async function extractClip(file, dir, fps) {
   const { width, height } = frame.streams[0];
   const hasAudio = input.streams.some((s) => s.codec_type === 'audio');
   if (hasAudio) await ffmpeg(['-loglevel', 'error', '-i', file, '-map', '0:a:0', '-vn', '-ar', '48000', '-ac', '1', '-c:a', 'pcm_s16le', path.join(dir, 'audio.wav')]);
-  return { frames, fps, width, height, duration: frames / fps, hasAudio };
+  return { frames, fps, width, height, duration: frames / fps, hasAudio, source: sourceSize(video, width, height) };
+}
+
+// The file's own size in pixels, which a crop is given in. The frames are at
+// most 1920 pixels wide, and turned like the video plays.
+export function sourceSize(video, width, height) {
+  if (width < 1920 || !video?.width || !video?.height) return { width, height };
+  const [a, b] = [video.width, video.height];
+  return Math.abs(a / b - width / height) <= Math.abs(b / a - width / height) ? { width: a, height: b } : { width: b, height: a };
+}
+
+// A clip's info from an older cache, which doesn't say the file's own size.
+export async function withSourceSize(file, info) {
+  if (info.source) return info;
+  if (info.width < 1920) return { ...info, source: { width: info.width, height: info.height } };
+  const video = (await probe(file)).streams.find((s) => s.codec_type === 'video');
+  return { ...info, source: sourceSize(video, info.width, info.height) };
 }

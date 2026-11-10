@@ -5,9 +5,17 @@ export const FIT_SPEEDS = [0.5, 2];
 // check reports a clip that holds its last frame longer than this.
 export const FREEZE_SECONDS = 0.3;
 
-export function clipFrame(info, t, { at = 0, from = 0, speed = 1, loop = false } = {}) {
+// The frame of a clip at scene time t. With `to`, it plays from `from` to `to`
+// in the file, then holds the frame before `to`, or with `loop` starts at
+// `from` again.
+export function clipFrame(info, t, { at = 0, from = 0, to, speed = 1, loop = false } = {}) {
   if (t < at) return null;
   let time = from + (t - at) * speed;
+  if (to !== undefined) {
+    const last = Math.max(0, Math.ceil(to * info.fps - 1e-8) - 1);
+    if (loop) time = from + ((time - from) % (to - from));
+    return Math.max(0, Math.min(info.frames - 1, last, Math.floor(time * info.fps + 1e-8)));
+  }
   if (loop) time = ((time % info.duration) + info.duration) % info.duration;
   return Math.max(0, Math.min(info.frames - 1, Math.floor(time * info.fps + 1e-8)));
 }

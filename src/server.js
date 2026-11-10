@@ -6,7 +6,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { ensureFonts, languageFonts } from './fonts.js';
-import { CLIP_SOURCE, dropClipFrames, extractClip, VIDEO_FILE } from './clips.js';
+import { CLIP_SOURCE, dropClipFrames, extractClip, VIDEO_FILE, withSourceSize } from './clips.js';
 import { typesetMath, mathHash, MAX_TEX_LENGTH } from './math.js';
 import { decodeSound, SOUND_RATE } from './sounds.js';
 import { ProjectError } from './errors.js';
@@ -111,7 +111,7 @@ async function cachedClip(projectDir, file, fps) {
   const key = infoFile;
   if (!clipJobs.has(key)) {
     const job = (async () => {
-      if (fs.existsSync(infoFile)) return { rel, info: JSON.parse(fs.readFileSync(infoFile, 'utf8')) };
+      if (fs.existsSync(infoFile)) return { rel, info: await withSourceSize(file, JSON.parse(fs.readFileSync(infoFile, 'utf8'))) };
       const temp = fs.mkdtempSync(path.join(path.dirname(infoFile), 'extract-'));
       try {
         const info = await extractClip(file, temp, fps);

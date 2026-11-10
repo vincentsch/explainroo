@@ -1196,8 +1196,9 @@ export class Engine {
         if (e.kind === 'clip') {
           if (e.volume > 0 && e.speed !== 1) once(`clip-sound:${sc.id}:${e.key}`, () => add('warn', sc.id, e.at, `clip "${e.src}" stays silent at speed ${Math.round(e.speed * 100) / 100}${e.fit ? ", which speed: 'fit' picked" : ''}; use speed: 1 for its sound`));
           const frozen = e.loop ? 0 : e.out - e.end;
-          if (frozen > FREEZE_SECONDS) once(`clip-freeze:${sc.id}:${e.key}`, () => add('warn', sc.id, e.end, `clip "${e.src}" freezes on its last frame for ${frozen.toFixed(1)}s, from ${e.end.toFixed(2)}s until ${e.out.toFixed(2)}s. ${e.fit
-            ? `speed: 'fit' goes no slower than ${FIT_SPEEDS[0]} times the clip's speed, and this one needs slower. Use loop: true, a longer clip or an earlier out`
+          const held = e.to === undefined ? 'its last frame' : `its frame at to: ${+e.to.toFixed(2)}`;
+          if (frozen > FREEZE_SECONDS) once(`clip-freeze:${sc.id}:${e.key}`, () => add('warn', sc.id, e.end, `clip "${e.src}" freezes on ${held} for ${frozen.toFixed(1)}s, from ${e.end.toFixed(2)}s until ${e.out.toFixed(2)}s. ${e.fit
+            ? `speed: 'fit' goes no slower than ${FIT_SPEEDS[0]} times the clip's speed, and this one needs slower. Use loop: true, ${e.to === undefined ? 'a longer clip' : 'a later to'} or an earlier out`
             : "speed: 'fit' plays it slower, so it ends with the scene, and loop: true repeats it"}`));
         }
         if (e.kind === 'recording') {
