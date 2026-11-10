@@ -56,6 +56,10 @@ export function sourceSize(video, width, height) {
 export async function withSourceSize(file, info) {
   if (info.source) return info;
   if (info.width < 1920) return { ...info, source: { width: info.width, height: info.height } };
-  const video = (await probe(file)).streams.find((s) => s.codec_type === 'video');
-  return { ...info, source: sourceSize(video, info.width, info.height) };
+  try {
+    const video = (await probe(file)).streams.find((s) => s.codec_type === 'video');
+    return { ...info, source: sourceSize(video, info.width, info.height) };
+  } catch {
+    return info;
+  }
 }

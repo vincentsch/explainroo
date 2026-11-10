@@ -2,7 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { clipFrame, ClipFrames } from '../engine/clips.js';
 import { renderSoundtrack } from '../engine/audio/soundtrack.js';
-import { sourceSize } from '../src/clips.js';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { sourceSize, withSourceSize } from '../src/clips.js';
+import { ffmpeg } from '../src/ffmpeg.js';
 
 const info = { fps: 30, frames: 90, duration: 3 };
 
@@ -92,4 +96,16 @@ test('a clip knows the size of its file, which a crop is given in, also when its
   assert.deepEqual(sourceSize({ width: 3840, height: 2160 }, 1920, 1080), { width: 3840, height: 2160 });
   // A video turned on its side plays tall.
   assert.deepEqual(sourceSize({ width: 3840, height: 2160 }, 1920, 3413), { width: 2160, height: 3840 });
+});
+
+test('a clip from an older cache gets the size of its file, read once from the file when its frames are 1920 wide', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-clip-size-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const file = path.join(dir, 'wide.mp4');
+  await ffmpeg(['-loglevel', 'error', '-f', 'lavfi', '-i', 'color=red:s=3840x2160:r=30:d=0.1', '-c:v', 'libx264', '-threads', '1', file]);
+  assert.deepEqual((await withSourceSize(file, { width: 1920, height: 1080 })).source, { width: 3840, height: 2160 });
+  // Frames under 1920 wide are the file's own size, so the file isn't read.
+  assert.deepEqual((await withSourceSize(path.join(dir, 'missing.mp4'), { width: 1280, height: 720 })).source, { width: 1280, height: 720 });
+  const kept = { width: 1920, height: 1080, source: { width: 2560, height: 1440 } };
+  assert.equal(await withSourceSize(file, kept), kept);
 });
