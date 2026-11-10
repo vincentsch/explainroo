@@ -235,6 +235,7 @@ export function unconfirmedWords(project, v, every = new Map()) {
     const quote = heardQuote(v, language, [k]);
     let advice;
     if (hasOverride(word)) advice = unconfirmedAdvice([{ word, heard }], false, script);
+    else if (heard && /\p{N}/u.test(word.text) && /\p{L}/u.test(heard) && !/\p{N}/u.test(heard)) advice = `It may be the number said as a word, which the speech check can't read here. If the voice says it right, write it as {${bareWord(word.text)}|${bareWord(heard)}} in ${script}.`;
     else if (heard && !hasPhonemizer(language) && soundsAlike(normWord(heard), normWord(word.text))) advice = `"${heard}" may sound the same, and in this language the speech check can't compare sounds, so {shown|spoken} can't help. Reword the sentence.`;
     else if (shortWord(word.text)) advice = `"${bareWord(word.text)}" is a short, common word, so a spelling hint can't change how it sounds. Reword the sentence.`;
     else if (every.has(normWord(word.text))) advice = `If the voice says it wrong, write it as {${bareWord(word.text)}|spoken spelling} in ${script}. ${everyTimeAdvice(every.get(normWord(word.text)))}`;
