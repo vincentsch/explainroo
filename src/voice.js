@@ -20,8 +20,9 @@ import { estimatedChapterHints } from './chapters.js';
 const PIPELINE = 7;
 // The rules of the speech check that a scene was checked with. A scene checked
 // with older rules is looked at again from its transcript once, without new
-// speech, and the result is saved. 4 reads maths written with signs.
-export const CHECK = 4;
+// speech, and the result is saved. 4 reads maths written with signs, and 5
+// reads amounts with a currency symbol, like "R$ 100" for "cem reais".
+export const CHECK = 5;
 
 // The key of the narration itself: the spoken words, the gaps between them and
 // the voice settings. Markers and the shown text are not part of it.

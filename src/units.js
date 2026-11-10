@@ -13,33 +13,35 @@ const UNITS = {
   en: {
     km: ['kilometers'], 'km/h': ['kilometers per hour', 'kilometers an hour'], 'km/s': ['kilometers per second', 'kilometers a second'],
     m: ['meters'], cm: ['centimeters'], mm: ['millimeters'], kg: ['kilograms'], g: ['grams'], s: ['seconds'], ms: ['milliseconds'],
-    '%': ['percent', 'per cent'], '°c': ['degrees celsius'], '€': ['euros'], $: ['dollars'],
+    '%': ['percent', 'per cent'], '°c': ['degrees celsius'], '€': ['euros'], $: ['dollars'], 'us$': ['dollars'], '£': ['pounds'], 'r$': ['reais', 'reals'],
   },
   es: {
     km: ['kilometros'], 'km/h': ['kilometros por hora'], 'km/s': ['kilometros por segundo'],
     m: ['metros'], cm: ['centimetros'], mm: ['milimetros'], kg: ['kilogramos'], g: ['gramos'], s: ['segundos'], ms: ['milisegundos'],
-    '%': ['por ciento', 'porciento'], '°c': ['grados celsius', 'grados centigrados', 'grados'], '€': ['euros'], $: ['dolares'],
+    '%': ['por ciento', 'porciento'], '°c': ['grados celsius', 'grados centigrados', 'grados'], '€': ['euros'], $: ['dolares'], 'us$': ['dolares'], '£': ['libras'], 'r$': ['reales'],
   },
   fr: {
     km: ['kilometres'], 'km/h': ['kilometres par heure', 'kilometres heure', 'kilometres a lheure'], 'km/s': ['kilometres par seconde', 'kilometres seconde'],
     m: ['metres'], cm: ['centimetres'], mm: ['millimetres'], kg: ['kilogrammes'], g: ['grammes'], s: ['secondes'], ms: ['millisecondes'],
-    '%': ['pour cent', 'pourcent'], '°c': ['degres celsius', 'degres'], '€': ['euros'], $: ['dollars'],
+    '%': ['pour cent', 'pourcent'], '°c': ['degres celsius', 'degres'], '€': ['euros'], $: ['dollars'], 'us$': ['dollars'], '£': ['livres'], 'r$': ['reais', 'reals'],
   },
   it: {
     km: ['chilometri'], 'km/h': ['chilometri orari', 'chilometri allora', 'chilometri lora', 'chilometri per ora'], 'km/s': ['chilometri al secondo', 'chilometri per secondo'],
     m: ['metri'], cm: ['centimetri'], mm: ['millimetri'], kg: ['chilogrammi'], g: ['grammi'], s: ['secondi'], ms: ['millisecondi'],
-    '%': ['per cento', 'percento'], '°c': ['gradi celsius', 'gradi centigradi', 'gradi'], '€': ['euro'], $: ['dollari'],
+    '%': ['per cento', 'percento'], '°c': ['gradi celsius', 'gradi centigradi', 'gradi'], '€': ['euro'], $: ['dollari'], 'us$': ['dollari'], '£': ['sterline', 'libbre'], 'r$': ['reais', 'real'],
   },
   'pt-br': {
     km: ['quilometros'], 'km/h': ['quilometros por hora'], 'km/s': ['quilometros por segundo'],
     m: ['metros'], cm: ['centimetros'], mm: ['milimetros'], kg: ['quilogramas'], g: ['gramas'], s: ['segundos'], ms: ['milissegundos'],
-    '%': ['por cento', 'porcento'], '°c': ['graus celsius', 'graus'], '€': ['euros'], $: ['dolares'],
+    '%': ['por cento', 'porcento'], '°c': ['graus celsius', 'graus'], '€': ['euros'], $: ['dolares'], 'us$': ['dolares'], '£': ['libras'], 'r$': ['reais'],
   },
   de: {
     km: ['kilometer'], 'km/h': ['kilometer pro stunde', 'stundenkilometer'], 'km/s': ['kilometer pro sekunde'],
     m: ['meter'], cm: ['zentimeter'], mm: ['millimeter'], kg: ['kilogramm'], g: ['gramm'], s: ['sekunden'], ms: ['millisekunden'],
-    '%': ['prozent'], '°c': ['grad celsius', 'grad'], '€': ['euro'], $: ['dollar'],
+    '%': ['prozent'], '°c': ['grad celsius', 'grad'], '€': ['euro'], $: ['dollar'], 'us$': ['dollar'], '£': ['pfund'], 'r$': ['real'],
   },
+  // Hindi reads numbers by their value and has words only for amounts.
+  hi: { '€': ['यूरो'], $: ['डॉलर'], 'us$': ['डॉलर'], '£': ['पाउंड'], 'r$': ['रियल'] },
 };
 
 // Other ways to write a unit word, as the word above. So "1 kilómetro" and
@@ -50,24 +52,24 @@ const SAME = {
     kilometer: 'kilometers', kilometre: 'kilometers', kilometres: 'kilometers', meter: 'meters', metre: 'meters', metres: 'meters',
     centimeter: 'centimeters', centimetre: 'centimeters', centimetres: 'centimeters', millimeter: 'millimeters', millimetre: 'millimeters', millimetres: 'millimeters',
     kilogram: 'kilograms', kilo: 'kilograms', kilos: 'kilograms', gram: 'grams', gramme: 'grams', grammes: 'grams',
-    second: 'seconds', millisecond: 'milliseconds', degree: 'degrees', euro: 'euros', dollar: 'dollars',
+    second: 'seconds', millisecond: 'milliseconds', degree: 'degrees', euro: 'euros', dollar: 'dollars', pound: 'pounds',
   },
   es: {
     kilometro: 'kilometros', metro: 'metros', centimetro: 'centimetros', milimetro: 'milimetros', kilogramo: 'kilogramos', kilo: 'kilogramos', kilos: 'kilogramos',
-    gramo: 'gramos', segundo: 'segundos', milisegundo: 'milisegundos', grado: 'grados', euro: 'euros', dolar: 'dolares',
+    gramo: 'gramos', segundo: 'segundos', milisegundo: 'milisegundos', grado: 'grados', euro: 'euros', dolar: 'dolares', libra: 'libras', real: 'reales',
   },
   fr: {
     kilometre: 'kilometres', metre: 'metres', centimetre: 'centimetres', millimetre: 'millimetres', kilogramme: 'kilogrammes', kilo: 'kilogrammes', kilos: 'kilogrammes',
-    gramme: 'grammes', seconde: 'secondes', milliseconde: 'millisecondes', degre: 'degres', euro: 'euros', dollar: 'dollars',
+    gramme: 'grammes', seconde: 'secondes', milliseconde: 'millisecondes', degre: 'degres', euro: 'euros', dollar: 'dollars', livre: 'livres', real: 'reals',
     egale: 'egal', egaux: 'egal', egales: 'egal',
   },
   it: {
     chilometro: 'chilometri', metro: 'metri', centimetro: 'centimetri', millimetro: 'millimetri', chilogrammo: 'chilogrammi', chilo: 'chilogrammi', chili: 'chilogrammi',
-    grammo: 'grammi', secondo: 'secondi', millisecondo: 'millisecondi', grado: 'gradi', dollaro: 'dollari',
+    grammo: 'grammi', secondo: 'secondi', millisecondo: 'millisecondi', grado: 'gradi', dollaro: 'dollari', sterlina: 'sterline', libbra: 'libbre',
   },
   'pt-br': {
     quilometro: 'quilometros', metro: 'metros', centimetro: 'centimetros', milimetro: 'milimetros', quilograma: 'quilogramas', quilo: 'quilogramas', quilos: 'quilogramas',
-    grama: 'gramas', segundo: 'segundos', milissegundo: 'milissegundos', grau: 'graus', euro: 'euros', dolar: 'dolares',
+    grama: 'gramas', segundo: 'segundos', milissegundo: 'milissegundos', grau: 'graus', euro: 'euros', dolar: 'dolares', libra: 'libras', real: 'reais',
   },
   de: {
     kilometern: 'kilometer', metern: 'meter', zentimetern: 'zentimeter', millimetern: 'millimeter', kilo: 'kilogramm', kilos: 'kilogramm',
@@ -85,10 +87,14 @@ export function sameUnitWord(token, language) {
 const AFTER_NUMBER = new Set(['m', 'g', 's', 'ms', 'mm']);
 
 const NUMBER = String.raw`\d(?:[\d.,'’\s]*\d)?`;
-const UNIT = String.raw`km\/h|km\/s|km|cm|mm|kg|ms|m|g|s|%|°[cC]|€|\$`;
-// A number with a unit after it, a unit alone, or a currency before a number.
+const CURRENCY = String.raw`R\$|US\$|€|£|\$`;
+const UNIT = String.raw`km\/h|km\/s|km|cm|mm|kg|ms|m|g|s|%|°[cC]|${CURRENCY}`;
+// A number with a unit after it, a unit alone, or a currency before a number,
+// like "R$ 100", which a voice says as "cem reais".
 const WITH_UNIT = new RegExp(`^(${NUMBER})?\\s?(${UNIT})$`);
-const CURRENCY_FIRST = new RegExp(`^([€$])\\s?(${NUMBER})$`);
+const CURRENCY_FIRST = new RegExp(`^(${CURRENCY})\\s?(${NUMBER})$`);
+
+const MONEY = ['$', '€', '£', 'r$', 'us$'];
 
 const strip = (word) => String(word ?? '').trim().replace(/^[("'“‘«¿¡[]+/u, '').replace(/[.,;:!?…)"'’”»\]]+$/u, '');
 
@@ -111,8 +117,9 @@ export function unitReading(word, before, language, other = []) {
   }
   unit = unit.toLowerCase();
   if (number === null && AFTER_NUMBER.has(unit) && !/\d$/.test(strip(before))) return null;
-  if (language === 'en' && ['%', '$', '€'].includes(unit) && number !== null && (first || unit === '%')) return null;
-  if (language === 'de' && ['%', '$', '€', '°c'].includes(unit) && number !== null) return null;
+  if (language === 'en' && ['%', ...MONEY].includes(unit) && number !== null && (first || unit === '%')) return null;
+  if (language === 'de' && ['%', '°c', ...MONEY].includes(unit) && number !== null) return null;
+  if (!forms[unit]) return null;
   const readings = forms[unit].map((r) => r.split(' '));
   if (readings.length === 1) return { number, tokens: readings[0] };
   // The reading that the other side says word for word, or else the one with
@@ -165,7 +172,7 @@ export function numberGroups(texts) {
   const lead = texts.map((_, i) => i);
   for (let i = 1; i < texts.length; i++) {
     const prev = String(texts[i - 1]).trim();
-    const starts = lead[i - 1] === i - 1 ? /^[€$£]?\d{1,3}$/.test(prev) : /^\d{3}$/.test(prev);
+    const starts = lead[i - 1] === i - 1 ? /^(?:R\$|US\$|[€$£])?\d{1,3}$/.test(prev) : /^\d{3}$/.test(prev);
     if (starts && /^\d{3}(?!\d)/.test(String(texts[i]).trim())) lead[i] = lead[i - 1];
   }
   return lead;
