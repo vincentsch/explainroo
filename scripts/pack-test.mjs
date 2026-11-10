@@ -607,6 +607,15 @@ const steps = [
     },
   },
   {
+    // The same without a project: en-US at 1920x1080, and what a selector matches.
+    args: () => ['record', '--inspect', `${demoApp.url}#/new-invoice`, '--selector', '#amount', '--json'],
+    env: ({ temp }) => ({ EXPLAINROO_CACHE: path.join(temp, 'record-cache') }),
+    check: (r) => {
+      expect(r.locale === 'en-US' && r.viewport?.width === 1920 && r.selector?.matches === 1 && r.selector.visible === 1, `record --inspect --selector says ${JSON.stringify(r)}`);
+      return `${r.selector.matches} match`;
+    },
+  },
+  {
     setup: ({ temp }) => fs.writeFileSync(path.join(temp, 'tiny/scenes.js'), "export default { hello(s) { const r = s.recording('ledger', { frame: 'browser', cues: { typed: 'TikTok' } }); s.text('Typed', { at: r.times.typed, y: s.safe.y + 60 }); } };\n"),
     args: ['still', 'tiny', 'hello@end', '--json'],
     check: (r) => {
