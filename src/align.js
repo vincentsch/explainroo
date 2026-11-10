@@ -387,6 +387,19 @@ export function alignWords(words, heard, duration, language = 'en', { sounds = n
   // Per first token of a word: the word's tokens joined, and the same with the next word.
   const wordJoin = tokens.map((t, i) => (t.first ? joinTokens(i, groupEnd[i]) : ''));
   const pairJoin = tokens.map((t, i) => (t.first && groupEnd[i] + 1 < T ? joinTokens(i, groupEnd[groupEnd[i] + 1]) : ''));
+  // An elision, like "un'ape" or "l'eau", is one word with its apostrophe, two
+  // words with a space and one word joined. The letters of each written and
+  // heard word, before numbers are read, compare such a word on both sides,
+  // because "un" alone reads as a number. Per heard token: the letters of the
+  // heard word it starts, and where that heard word ends.
+  const APOSTROPHE = /\p{L}['’]\p{L}/u;
+  const elided = (text) => APOSTROPHE.test(text);
+  const wordLetters = words.map((w) => normWord(String(w.spoken).replace(/\s+/g, '')));
+  const wordElided = words.map((w) => elided(w.spoken));
+  const heardStart = H.map((h, j) => !j || H[j - 1].source !== h.source);
+  const heardEnd = H.map((h, j) => { let e = j; while (e + 1 < N && H[e + 1].source === h.source) e++; return e; });
+  const heardLetters = H.map((h) => normWord(joined[h.source].text));
+  const heardElided = H.map((h) => elided(joined[h.source].text));
   for (let i = 0; i <= T; i++) {
     for (let j = 0; j <= N; j++) {
       const c = cost[i][j];
@@ -464,6 +477,37 @@ export function alignWords(words, heard, duration, language = 'en', { sounds = n
           cost[i + 1][j + 2] = c;
           move[i + 1][j + 2] = 6;
           near[i + 1][j + 2] = MARK[how];
+        }
+      }
+      // A word with an apostrophe heard as its letters over one to three heard
+      // words, like "un'ape" as "un ape" or "unape". Every letter was heard, so
+      // this wins over a near match of a part, like "don" for "don't".
+      if (!cjk && i < T && j < N && tokens[i].first && heardStart[j] && wordElided[tokens[i].wi]) {
+        const e = groupEnd[i];
+        const want = wordLetters[tokens[i].wi];
+        let said = '';
+        for (let k = j, n = 0; k < N && n < 3; k = heardEnd[k] + 1, n++) {
+          said += heardLetters[k];
+          if (said.length > want.length) break;
+          const L = heardEnd[k] + 1 - j;
+          if (said === want && c - STEP < cost[e + 1][j + L]) {
+            cost[e + 1][j + L] = c - STEP;
+            move[e + 1][j + L] = 8;
+            length[e + 1][j + L] = L;
+            near[e + 1][j + L] = 0;
+          }
+        }
+      }
+      // Two written words heard as one word with an apostrophe, like "l eau" as "l'eau".
+      if (!cjk && i < T && j < N && tokens[i].first && heardStart[j] && heardElided[j] && groupEnd[i] + 1 < T) {
+        const wa = tokens[i].wi;
+        const e = groupEnd[groupEnd[i] + 1];
+        const L = heardEnd[j] + 1 - j;
+        if (wordLetters[wa] + wordLetters[tokens[e].wi] === heardLetters[j] && c - STEP < cost[e + 1][j + L]) {
+          cost[e + 1][j + L] = c - STEP;
+          move[e + 1][j + L] = 9;
+          length[e + 1][j + L] = L;
+          near[e + 1][j + L] = 0;
         }
       }
       // Two neighbouring words heard as one word, exactly or nearly, like "See
@@ -551,8 +595,8 @@ export function alignWords(words, heard, duration, language = 'en', { sounds = n
       const cut = from + ((to - from) * weight[wa]) / (weight[wa] + weight[wb]);
       add(wa, from, cut, sb - sa);
       add(wb, cut, to, i - sb);
-      pair(wa, j - L, j - 1, JOINED);
-      pair(wb, j - L, j - 1, JOINED);
+      pair(wa, j - L, j - 1, near[i][j]);
+      pair(wb, j - L, j - 1, near[i][j]);
       matched += i - sa;
       i = sa;
       j -= L;

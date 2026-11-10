@@ -106,3 +106,24 @@ test('ordinals match the words the voice says', () => {
   const first = alignWords([{ spoken: 'the' }, { spoken: '1st' }], heard([['the', 0, 0.2], ['first', 0.2, 0.5]]), 0.6);
   assert.equal(first.matchRate, 1);
 });
+
+test('a word with an apostrophe matches the same letters with a space or joined, in every language, and a finding names the word that missed', () => {
+  const said = (text) => text.split(' ').map((spoken) => ({ spoken }));
+  const at = (text) => heard(text.split('|').map((t, i) => [t, i * 0.3, i * 0.3 + 0.25]));
+  const state = (r) => r.words.map((w) => (w.nearly ? `near:${w.heard}` : w.matched ? 'exact' : `no:${w.heard ?? ''}`));
+  for (const form of ['un|ape', "un'|ape", 'unape', "un'ape", "un|'ape"]) {
+    const r = alignWords(said("vita, un'ape produce"), at(`vita,|${form}|produce`), 1, 'it');
+    assert.deepEqual(state(r), ['exact', 'exact', 'exact'], form);
+    assert.equal(r.matchRate, 1);
+  }
+  assert.deepEqual(state(alignWords(said("mange l'eau claire"), at('mange|l|eau|claire'), 2, 'fr')), ['exact', 'exact', 'exact']);
+  assert.deepEqual(state(alignWords(said("I don't know"), at('I|don|t|know'), 2, 'en')), ['exact', 'exact', 'exact']);
+  // Written with a space and heard with the apostrophe.
+  assert.deepEqual(state(alignWords(said('mange l eau claire'), at("mange|l'eau|claire"), 2, 'fr')), ['exact', 'exact', 'exact', 'exact']);
+  // The time spans every heard part.
+  const span = alignWords(said("vita, un'ape produce"), at("vita,|un'|ape|produce"), 2, 'it').words[1];
+  assert.deepEqual([span.start, span.end], [0.3, 0.85]);
+  // Another word that didn't match is the one named.
+  const missed = alignWords(said("vita, un'ape operaia produce"), at("vita,|un'|ape|ragazza|produce"), 2, 'it');
+  assert.deepEqual(state(missed), ['exact', 'exact', 'no:ragazza', 'exact']);
+});
