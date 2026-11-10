@@ -498,6 +498,11 @@ test('a section is found by its heading in any case, by a word only it has, or b
   assert.equal(none.status, 1);
   assert.match(none.stderr, /^error: publishing has no section "nope"\. Its sections are: package-a-video-for-a-platform, .*share-a-link, test-servers\. "explainroo docs publishing --sections" lists them with their size\./);
   assert.match(run('docs', '--sections').stderr, /the start page has no sections to print one by one/);
+  // A topic without sections names the command for the whole topic.
+  const whole = run('docs', 'voices', 'kokoro');
+  assert.equal(whole.status, 1);
+  assert.match(whole.stderr, /^error: voices has no sections, so there is no section "kokoro"\. It is [\d.]+ KB, so print it whole with "explainroo docs voices"\./);
+  assert.doesNotMatch(whole.stderr, /Its sections are/);
 });
 
 test('publishing starts with the package and the common part of posting, and each route has a section of its own', () => {
@@ -514,6 +519,12 @@ test('publishing starts with the package and the common part of posting, and eac
 test('the start page says to print only the section of a topic that you need', () => {
   const topicsPart = oneLine(part('Topics'));
   for (const words of ['`npx --yes explainroo docs <topic> --sections`', '`npx --yes explainroo docs <topic> <section>`', 'Print only the section you need']) assert.ok(topicsPart.includes(words), words);
+  // The first screen names --sections before it points to a whole topic.
+  const firstScreen = start.split('\n').slice(0, 24).join('\n');
+  const sections = firstScreen.indexOf('`explainroo docs <topic> --sections`');
+  assert.ok(sections !== -1, 'the first screen of the start page names docs <topic> --sections');
+  const whole = /`explainroo docs [a-z-]+`/.exec(firstScreen);
+  assert.ok(!whole || whole.index > sections, `the first screen points to ${whole?.[0]} before it names --sections`);
 });
 
 // Defaults and choices that are easy to miss, on the page that is read first.

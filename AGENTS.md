@@ -3,13 +3,15 @@
 Run explainroo with `npx --yes explainroo`. `--yes` stops `npx` from waiting
 on its install question. In a source checkout, run `node bin/explainroo.js`
 instead. The command examples below shorten this to plain `explainroo`, so type
-the full form when you run them. Running through `npx` does not install a
-permanent `explainroo` command on `PATH`.
+the full form when you run them. `npx` does not install an `explainroo`
+command on `PATH`.
 
 This page tells you, the coding agent, how to make a video with explainroo.
 The user gives you a topic, maybe with a length or a style. You write the words
-and the pictures, and explainroo makes the video. When the user wants their own
-recording edited instead, read `explainroo docs cut`.
+and the pictures, and explainroo makes the video. A long docs topic has
+sections, and `explainroo docs <topic> --sections` lists them. Print only the
+one you need. When the user wants their own recording edited instead, read
+`explainroo docs cut`.
 
 ## What explainroo does
 
@@ -20,8 +22,7 @@ the script on this computer, or the narration comes from ElevenLabs,
 Cartesia or the user's own recording. Whisper notes when each word is spoken.
 Chrome draws the frames, and ffmpeg makes the MP4 with music and sound
 effects. All of this runs on this computer, so a video needs no account and
-no key. The full documentation for people is at
-https://www.explainroo.com/docs/.
+no key. The documentation for people is at https://www.explainroo.com/docs/.
 
 ## The hard limits
 
@@ -69,8 +70,7 @@ else leaves the computer, and everything else is free.
 ## Before you start
 
 You only need to clone explainroo to change explainroo itself. It needs
-Node.js 20.11 or newer, ffmpeg, and Chrome or Chromium. Run this once, in any
-folder:
+Node.js 20.11 or newer, ffmpeg, and Chrome or Chromium. Run this once:
 
 ```bash
 npx --yes explainroo doctor --fetch
@@ -88,7 +88,7 @@ missing. Commands that work on a video take the project folder first, and
 every command accepts `--json`.
 
 `npx --yes explainroo docs` prints this page, and
-`npx --yes explainroo docs <topic>` prints one of the topics listed at the end.
+`npx --yes explainroo docs <topic>` prints a topic listed at the end.
 
 `explainroo connect <service>` sets up a key or a sign-in. It tests it and
 saves it in the settings folder, so every project can use it. Never print a
@@ -178,8 +178,7 @@ publishes nothing.
 
 ## Topics
 
-`npx --yes explainroo docs <topic>` prints one of these. Read the topic of the
-step you are on. A long topic has sections:
+Read the topic of the step you are on. A long topic has sections:
 `npx --yes explainroo docs <topic> --sections` lists them with their size, and
 `npx --yes explainroo docs <topic> <section>` prints one, like
 `npx --yes explainroo docs publishing buffer`. Print only the section you need.

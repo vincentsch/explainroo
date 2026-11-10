@@ -1141,6 +1141,7 @@ export function docSections(text) {
 // only one section has. A "### " part of a section counts when no section does.
 function findSection(topic, text, asked) {
   const sections = docSections(text);
+  if (!sections.length) throw new ProjectError(`${topic} has no sections, so there is no section "${asked}". It is ${(Buffer.byteLength(text) / 1000).toFixed(1)} KB, so print it whole with "explainroo docs ${topic}".`);
   const wanted = headingSlug(asked);
   const words = wanted.split('-').filter(Boolean);
   const pick = (list) => {
