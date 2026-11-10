@@ -306,6 +306,13 @@ test('a word heard right after a deleted one names the time to move, and the mov
   assert.match(said, new RegExp(`It heard "Ri" at 1\\.0 s \\(1\\.\\d\\d s in talk\\.mp4\\), which the list doesn't keep\\. The join before first@1\\.40 may sit in "Sorry", which you deleted, because the speech model can put a word's start too early\\. Move the time of first@1\\.40 on line ${line} later, up to 1\\.90, to where the word starts, and try again\\.`));
   assert.doesNotMatch(said, /delete the word next to it/);
   assert.match(said, new RegExp(`  1\\.\\d\\d s in the cut: stops at [01]\\.\\d\\d s \\(planned 1\\.20\\), starts at 1\\.40 s \\(planned 1\\.40\\), before first@1\\.40 on line ${line}\\n`));
+  // Two words heard at one join make one line, and a kept word it missed there
+  // gets no advice to keep the deleted word.
+  const cut = { word: 'Sorry', side: 'before', kept: 'first@1.40', line, upTo: 1.9 };
+  const both = formatCut({ ...dry, speech: { matchRate: 0.75, missing: [{ word: 'first', time: 1.1, original: 1.4, next: { item: 'Sorry,@1.20', side: 'before', type: 'word' } }], extra: [{ word: 'Ri', time: 1.0, original: 1.4, cut }, { word: 'first', time: 1.2, original: 1.6, cut }] } });
+  assert.equal(both.match(/Move the time of first@1\.40/g).length, 1);
+  assert.match(both, /It heard "Ri" at 1\.0 s \(1\.40 s in talk\.mp4\), "first" at 1\.2 s \(1\.60 s in talk\.mp4\), which the list doesn't keep\. The join before first@1\.40/);
+  assert.doesNotMatch(both, /Keep it/);
   // Moved to where the word starts, the join is there.
   fs.writeFileSync(list, fs.readFileSync(list, 'utf8').replace('first@1.40', 'first@1.62'));
   const fixed = await applyCut(video, { dryRun: true, transcribe: listener([{ text: 'One.', start: 0.5, end: 0.9 }, { text: 'first', start: 1.1, end: 1.4 }, { text: 'page.', start: 1.8, end: 2.2 }]) });

@@ -752,15 +752,21 @@ export function formatCut(r) {
     const near = (x) => missing.some((w) => Math.abs(w.time - x.time) < 0.6);
     const inWord = extra.filter((x) => x.cut);
     const rest = extra.filter((x) => !x.cut);
+    // One line for each join that may sit in a deleted word, with every word heard there.
+    const byJoin = new Map();
+    for (const x of inWord) byJoin.set(`${x.cut.side} ${x.cut.kept}`, [...(byJoin.get(`${x.cut.side} ${x.cut.kept}`) ?? []), x]);
+    // A kept word it didn't hear after such a join has that line, not advice to keep the deleted word.
+    const moving = new Set(inWord.filter((x) => x.cut.side === 'before').map((x) => x.cut.kept.slice(x.cut.kept.lastIndexOf('@') + 1)));
+    const kept = missing.filter((w) => w.next && !(w.next.side === 'before' && moving.has(w.original.toFixed(2))));
     const s = (t) => `${t.toFixed(2)} s`;
     const lines = [
       r.dryRun ? `Dry run of ${listName}, nothing written.` : r.out,
       `${r.before.toFixed(1)} s ${r.dryRun ? 'would cut' : 'cut'} to ${r.after.toFixed(1)} s, with ${r.joins} join${r.joins === 1 ? '' : 's'}. The speech model heard ${Math.round(r.speech.matchRate * 100)}% of the words the list keeps.`,
-      ...missing.filter((w) => w.next).slice(0, 8).map((w) => `It didn't hear ${where(w)}. You deleted ${w.next.item} right ${w.next.side} it, and that may hold the ${w.next.side === 'after' ? 'end' : 'start'} of the word. Keep it${w.next.type === 'sound' ? ', or give it fewer seconds to keep part of it,' : ''} and try again.`),
+      ...kept.slice(0, 8).map((w) => `It didn't hear ${where(w)}. You deleted ${w.next.item} right ${w.next.side} it, and that may hold the ${w.next.side === 'after' ? 'end' : 'start'} of the word. Keep it${w.next.type === 'sound' ? ', or give it fewer seconds to keep part of it,' : ''} and try again.`),
       plain.length ? `It didn't hear ${list(plain)}. A join may cut into ${plain.length === 1 ? 'that word' : 'those words'}, so listen there.` : '',
-      ...inWord.slice(0, 8).map((x) => (x.cut.side === 'before'
-        ? `It heard ${where(x)}, which the list doesn't keep. The join before ${x.cut.kept} may sit in "${x.cut.word}", which you deleted, because the speech model can put a word's start too early. Move the time of ${x.cut.kept}${x.cut.line ? ` on line ${x.cut.line}` : ''} later, up to ${x.cut.upTo.toFixed(2)}, to where the word starts, and try again.`
-        : `It heard ${where(x)}, which the list doesn't keep. The join after ${x.cut.kept} may sit in "${x.cut.word}", which you deleted, so listen there.`)),
+      ...[...byJoin.values()].slice(0, 8).map((heard) => [heard, heard[0]]).map(([heard, x]) => (x.cut.side === 'before'
+        ? `It heard ${list(heard)}, which the list doesn't keep. The join before ${x.cut.kept} may sit in "${x.cut.word}", which you deleted, because the speech model can put a word's start too early. Move the time of ${x.cut.kept}${x.cut.line ? ` on line ${x.cut.line}` : ''} later, up to ${x.cut.upTo.toFixed(2)}, to where the word starts, and try again.`
+        : `It heard ${list(heard)}, which the list doesn't keep. The join after ${x.cut.kept} may sit in "${x.cut.word}", which you deleted, so listen there.`)),
       rest.length ? `It heard ${list(rest)}, which the list doesn't keep. ${rest.every(near) ? 'That may be what is left of a kept word it didn\'t hear, so listen there.' : 'That may be left from a word you cut, so listen there.'}` : '',
       r.loudness ? loudnessLine(r.loudness) : '',
       ...(r.joinList?.length ? [`The joins, with where ${name} stops and starts again, as planned from the word times and where it landed at a quiet moment:`,
