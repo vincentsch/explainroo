@@ -221,9 +221,14 @@ export function punch(s, at, { zoom = 1.25 } = {}) {
   return s.short.punch(at, { x: p.x - (p.x - s.cx) / zoom, y: p.y - (p.y - s.cy) / zoom, zoom, hold: 1 });
 }
 
-// The last frame: the one thing to remember, with up to three short lines.
-export function payoff(s, title, lines, { at = 0.2, tone = 'good', icon = 'circle-check', color = colors(s).accent } = {}) {
+// The last frame: the one thing to remember, with up to three short lines. In
+// a tall frame the card fills the width of s.safe, so it is the clearest frame
+// of the video. Its words, 52 pixels in from its sides, stay in s.safe at the
+// zoom of the scene's punch(): a large zoom makes it narrower. `w` sets
+// another width. Returns the card's box.
+export function payoff(s, title, lines, { at = 0.2, tone = 'good', icon = 'circle-check', color = colors(s).accent, w } = {}) {
   backdrop(s, { pattern: 'none' });
   if (icon) echo(s, icon, { color, at });
-  s.short.payoff({ title, lines, tone, at, y: s.safe.y + s.safe.h * 0.5 });
+  const width = w ?? (s.H > s.W ? Math.min(s.safe.w, wordArea(s).w + 52 * 2) : undefined);
+  return s.short.payoff({ title, lines, tone, at, w: width, y: s.safe.y + s.safe.h * 0.5 });
 }

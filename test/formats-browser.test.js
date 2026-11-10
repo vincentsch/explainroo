@@ -130,3 +130,31 @@ test('vertical-short keeps fact() clear of the step label at the zoom of its pun
     assert.deepEqual(bad, [], `${size}: ${JSON.stringify(bad, null, 2)}`);
   }
 });
+
+// The closing card of vertical-short fills the content area in a tall frame,
+// and its words stay in it at the zoom of the scene's punch(). `w` sets another
+// width, and the card's box comes back.
+test('vertical-short payoff() fills the content area in a tall frame and takes w', { skip }, async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-format-payoff-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const cases = {
+    full: ['{ zoom: 1.12 }', '', 'Math.abs(card.w - s.safe.w) < 0.5'],
+    zoomed: ['{ zoom: 1.25 }', '', 'card.w < s.safe.w - 50'],
+    own: ['{ zoom: 1.12 }', ', { w: 600 }', 'card.w === 600'],
+  };
+  for (const [name, [zoom, options, holds]] of Object.entries(cases)) {
+    const dir = path.join(root, name);
+    assert.equal((await runCli(['init', dir, '--format', 'vertical-short', '--size', 'reels'])).code, 0);
+    const file = path.join(dir, 'scenes.js');
+    const scenes = fs.readFileSync(file, 'utf8')
+      .replace("punch(s, '#harm', { zoom: 1.12 })", `punch(s, '#harm', ${zoom})`)
+      .replace("payoff(s, 'Keep it warm', [", 'const card = payoff(s, \'Keep it warm\', [')
+      .replace(/(\{ text: 'No charging while frozen', at: '#charge' \},\n {4}\])\);/, `$1${options});\n    if (!(${holds})) throw new Error('the card is ' + card.w + ' wide');`);
+    assert.match(scenes, /the card is/);
+    fs.writeFileSync(file, scenes);
+    for (const scene of loadProject(dir).script.scenes) cachedVoice(dir, scene.id);
+    const { issues } = JSON.parse((await runCli(['check', dir, '--json'])).stdout);
+    const bad = issues.filter((i) => i.level === 'warn' || i.level === 'error');
+    assert.deepEqual(bad, [], `${name}: ${JSON.stringify(bad, null, 2)}`);
+  }
+});
