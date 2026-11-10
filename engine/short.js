@@ -577,8 +577,19 @@ export class Short {
     return s._v6 ? (s.H > s.W ? 44 : 40) : 34;
   }
 
+  // brand.accent for the kicker's pill with "defaults": "0.6", when it is set.
+  // The kicker's words are white, so where they read too poorly on it, it
+  // keeps its hue, made darker until they read, like the box behind a slab's
+  // keywords. Null without a brand accent.
+  brandKicker(size) {
+    if (!this.s._v6) return null;
+    const accent = cssColor(this.s.engine.config.brand?.accent ?? '');
+    return accent ? suggestColor(accent, '#ffffff', size)?.color ?? null : null;
+  }
+
   // A small uppercase label, like "QUICK TIP" above a hook. o: x, y, size,
-  // color, icon (an icon name), at, out, sfx. Returns its width.
+  // color, icon (an icon name), at, out, sfx. Returns its width. With
+  // "defaults": "0.6", its color is brand.accent when that is set.
   kicker(str, o = {}) {
     const s = this.s;
     const size = o.size ?? this.kickerSize();
@@ -594,7 +605,7 @@ export class Short {
     if (this.at(at) >= 0) this.enter(at, 0.35, o.sfx ?? null, { label: 'kicker', chosen: o.sfx !== undefined });
     const life = this.life(at, o.out, 0.35);
     if (!life) return w;
-    const bg = o.color ?? '#e5233d';
+    const bg = o.color ?? this.brandKicker(size) ?? '#e5233d';
     this.popIn(life, x, y, () => {
       this.roundRect(x - w / 2, y - h / 2, w, h, h / 2, bg, { shadow: { color: alpha(bg, 0.45), blur: 20, y: 6 } });
       let tx = x - w / 2 + size * 0.65;

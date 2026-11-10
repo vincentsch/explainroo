@@ -32,10 +32,10 @@ here serves that second and keeps the picture moving after it.
 
 The background and the glow come from `"brand"` in `video.json`:
 `brand.background` and `brand.accent` when they are set, and the look's
-background and accent otherwise. The hook's keywords take `brand.accent` too,
-when white words read on it. So set the brand's colors in `video.json`, not in
-`format.js`. The format starts in the dark `midnight` look, which suits a feed,
-also for a product.
+background and accent otherwise. The hook's keywords and its kicker take
+`brand.accent` too, darker where white words need it. So set brand colors
+in `video.json`, not in `format.js`. The format starts in the dark
+`midnight` look, which suits a feed.
 
 ## The helpers in format.js
 

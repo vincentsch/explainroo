@@ -216,7 +216,9 @@ the backdrop or `s.bg` behind it.
 
 A small uppercase label in a pill, like "QUICK TIP". `x`, `y`, `size` (44 in a
 tall frame and 40 in others with `"defaults": "0.6"`, and 34 before), `color`,
-`icon` (an icon name), `at`, `out`, `sfx`.
+`icon` (an icon name), `at`, `out`, `sfx`. The pill is red, and with
+`"defaults": "0.6"` it takes `brand.accent`, made darker until its white words
+read. A hook's kicker is the same pill, and `kickerColor` sets its color.
 
 ### `sticker(text, options)`
 
