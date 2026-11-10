@@ -141,8 +141,9 @@ user. Read it first.
     cover it, and the warning gives a `music.volume` 3 dB lower. It doesn't
     for number and maths words, which the check often hears written another
     way, or when the music is already under 0.5. Then listen at those times.
-    Its last
-    line is the verdict: "passed", "passed with 2 warnings" or "failed: 1
+    Two words heard as one, like "Point it" heard as "pointed", are one
+    finding with no music advice, and only a hint when the narration alone
+    confirmed them. Its last line is the verdict: "passed", "passed with 2 warnings" or "failed: 1
     problem", and `--json` has it as `verdict`, with `passed` true or false.
 
 11. **Tell the user** where the video and its subtitle files, chapters and

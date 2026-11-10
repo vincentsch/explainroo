@@ -121,3 +121,25 @@ test('the music advice leaves out number and maths words, and never goes under 0
   for (const word of ['two', '5', 'minus', 'squared', 'halves', 'equals']) assert.equal(mathWord(word), true, word);
   for (const word of ['and', 'is', 'second', 'free']) assert.equal(mathWord(word), false, word);
 });
+
+// "Point it" heard as "pointed": the near match and the word next to it are one
+// finding, and the music gets no advice, because it doesn't hide the word.
+test('a word the mix could not confirm next to a near match that covers both is one finding, with no music advice', async (t) => {
+  const project = await videoProject(t, '# Demo\n\n## intro\nPoint it at a file and it prints the file back neatly.\n', [{ id: 'intro', dur: 2 }]);
+  fs.writeFileSync(path.join(project.dir, 'video.json'), JSON.stringify({ size: '320x180', fps: 24, music: { volume: 0.5 } }));
+  const r = await verify(loadProject(project.dir), { transcribe: says(['Pointed at a file and it prints the file back neatly.']) });
+  assert.deepEqual(r.speech.together, [{ scene: 'intro', words: 'Point it', word: 'it', near: 'Point', heard: 'Pointed', time: 0 }]);
+  assert.deepEqual(r.speech.unconfirmed, []);
+  assert.deepEqual(r.speech.nearly, []);
+  const found = r.issues.filter((i) => /Point|music/.test(i.message));
+  assert.deepEqual(found, [{ level: 'warn', message: '"Point it" at 0.0 s was probably heard as one word, "Pointed", in the final mix, so the music is not what hides "it" and needs no change. The narration alone didn\'t confirm "it" either, so see what voice says about it' }]);
+  // When the narration alone confirmed it, the voice says it, and that is a hint.
+  const { cachedVoice } = await import('./helpers/cached-voice.js');
+  cachedVoice(project.dir, 'intro');
+  const alone = await verify(loadProject(project.dir), { transcribe: says(['Pointed at a file and it prints the file back neatly.']) });
+  assert.equal(alone.speech.together[0].mix, true);
+  assert.deepEqual(alone.issues.filter((i) => /Point|music/.test(i.message)).map((i) => [i.level, i.message.split('. ').at(1)]), [['hint', 'The narration alone confirmed "it", so the voice says it']]);
+  // A word heard as another word next to it stays a word of its own.
+  const apart = await verify(loadProject(project.dir), { transcribe: says(['Pointy at a file and it prints the file back neatly.']) });
+  assert.deepEqual(apart.speech.together, []);
+});
