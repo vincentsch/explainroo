@@ -108,6 +108,12 @@ Narration for this scene. [#marker] A marker names a moment you can animate on.
   word the same way twice in a row, it prints the line to add. When a word
   comes up several times and is heard as the same other spelling each time,
   `voice` and `check` print it too.
+- A form matches one word or a few words next to each other, written the way
+  the check writes them, like "Reg X 101". Case and punctuation don't count.
+  A form is read like the transcript, so "$" is "dollars" and "R$" is
+  "reais". It can't change the order of words or stand for part of a word.
+  When a form matches nothing in a run while its word is still unconfirmed,
+  `check` names the form and what was heard there instead.
 - The speech check also counts a word heard as another word with the same
   sound, like "peace" for "piece", and two words heard as one, like
   "Seacosts" for "See costs". A word with hyphens counts when its parts are

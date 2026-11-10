@@ -165,16 +165,8 @@ export async function reviewSpeech(info, language) {
 // Its time stays. Nothing is saved, so the scene follows video.json.
 export function withHeard(info, language, accept) {
   if (!accept || !Object.keys(accept).length || !Array.isArray(info?.words)) return info;
-  const again = realign(info, language, accept);
-  if (!again) return info;
-  // A key of two words, like "ape lo", covers both words.
-  const keyOf = (word) => String(word).trim().split(/\s+/).map(normWord).join(' ');
-  const keys = new Set(Object.keys(accept).map(keyOf));
-  const own = (w) => keys.has(normWord(w.text)) || keys.has(normWord(w.spoken ?? w.text));
-  const pair = (a, b) => !!a && !!b && (keys.has(`${normWord(a.text)} ${normWord(b.text)}`) || keys.has(`${normWord(a.spoken ?? a.text)} ${normWord(b.spoken ?? b.text)}`));
-  const listed = (w, k) => own(w) || pair(w, info.words[k + 1]) || pair(info.words[k - 1], w);
-  const taken = info.words.map((w, k) => listed(w, k) && again.aligned[k].matched && !again.aligned[k].nearly);
-  if (!taken.some(Boolean)) return info;
+  const taken = heardTaken(info, language, accept);
+  if (!taken?.some(Boolean)) return info;
   const newly = info.words.map((w, k) => taken[k] && !w.matched);
   const tokens = (w) => Math.max(1, spokenWords(w.spoken ?? w.text).length);
   const total = info.words.reduce((n, w) => n + tokens(w), 0);
@@ -193,6 +185,67 @@ export function withHeard(info, language, accept) {
     unmatched,
     nearly: (info.nearly ?? []).filter((n) => !names.has(bareWord(n.word))),
   };
+}
+
+// A key of "heard", like "regex101", or "ape lo" for two words, as normWord leaves it.
+const heardKey = (word) => String(word).trim().split(/\s+/).map(normWord).join(' ');
+
+// For each word of a scene, whether a form of "heard" confirms it fully in the
+// saved transcript: the word, or the two words of a key like "ape lo", is
+// listed, and matched without being a near match. Null when it can't say.
+function heardTaken(info, language, accept) {
+  const again = realign(info, language, accept);
+  if (!again) return null;
+  const keys = new Set(Object.keys(accept).map(heardKey));
+  const own = (w) => keys.has(normWord(w.text)) || keys.has(normWord(w.spoken ?? w.text));
+  const pair = (a, b) => !!a && !!b && (keys.has(`${normWord(a.text)} ${normWord(b.text)}`) || keys.has(`${normWord(a.spoken ?? a.text)} ${normWord(b.spoken ?? b.text)}`));
+  const listed = (w, k) => own(w) || pair(w, info.words[k + 1]) || pair(info.words[k - 1], w);
+  return info.words.map((w, k) => listed(w, k) && again.aligned[k].matched && !again.aligned[k].nearly);
+}
+
+// The forms of "heard" that matched nothing in a run, for words the run still
+// didn't confirm, or only nearly matched, somewhere: [{ word, forms, heard }],
+// with what was heard there instead in `heard`. A form matches when it confirms
+// a word that the speech check doesn't confirm fully without it. `voices` are
+// the scenes with the forms already taken, like voice gives them.
+export function unusedForms(voices, language, accept) {
+  if (!accept || ['ja', 'zh'].includes(language)) return [];
+  const scenes = Object.values(voices).filter((v) => Array.isArray(v?.words) && v.transcript);
+  const plain = new Map(scenes.map((v) => [v, realign(v, language)?.aligned ?? null]));
+  const nearly = new Set(scenes.flatMap((v) => (v.nearly ?? []).map((n) => normWord(n.word))));
+  const out = [];
+  for (const [word, list] of Object.entries(accept)) {
+    if (!Array.isArray(list) || !list.length) continue;
+    const parts = heardKey(word).split(' ');
+    const ours = (w) => parts.includes(normWord(w.text)) || parts.includes(normWord(w.spoken ?? w.text));
+    // Where the word is still not confirmed fully, and what was heard there.
+    const open = scenes.some((v) => v.words.some((w) => ours(w) && (!w.matched || nearly.has(normWord(bareWord(w.text))))));
+    if (!open) continue;
+    const unused = list.filter((form) => !scenes.some((v) => {
+      const taken = heardTaken(v, language, { [word]: [form] });
+      const before = plain.get(v);
+      return taken?.some((t, k) => t && !(before?.[k]?.matched && !before[k].nearly));
+    }));
+    if (!unused.length) continue;
+    const heard = [];
+    for (const { word: w, heard: h } of scenes.flatMap((v) => sceneHeard(v, language))) {
+      const form = bareWord(h ?? '');
+      if (form && parts.includes(normWord(bareWord(w))) && !heard.some((x) => sameHeard(x, form))) heard.push(form);
+    }
+    out.push({ word, forms: unused, heard });
+  }
+  return out;
+}
+
+// What check says about forms of "heard" that matched nothing in a run.
+export function unusedFormText({ word, forms, heard }) {
+  const quoted = (list) => {
+    const q = list.map((f) => `"${f}"`);
+    return q.length > 1 ? `${q.slice(0, -1).join(', ')} and ${q.at(-1)}` : q[0];
+  };
+  const one = forms.length === 1;
+  const instead = heard.length ? `It heard ${quoted(heard.slice(0, 4))} there instead.` : 'It heard nothing there.';
+  return `"heard" in video.json gives ${quoted(forms)} for "${word}", and ${one ? 'it never matched' : 'none of them matched'} what the speech check heard. ${instead} A form matches one word or a few words, written the way the speech check writes them, so copy it from what it heard.`;
 }
 
 // What each word was heard as when the check didn't confirm it, and each word

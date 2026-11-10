@@ -10,7 +10,7 @@ import { alignSpeech, bareWord, editDistance, expand, nearList, similar } from '
 import { signWords } from './math-words.js';
 import { hasPhonemizer } from './phonemes.js';
 import { normWord } from './script.js';
-import { givenForms, heardEntry, heardForms, heardInstead, heardQuote, readVoice, sameHeard, sceneHeard, withHeard } from './voice.js';
+import { givenForms, heardEntry, heardForms, heardInstead, heardQuote, readVoice, sameHeard, sceneHeard, unusedForms, unusedFormText, withHeard } from './voice.js';
 import { estimateLength, targetNotes } from './timeline.js';
 import { buildChapters, chapterHints, youtubeFrame } from './chapters.js';
 import { coverTime } from './render.js';
@@ -455,6 +455,8 @@ export function speechFindings(project, voices, timeline = null) {
       if (nearly.length) issues.push({ level: 'hint', scene: sc.id, t: null, key: 'nearly', words: nearly.length, nearly, heard: formsOf(nearly, forms), message: `understood ${Math.round(v.matchRate * 100)}%, ${nearlyText(nearly)}. ${nearlyAdvice(nearly, true, forms)}` });
     }
   }
+  // Forms of "heard" that matched nothing, for words the run still doesn't confirm.
+  for (const u of unusedForms(voices, project.config.language, project.heard)) issues.push({ level: 'hint', scene: null, t: null, key: 'heard', word: u.word, forms: u.forms, message: unusedFormText(u) });
   return { issues, speech };
 }
 

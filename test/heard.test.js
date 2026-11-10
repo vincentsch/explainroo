@@ -72,6 +72,34 @@ test('"heard" in video.json confirms a made scene from its transcript, without m
   assert.deepEqual(withHeard(near, 'en', HEARD).nearly, []);
 });
 
+test('check names a form of "heard" that matched nothing, with what was heard there instead', async (t) => {
+  const noVoice = () => { throw new Error('no voice should be made'); };
+  const dir = project(t, { heard: { regex101: ['regex101', 'reg ex'] } });
+  heardAsRegX(dir);
+  const voices = await synthesize(loadProject(dir), { transcribe: noVoice });
+  const hint = speechFindings(loadProject(dir), voices).issues.find((i) => i.key === 'heard');
+  assert.deepEqual([hint.level, hint.word, hint.forms], ['hint', 'regex101', ['regex101', 'reg ex']]);
+  assert.equal(hint.message, '"heard" in video.json gives "regex101" and "reg ex" for "regex101", and none of them matched what the speech check heard. It heard "Reg X 101" there instead. A form matches one word or a few words, written the way the speech check writes them, so copy it from what it heard.');
+  // One form that matches is enough for the word, and a form that matched nothing is named alone.
+  fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ music: false, heard: { regex101: ['reg ex', 'reg x 101'] } }));
+  const fixed = await synthesize(loadProject(dir), { transcribe: noVoice });
+  assert.equal(fixed.intro.words[0].matched, true);
+  assert.equal(speechFindings(loadProject(dir), fixed).issues.find((i) => i.key === 'heard'), undefined);
+  // A form is read like the words it was heard with, so "$" is "dollars" and confirms "bucks" in "$10".
+  fs.writeFileSync(path.join(dir, 'script.md'), '# Money\n\n## intro\nIt costs ten bucks today.\n');
+  fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ music: false, heard: { bucks: ['$'] } }));
+  cachedVoice(dir, 'intro');
+  const file = voicePaths(loadProject(dir), 'intro').json;
+  const info = JSON.parse(fs.readFileSync(file, 'utf8'));
+  fs.writeFileSync(file, JSON.stringify({ ...info, transcript: 'It costs $10 today.', words: info.words.map((w, k) => (k === 3 ? { ...w, matched: false } : w)), matchRate: 0.75, unmatched: ['bucks'] }));
+  const money = await synthesize(loadProject(dir), { transcribe: noVoice });
+  assert.equal(money.intro.words[3].matched, true);
+  assert.equal(speechFindings(loadProject(dir), money).issues.find((i) => i.key === 'heard'), undefined);
+  fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ music: false, heard: { bucks: ['bux'] } }));
+  const one = speechFindings(loadProject(dir), await synthesize(loadProject(dir), { transcribe: noVoice })).issues.find((i) => i.key === 'heard');
+  assert.equal(one.message, '"heard" in video.json gives "bux" for "bucks", and it never matched what the speech check heard. It heard "$10" there instead. A form matches one word or a few words, written the way the speech check writes them, so copy it from what it heard.');
+});
+
 test('"heard" must be words with lists of forms', (t) => {
   for (const [heard, message] of [[['x'], /heard must be an object/], [{ regex101: 'reg x 101' }, /heard\.regex101 must be a list/], [{ regex101: [] }, /must be a list/]]) {
     assert.throws(() => loadProject(project(t, { heard })), message);
