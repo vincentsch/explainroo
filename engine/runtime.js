@@ -1130,7 +1130,7 @@ export class Engine {
             : "speed: 'fit' plays it slower, so it ends with the scene, and loop: true repeats it"}`));
         }
         if (e.kind === 'recording') {
-          if (e.changed) once(`recording-changed:${e.name}`, () => add('warn', sc.id, e.at, `recordings/${e.name}.json changed after recording "${e.name}" was made; run "explainroo record <project> ${e.name}" again`));
+          if (e.changed) once(`recording-changed:${e.name}`, () => add('warn', sc.id, e.at, `recordings/${e.name}.json changed after recording "${e.name}" was made: a change to its steps other than a cue, or to its url, viewport, locale, pace or blur, needs a new recording; run "explainroo record <project> ${e.name}" again`));
           for (const l of e.late) once(`recording-late:${sc.id}:${e.key}:${l.step}`, () => add('warn', sc.id, l.cueAt, `recording "${e.name}" ${l.label} comes ${l.by.toFixed(1)}s after its cue "${l.cue}", because the steps before it take longer, also at ${CATCH_UP} times the speed; cue a later word, start the recording earlier with at, or record fewer or quicker steps with the script's pace, a step's duration or a type step's cps`));
           if (e.small) {
             const size = `recording "${e.name}" plays at ${Math.round(e.small.shown * 100)}% of its size, ${e.width} pixels wide in ${Math.round(e.width * e.small.shown)}`;
