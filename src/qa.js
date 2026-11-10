@@ -522,6 +522,7 @@ export async function verify(project, { file = null, report: reportFile = null, 
   // chunk of a long file ("(bell dings)"), and per scene the report can say
   // where the voice is hard to follow.
   let speech = null;
+  let music = null;
   if (a) {
     const wav = path.join(project.paths.build, 'verify-16k.wav');
     await ffmpeg(['-loglevel', 'error', '-i', video, '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', wav]);
@@ -558,6 +559,7 @@ export async function verify(project, { file = null, report: reportFile = null, 
       }
       const rate = total ? matched / total : 1;
       speech = { matchRate: Math.round(rate * 1000) / 1000, transcript: texts.join(' '), scenes, nearly, unconfirmed };
+      if (project.config.music && timeline.voiceSpans?.length) music = musicLevel(samples, 16000, timeline.voiceSpans, duration);
     } else {
       // The whole file at once, so a word that only nearly matched has no scene.
       const heard = await transcribe(samples, { log, language: project.config.language });
@@ -580,6 +582,7 @@ export async function verify(project, { file = null, report: reportFile = null, 
     blackSegments: blacks,
     silences,
     speech,
+    ...(project.config.music ? { music } : {}),
     issues,
     ...verdictOf(issues),
   };
@@ -598,6 +601,60 @@ export async function verify(project, { file = null, report: reportFile = null, 
     report: relativeFile(project.dir, target),
   });
   return report;
+}
+
+// How loud the music is in a video with narration: its level in the pauses of
+// the narration and how far under the voice it sits, both in dB, as
+// { pauses, under }, or { heard: false } when no music can be heard there.
+// `spans` are the times the voice speaks, from the timeline. A pause counts
+// from 0.15 s after the voice to 0.15 s before it speaks again, without the
+// music's fade in and out, and a short sound effect in a pause doesn't count.
+// Null when the narration has no pause long enough to measure.
+export const MUSIC_UNHEARD_DB = -60;
+export function musicLevel(samples, rate, spans, duration) {
+  const BLOCK = Math.round(rate * 0.05);
+  const merged = [];
+  for (const sp of [...spans].sort((a, b) => a.start - b.start)) {
+    const last = merged.at(-1);
+    if (last && sp.start <= last.end) last.end = Math.max(last.end, sp.end);
+    else merged.push({ ...sp });
+  }
+  const pauses = [];
+  let from = 1.5;
+  for (const sp of [...merged, { start: duration - 0.5 + 0.15, end: Infinity }]) {
+    const a = from;
+    const b = sp.start - 0.15;
+    if (b - a >= 0.2) pauses.push([a, b]);
+    from = Math.max(from, sp.end + 0.15);
+  }
+  const blocks = (list) => list.flatMap(([a, b]) => {
+    const out = [];
+    for (let i = Math.max(0, Math.floor(a * rate)); i + BLOCK <= Math.min(samples.length, b * rate); i += BLOCK) {
+      let sum = 0;
+      for (let k = i; k < i + BLOCK; k++) sum += samples[k] * samples[k];
+      out.push(sum / BLOCK);
+    }
+    return out;
+  });
+  const quiet = blocks(pauses);
+  const loud = blocks(merged.map((sp) => [sp.start, sp.end]));
+  if (quiet.length < 10 || !loud.length) return null;
+  const db = (power) => 10 * Math.log10(Math.max(power, 1e-12));
+  const middle = [...quiet].sort((a, b) => a - b)[Math.floor(quiet.length / 2)];
+  const kept = quiet.filter((p) => p <= middle * 4);
+  const music = db(kept.reduce((n, p) => n + p, 0) / kept.length);
+  const voice = db(loud.reduce((n, p) => n + p, 0) / loud.length);
+  if (music < MUSIC_UNHEARD_DB) return { heard: false };
+  return { heard: true, pauses: Math.round(music), under: Math.round(voice - music) };
+}
+
+// What verify says about the music of a report, or '' for a video without music.
+export function musicLine(r) {
+  if (!r || !('music' in r)) return '';
+  const { music } = r;
+  if (!music) return 'music: not measured, because the narration has no pause long enough';
+  if (!music.heard) return 'music: none can be heard in the pauses of the narration';
+  return `music: about ${music.under} dB under the voice, at ${music.pauses} dB in the pauses of the narration`;
 }
 
 // The stretches of black frames of a video, as [start, end] in seconds.
@@ -638,6 +695,7 @@ export function formatVerify(r, { verbose = false } = {}) {
   return [
     `${r.file}: ${r.duration}s, ${r.video ? `${r.video.width}x${r.video.height}` : 'no video'}, loudness ${r.loudness?.integrated ?? '?'} LUFS, true peak ${dbtp(r.loudness?.truePeak)}`,
     r.speech ? `narration understood: ${Math.round(r.speech.matchRate * 100)}%${nearly}` : '',
+    musicLine(r),
     ...r.issues.map((i) => `${i.level.toUpperCase().padEnd(5)} ${i.message}`),
     r.verdict ?? verdictOf(r.issues).verdict,
   ].filter(Boolean).join('\n');

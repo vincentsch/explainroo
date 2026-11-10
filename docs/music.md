@@ -71,7 +71,10 @@ that matters in a pause.
 
 `check` tells you when a music or sound file is missing or can't be read. `verify`
 tells you when the music or a sound makes the voice hard to understand. If it does,
-lower `volume`.
+lower `volume`. It also prints one line about the music, like "music: about 12
+dB under the voice", measured in the pauses of the narration, or says that no
+music can be heard there. The built-in music at volume 0.5 sits about 12 dB
+under Kokoro's voice.
 
 ## Original music with Soundroo
 
