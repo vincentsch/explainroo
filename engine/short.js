@@ -9,7 +9,7 @@
 // block. A scene that wants a move sets s.camera with punch() or drift().
 
 import { fontStack, colorOf } from './themes.js';
-import { contrast, cssColor, opaque, suggestColor, newDefaults, mixColor, accentNote } from './util.js';
+import { contrast, cssColor, opaque, suggestColor, newDefaults, mixColor, accentNote, luminance } from './util.js';
 
 const INK = '#0b0b10';
 const KEY = '#ffd43b';
@@ -483,7 +483,7 @@ export class Short {
     const plain = style === 'plain' && newDefaults(s.engine.config) ? plainColors(s.theme, this.behind(y), size) : null;
     // With "defaults": "0.6", keywords take brand.accent where it reads.
     const brand = v6 ? this.brandKey(style, y, size) : null;
-    if (v6 && !brand && lines.some((l) => l.words.some((w) => w.key))) this.brandKeyNote(style, y, size, o, plain);
+    if (v6 && brand && lines.some((l) => l.words.some((w) => w.key))) this.brandKeyNote(style, y, size, o, brand);
     if (o.kicker) place(() => this.kicker(o.kicker, { x, y: kickerY, size: kickerSize, color: o.kickerColor, icon: o.kickerIcon, at: first ? -1 : a, out: o.out }));
     if (!life) return geom(x, y, maxLineW, blockH);
     const c = this.c;
@@ -538,33 +538,34 @@ export class Short {
     return lines;
   }
 
-  // brand.accent for the keywords of a hook, when it is set and reads: as the
-  // box behind white keywords on a slab, or as the keywords' own color on what
-  // is behind them. Null otherwise.
+  // brand.accent for the keywords of a hook, when it is set: as the box behind
+  // white keywords on a slab, or as the keywords' own color on what is behind
+  // them. Where it reads too poorly, it keeps its hue, made darker behind white
+  // keywords, or darker or lighter on what is behind them, until it reads. Null
+  // without a brand accent.
   brandKey(style, y, size) {
     const accent = cssColor(this.s.engine.config.brand?.accent ?? '');
     if (!accent) return null;
-    const min = size >= 48 ? 3 : 4.5;
-    if (style === 'slab') return contrast('#ffffff', accent) >= min ? accent : null;
+    if (style === 'slab') return suggestColor(accent, '#ffffff', size)?.color ?? null;
     const behind = cssColor(style === 'stroke' ? INK : this.behind(y));
-    return behind && contrast(accent, behind) >= min ? accent : null;
+    return behind ? suggestColor(accent, opaque(behind, '#ffffff'), size)?.color ?? null : null;
   }
 
-  // A hint for check when brand.accent is set and the hook's keywords don't
-  // use it, because it reads too poorly: the color, its contrast and the color
-  // used instead. Keywords with their own keyBg or keyColor need none.
-  brandKeyNote(style, y, size, o, plain) {
+  // A hint for check when brand.accent is set and the hook's keywords use
+  // another shade of it, because it reads too poorly: the color, its contrast
+  // and the shade used instead. Keywords with their own keyBg or keyColor need none.
+  brandKeyNote(style, y, size, o, used) {
     const accent = cssColor(this.s.engine.config.brand?.accent ?? '');
-    if (!accent || (style === 'slab' ? o.keyBg : o.keyColor)) return;
+    if (!accent || !used || used === accent || (style === 'slab' ? o.keyBg : o.keyColor)) return;
     const min = size >= 48 ? 3 : 4.5;
     const name = this.s.engine.config.brand.accent;
     if (style === 'slab') {
-      this.s._hint(accentNote(name, contrast('#ffffff', accent), min, 'as the box behind white keywords in the hook', `their box uses ${KEY_BOX}`), `brand accent hook ${style}`);
+      this.s._hint(accentNote(name, contrast('#ffffff', accent), min, 'as the box behind white keywords in the hook', `their box uses ${used}, the same hue made darker`), `brand accent hook ${style}`);
       return;
     }
-    const behind = cssColor(style === 'stroke' ? INK : this.behind(y));
-    if (!behind) return;
-    this.s._hint(accentNote(name, contrast(accent, behind), min, `on what is behind the hook's keywords`, `they use ${plain?.key ?? KEY}`), `brand accent hook ${style}`);
+    const behind = opaque(cssColor(style === 'stroke' ? INK : this.behind(y)), '#ffffff');
+    const how = luminance(used) < luminance(accent) ? 'darker' : 'lighter';
+    this.s._hint(accentNote(name, contrast(accent, behind), min, `on what is behind the hook's keywords`, `they use ${used}, the same hue made ${how}`), `brand accent hook ${style}`);
   }
 
   // The kicker's size: 44 in a tall frame and 40 in others with
