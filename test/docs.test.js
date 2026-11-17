@@ -363,10 +363,10 @@ test('the README says what leaves the computer for each command that sends somet
   assert.doesNotMatch(readme, /none of this leaves/i);
 });
 
-test('the README marks the hosted link and partners as coming, and labels a partner as paid', () => {
+test('the README marks the hosted link as coming, and Blotato as a paid partner', () => {
   const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
   const partners = readme.slice(readme.indexOf('## Partners'), readme.indexOf('\n## ', readme.indexOf('## Partners')));
-  for (const words of ['Partners are coming', 'There are none yet', '"paid partner"', 'free choices stay first', 'never to pick a paid service for you']) assert.ok(partners.replace(/\s+/g, ' ').includes(words), words);
+  for (const words of ["Blotato is Explainroo's first paid partner for posting", 'This is a partner link.', '"paid partner"', 'free choices stay first', 'never to pick a paid service for you']) assert.ok(partners.replace(/\s+/g, ' ').includes(words), words);
   assert.match(readme, /`explainroo share`[^]*?That hosted service is coming\./);
 });
 

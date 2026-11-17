@@ -23,7 +23,7 @@ test('the steps are the ones the docs name', () => {
   for (const step of STEPS) assert.ok(step.name && step.what, step.id);
 });
 
-test('every entry says what it costs, what data leaves and how to set it up for each step it serves, and none is a paid partner', () => {
+test('every entry says what it costs, what data leaves and how to set it up for each step it serves, and only Blotato is a paid partner', () => {
   assert.equal(new Set(SERVICES.map((s) => s.id)).size, SERVICES.length);
   for (const s of SERVICES) {
     const steps = serviceSteps(s);
@@ -36,7 +36,7 @@ test('every entry says what it costs, what data leaves and how to set it up for 
     } else assert.equal(s.per_step, undefined, s.id);
     assert.equal(s.connector, undefined, `${s.id}: every entry has its own connector now`);
     assert.equal(typeof s.free, 'boolean', s.id);
-    assert.equal(s.partner, false, s.id);
+    assert.equal(s.partner, s.id === 'blotato', s.id);
     assert.ok(['available', 'coming'].includes(s.status), s.id);
     assert.ok(Array.isArray(s.setup.env), s.id);
     assert.ok(s.setup.steps.length > 0 && s.setup.steps.every((step) => typeof step === 'string' && step.trim()), s.id);
@@ -144,7 +144,7 @@ test('the posting services say what they cost and what leaves the computer, and 
   const [youtube, buffer, blotato] = ['youtube', 'buffer', 'blotato'].map(findService);
   for (const s of [youtube, buffer, blotato]) {
     assert.equal(s.step, 'posting', s.id);
-    assert.equal(s.partner, false, s.id);
+    assert.equal(s.partner, s.id === 'blotato', s.id);
     assert.match(s.setup.use, new RegExp(`explainroo publish <project> --via ${s.id} .*--dry-run`), s.id);
   }
   assert.equal(youtube.free, true);
@@ -172,7 +172,7 @@ test('the label "paid partner" appears only when the flag is true', () => {
   assert.deepEqual(serviceLabels(entry), ['costs money']);
   assert.deepEqual(serviceLabels({ ...entry, status: 'coming' }, true), ['costs money', 'coming', 'connected']);
   assert.deepEqual(serviceLabels({ ...entry, free: true, partner: true }), ['free', 'paid partner']);
-  assert.doesNotMatch(formatServices(STEPS, SERVICES), /partner/);
+  assert.match(formatServices(STEPS, SERVICES), /Blotato \(costs money, paid partner\)/);
 });
 
 test('services prints every step in plain words with free entries first, and a step on its own', () => {
@@ -351,8 +351,8 @@ test('the help is made from the data, and names every new command', () => {
   for (const words of [/^ {2}services \[step\]/m, /^ {2}connect <service>/m, /^ {2}history \[project\]/m, /--new/, /--resume <id>/, /--key-stdin/, /^ {2}clip \[project\]/m, /--dry-run/, /--max-cost/, /--seconds/, /--aspect/, /--model cheap\|quality/, /--resolution/, /--audio/, /--name/, /--no-wait/, /^ {2}publish \[project\]/m, /--via youtube\|buffer\|blotato/, /--privacy private\|unlisted\|public/, /--media-url/, /--channel id for Buffer/, /--account id for Blotato/, /--yes when there is no terminal/, /--callback-url/]) assert.match(help, words);
 });
 
-test('the data names no paid partner, and it has no ranking words', () => {
+test('the data names Blotato as its only paid partner, and it has no ranking words', () => {
   const text = fs.readFileSync(path.join(root, 'src/services.json'), 'utf8');
-  assert.doesNotMatch(text, /"partner": true/);
+  assert.deepEqual(SERVICES.filter((s) => s.partner).map((s) => s.id), ['blotato']);
   assert.doesNotMatch(text, /\bbest\b/i);
 });

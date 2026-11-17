@@ -116,6 +116,7 @@ function readPackage(project, platform) {
   }
   const text = (value) => typeof value === 'string';
   const complete = post && post.platform === platform && /^[0-9a-f]{64}$/.test(post.sha256) && text(post.title) && post.title.trim() && text(post.description) && text(post.text)
+    && (post.promotes_own_product === undefined || typeof post.promotes_own_product === 'boolean')
     && Array.isArray(post.hashtags) && typeof post.ai_label === 'boolean' && typeof post.made_for_kids === 'boolean' && /^\d{1,3}$/.test(String(post.category)) && post.verify && typeof post.verify === 'object';
   if (!complete) fail(`${relativeFile(dir, path.join(folder, 'post.json'))} is not a package that publish can read. Run ${again} again.`);
   // A video with an AI presenter always goes out with the AI label.
@@ -288,7 +289,7 @@ export function buildRequest(via, { network, pkg, privacy, media, destination, d
   }
   const target = {
     youtube: { targetType: 'youtube', title: post.title, privacyStatus: privacy.value, shouldNotifySubscribers: false, isMadeForKids: post.made_for_kids, containsSyntheticMedia: post.ai_label },
-    tiktok: { targetType: 'tiktok', privacyLevel: TIKTOK_PRIVACY[privacy.value], disabledComments: false, disabledDuet: false, disabledStitch: false, isBrandedContent: false, isYourBrand: false, isAiGenerated: post.ai_label },
+    tiktok: { targetType: 'tiktok', privacyLevel: TIKTOK_PRIVACY[privacy.value], disabledComments: false, disabledDuet: false, disabledStitch: false, isBrandedContent: false, isYourBrand: post.promotes_own_product === true, isAiGenerated: post.ai_label },
     instagram: { targetType: 'instagram', mediaType: 'reel' },
     linkedin: { targetType: 'linkedin' },
     twitter: { targetType: 'twitter' },
@@ -350,6 +351,7 @@ function planFacts(via, platform, network, { pkg, privacy, media, destination, a
     privacy: { value: privacy.value, setting: privacy.setting, words: privacyWords(via, network, privacy, draft) },
     ai_label: { value: post.ai_label, reasons: Array.isArray(post.ai_reasons) ? post.ai_reasons : [], words: aiWords(via, network, post.ai_label) },
     made_for_kids: { value: post.made_for_kids, sent: isYoutube },
+    promotes_own_product: { value: post.promotes_own_product === true, sent: via === 'blotato' && network === 'tiktok' },
     category: isYoutube ? String(post.category) : null,
     notify_subscribers: isYoutube ? false : null,
     media: media ? { url: media.url, from: media.from, expires_at: media.expires_at } : null,
@@ -379,6 +381,10 @@ export function planText(plan) {
   lines.push(`Privacy:   ${plan.privacy.words}`);
   lines.push(`AI label:  ${plan.ai_label.value ? 'yes' : 'no'}${plan.ai_label.reasons.length ? ` (${plan.ai_label.reasons.join('; ')})` : ''}. ${plan.ai_label.words}`);
   lines.push(`For kids:  ${plan.made_for_kids.value ? 'yes' : 'no'}${plan.made_for_kids.sent ? '' : '. Only YouTube asks this, so it is not sent.'}`);
+  const ownProduct = plan.promotes_own_product ?? { value: false, sent: plan.via === 'blotato' && plan.network === 'tiktok' };
+  lines.push(`Own product: ${ownProduct.value ? 'yes' : 'no'}. ${ownProduct.sent
+    ? `TikTok gets isYourBrand: ${ownProduct.value}.${ownProduct.value ? ' TikTok shows "Promotional content".' : ''}`
+    : `${name} through ${plan.service} has no field for it, so it is not sent.`}`);
   if (plan.category !== null) lines.push(`Category:  ${plan.category}${plan.category === DEFAULT_CATEGORY ? ' (Education)' : ''}`);
   if (plan.notify_subscribers === false) lines.push('Subscribers are not notified.');
   if (plan.media) {
@@ -446,6 +452,7 @@ function storedRequestFits(job, { via, network, pkg, destination }) {
   const media = post.content?.mediaUrls ?? [];
   return post.accountId === destination.id && post.content?.platform === network && post.target?.targetType === network && post.content?.text === p.text
     && media.length === 1 && (media[0] === (p.media?.url ?? UPLOADED_FILE)) && (!!file === (media[0] === UPLOADED_FILE))
+    && (network !== 'tiktok' || post.target.isYourBrand === (p.promotes_own_product?.value ?? false))
     && (network !== 'youtube' || (post.target.title === p.title && post.target.privacyStatus === p.privacy?.value));
 }
 
@@ -704,7 +711,7 @@ export async function publish(project, { log = () => {}, notice = () => {}, ...o
   return hideSecretsIn(r);
 }
 
-async function publishPost(project, { via, platform: asked, privacy: askedPrivacy, mediaUrl, mediaUnchecked = false, channel, account, draft = false, dryRun = false, yes = false, fresh = false, log, notice, ask = askYes } = {}) {
+async function publishPost(project, { via, platform: asked, privacy: askedPrivacy, mediaUrl, mediaUnchecked = false, channel, account, ownProduct = false, draft = false, dryRun = false, yes = false, fresh = false, log, notice, ask = askYes } = {}) {
   const { dir } = project;
   if (via === undefined) fail(`publish needs --via ${oneOf(Object.keys(VIA))}`);
   if (!Object.hasOwn(VIA, via)) fail(`--via must be ${oneOf(Object.keys(VIA))}`);
@@ -718,6 +725,7 @@ async function publishPost(project, { via, platform: asked, privacy: askedPrivac
   const platform = pickPlatform(project, via, asked);
   const network = checkPair(via, platform);
   const pkg = readPackage(project, platform);
+  if (ownProduct) pkg.post.promotes_own_product = true;
   checkYoutubeWords(network, pkg);
   const privacy = settlePrivacy(via, network, askedPrivacy);
   const media = mediaFor(project, via, platform, pkg, mediaUrl);

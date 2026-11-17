@@ -11,7 +11,7 @@ instead. The command examples below shorten this to plain `explainroo`, so type
 the full form when you run them. `npx` does not install an `explainroo`
 command on `PATH`.
 
-This page tells you, the coding agent, how to make a video with explainroo.
+This page tells you how to make a video with explainroo.
 The user gives you a topic, maybe with a length or a style. You write the words
 and the pictures, and explainroo makes the video. A long docs topic has
 sections, and `explainroo docs <topic> --sections` lists them. Print only the
@@ -55,7 +55,7 @@ the user's own account, and only when you run a command that uses them.
 | --- | --- | --- | --- | --- |
 | OpenRouter | AI images (`image`) and AI clips (`clip`) | one key for both, from `connect openrouter` | yes, per image and per second of clip | the prompt and any reference images, also for the company that runs the model |
 | ElevenLabs, Cartesia | a paid voice | a key | yes, per character | the narration text, when narration is made |
-| Blotato | posting with `publish` | a key | yes, creating the key starts its paid plan | the video, its title and its text |
+| Blotato (paid partner) | posting with `publish` | a key | yes, creating the key starts its paid plan | the video, its title and its text |
 | A presenter service, none yet | AI presenters (`presenter`) | a key | yes | the narration of a scene |
 | YouTube | posting with `publish` | a sign-in with the user's own Google client | no | the video, its title and its description |
 | Buffer | posting with `publish` | a sign-in | no, on Buffer's free plan | the title, the text and a link to the video |

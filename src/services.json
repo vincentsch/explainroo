@@ -349,16 +349,16 @@
       "name": "Blotato",
       "about": "A company that posts to social networks for you. \"explainroo publish --via blotato\" uploads a package to Blotato and posts it to one of your accounts on YouTube, TikTok, Instagram, LinkedIn or X.",
       "free": false,
-      "partner": false,
+      "partner": true,
       "status": "available",
       "cost": "Paid. It needs a paid Blotato plan, and the Starter plan cost $29 a month on 2026-11-07. Creating an API key ends Blotato's free trial and starts that plan on your account.",
       "data_leaves": "The video, its title and its text go to Blotato, which posts them to the network, and only when you run \"explainroo publish\".",
       "setup": {
         "env": ["BLOTATO_API_KEY"],
-        "url": "https://my.blotato.com",
+        "url": "https://blotato.com/?ref=vincentvf",
         "steps": [
           "Creating an API key ends Blotato's free trial and starts its paid Starter plan on your account. Only go on if you want that.",
-          "Make an account at blotato.com and connect the accounts you want to post to.",
+          "Make an account at https://blotato.com/?ref=vincentvf (partner link). Connect the accounts you want to post to.",
           "Open the API settings in your Blotato account, make a key, and copy all of it, including any \"=\" at the end."
         ],
         "use": "See the post first with: explainroo publish <project> --via blotato --platform tiktok --dry-run. Run \"explainroo docs publishing\" for more."

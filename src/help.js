@@ -108,7 +108,7 @@ export const COMMAND_HELP = {
   publish: {
     usage: 'publish [project] --via youtube|buffer|blotato [options]',
     about: 'Posts a package under your name. It shows the exact post first, and a real run needs a typed yes, or --yes when there is no terminal.',
-    options: [['--via <service>', 'youtube, buffer or blotato'], ['--platform <name>', 'the package to post'], ['--dry-run', 'show the post and send nothing'], ['--yes', 'post without asking, where there is no terminal'], ['--privacy <p>', 'private, unlisted or public on YouTube'], ['--media-url <url>', 'a public link to the video, for Buffer and Blotato'], ['--media-url-unchecked', 'post the link without checking that it leads to a file of the package\'s size'], ['--channel <id>', 'the Buffer channel'], ['--account <id>', 'the Blotato account'], ['--draft', 'save it as a draft in Buffer'], ['--new', 'post again'], LANG, JSON_OUT],
+    options: [['--via <service>', 'youtube, buffer or blotato'], ['--platform <name>', 'the package to post'], ['--dry-run', 'show the post and send nothing'], ['--yes', 'post without asking, where there is no terminal'], ['--privacy <p>', 'private, unlisted or public on YouTube'], ['--media-url <url>', 'a public link to the video, for Buffer and Blotato'], ['--media-url-unchecked', 'post the link without checking that it leads to a file of the package\'s size'], ['--channel <id>', 'the Buffer channel'], ['--account <id>', 'the Blotato account'], ['--own-product', 'mark your own product on TikTok through Blotato, overriding post.json'], ['--draft', 'save it as a draft in Buffer'], ['--new', 'post again'], LANG, JSON_OUT],
     example: 'publish videos/how-dns-works --via youtube --dry-run',
   },
   capture: {

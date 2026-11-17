@@ -136,7 +136,7 @@ test('post.json mistakes are errors that name the field', (t) => {
   };
   fails('{ nope', /post\.json is not valid JSON/);
   fails([], /post\.json must be an object/);
-  fails({ titel: 'x' }, /unknown setting\(s\): titel\. Known: title, description, hashtags, ai_label, credits, made_for_kids, category, platforms/);
+  fails({ titel: 'x' }, /unknown setting\(s\): titel\. Known: title, description, hashtags, ai_label, credits, made_for_kids, category, promotes_own_product, platforms/);
   fails({ title: '' }, /post\.json: title must be a short text/);
   fails({ hashtags: '#dns' }, /hashtags must be a list/);
   fails({ hashtags: ['two words'] }, /post\.json: hashtags: "two words" is not a hashtag/);

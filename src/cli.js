@@ -101,6 +101,7 @@ Post a video
                         --platform name, --privacy private|unlisted|public, --media-url, --channel id for Buffer,
                         --account id for Blotato). --dry-run shows the exact post and posts nothing. A real
                         run needs a typed yes, or --yes when there is no terminal. --new posts again.
+                        --own-product marks your own product on TikTok through Blotato.
                         --draft saves the post as a draft in Buffer. A video link has to lead to a file of
                         the package's size, unless you add --media-url-unchecked
 
@@ -192,7 +193,7 @@ function parseArgs(argv) {
   }
   return { pos, flags };
 }
-const BOOL = new Set(['json', 'keep-profile', 'all', 'record', 'apply', 'avatars', 'draft', 'estimate', 'transparent', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'mobile', 'list', 'sections', 'new', 'key-stdin', 'audio', 'dry-run', 'no-wait', 'no-watermark', 'yes', 'media-url-unchecked', ...LISTS_VOICES.map((c) => c.id), 'verbose', 'large']);
+const BOOL = new Set(['json', 'keep-profile', 'all', 'record', 'apply', 'avatars', 'draft', 'estimate', 'transparent', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'mobile', 'list', 'sections', 'new', 'key-stdin', 'audio', 'dry-run', 'no-wait', 'no-watermark', 'yes', 'media-url-unchecked', 'own-product', ...LISTS_VOICES.map((c) => c.id), 'verbose', 'large']);
 
 // What a command adds when it refuses a flag. A flag publish ignored could
 // change what a person thinks is posted, like a time for a post, when it goes
@@ -432,7 +433,7 @@ export async function main(argv) {
       case 'publish': {
         if (pos.length > 1) throw new ProjectError('usage: explainroo publish [project] --via youtube|buffer|blotato [--platform tiktok] [--dry-run] [--yes]. Nothing was sent.');
         const project = loadProject(pos[0], langOverride(flags));
-        const r = await publish(project, { via: textFlag(flags, 'via'), platform: textFlag(flags, 'platform'), privacy: textFlag(flags, 'privacy'), mediaUrl: textFlag(flags, 'media-url'), mediaUnchecked: !!flags['media-url-unchecked'], channel: textFlag(flags, 'channel'), account: textFlag(flags, 'account'), draft: !!flags.draft, dryRun: !!flags['dry-run'], yes: !!flags.yes, fresh: !!flags.new, log, notice });
+        const r = await publish(project, { via: textFlag(flags, 'via'), platform: textFlag(flags, 'platform'), privacy: textFlag(flags, 'privacy'), mediaUrl: textFlag(flags, 'media-url'), mediaUnchecked: !!flags['media-url-unchecked'], channel: textFlag(flags, 'channel'), account: textFlag(flags, 'account'), ownProduct: !!flags['own-product'], draft: !!flags.draft, dryRun: !!flags['dry-run'], yes: !!flags.yes, fresh: !!flags.new, log, notice });
         if (r.confirmed === false) {
           if (json) print(null, r);
           else process.stderr.write(`error: ${r.error}\n`);

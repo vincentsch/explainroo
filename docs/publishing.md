@@ -1,16 +1,11 @@
 # Posting and sharing
 
-`explainroo package` makes a folder with everything needed to post a video on
-one platform. You upload it yourself, or a posting tool does. `explainroo share`
-uploads a finished video to explainroo.com and gives back a page link.
-`explainroo publish` posts a package through YouTube, Buffer or Blotato.
-`share` and `publish` are the only commands that upload a video, and they run
-only when you ask for them.
+`package` makes a folder to upload yourself. `publish` posts it through
+YouTube, Buffer or Blotato. `share` uploads it to explainroo.com for a page link.
+`share` and `publish` are the only commands that upload a video, and only when you ask.
 
-The parts about the package and about posting in general come first. Then each
-route has a part of its own: YouTube, Buffer, Blotato and share. Print only the
-part you need. `explainroo docs publishing --sections` lists them, and
-`explainroo docs publishing buffer` prints the one about Buffer.
+Print only the part you need. `explainroo docs publishing --sections` lists them,
+and `explainroo docs publishing buffer` prints the part about Buffer.
 
 ## Package a video for a platform
 
@@ -27,13 +22,10 @@ explainroo package videos/<name> --platform tiktok
 | `linkedin` | `linkedin`, 1080 x 1350 | as set in `video.json` |
 | `x` | `square`, 1080 x 1080, or another with `--size` | as set in `video.json` |
 
-When `"sizes"` in `video.json` has a block for the platform's size, the
-package uses that size and its block. So the `linkedin` block counts for a
-LinkedIn package, also in an `instagram` project. Without such a block, a
-project whose own size gives the same frame and the same free area keeps its
-size. So a project in `16:9` goes to YouTube as it is, and the video that
-`render` made can be used. The rules of the platform come last, so a TikTok
-package has no watermark, whatever its block says.
+When a platform's size has a block under `"sizes"` in `video.json`,
+the package uses that size and its block. Without one, a project with the same
+frame and free area keeps its size and can reuse its render. The platform's
+rules come last: a TikTok package has no watermark, whatever its block says.
 
 The folder is `out/package/<platform>/`:
 
@@ -107,6 +99,7 @@ Each field is settled in this order, and a later one wins:
 | `hashtags` | none | a list like `["#dns", "networking"]`. Each is stored with its `#` |
 | `ai_label` | from the project | whether the post says that AI made part of it, see below |
 | `credits` | from the project | more credits, added to the ones explainroo writes |
+| `promotes_own_product` | `false` | whether the video promotes your own product, see Blotato below |
 | `made_for_kids` | `false` | YouTube asks this for every video |
 | `category` | `"27"` | YouTube's category id. 27 is Education |
 
@@ -422,14 +415,26 @@ For a draft, the link has to work until you schedule it and Buffer posts it.
 
 ## Blotato
 
-**Blotato** gets the file uploaded to its own storage first, unless you pass
-`--media-url`. Blotato's reference says such links must be on its own
-domain, and another page says any public link works. Without `--media-url` it
-works either way.
+**Blotato** gets the file uploaded to its own storage first. `--media-url`
+uses a link instead. Its docs disagree on whether links must use its own
+domain; uploading the file works either way.
+
+Blotato is a paid partner for posting. You can [make a Blotato account](https://blotato.com/?ref=vincentvf).
+This is a partner link.
 
 **Blotato** uses an API key. Creating one ends Blotato's free trial and starts
 its paid Starter plan, so decide that first. Then run
 `explainroo connect blotato`. Some keys end in `=`, and that is part of the key.
+
+### Promoting your own product on TikTok
+
+Set `"promotes_own_product": true` in `post.json`, or under `platforms.tiktok`,
+before `package`. The package keeps this choice, defaulting to `false`.
+`publish --own-product` overrides it with `true`.
+
+TikTok through Blotato gets `isYourBrand: true` and shows "Promotional content".
+The plan shows the choice. Buffer and YouTube have no field for it; the plan
+says when it is not sent.
 
 ## Share a link
 

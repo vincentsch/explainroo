@@ -34,7 +34,7 @@ export const LIMITS = {
 
 // YouTube's category for Education.
 export const DEFAULT_CATEGORY = '27';
-const FIELDS = ['title', 'description', 'hashtags', 'ai_label', 'credits', 'made_for_kids', 'category'];
+const FIELDS = ['title', 'description', 'hashtags', 'ai_label', 'credits', 'made_for_kids', 'category', 'promotes_own_product'];
 
 function fail(message) {
   throw new ProjectError(message);
@@ -76,6 +76,7 @@ function checkWords(words, where, top) {
   if (words.ai_label !== undefined && typeof words.ai_label !== 'boolean') fail(`${at('ai_label')} must be true or false`);
   if (words.credits !== undefined && !(Array.isArray(words.credits) && words.credits.every((c) => typeof c === 'string' && c.trim()))) fail(`${at('credits')} must be a list of short texts, like ["Photos: Jane Doe"]`);
   if (words.made_for_kids !== undefined && typeof words.made_for_kids !== 'boolean') fail(`${at('made_for_kids')} must be true or false`);
+  if (words.promotes_own_product !== undefined && typeof words.promotes_own_product !== 'boolean') fail(`${at('promotes_own_product')} must be true or false`);
   if (words.category !== undefined && !(['string', 'number'].includes(typeof words.category) && /^\d{1,3}$/.test(String(words.category)))) fail(`${at('category')} must be a YouTube category id like "27"`);
   if (top && words.platforms !== undefined) {
     if (!isObject(words.platforms)) fail(`${at('platforms')} must be an object like { "tiktok": { "description": "..." } }`);
@@ -207,7 +208,7 @@ export function limitWarnings(platform, { title, box, hashtags, duration }) {
 // is the description with the hashtags, and elsewhere it is `text`.
 export function postWords(project, platform, { file = readPostFile(project), flags = {}, chapters = '', duration = 0 } = {}) {
   const facts = aiFacts(project);
-  const words = settleWords({ title: project.config.title, description: '', hashtags: [], ai_label: facts.reasons.length > 0, made_for_kids: false, category: DEFAULT_CATEGORY }, file, platform, flags);
+  const words = settleWords({ title: project.config.title, description: '', hashtags: [], ai_label: facts.reasons.length > 0, made_for_kids: false, category: DEFAULT_CATEGORY, promotes_own_product: false }, file, platform, flags);
   const title = words.title.trim();
   const written = words.description.trim();
   const description = [written, platform === 'youtube' ? chapters.trim() : ''].filter(Boolean).join('\n\n');
@@ -224,5 +225,5 @@ export function postWords(project, platform, { file = readPostFile(project), fla
     ...(overruled ? [`${words.ai_label_from} sets ai_label to false, but the video has an AI presenter, so the AI label stays on.`] : []),
     ...limitWarnings(platform, { title, box, hashtags: words.hashtags, duration }),
   ];
-  return { title, description, text, box, hashtags: words.hashtags, ai_label: words.ai_label, ai_presenter: facts.presenter, ai_reasons: reasons, credits, made_for_kids: words.made_for_kids, category: words.category, warnings };
+  return { title, description, text, box, hashtags: words.hashtags, ai_label: words.ai_label, ai_presenter: facts.presenter, ai_reasons: reasons, credits, made_for_kids: words.made_for_kids, category: words.category, promotes_own_product: words.promotes_own_product, warnings };
 }

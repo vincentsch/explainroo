@@ -10,6 +10,10 @@ import { GOOD_KEY, startFakeServices } from './helpers/fake-services.js';
 import { BLOTATO_KEY, BUFFER_CLIENT, BUFFER_REDIRECT } from './helpers/fake-publishing.js';
 import { DIE_BEFORE, GQL, NONE, PLACEHOLDER, SESSION, UPLOAD, anHourOld, bin, heldBy, jobs, linkChecks, lockWords, mutations, pausedRun, setup, waitsForLock, writePackage } from './helpers/publishing.js';
 import { readEnvFile } from '../src/env.js';
+import { findChrome } from '../src/browser.js';
+import { planText } from '../src/publish.js';
+import { readPostFile } from '../src/post.js';
+import { runCli, tinyProject } from './helpers/tiny-project.js';
 
 // --- The dry run shows what a real run sends ------------------------------------
 
@@ -101,6 +105,90 @@ test('the plan says everything a person needs before posting under their own nam
   assert.match(tiktok.stdout, /^Video link: https:\/\/media\.example\/v\.mp4, from --media-url$/m);
   assert.match(tiktok.stdout, /^Link size: 6,012 bytes, the same as the file$/m);
   assert.doesNotMatch(tiktok.stdout, /^Draft:/m);
+});
+
+test('package writes the own-product default and the choice from post.json, including a platform override', async (t) => {
+  try { findChrome(); } catch { t.skip('no browser here'); return; }
+  const dir = tinyProject(t, {}, { narrated: false });
+  const source = path.join(dir, 'post.json');
+  for (const [words, expected] of [
+    [{}, false],
+    [{ promotes_own_product: true }, true],
+    [{ promotes_own_product: true, platforms: { x: { promotes_own_product: false } } }, false],
+  ]) {
+    fs.writeFileSync(source, JSON.stringify({ description: 'A short explanation.', ...words }));
+    const r = await runCli(['package', dir, '--platform', 'x', '--size', '320x180', '--workers', '1', '--json']);
+    assert.equal(r.code, 0, r.text);
+    const post = JSON.parse(fs.readFileSync(path.join(dir, 'out/package/x/post.json'), 'utf8'));
+    assert.equal(post.promotes_own_product, expected);
+  }
+  for (const words of [{ promotes_own_product: 'false' }, { platforms: { tiktok: { promotes_own_product: 1 } } }]) {
+    fs.writeFileSync(source, JSON.stringify(words));
+    assert.throws(() => readPostFile(dir), /promotes_own_product must be true or false/);
+  }
+});
+
+test('TikTok through Blotato reads the own-product choice and --own-product wins over the package', async (t) => {
+  const s = await setup(t, { login: ['blotato'] });
+  const file = path.join(s.dir, 'out/package/tiktok/post.json');
+  const original = JSON.parse(fs.readFileSync(file, 'utf8'));
+  for (const [value, flags, expected] of [
+    [undefined, [], false], // Packages made before the field existed still work.
+    [false, [], false],
+    [true, [], true],
+    [false, ['--own-product'], true],
+    [true, ['--own-product'], true],
+  ]) {
+    fs.writeFileSync(file, JSON.stringify({ ...original, promotes_own_product: value }));
+    const r = await s.json('--via', 'blotato', ...flags, '--dry-run');
+    assert.equal(r.code, 0, r.text);
+    assert.equal(r.out.request.post.post.target.isYourBrand, expected);
+    assert.equal(r.out.request.post.post.target.isBrandedContent, false);
+    assert.deepEqual(r.out.plan.promotes_own_product, { value: expected, sent: true });
+    const human = await s.publish('--via', 'blotato', ...flags, '--dry-run');
+    assert.equal(human.code, 0, human.text);
+    const line = `Own product: ${expected ? 'yes' : 'no'}. TikTok gets isYourBrand: ${expected}.${expected ? ' TikTok shows "Promotional content".' : ''}`;
+    assert.ok(human.stdout.split('\n').includes(line), human.text);
+    if (value === undefined) {
+      const oldPlan = structuredClone(r.out.plan);
+      delete oldPlan.promotes_own_product;
+      assert.equal(planText(oldPlan), planText(r.out.plan), 'an earlier saved plan still prints');
+    }
+  }
+  assert.deepEqual(s.changes(), NONE, 'dry runs only read accounts');
+  fs.writeFileSync(file, JSON.stringify({ ...original, promotes_own_product: false }));
+  const sent = await s.json('--via', 'blotato', '--own-product', '--yes');
+  assert.equal(sent.code, 0, sent.text);
+  assert.equal(s.fake.requests('blotato', 'POST /posts').at(-1).body.post.target.isYourBrand, true);
+  assert.equal(s.jobs()[0].plan.promotes_own_product.value, true);
+
+  fs.writeFileSync(file, JSON.stringify({ ...original, promotes_own_product: 'false' }));
+  const before = s.fake.total();
+  const bad = await s.publish('--via', 'blotato', '--dry-run');
+  assert.equal(bad.code, 1);
+  assert.match(bad.stderr, /is not a package that publish can read/);
+  assert.equal(s.fake.total(), before, 'invalid disclosure stops before any request');
+});
+
+test('the own-product choice is shown but not sent where the service has no field for it', async (t) => {
+  const s = await setup(t, { platforms: ['youtube', 'tiktok', 'reels'], login: ['youtube', 'buffer', 'blotato'] });
+  for (const [via, platform, extra, where] of [
+    ['youtube', 'youtube', [], 'YouTube through YouTube'],
+    ['buffer', 'tiktok', ['--media-url', 'https://media.example/video.mp4'], 'TikTok through Buffer'],
+    ['buffer', 'youtube', ['--media-url', 'https://media.example/video.mp4'], 'YouTube through Buffer'],
+    ['blotato', 'youtube', [], 'YouTube through Blotato'],
+    ['blotato', 'reels', [], 'Instagram through Blotato'],
+  ]) {
+    const args = ['--via', via, '--platform', platform, ...extra];
+    const before = await s.json(...args, '--dry-run');
+    const r = await s.json(...args, '--own-product', '--dry-run');
+    assert.equal(r.code, 0, r.text);
+    assert.deepEqual(r.out.plan.promotes_own_product, { value: true, sent: false });
+    assert.deepEqual(r.out.request, before.out.request, 'the unsupported choice adds no request field');
+    const human = await s.publish(...args, '--own-product', '--dry-run');
+    assert.ok(human.stdout.includes(`Own product: yes. ${where} has no field for it, so it is not sent.`), human.text);
+  }
+  assert.deepEqual(s.changes(), NONE);
 });
 
 // --- Which package goes where ---------------------------------------------------
