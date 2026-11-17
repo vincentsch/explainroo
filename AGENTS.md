@@ -37,11 +37,11 @@ language works yet, with any voice.
 | English | `en` | nothing more |
 | Spanish, French, Italian, Brazilian Portuguese, Hindi | `es`, `fr`, `it`, `pt-br`, `hi` | the espeak-ng program |
 | Japanese, Mandarin Chinese | `ja`, `zh` | Python 3 with misaki |
-| German | `de` | Kokoro has no German voice |
+| German, Thai | `de`, `th` | Kokoro has no voice for them |
 
 ElevenLabs, Cartesia and a recording of the user's voice work in all of these
-languages, and they need neither program. German works only with one of these
-three. `explainroo docs languages` has the details.
+languages, and they need neither program. German and Thai work only with one of
+these three, or Edge, which sends the text to Microsoft. `explainroo docs languages` has the details.
 
 **Keys, money and data.** These services need a key or a sign-in. They run on
 the user's own account, and only when you run a command that uses them.
@@ -179,9 +179,9 @@ publishes nothing.
 ## Topics
 
 Read the topic of the step you are on. A long topic has sections:
-`npx --yes explainroo docs <topic> --sections` lists them with their size, and
-`npx --yes explainroo docs <topic> <section>` prints one, like
-`npx --yes explainroo docs publishing buffer`. Print only the section you need.
+`npx --yes explainroo docs <topic> --sections` lists them, and
+`npx --yes explainroo docs <topic> <section>` prints one. Print only the
+section you need.
 
 | Topic | Read it when |
 | --- | --- |

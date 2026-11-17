@@ -264,10 +264,10 @@ export function tintOf(theme, c) {
   return mixColor(theme.surface, base, theme.tintStrength);
 }
 
-// The fonts explainroo brings for Hindi, Japanese and Chinese. Every font name
+// The fonts explainroo brings for Hindi, Thai, Japanese and Chinese. Every font name
 // lists them after its own family, so text in those languages is drawn with
 // them and not with whatever fonts the computer happens to have.
-export const LANGUAGE_FONTS = ['Noto Sans Devanagari', 'Noto Sans JP', 'Noto Sans SC'];
+export const LANGUAGE_FONTS = ['Noto Sans Devanagari', 'Noto Sans Thai', 'Noto Sans JP', 'Noto Sans SC'];
 
 // "Family", then the language fonts, then a generic family.
 export function fontStack(family, fallback = 'sans-serif') {

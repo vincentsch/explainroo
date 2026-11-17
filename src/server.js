@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { ensureFonts, languageFonts } from './fonts.js';
+import { ensureFonts, FONT_LANGUAGES, languageFonts } from './fonts.js';
 import { CLIP_SOURCE, dropClipFrames, extractClip, stillSpans, VIDEO_FILE, withSourceSize } from './clips.js';
 import { typesetMath, mathHash, MAX_TEX_LENGTH } from './math.js';
 import { decodeSound, SOUND_RATE } from './sounds.js';
@@ -207,7 +207,7 @@ function isSymlink(p) {
 export async function startServer({ projectDir, getState, port = 0, log = () => {} }) {
   const { config } = await getState();
   await ensureFonts(config?.language, { log });
-  const fonts = new Map(['ja', 'zh'].flatMap(languageFonts).map(f => [`/language-fonts/${f.file}`, f.path]));
+  const fonts = new Map(FONT_LANGUAGES.flatMap(languageFonts).map(f => [`/language-fonts/${f.file}`, f.path]));
   const roughPath = resolveModule('roughjs/bundled/rough.esm.js');
   const clips = new Map();
   const server = http.createServer(async (req, res) => {

@@ -240,7 +240,7 @@ export function noKokoroVoice(language, place = 'main') {
     voices: `${oneOf(lists)} lists the ${name} voices of that service. Set one in video.json like this:`,
   }[place];
   return [
-    `Kokoro, the free voice, has no ${name} voice. ${name} narration needs your own recording or a paid voice. ${next}`,
+    `Kokoro, the free voice, has no ${name} voice. ${name} narration needs your own recording${otherVoices().some(([id]) => id === 'edge') ? ', Edge' : ''} or a paid voice. ${next}`,
     ...voiceLines(language, place === 'version'),
     'Run "explainroo services voice" to see what each one costs and what leaves your computer.',
   ].join('\n');
@@ -435,9 +435,9 @@ function settingsOf(raw, input, dir, block = null) {
   if (typeof cfg.motionBlur !== 'boolean') fail('motionBlur must be true or false');
   if (![true, false, 'minimal'].includes(cfg.sfx)) fail('sfx must be true, false or "minimal"');
   if (![true, false, 'auto', 'bold'].includes(cfg.captions)) fail('captions must be true, false, "auto" or "bold"');
-  // Bold captions break between words, and Japanese and Chinese have no spaces to break at.
-  if (cfg.captions === 'bold' && ['ja', 'zh'].includes(cfg.language)) {
-    const name = cfg.language === 'ja' ? 'Japanese' : 'Chinese';
+  // Bold captions break between words, and Japanese, Chinese and Thai have no spaces to break at.
+  if (cfg.captions === 'bold' && ['ja', 'zh', 'th'].includes(cfg.language)) {
+    const name = LANGUAGE_NAMES[cfg.language];
     const version = cfg.language !== (input.language ?? DEFAULTS.language);
     const own = !version ? ''
       : block?.captions === 'bold' ? ` The block of a size comes after "languages", so the ${name} version gets the captions of the block too.`

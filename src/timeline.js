@@ -6,6 +6,7 @@
 // its scenes.
 import path from 'node:path';
 import { normWord, speechChunks, spokenWords } from './script.js';
+import { noSpaces } from '../engine/util.js';
 
 export const TRANSITION_SECONDS = 0.7;
 
@@ -67,7 +68,7 @@ export function buildTimeline(project, voices) {
   });
   return {
     fps,
-    ...(['ja', 'zh'].includes(config.language) ? { language: config.language } : {}),
+    ...(noSpaces(config.language) ? { language: config.language } : {}),
     width: config.width,
     height: config.height,
     duration: snap(t),
@@ -135,7 +136,7 @@ function talkSeconds(text, language, count, factor) {
 export function estimateLength(project) {
   const { config, script } = project;
   if (config.voice?.provider === 'recording') return null;
-  const cjk = ['ja', 'zh'].includes(config.language);
+  const cjk = noSpaces(config.language);
   const pace = config.pace || 1;
   const normal = typeof config.voice === 'string' ? 0.9 : 1;
   const factor = ((config.speed * pace) / normal) ** 0.65 * (VOICE_RATES[config.voice] ?? 1);

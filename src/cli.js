@@ -52,7 +52,7 @@ Usage: explainroo <command> [project] [options]
 
 Make a video
   init <dir>            create a project (--theme, --size, --pace, --language en|es|fr|it|pt-br|hi|ja|zh, --voice, --title).
-                        German works with a paid voice or a recording, see "explainroo docs languages"
+                        German and Thai work with Edge, a paid voice or a recording, see "explainroo docs languages"
                         --format product-launch starts from a format: its guide, scene helpers, settings and example
   formats [format]      list the formats, or print the guide of one. "formats add <git address>" shows what it
                         will run, and installs the format with --yes (--commit id takes that commit)
@@ -150,7 +150,7 @@ Outside services (optional)
 
 Reference
   voices [project]      list Kokoro voices (--language es for one language, --provider ${LISTS_VOICES.map((c) => c.id).join('|')} for the
-                        voices your key may use)
+                        voices of that service, which with a key are the ones your key may use)
   say "text"            hear a Kokoro voice (--voice am_michael, --speed 1, --out sample.wav)
   themes                list looks
   sizes                 list sizes for YouTube, Shorts, TikTok, Reels, Instagram and LinkedIn. For each it

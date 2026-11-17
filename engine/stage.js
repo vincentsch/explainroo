@@ -2,7 +2,7 @@
 // draws the whole frame from scratch as a function of the scene time `s.t`.
 // Elements take `at` (when they appear) and optional `out` (when they leave);
 // the theme decides how they enter, and entering elements add sound effects.
-import { clamp, lerp, ease, easeFn, rand01, noise1, hashStr, mulberry32, suggest, normWord, withAlpha, contrast, mixColor, opaque, newDefaults, ordinal, LOCALES } from './util.js';
+import { clamp, lerp, ease, easeFn, rand01, noise1, hashStr, mulberry32, suggest, normWord, withAlpha, contrast, mixColor, opaque, newDefaults, ordinal, LOCALES, noSpaces } from './util.js';
 import { colorOf, tintOf, fontString } from './themes.js';
 import { scalePath, quadD, polyD, pathLength, pointAt, parsePath, absolutize, samplePath } from './pathdata.js';
 import { layoutText, lineStartX } from './text.js';
@@ -185,7 +185,7 @@ export class Stage {
     const n = counted ?? given ?? 1;
     // A number that is written, here or as an argument, means that time on purpose.
     const meant = counted !== null || given !== undefined;
-    const cjk = ['ja', 'zh'].includes(this.engine.config.language);
+    const cjk = noSpaces(this.engine.config.language);
     const want = (cjk ? [word] : word.split(/\s+/)).map(normWord).filter(Boolean);
     if (!want.length) return this._noCue(`cue("${written}") is empty`);
     const ws = this.words;

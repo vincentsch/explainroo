@@ -5,11 +5,11 @@
 
 export const KIT_WORDS = {
   // s.short.step(): "STEP 2/4", drawn in capitals.
-  step: { en: 'Step', es: 'Paso', fr: 'Étape', it: 'Passo', 'pt-br': 'Passo', hi: 'चरण', ja: 'ステップ', zh: '步骤', de: 'Schritt' },
+  step: { en: 'Step', es: 'Paso', fr: 'Étape', it: 'Passo', 'pt-br': 'Passo', hi: 'चरण', ja: 'ステップ', zh: '步骤', de: 'Schritt', th: 'ขั้นที่' },
   // The small label above a product's name in nameCard() of product-launch.
-  new: { en: 'New', es: 'Nuevo', fr: 'Nouveau', it: 'Novità', 'pt-br': 'Novo', hi: 'नया', ja: '新登場', zh: '全新', de: 'Neu' },
+  new: { en: 'New', es: 'Nuevo', fr: 'Nouveau', it: 'Novità', 'pt-br': 'Novo', hi: 'नया', ja: '新登場', zh: '全新', de: 'Neu', th: 'ใหม่' },
   // The button of callToAction() in product-launch and offer() in product-ad.
-  'try-free': { en: 'Try it for free', es: 'Pruébalo gratis', fr: 'Essayez gratuitement', it: 'Provalo gratis', 'pt-br': 'Experimente grátis', hi: 'मुफ़्त में आज़माएँ', ja: '無料で試す', zh: '免费试用', de: 'Kostenlos testen' },
+  'try-free': { en: 'Try it for free', es: 'Pruébalo gratis', fr: 'Essayez gratuitement', it: 'Provalo gratis', 'pt-br': 'Experimente grátis', hi: 'मुफ़्त में आज़माएँ', ja: '無料で試す', zh: '免费试用', de: 'Kostenlos testen', th: 'ทดลองใช้ฟรี' },
 };
 
 // Where each word is drawn, and the option that sets it, for check's hint.
@@ -19,7 +19,7 @@ const WHERE = {
   'try-free': (word) => `callToAction(s, { action: '${word}' }) or offer(s, { action: '${word}' })`,
 };
 
-export const LANGUAGE_NAMES = { en: 'English', es: 'Spanish', fr: 'French', it: 'Italian', 'pt-br': 'Brazilian Portuguese', hi: 'Hindi', ja: 'Japanese', zh: 'Chinese', de: 'German' };
+export const LANGUAGE_NAMES = { en: 'English', es: 'Spanish', fr: 'French', it: 'Italian', 'pt-br': 'Brazilian Portuguese', hi: 'Hindi', ja: 'Japanese', zh: 'Chinese', de: 'German', th: 'Thai' };
 
 export function kitWord(key, language) {
   const words = KIT_WORDS[key];

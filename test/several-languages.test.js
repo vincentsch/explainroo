@@ -87,7 +87,7 @@ test('script.<lang>.md adds a language that builds into build/<lang>/ and out/<l
 test('a language with no script is an error that lists the languages the video has', (t) => {
   const dir = project(t, { 'script.es.md': SPANISH });
   assert.throws(() => loadProject(dir, { lang: 'fr' }), (e) => e instanceof ProjectError && /no fr version/.test(e.message) && /script\.fr\.md/.test(e.message) && /en, es/.test(e.message));
-  assert.throws(() => loadProject(dir, { lang: 'nl' }), (e) => e instanceof ProjectError && /--lang must be one of en, es, fr, it, pt-br, hi, ja, zh or de/.test(e.message));
+  assert.throws(() => loadProject(dir, { lang: 'nl' }), (e) => e instanceof ProjectError && /--lang must be one of en, es, fr, it, pt-br, hi, ja, zh, de or th/.test(e.message));
 });
 
 test('scripts that are not a language of the video are left alone, and check says so', (t) => {
@@ -96,7 +96,7 @@ test('scripts that are not a language of the video are left alone, and check say
   assert.deepEqual(p.languages, ['en']);
   assert.deepEqual(languageIssues(p).map((i) => i.message).sort(), [
     'script.en.md is not used: en is the main language, and its narration is script.md',
-    'script.nl.md is not used: explainroo speaks en, es, fr, it, pt-br, hi, ja, zh or de, and not nl',
+    'script.nl.md is not used: explainroo speaks en, es, fr, it, pt-br, hi, ja, zh, de or th, and not nl',
   ]);
 });
 

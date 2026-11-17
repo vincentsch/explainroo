@@ -16,6 +16,7 @@ import { recordingFiles, decodeRecording, saveRecording, recordingCuts } from '.
 import { scriptName } from './project.js';
 import { estimateLength, estimateLine, roughTime } from './timeline.js';
 import { estimatedChapterHints } from './chapters.js';
+import { noSpaces } from '../engine/util.js';
 
 const PIPELINE = 7;
 // The rules of the speech check that a scene was checked with. A scene checked
@@ -126,7 +127,7 @@ export function heardQuote(info, language, indexes, around = 4) {
 // heard words, so they say where in the transcript a word is, and are never
 // used as times.
 function realign(info, language, accept = null) {
-  if (['ja', 'zh'].includes(language) || !info.duration || !info.transcript || !Array.isArray(info.words)) return null;
+  if (noSpaces(language) || !info.duration || !info.transcript || !Array.isArray(info.words)) return null;
   const words = info.words.map((w) => ({ spoken: w.spoken ?? w.text, display: w.text }));
   const heard = info.transcript.split(/\s+/).filter(Boolean).map((text, i) => ({ text, start: i, end: i + 1 }));
   return { words, heard, aligned: alignWords(words, heard, heard.length, language, { accept }).words };
@@ -217,7 +218,7 @@ function heardTaken(info, language, accept) {
 // a word that the speech check doesn't confirm fully without it. `voices` are
 // the scenes with the forms already taken, like voice gives them.
 export function unusedForms(voices, language, accept) {
-  if (!accept || ['ja', 'zh'].includes(language)) return [];
+  if (!accept || noSpaces(language)) return [];
   const scenes = Object.values(voices).filter((v) => Array.isArray(v?.words) && v.transcript);
   const plain = new Map(scenes.map((v) => [v, realign(v, language)?.aligned ?? null]));
   const nearly = new Set(scenes.flatMap((v) => (v.nearly ?? []).map((n) => normWord(n.word))));
@@ -720,7 +721,7 @@ async function synthesizeScene(project, scene, chunks, hash, tts, speech, log, t
       if (!a.matched) unmatched.push(w.display);
     });
     nearly.push(...nearList(chunk.words, aligned.words));
-    const tokens = chunk.words.reduce((n, w) => n + (['ja', 'zh'].includes(config.language) ? Array.from(normWord(w.spoken).normalize('NFC')).length : Math.max(1, spokenWords(w.spoken).length)), 0);
+    const tokens = chunk.words.reduce((n, w) => n + (noSpaces(config.language) ? Array.from(normWord(w.spoken).normalize('NFC')).length : Math.max(1, spokenWords(w.spoken).length)), 0);
     totalTokens += tokens;
     matchedTokens += aligned.matchRate * tokens;
     chunkInfo.push({ start, end: start + dur, text: chunk.text });

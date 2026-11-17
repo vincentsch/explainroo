@@ -98,11 +98,11 @@ test('a press step presses a key where the focus is, or on its element, and a sc
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ title: 'T' }));
   assert.equal(projectLocale(dir), 'en-US');
-  for (const [language, locale] of Object.entries({ es: 'es-ES', fr: 'fr-FR', it: 'it-IT', 'pt-br': 'pt-BR', hi: 'hi-IN', ja: 'ja-JP', zh: 'zh-CN', de: 'de-DE' })) {
+  for (const [language, locale] of Object.entries({ es: 'es-ES', fr: 'fr-FR', it: 'it-IT', 'pt-br': 'pt-BR', hi: 'hi-IN', ja: 'ja-JP', zh: 'zh-CN', de: 'de-DE', th: 'th-TH' })) {
     fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ title: 'T', language }));
     assert.equal(projectLocale(dir), locale);
   }
-  assert.equal(Object.keys(LOCALES).length, 9);
+  assert.equal(Object.keys(LOCALES).length, 10);
   // A press that changes the page moves the picture, and one that doesn't, doesn't.
   assert.deepEqual(movingSteps([{ step: 1, do: 'press', start: 0, t: 0.5, end: 1, changed: true }, { step: 2, do: 'press', start: 1, t: 1.2, end: 2, changed: false }]), [{ step: 1, from: 0.5, to: 0.5 }]);
 });

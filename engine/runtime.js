@@ -6,7 +6,7 @@ import { getTheme, makeBackground, fontString, colorOf } from './themes.js';
 import { Pen } from './pen.js';
 import { drawTransition } from './transitions.js';
 import { buildPhrases, drawCaptions, buildChunks, drawBoldCaptions, captionHighlight } from './captions.js';
-import { AUDIO_FILE, clamp, ease, hashStr, mulberry32, suggest, suggestColor, contrast, luminance, opaque, withAlpha, parseColor, mixColor, rgba, cssColor, newDefaults, accentNote, normWord } from './util.js';
+import { AUDIO_FILE, clamp, ease, hashStr, mulberry32, suggest, suggestColor, contrast, luminance, opaque, withAlpha, parseColor, mixColor, rgba, cssColor, newDefaults, accentNote, normWord, noSpaces } from './util.js';
 import { overlapDepth, holds, crosses, bounds, inside, toEdge, grow } from './geometry.js';
 import { layoutAreas } from './layout.js';
 import { loadClips, soundURL, ClipFrames, FREEZE_SECONDS, FIT_SPEEDS } from './clips.js';
@@ -52,9 +52,10 @@ async function loadFonts(theme, config, root = '/') {
     }));
   };
   for (const f of manifest) if (root === './' || wanted.has(f.family)) add(f.family, `${root}fonts/${f.file}`, f);
-  if (root !== './' && ['ja', 'zh'].includes(config.language)) {
-    const family = config.language === 'ja' ? 'Noto Sans JP' : 'Noto Sans SC';
-    for (const weight of [400, 700]) add(family, `/language-fonts/${config.language}-${weight}.otf`, { weight });
+  // The fonts of Japanese, Chinese and Thai come from explainroo's cache.
+  const own = { ja: ['Noto Sans JP', 'otf'], zh: ['Noto Sans SC', 'otf'], th: ['Noto Sans Thai', 'ttf'] }[config.language];
+  if (root !== './' && own) {
+    for (const weight of [400, 700]) add(own[0], `/language-fonts/${config.language}-${weight}.${own[1]}`, { weight });
   }
   // A video's own fonts, from "fonts" in video.json.
   for (const f of config.fonts || []) add(f.family, root + 'project/' + f.src.split('/').map(encodeURIComponent).join('/'), f);
@@ -1514,7 +1515,7 @@ function emptyStretches(filled, dur, step, shown) {
   return found;
 }
 
-const cjkLanguage = (language) => ['ja', 'zh'].includes(language);
+const cjkLanguage = noSpaces;
 
 // The longest run of four or more words in a row that `text` and the caption
 // words share, as { text, first } with the text the captions show and its first

@@ -119,7 +119,7 @@ test('init --language de stops and creates nothing, and voices --language de nee
   assert.ok(JSON.parse(output).error.includes('has no German voice'));
   output = '';
   assert.equal(await main(['help']), 0);
-  assert.match(output, /--language en\|es\|fr\|it\|pt-br\|hi\|ja\|zh, --voice, --title\)\.\n +German works with a paid voice or a recording, see "explainroo docs languages"/);
+  assert.match(output, /--language en\|es\|fr\|it\|pt-br\|hi\|ja\|zh, --voice, --title\)\.\n +German and Thai work with Edge, a paid voice or a recording, see "explainroo docs languages"/);
 });
 
 test('voices --provider lists German voices from Cartesia and ElevenLabs', async (t) => {

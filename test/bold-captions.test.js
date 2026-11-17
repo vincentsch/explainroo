@@ -126,9 +126,9 @@ test('numbers, money and starred words are keywords, and a caption drops a comma
 
 test('bold captions name the fonts explainroo brings for Hindi, Japanese and Chinese, as every look font does', () => {
   // The look fonts keep the exact font names they always had.
-  assert.equal(fontString(getTheme('clean'), 'body', 48), '400 48px "Inter", "Noto Sans Devanagari", "Noto Sans JP", "Noto Sans SC", sans-serif');
-  assert.equal(fontString(getTheme('paper'), 'mono', 31.333), '400 31.33px "JetBrains Mono", "Noto Sans Devanagari", "Noto Sans JP", "Noto Sans SC", monospace');
-  assert.equal(boldCaptionFont(74), '900 74px "Inter", "Noto Sans Devanagari", "Noto Sans JP", "Noto Sans SC", sans-serif');
+  assert.equal(fontString(getTheme('clean'), 'body', 48), '400 48px "Inter", "Noto Sans Devanagari", "Noto Sans Thai", "Noto Sans JP", "Noto Sans SC", sans-serif');
+  assert.equal(fontString(getTheme('paper'), 'mono', 31.333), '400 31.33px "JetBrains Mono", "Noto Sans Devanagari", "Noto Sans Thai", "Noto Sans JP", "Noto Sans SC", monospace');
+  assert.equal(boldCaptionFont(74), '900 74px "Inter", "Noto Sans Devanagari", "Noto Sans Thai", "Noto Sans JP", "Noto Sans SC", sans-serif');
   assert.deepEqual(BOLD_CAPTION_FAMILIES, ['Inter', ...LANGUAGE_FONTS]);
 });
 

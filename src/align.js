@@ -7,6 +7,7 @@ import { isScale, readGerman, saysOne } from './german.js';
 import { decimalDigits, numberGroups, numberValue, sameUnitWord, unitReading } from './units.js';
 import { mathReading } from './math-words.js';
 import { spelledNumbers, spelledToken } from './spelled-numbers.js';
+import { noSpaces } from '../engine/util.js';
 
 const require = createRequire(import.meta.url);
 
@@ -272,7 +273,7 @@ function readWords(list, language, other = []) {
 // `accept` is "heard" from video.json: { word: [forms] }. A word heard as one of
 // its forms, like "regex101" as "reg x 101", is confirmed fully.
 export function alignWords(words, heard, duration, language = 'en', { sounds = null, accept = null } = {}) {
-  const cjk = ['ja', 'zh'].includes(language);
+  const cjk = noSpaces(language);
   const chars = word => normWord(word).normalize('NFC');
   const partsOf = word => Array.from(language === 'zh' ? simplified(chars(word)) : chars(word));
   // The tokens of each word in a list. German reads a word with its neighbours,

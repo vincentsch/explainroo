@@ -7,6 +7,7 @@
 //   keywords for bold captions, and nobody hears them.
 //   > director notes and <!-- comments --> are ignored.
 import { periodGoesOn } from './german.js';
+import { noSpaces } from '../engine/util.js';
 
 const ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 const ATTR_NUMBERS = new Set(['hold', 'min', 'lead', 'gap', 'max']);
@@ -76,7 +77,7 @@ export function spokenWords(text) {
 // voice gets the same text as before.
 export function tokenizeNarration(text, line = 0, language = 'en') {
   const units = [];
-  const segmenter = ['ja', 'zh'].includes(language) ? new Intl.Segmenter(language, { granularity: 'word' }) : null;
+  const segmenter = noSpaces(language) ? new Intl.Segmenter(language, { granularity: 'word' }) : null;
   const punctuation = segmenter ? /^[.,;:!?।。！？、，；：）」』)\]"'’”…]+$/ : /^[.,;:!?।)\]"'’…]+$/;
   let i = 0;
   let pendingSpace = false;
@@ -85,6 +86,15 @@ export function tokenizeNarration(text, line = 0, language = 'en') {
   const n = text.length;
   const lastWord = () => units.findLast((u) => u.type === 'word') ?? null;
   const pushWord = (display, spoken) => {
+    // Thai writes a space between phrases but not between words. The word
+    // before the space keeps it at its end, so text joined without spaces,
+    // like captions, subtitles and what the voice reads, still has it.
+    const before = language === 'th' && pendingSpace ? lastWord() : null;
+    if (before) {
+      if (!/\s$/.test(before.display)) before.display += ' ';
+      if (!/\s$/.test(before.spoken)) before.spoken += ' ';
+      pendingSpace = false;
+    }
     const prev = units[units.length - 1];
     if (!pendingSpace && prev && prev.type === 'word' && punctuation.test(display)) {
       prev.display += display;
@@ -353,7 +363,7 @@ function parseLines(source, language) {
 // period of an ordinal or a short form inside a sentence, like "am 3. Mai" or
 // "z. B.", doesn't end it.
 export function speechChunks(units, { sentenceGap = 0.3, paragraphGap = 0.55, pace = 1, language = 'en', chunks: by = 'sentences' } = {}) {
-  const cjk = ['ja', 'zh'].includes(language);
+  const cjk = noSpaces(language);
   const sentenceEnd = cjk ? /[.!?…।。！？]["'’)\]」』）]*$/ : /[.!?…।]["'’)\]]*$/;
   const chunks = [];
   let cur = null;

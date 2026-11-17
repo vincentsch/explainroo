@@ -1,7 +1,7 @@
 // Burned-in captions built from the narration's word timings. The current
 // phrase is shown; words light up as they are spoken.
 import { fontString, fontStack, LANGUAGE_FONTS } from './themes.js';
-import { clamp, ease, contrast, opaque, suggestColor, newDefaults } from './util.js';
+import { clamp, ease, contrast, opaque, suggestColor, newDefaults, noSpaces } from './util.js';
 import { BOLD_CAPTION_SIZE } from './layout.js';
 
 // Some words belong to the word before them, so a phrase or line should not
@@ -46,9 +46,9 @@ export function captionHighlight(config, theme) {
 }
 
 export function buildPhrases(timeline, maxChars) {
-  const cjk = ['ja', 'zh'].includes(timeline.language);
+  const cjk = noSpaces(timeline.language);
   const sentenceEnd = cjk ? /[.!?;:।。！？]["'’)」』）]*$/ : /[.!?;:।]["'’)]*$/;
-  if (cjk) maxChars = Math.min(maxChars, 18);
+  if (cjk && timeline.language !== 'th') maxChars = Math.min(maxChars, 18);
   const phrases = [];
   for (const sc of timeline.scenes) {
     // A sentence (or a run of words between long pauses) is split into as few

@@ -1,16 +1,17 @@
 # Videos in other languages
 
 Set `language` in `video.json` to `en`, `es`, `fr`, `it`, `pt-br`, `hi`,
-`ja`, `zh` or `de`. English is the default. `pt-br` means Brazilian Portuguese,
-`zh` Mandarin Chinese and `de` German. You can also start with
-`explainroo init videos/my-video --language es`. German works with a paid
-voice or a recording, and the section on German below says how to set it up.
+`ja`, `zh`, `de` or `th`. English is the default. `pt-br` means Brazilian
+Portuguese, `zh` Mandarin Chinese, `de` German and `th` Thai. You can also start
+with `explainroo init videos/my-video --language es`. German and Thai work with
+Edge, a paid voice or a recording, and the sections on German and Thai below say
+how to set them up.
 
 No other language works yet, with any voice. When the user asks for one,
 tell them before you start.
 
-When `voice` is left out, the language picks its Kokoro voice. German has no
-Kokoro voice, so it always needs a voice in `video.json`.
+When `voice` is left out, the language picks its Kokoro voice. German and Thai
+have no Kokoro voice, so they always need a voice in `video.json`.
 
 | Language | Default voice |
 |---|---|
@@ -264,6 +265,46 @@ give German its own voice under `"languages"`:
 "languages": { "de": { "voice": { "provider": "recording", "src": "assets/narration-de.m4a" } } }
 ```
 
+## Thai
+
+Kokoro has no Thai voice. A Thai video speaks with Edge, ElevenLabs, Cartesia
+or the user's own recording. Edge is free and needs no key: it runs the
+edge-tts Python package, which reads the text with the neural voices of
+Microsoft Edge's read-aloud. The narration text goes to Microsoft, and
+Microsoft doesn't offer that service as a public API, so it may stop working.
+Run `explainroo services voice` and let the user choose. For Edge:
+
+```bash
+python -m pip install edge-tts
+explainroo voices --provider edge --language th
+```
+
+```json
+"language": "th",
+"voice": { "provider": "edge", "id": "th-TH-NiwatNeural" }
+```
+
+`th-TH-PremwadeeNeural` is a woman's voice and `th-TH-NiwatNeural` a man's.
+Set `EXPLAINROO_PYTHON` when the Python with edge-tts is not the one on PATH.
+Edge reads everything between two pauses in one request. It now and then sends
+no audio for a text it reads fine a moment later, so `voice` tries a request
+up to five times. A voice can also refuse texts for a while that the other voice
+reads: on 2026-11-17 `th-TH-PremwadeeNeural` refused most sentences and
+`th-TH-NiwatNeural` read them all. Switch the voice, or wait a few minutes, and
+run `voice` again.
+
+Thai writes no space between words, only between phrases. explainroo splits
+the words with the browser's word breaker (`Intl.Segmenter`), like Japanese
+and Chinese, and the speech check compares the letters. A cue is a word or a
+run of whole words, written without spaces, like `at: 'ห้องเรียน'`. Markers
+are easier, because a phrase can split into words where you don't expect. The
+space between phrases stays in the captions and the subtitles. Bold captions
+don't work for Thai. Use `"captions": true`.
+
+Write numbers and English words the way the voice should say them, like
+`{Google|กูเกิล}` or `{sarachai.com|สาระชัย ดอท คอม}`. The speech check doesn't
+read Thai number words, so a digit heard as a word stays unconfirmed. The first
+Thai video downloads Noto Sans Thai, about 80 KB, so no system font is needed.
 ## One video in several languages
 
 `script.md` is the main language, from `language`. Each `script.<lang>.md`

@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { cacheRoot } from './models.js';
-import { languageFonts, subsetFont } from './fonts.js';
+import { languageFontLicense, languageFonts, subsetFont } from './fonts.js';
 import { prepare, makeState } from './pipeline.js';
 import { outputPath, scriptName } from './project.js';
 import { startServer, projectFile, ROOT } from './server.js';
@@ -59,12 +59,13 @@ export function copyPlayer(project, timeline, used, out) {
     copy(path.join(ROOT, 'fonts/licenses', name), `fonts/licenses/${name}`);
   }
   fs.mkdirSync(path.join(out, 'fonts'), { recursive: true });
-  // Japanese and Chinese fonts keep only the characters the video draws.
+  // Japanese, Chinese and Thai fonts keep only the characters the video draws.
   for (const f of languageFonts(project.config.language)) {
     fs.writeFileSync(path.join(out, 'fonts', f.file), subsetFont(fs.readFileSync(f.path), text));
     fonts.push({ family: f.family, weight: f.weight, file: f.file });
   }
-  if (languageFonts(project.config.language).length) copy(path.join(cacheRoot(), 'fonts', 'NotoSansCJK-OFL.txt'), 'fonts/licenses/NotoSansCJK-OFL.txt');
+  const license = languageFontLicense(project.config.language);
+  if (license) copy(license.path, `fonts/licenses/${license.file}`);
   fs.writeFileSync(path.join(out, 'fonts/fonts.json'), JSON.stringify(fonts));
   // Audio synthesis and upload code run during export, never during playback.
   const modules = ['runtime', 'stage', 'themes', 'pen', 'transitions', 'captions', 'util', 'layout', 'clips', 'ui', 'short', 'readability', 'pathdata', 'geometry', 'text', 'code', 'director', 'recording', 'words'];

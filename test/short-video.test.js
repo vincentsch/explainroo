@@ -16,7 +16,7 @@ test('*keywords* in a kit title are marked word by word, also across words', () 
 
 test('the kit draws in Inter with the fonts explainroo brings for Hindi, Japanese and Chinese', () => {
   assert.equal(new Short({}).font(56, 900), `900 56px ${fontStack('Inter')}`);
-  assert.equal(new Short({}).font(34), '400 34px "Inter", "Noto Sans Devanagari", "Noto Sans JP", "Noto Sans SC", sans-serif');
+  assert.equal(new Short({}).font(34), '400 34px "Inter", "Noto Sans Devanagari", "Noto Sans Thai", "Noto Sans JP", "Noto Sans SC", sans-serif');
 });
 
 test('punch and drift take fixed places and return keys for s.camera', () => {

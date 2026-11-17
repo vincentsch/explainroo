@@ -45,6 +45,23 @@
       "voice": { "keys": ["src"] }
     },
     {
+      "id": "edge",
+      "step": "voice",
+      "name": "Edge",
+      "about": "The neural voices of Microsoft Edge's read-aloud, through the edge-tts Python package. It needs no account and no key, and it speaks languages Kokoro has no voice for, like Thai. Microsoft does not offer it as a public API, so it may stop working.",
+      "free": true,
+      "partner": false,
+      "status": "available",
+      "cost": "Free.",
+      "data_leaves": "The narration text goes to Microsoft.",
+      "setup": {
+        "env": [],
+        "steps": ["Install Python 3, then run: python -m pip install edge-tts. Set EXPLAINROO_PYTHON when that Python is not the one on PATH."],
+        "use": "Run \"explainroo voices --provider edge --language th\" to see the voices, then set \"voice\": { \"provider\": \"edge\", \"id\": \"th-TH-NiwatNeural\" } in video.json."
+      },
+      "voice": { "keys": ["id"] }
+    },
+    {
       "id": "elevenlabs",
       "step": "voice",
       "name": "ElevenLabs",

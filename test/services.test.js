@@ -63,7 +63,7 @@ test('within each step free entries come first, and the first entry of every ste
 });
 
 test('the first list holds what exists today', () => {
-  assert.deepEqual(SERVICES.map((s) => s.id), ['kokoro', 'recording', 'elevenlabs', 'cartesia', 'whisper', 'own-images', 'own-footage', 'openrouter', 'own-presenter', 'presenter', 'built-in-music', 'own-music', 'soundroo', 'web-player', 'cloud', 'package', 'youtube', 'buffer', 'blotato']);
+  assert.deepEqual(SERVICES.map((s) => s.id), ['kokoro', 'recording', 'edge', 'elevenlabs', 'cartesia', 'whisper', 'own-images', 'own-footage', 'openrouter', 'own-presenter', 'presenter', 'built-in-music', 'own-music', 'soundroo', 'web-player', 'cloud', 'package', 'youtube', 'buffer', 'blotato']);
 });
 
 test('the hosted link is coming and says what leaves the computer, and package is the free route for posting', () => {
@@ -328,7 +328,7 @@ test('services and connect send no key and nothing about the user, and the only 
 
 test('voice settings are checked against the data, and the lists in errors come from it', () => {
   const providers = voiceProviders();
-  assert.deepEqual(Object.keys(providers), ['kokoro', 'recording', 'elevenlabs', 'cartesia']);
+  assert.deepEqual(Object.keys(providers), ['kokoro', 'recording', 'edge', 'elevenlabs', 'cartesia']);
   const fails = (voice, pattern) => assert.throws(() => normalizeConfig({ voice }), (e) => e instanceof ProjectError && pattern.test(e.message));
   fails({ provider: 'nope' }, new RegExp(`voice.provider must be ${oneOf(Object.keys(providers))}$`));
   fails({ provider: 'elevenlabs', id: 'v', nope: 1 }, /unknown setting\(s\): nope\. Known: provider, id, model/);
@@ -347,7 +347,7 @@ test('the code that makes the voice and the command line name no paid service', 
 
 test('the help is made from the data, and names every new command', () => {
   const help = run(['--help']).stdout;
-  assert.match(help, /--provider elevenlabs\|cartesia for the\s+voices your key may use/);
+  assert.match(help, /--provider edge\|elevenlabs\|cartesia for the\s+voices of that service, which with a key are the ones your key may use/);
   for (const words of [/^ {2}services \[step\]/m, /^ {2}connect <service>/m, /^ {2}history \[project\]/m, /--new/, /--resume <id>/, /--key-stdin/, /^ {2}clip \[project\]/m, /--dry-run/, /--max-cost/, /--seconds/, /--aspect/, /--model cheap\|quality/, /--resolution/, /--audio/, /--name/, /--no-wait/, /^ {2}publish \[project\]/m, /--via youtube\|buffer\|blotato/, /--privacy private\|unlisted\|public/, /--media-url/, /--channel id for Buffer/, /--account id for Blotato/, /--yes when there is no terminal/, /--callback-url/]) assert.match(help, words);
 });
 

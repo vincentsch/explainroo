@@ -1,13 +1,14 @@
 // Subtitle cues use the shown words and their times from the voice timeline.
 import { clingsToPrevious } from '../engine/captions.js';
+import { noSpaces } from '../engine/util.js';
 
 const sentenceEnd = /[.!?…।]["'’”)\]]*$/;
 const punctuation = /[,;:.!?…।]["'’”)\]]*$/;
 
 function lines(words, language = 'en') {
-  const cjk = ['ja', 'zh'].includes(language);
+  const cjk = noSpaces(language);
   const clings = clingsToPrevious(language);
-  const limit = cjk ? 18 : 42;
+  const limit = cjk && language !== 'th' ? 18 : 42;
   const separator = cjk ? '' : ' ';
   const text = words.map((w) => w.text).join(separator);
   if (text.length <= limit) return text;
@@ -28,8 +29,8 @@ function lines(words, language = 'en') {
 // `script` names the script file in the error about a word that is too long.
 export function subtitleCues(timeline, { from = 0, to = Infinity, script = 'script.md' } = {}) {
   const language = timeline.language || 'en';
-  const cjk = ['ja', 'zh'].includes(language);
-  const limit = cjk ? 18 : 42;
+  const cjk = noSpaces(language);
+  const limit = cjk && language !== 'th' ? 18 : 42;
   const endSentence = cjk ? /[.!?…।。！？]["'’”)\]」』）]*$/ : sentenceEnd;
   const atPunctuation = cjk ? /[,;:.!?…।。！？、，；：]["'’”)\]」』）]*$/ : punctuation;
   const clings = clingsToPrevious(language);

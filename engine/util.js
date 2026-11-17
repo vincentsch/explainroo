@@ -5,7 +5,14 @@ export const AUDIO_FILE = /\.(wav|mp3|m4a|aac|flac|ogg|opus)$/i;
 
 // The locale of each language: the one the recording browser asks sites
 // for, and the one s.number formats with.
-export const LOCALES = { en: 'en-US', es: 'es-ES', fr: 'fr-FR', it: 'it-IT', 'pt-br': 'pt-BR', hi: 'hi-IN', ja: 'ja-JP', zh: 'zh-CN', de: 'de-DE' };
+export const LOCALES = { en: 'en-US', es: 'es-ES', fr: 'fr-FR', it: 'it-IT', 'pt-br': 'pt-BR', hi: 'hi-IN', ja: 'ja-JP', zh: 'zh-CN', de: 'de-DE', th: 'th-TH' };
+
+// Languages that write no space between words. Their words come from
+// Intl.Segmenter, they are joined without a space, and the speech check
+// compares them letter by letter. Thai keeps the spaces it does write, between
+// phrases, as a space at the start of the word after it.
+export const NO_SPACE_LANGUAGES = ['ja', 'zh', 'th'];
+export const noSpaces = (language) => NO_SPACE_LANGUAGES.includes(language);
 
 export const clamp = (v, a = 0, b = 1) => (v < a ? a : v > b ? b : v);
 export const lerp = (a, b, p) => a + (b - a) * p;
