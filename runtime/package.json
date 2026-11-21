@@ -1,0 +1,15 @@
+{
+  "name": "explainroo-voice-runtime",
+  "version": "1.0.0",
+  "private": true,
+  "description": "What runs the free voice and the speech check of explainroo. explainroo installs it on first use.",
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "@huggingface/transformers": "3.8.1",
+    "kokoro-js": "1.2.1"
+  },
+  "overrides": {
+    "sharp": "^0.35.5"
+  }
+}

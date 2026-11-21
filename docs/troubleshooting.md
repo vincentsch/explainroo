@@ -2,11 +2,11 @@
 
 ## Installing and running
 
-- `npx --yes explainroo` that prints nothing and stops. On Linux, installing
-  explainroo makes ONNX Runtime download its graphics card files from GitHub,
-  and when that download fails, `npx` says nothing. explainroo doesn't use
-  those files. Run the command again with `ONNXRUNTIME_NODE_INSTALL_CUDA=skip`
-  in front of it.
+- "the voice runtime could not be installed". The free voice and the speech
+  check run on a runtime that explainroo installs with npm the first time, and
+  the message gives npm's reason. Behind a proxy or with a registry of your
+  own, set it up for npm, like `npm config set proxy http://proxy:3128`, and
+  run `explainroo doctor --fetch` again.
 - A render that stops with a closed browser or `EPIPE` on a busy computer.
   Run it again with fewer pages, for example `render --workers 2`.
 - Running explainroo on one project from two computers at once, or from a

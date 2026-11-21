@@ -11,6 +11,7 @@ import { saveKeys, settingValue, settingsEnvFile } from './env.js';
 import { ffmpegVersion } from './ffmpeg.js';
 import { projectWord, selfCommand } from './history.js';
 import { ASR_MODEL, asrModel, cacheRoot, downloadSize, LANGUAGE_NAMES, LANGUAGES, loadASR, loadTTS, MODEL_NAMES, MULTILINGUAL_ASR_MODEL, TTS_MODEL, ttsDtype } from './models.js';
+import { RUNTIME_SIZE, runtimeState, runtimeVersions } from './runtime.js';
 import { espeakInstall, espeakVersion, misakiAvailable, misakiInstall, phonemeProgram } from './phonemes.js';
 import { checkLanguage, normalizeConfig, ProjectError } from './project.js';
 import { allOf, voiceProviders } from './services.js';
@@ -49,11 +50,12 @@ function voiceRoute(voice) {
 // The parts a setup needs, each with the languages that need it. A Kokoro voice
 // needs the voice model, and some languages need a program that turns their text
 // into sounds. Every voice needs the speech check model of its language, which
-// finds the word times.
+// finds the word times, and so every voice needs the voice runtime that runs it.
 export function setupNeeds(setup) {
   const needs = new Map();
   const need = (part, language) => needs.set(part, [...new Set([...(needs.get(part) ?? []), language])]);
   for (const { language, voice } of setup) {
+    need('voice runtime', language);
     if (voiceRoute(voice) === 'kokoro') {
       need(MODEL_NAMES[TTS_MODEL], language);
       const program = phonemeProgram(language);
@@ -254,6 +256,13 @@ export async function doctor({ project = null, language = null, fetch = false, r
       if (languages) await loadASR({ log, language: languages[0] });
     }
   }
+  const runtime = runtimeState(cacheRoot());
+  some('voice runtime', {
+    found: runtime.ready,
+    ready: () => `${runtimeVersions()}, ${runtime.checkout ? 'from this checkout' : `in ${runtime.where}`}`,
+    missing: () => `not installed yet. "${again}" or the first voice run installs it, ${RUNTIME_SIZE}.`,
+    notNeeded: 'only needed for the free voice and the speech check',
+  });
   const models = path.join(cacheRoot(), 'models');
   const has = (model) => fs.existsSync(path.join(models, model));
   const fetched = (model) => `not downloaded yet. "${again}" or the first voice run fetches it, ${downloadSize(model)}.`;

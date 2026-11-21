@@ -27,6 +27,7 @@ https://github.com/user-attachments/assets/6dd5dc32-c975-4e0e-8cd4-2ef3ccc11e61
 
 ## News
 
+- **Nov 21, 2026**: explainroo 0.6.2 installs on Linux again. ONNX Runtime's downloads on GitHub are gone since November 17, and they made every Linux install stop. What runs the free voice now installs the first time a video needs it, so `npx --yes explainroo` takes a few seconds and about 100 MB.
 - **Nov 18, 2026**: explainroo 0.6.1 posts through Blotato, its first partner for posting, and `publish --own-product` marks a TikTok video that promotes your own product.
 - **Nov 10, 2026**: [explainroo 0.6](https://www.explainroo.com/news/explainroo-0-6/) records your real app with `explainroo record`, and a scene plays that recording with a pointer and zooms that land on the narration. New projects start in the studio look, and formats give one kind of video a ready shape. `check` and `verify` work on any video file, and `cut` edits your own recording by its words. The list of sizes moved to `explainroo sizes`.
 - **Nov 9, 2026**: [explainroo 0.5](https://www.explainroo.com/news/explainroo-0-5/) runs with npx, so you don't have to clone it. It can also use outside services on your own key, like AI video clips and posting to your channels. German narration works with a paid voice or your own recording. A project made before keeps its look, frame for frame, until you add `"defaults": "0.5"` to its `video.json`, which brings the new look, like bigger arrow labels.
@@ -143,13 +144,13 @@ agent run them:
 With ElevenLabs or Cartesia, the commands that make missing narration, like
 `check` and `render`, send the narration text too.
 
-The first run downloads the voice and speech models from Hugging Face. Other
-languages need one more speech model, which downloads the first time, and
-Japanese and Chinese also download their fonts from GitHub. On Debian and
-Ubuntu, `doctor --fetch` downloads espeak-ng's packages from the computer's own
-package sources when a language needs it. Nothing of yours goes along with
-these downloads. explainroo has no telemetry, so it sends
-nothing about how you use it.
+The first run installs the voice runtime from npm and downloads the voice and
+speech models from Hugging Face. Other languages need one more speech model,
+which downloads the first time, and Japanese and Chinese also download their
+fonts from GitHub. On Debian and Ubuntu, `doctor --fetch` downloads
+espeak-ng's packages from the computer's own package sources when a language
+needs it. Nothing of yours goes along with these downloads. explainroo has no
+telemetry, so it sends nothing about how you use it.
 
 Nothing uploads to the hosted service without the explicit `explainroo share`
 command. In this version `share` sends nothing at all, because the service
@@ -346,21 +347,12 @@ a paid service for you.
 npx --yes explainroo doctor --fetch
 ```
 
-This checks your computer and downloads the voice and timing models once,
-about 400 MB together. You don't have to clone anything. You need Node.js
-20.11 or newer, ffmpeg, and Chrome or Chromium. You don't need a graphics
-card. I develop explainroo on Linux, and its tests run on Linux, macOS and
-Windows for every change.
-
-On Linux, installing explainroo also makes ONNX Runtime, which the voice uses,
-download its graphics card files from GitHub. explainroo doesn't use them. When
-GitHub is slow, that download fails and `npx` stops without a word. Put
-`ONNXRUNTIME_NODE_INSTALL_CUDA=skip` in front of the command to leave the
-download out:
-
-```bash
-ONNXRUNTIME_NODE_INSTALL_CUDA=skip npx --yes explainroo doctor --fetch
-```
+This checks your computer and downloads what the free voice needs, once: its
+runtime from npm, and the voice and timing models from Hugging Face. That's
+about 860 MB together, and the package itself is about 100 MB. You don't have
+to clone anything. You need Node.js 20.11 or newer, ffmpeg, and Chrome or
+Chromium. You don't need a graphics card. I develop explainroo on Linux, and
+its tests run on Linux, macOS and Windows for every change.
 
 For narration with Kokoro, the free voice, in Spanish, French, Italian,
 Portuguese or Hindi, also install
