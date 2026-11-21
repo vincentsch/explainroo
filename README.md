@@ -143,13 +143,13 @@ agent run them:
 With ElevenLabs or Cartesia, the commands that make missing narration, like
 `check` and `render`, send the narration text too.
 
-The first run downloads the voice and speech models from Hugging Face. Other
-languages need one more speech model, which downloads the first time, and
-Japanese and Chinese also download their fonts from GitHub. On Debian and
-Ubuntu, `doctor --fetch` downloads espeak-ng's packages from the computer's own
-package sources when a language needs it. Nothing of yours goes along with
-these downloads. explainroo has no telemetry, so it sends
-nothing about how you use it.
+The first run installs the voice runtime from npm and downloads the voice and
+speech models from Hugging Face. Other languages need one more speech model,
+which downloads the first time, and Japanese and Chinese also download their
+fonts from GitHub. On Debian and Ubuntu, `doctor --fetch` downloads
+espeak-ng's packages from the computer's own package sources when a language
+needs it. Nothing of yours goes along with these downloads. explainroo has no
+telemetry, so it sends nothing about how you use it.
 
 Nothing uploads to the hosted service without the explicit `explainroo share`
 command. In this version `share` sends nothing at all, because the service
@@ -346,21 +346,12 @@ a paid service for you.
 npx --yes explainroo doctor --fetch
 ```
 
-This checks your computer and downloads the voice and timing models once,
-about 400 MB together. You don't have to clone anything. You need Node.js
-20.11 or newer, ffmpeg, and Chrome or Chromium. You don't need a graphics
-card. I develop explainroo on Linux, and its tests run on Linux, macOS and
-Windows for every change.
-
-On Linux, installing explainroo also makes ONNX Runtime, which the voice uses,
-download its graphics card files from GitHub. explainroo doesn't use them. When
-GitHub is slow, that download fails and `npx` stops without a word. Put
-`ONNXRUNTIME_NODE_INSTALL_CUDA=skip` in front of the command to leave the
-download out:
-
-```bash
-ONNXRUNTIME_NODE_INSTALL_CUDA=skip npx --yes explainroo doctor --fetch
-```
+This checks your computer and downloads what the free voice needs, once: its
+runtime from npm, and the voice and timing models from Hugging Face. That's
+about 860 MB together, and the package itself is about 100 MB. You don't have
+to clone anything. You need Node.js 20.11 or newer, ffmpeg, and Chrome or
+Chromium. You don't need a graphics card. I develop explainroo on Linux, and
+its tests run on Linux, macOS and Windows for every change.
 
 For narration with Kokoro, the free voice, in Spanish, French, Italian,
 Portuguese or Hindi, also install

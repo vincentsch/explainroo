@@ -1,6 +1,7 @@
 // Proves the package works when installed. It packs this repository, installs
 // the tarball in a temp folder and makes a real video from there, reusing the
-// models in ~/.cache/explainroo. Run it with "npm run test:pack".
+// voice runtime and the models in ~/.cache/explainroo, or installing them there
+// first. Run it with "npm run test:pack".
 //
 // The temp folder has to be outside the checkout. Node looks for packages by
 // walking up the folders, so inside the repo it would find the repo's own
@@ -121,8 +122,8 @@ const steps = [
     args: ['doctor', '--json'],
     check: (r) => {
       expect(r.ok, 'doctor found a problem');
-      for (const name of ['voice model', 'speech check model']) {
-        expect(r.checks.find((c) => c.name === name)?.state === 'ready', `the ${name} is missing. Run "node bin/explainroo.js doctor --fetch" once, so this test can reuse it.`);
+      for (const name of ['voice runtime', 'voice model', 'speech check model']) {
+        expect(r.checks.find((c) => c.name === name)?.state === 'ready', `the ${name} is missing after doctor --fetch`);
       }
       // English with Kokoro needs no other program and no language model, installed or not,
       // and Playwright's ffmpeg only counts for a project with recordings.
@@ -207,7 +208,8 @@ const steps = [
         const first = r.services.find((s) => s.step === step.id);
         expect(first?.free, `the first entry of ${step.id} is not free`);
       }
-      expect(r.services.every((s) => s.partner === false), 'a service says it is a paid partner');
+      const partners = r.services.filter((s) => s.partner).map((s) => `${s.id} ${s.step}`).join();
+      expect(partners === 'blotato posting', `the paid partners are ${partners || 'none'}, not Blotato for posting`);
       const openrouter = r.services.filter((s) => s.id === 'openrouter');
       expect(openrouter.map((s) => `${s.step} ${s.connected}`).join() === 'images false,clips false', `openrouter is listed as ${JSON.stringify(openrouter.map((s) => [s.step, s.connected]))}`);
       expect(fake.count('openrouter', PRICE_LIST) === before.list + 1, 'services did not read the price list once');
@@ -761,7 +763,16 @@ async function main() {
     const started = Date.now();
     await npm(['install', '--no-audit', '--no-fund', '--loglevel=error', path.join(temp, filename)], temp);
     console.log(`installed in ${((Date.now() - started) / 1000).toFixed(1)}s`);
+    // The voice runtime is no part of the package. The first voice run installs it
+    // into the cache folder, here through doctor --fetch, outside the guard. German
+    // brings the language model, which the steps in other languages need.
+    for (const name of ['@huggingface/transformers', 'kokoro-js', 'onnxruntime-node']) {
+      expect(!fs.existsSync(path.join(temp, 'node_modules', name)), `installing the package also installed ${name}`);
+    }
     const settings = path.join(temp, 'settings');
+    const fetched = await run('npx', ['--no', '--', 'explainroo', 'doctor', '--fetch', '--language', 'en,de', '--json'], { cwd: temp, env: { ...outside, EXPLAINROO_CONFIG: settings } });
+    expect(fetched.status === 0, `doctor --fetch failed:\n${outputOf(fetched)}`);
+    console.log(`voice runtime: ${JSON.parse(fetched.stdout).checks.find((c) => c.name === 'voice runtime')?.detail}`);
     // Keys from this computer's own settings have no place in this test.
     const env = { ...outside, ...fake.env, NODE_OPTIONS: `--import=${GUARD}`, EXPLAINROO_CONFIG: settings, OPENROUTER_API_KEY: '', ELEVENLABS_API_KEY: '', CARTESIA_API_KEY: '', EXPLAINROO_CLOUD_KEY: '', EXPLAINROO_CLIP_POLL_MS: '50',
       YOUTUBE_CLIENT_ID: '', YOUTUBE_CLIENT_SECRET: '', YOUTUBE_REFRESH_TOKEN: '', BUFFER_CLIENT_ID: '', BUFFER_ACCESS_TOKEN: '', BUFFER_REFRESH_TOKEN: '', BUFFER_TOKEN_EXPIRES: '', BLOTATO_API_KEY: '', EXPLAINROO_PUBLISH_POLL_MS: '50', EXPLAINROO_PUBLISH_WAIT_MS: '2000' };

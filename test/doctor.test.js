@@ -128,7 +128,7 @@ test('every row has ok, and every row but the keys file has one of three states'
   const settings = temp(t);
   const r = spawnSync(process.execPath, [bin, 'doctor', '--json'], { encoding: 'utf8', env: { ...process.env, EXPLAINROO_CONFIG: settings, EXPLAINROO_PYTHON: path.join(settings, 'none') } });
   const { checks } = JSON.parse(r.stdout);
-  assert.deepEqual(checks.map((c) => c.name), ['node', 'ffmpeg', 'chrome', 'playwright ffmpeg', 'espeak-ng', 'misaki ja', 'misaki zh', 'voice model', 'speech check model', 'language model', 'keys file', 'runs from', 'examples']);
+  assert.deepEqual(checks.map((c) => c.name), ['node', 'ffmpeg', 'chrome', 'playwright ffmpeg', 'espeak-ng', 'misaki ja', 'misaki zh', 'voice runtime', 'voice model', 'speech check model', 'language model', 'keys file', 'runs from', 'examples']);
   for (const check of checks) {
     assert.equal(typeof check.ok, 'boolean', check.name);
     if (check.info) continue;
@@ -151,6 +151,7 @@ test('doctor judges each language of a project with the voice it uses, and a fol
   const setup = projectSetup(loadProject(dir));
   assert.deepEqual(setup.map(({ language, voice }) => [language, typeof voice === 'string' ? voice : voice.provider]), [['en', 'cartesia'], ['es', 'ef_dora'], ['ja', 'recording']]);
   assert.deepEqual(Object.fromEntries(setupNeeds(setup)), {
+    'voice runtime': ['en', 'es', 'ja'],
     'speech check model': ['en'],
     'voice model': ['es'],
     'espeak-ng': ['es'],

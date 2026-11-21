@@ -63,9 +63,9 @@ reads the same list when it lists clips, at most once a day. `share` will
 upload the video and its title to explainroo.com, and sends nothing until that
 service runs.
 `capture` loads the page you name, and `formats add` clones the Git address
-you name. The models and fonts download the first time, and `doctor --fetch`
-may download espeak-ng's packages. Nothing of the user's goes along. Nothing
-else leaves the computer, and everything else is free.
+you name. The voice runtime, models and fonts download once, and
+`doctor --fetch` may download espeak-ng's packages. Nothing of the user's goes
+along. Nothing else leaves the computer, and everything else is free.
 
 ## Before you start
 
@@ -77,9 +77,9 @@ npx --yes explainroo doctor --fetch
 ```
 
 `doctor` checks Node, ffmpeg and Chrome, and the extra programs some
-languages need. With `--fetch` it also downloads the speech models that
-setup needs, the first time only: about 400 MB for English, and 252 MB for
-another language. Each part is `ready`, `missing` with how to get it, or
+languages need. `--fetch` also gets the voice runtime and the models that
+setup needs, once: about 860 MB for English, and 252 MB more for another
+language. Each part is `ready`, `missing` with how to get it, or
 `not needed` for this setup. `doctor videos/<name>` checks what that
 project's languages and voices need, and before the project exists,
 `doctor --language es` checks one language. On Debian and Ubuntu,

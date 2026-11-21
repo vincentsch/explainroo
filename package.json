@@ -30,6 +30,7 @@
     "engine/",
     "fonts/",
     "templates/",
+    "runtime/",
     "formats/*/*.json",
     "formats/*/*.md",
     "formats/*/*.js",
@@ -62,9 +63,7 @@
     "build:fonts": "node scripts/fetch-fonts.mjs"
   },
   "dependencies": {
-    "@huggingface/transformers": "3.8.1",
     "harfbuzzjs": "1.6.2",
-    "kokoro-js": "1.2.1",
     "mathjax": "4.1.3",
     "opencc-js": "1.4.2",
     "phonemizer": "1.2.1",
@@ -73,6 +72,8 @@
     "roughjs": "4.6.6"
   },
   "devDependencies": {
+    "@huggingface/transformers": "3.8.1",
+    "kokoro-js": "1.2.1",
     "lucide-static": "1.48.0"
   },
   "overrides": {

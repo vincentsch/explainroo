@@ -4,6 +4,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { voiceRuntime } from './runtime.js';
 
 export const TTS_MODEL = 'onnx-community/Kokoro-82M-v1.0-ONNX';
 export const ASR_MODEL = 'onnx-community/whisper-base.en_timestamped';
@@ -47,14 +48,17 @@ export function ttsDtype() {
   return d;
 }
 
-let transformers = null;
-async function lib() {
-  if (!transformers) {
-    transformers = await import('@huggingface/transformers');
-    transformers.env.cacheDir = path.join(cacheRoot(), 'models');
-    transformers.env.allowRemoteModels = process.env.EXPLAINROO_OFFLINE !== '1';
+// transformers.js and kokoro-js, from the voice runtime (src/runtime.js), which
+// installs them the first time.
+let configured = false;
+async function lib(log) {
+  const runtime = await voiceRuntime({ cache: cacheRoot(), log });
+  if (!configured) {
+    runtime.transformers.env.cacheDir = path.join(cacheRoot(), 'models');
+    runtime.transformers.env.allowRemoteModels = process.env.EXPLAINROO_OFFLINE !== '1';
+    configured = true;
   }
-  return transformers;
+  return runtime;
 }
 
 // What doctor and the download lines call each model.
@@ -152,8 +156,7 @@ let ttsPromise = null;
 export function loadTTS({ log } = {}) {
   if (!ttsPromise) {
     ttsPromise = (async () => {
-      await lib();
-      const { KokoroTTS } = await import('kokoro-js');
+      const { KokoroTTS } = await lib(log);
       const dtype = ttsDtype();
       return loadModel(TTS_MODEL, dtype, log, (progress_callback) => KokoroTTS.from_pretrained(TTS_MODEL, { dtype, device: 'cpu', progress_callback }));
     })();
@@ -166,7 +169,7 @@ export function loadASR({ log, language = 'en' } = {}) {
   const model = asrModel(language);
   if (!asrPromises.has(model)) {
     asrPromises.set(model, (async () => {
-      const { pipeline } = await lib();
+      const { pipeline } = (await lib(log)).transformers;
       return loadModel(model, ASR_DTYPE, log, (progress_callback) => pipeline('automatic-speech-recognition', model, { dtype: ASR_DTYPE, progress_callback }));
     })());
   }
