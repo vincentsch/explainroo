@@ -335,7 +335,8 @@ only after a yes. `explainroo docs publishing` has the details.
 
 Blotato is Explainroo's first paid partner for posting. It pays to be built
 in as one of the choices. You can [make a Blotato account](https://blotato.com/?ref=vincentvf).
-This is a partner link.
+This is a partner link. Until November 30, 2026, the code `BLACKFRIDAY2026`
+gives you 50% off Blotato for three months.
 
 `explainroo services` labels it as a "paid partner". The free choices stay
 first in every step. explainroo's instructions tell your agent never to pick
