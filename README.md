@@ -9,7 +9,8 @@
 
 <p align="center">
   <b>The video studio your AI agent runs.</b><br>
-  Free and open source. The voice, the timing and the rendering run on your computer.
+  explainroo is a free, open-source explainer video tool for AI agents like Claude Code and Codex.<br>
+  The voice, the timing and the rendering run on your computer.
 </p>
 
 <p align="center">
