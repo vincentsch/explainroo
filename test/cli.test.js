@@ -525,6 +525,23 @@ test('music.volume works without a style: set turns "music": true into a block, 
   for (const [look, style] of Object.entries(THEME_MUSIC)) assert.match(docs, new RegExp(`\\| \`${look}\` \\| \`${style}\` \\|`), look);
 });
 
+test('set leaves music shorthand alone when unsetting an absent volume', async (t) => {
+  const dir = tempDir();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(dir, 'script.md'), '# Test\n\n## a\nHello there.\n');
+  fs.writeFileSync(path.join(dir, 'scenes.js'), 'export default { a() {} };');
+  const file = path.join(dir, 'video.json');
+  for (const music of [true, 'calm']) {
+    const before = JSON.stringify({ music });
+    fs.writeFileSync(file, before);
+    const r = await runAll(['set', dir, 'music.volume', 'null', '--json']);
+    assert.equal(r.code, 0, r.err);
+    const { changed, removed } = JSON.parse(r.out);
+    assert.deepEqual({ changed, removed }, { changed: false, removed: false });
+    assert.equal(fs.readFileSync(file, 'utf8'), before);
+  }
+});
+
 test('set refuses an unknown key or a bad value with the check every command runs, and writes nothing', async (t) => {
   const dir = tempDir();
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));

@@ -66,6 +66,7 @@ export function setSetting(arg, key, text) {
   }
   const last = parts.at(-1);
   const had = Object.hasOwn(block, last);
+  if (value === null && !had) return { file, key, value: null, removed: false, changed: false };
   if (had && value !== null && block[last] !== null && typeName(block[last]) !== typeName(value)) retyped = { key, before: block[last] };
   if (value === null) delete block[last];
   else block[last] = value;
