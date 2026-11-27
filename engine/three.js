@@ -113,10 +113,11 @@ export function projectPoint(el, v, x, y, w, h) {
   return { x: x + (p.x * w) / 2, y: y - (p.y * h) / 2, behind: p.z > 1 };
 }
 
-// The element's picture at `pw` x `ph` pixels for video frame `frame`. One
-// frame's motion blur samples share it, so 3D is drawn once per frame.
-export function threePicture(el, pw, ph, frame, fail) {
-  const tag = `${frame}|${pw}x${ph}`;
+// The element's picture at `pw` x `ph` pixels for `moment`: the video frame
+// whose motion blur samples share it, so 3D is drawn once per frame, or the
+// exact time of any other draw.
+export function threePicture(el, pw, ph, moment, fail) {
+  const tag = `${moment}|${pw}x${ph}`;
   if (el.rendered === tag && el.bitmap) return el.bitmap;
   const r = getRenderer(fail);
   r.setSize(pw, ph, false);

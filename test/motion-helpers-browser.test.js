@@ -17,8 +17,11 @@ const SCENES = `export default { intro(s) {
     point: s.keys([{ at: 0, v: [0, 0] }, { at: 2, v: [100, 50], ease: 'linear' }]),
     color: s.keys([{ at: 0, v: 'ink' }, { at: 2, v: 'bg', ease: 'linear' }]),
     late: s.keys([{ at: 0, v: 1 }, { at: 1, v: 2 }], 5),
+    percent: s.keys([{ at: 0, v: 'rgb(100% 0% 0%)' }, { at: 2, v: 'rgb(0% 0% 100%)', ease: 'linear' }]),
     onPath: s.along('M 0 0 L 100 0 L 100 100', 0.75),
     onPoints: s.along([[0, 0], [0, 200]], 0.5),
+    wide: s.text('WIDE', { tracking: 0.3, size: 40, y: 40, at: 0 }).w,
+    narrow: s.text('WIDE', { size: 40, y: 120, at: 0 }).w,
   };
   for (const [name, fn] of Object.entries({
     order: () => s.keys([{ at: 2, v: 0 }, { at: 1, v: 1 }]),
@@ -27,6 +30,7 @@ const SCENES = `export default { intro(s) {
     word: () => s.keys([{ at: 'banana', v: 0 }]),
     text: () => s.keys([{ at: 0, v: 'big' }, { at: 1, v: 'small' }]),
     points: () => s.along([[5, 5]], 0.5),
+    tracking: () => s.text('WIDE', { tracking: 5, at: 0 }),
   })) { try { fn(); globalThis.__out[name] = 'no error'; } catch (e) { globalThis.__out[name] = e.message; } }
 } };`;
 
@@ -46,6 +50,8 @@ test('s.keys and s.along give values from the time, and say what is wrong with b
     assert.deepEqual(out.point, [50, 25]);
     assert.match(out.color, /^rgba\(/);
     assert.equal(out.late, 2);
+    assert.ok(out.wide > out.narrow + 30, `tracking spreads the letters: ${out.wide} against ${out.narrow}`);
+    assert.equal(out.percent, 'rgba(128,0,128,1)');
     assert.ok(Math.abs(out.onPath.x - 100) < 0.5 && Math.abs(out.onPath.y - 50) < 0.5, JSON.stringify(out.onPath));
     assert.ok(Math.abs(out.onPath.angle - 90) < 1, `the path goes down there: ${out.onPath.angle}`);
     assert.deepEqual(out.onPoints, { x: 0, y: 100, angle: 90 });
@@ -55,5 +61,6 @@ test('s.keys and s.along give values from the time, and say what is wrong with b
     assert.match(out.word, /banana/);
     assert.match(out.text, /a string value must be a color/);
     assert.match(out.points, /two or more points/);
+    assert.match(out.tracking, /text tracking is the space between letters in ems, from -0\.2 to 2/);
   });
 });

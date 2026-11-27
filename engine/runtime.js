@@ -302,7 +302,18 @@ export class Engine {
     } finally {
       this.threeCollect = null;
     }
-    if (this.usesThree) await loadThree(root);
+    if (!this.usesThree) return;
+    await loadThree(root);
+    // Every page builds each 3D scene from the first frame of its scene, so
+    // what setup makes never depends on which frames a page draws first.
+    this.threeSetup = true;
+    try {
+      for (const sc of this.timeline.scenes) {
+        try { this.drawScene(this.ctx, sc.index, 0); } catch {}
+      }
+    } finally {
+      this.threeSetup = false;
+    }
   }
 
   sceneAt(T) {
@@ -1316,11 +1327,12 @@ export class Engine {
         for (let x = Math.max(0, m.from); x < Math.min(sc.dur, m.to); x += 0.5) playing.push(x);
         if (m.to >= 0 && m.to <= sc.dur) playing.push(m.to);
       }
-      // Animation of your own, in s.draw, changes the picture where its pixels
-      // change, every half second.
+      // Animation of your own, in s.draw or s.three, changes the picture where
+      // its pixels change. The step is no simple part of a beat, so motion on
+      // every beat isn't sampled at the same point of it each time.
       if (drawings.length && !broke) {
         let before = null;
-        for (let x = 0; x < sc.dur; x += 0.5) {
+        for (let x = 0; x < sc.dur; x += MOTION_STEP) {
           const now = this.thumbAt(sc.index, x);
           if (before && now && thumbDiff(before, now) > MOTION_DIFF) playing.push(x);
           before = now;
@@ -1843,6 +1855,7 @@ const THUMB_WIDTH = 96;
 // two moments half a second apart must differ in more to count as motion.
 const ORDER_DIFF = 0.002;
 const MOTION_DIFF = 0.004;
+const MOTION_STEP = 0.43;
 
 // The share of pixels where two small pictures differ by more than a trace.
 function thumbDiff(a, b) {
@@ -2087,7 +2100,8 @@ export async function renderAudio(engine, audio, { sampleRate = 48000 } = {}) {
     sampleRate,
     voice: timeline.scenes.filter((s) => s.voice).map((s) => ({ url: '/project/' + s.voice.url + '?v=' + engine.state.version, start: s.voice.start })),
     voiceSpans: timeline.voiceSpans,
-    music: config.music?.src ? null : config.music && (wordless ? { ...config.music, ...fresh, groove: true, ringOut: WORDLESS_RING_OUT } : config.music),
+    // When the last scene lasts bars, the closing hit lands on its last bar line.
+    music: config.music?.src ? null : config.music && (wordless ? { ...config.music, ...fresh, groove: true, ringOut: WORDLESS_RING_OUT, ...(timeline.music?.close ? { bars: timeline.music.close } : {}) } : config.music),
     musicFile: config.music?.src ? { ...(await loadMusicFile(config.music)), ...fresh } : null,
     sfx: cues,
     clips,

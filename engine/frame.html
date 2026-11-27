@@ -38,6 +38,8 @@ window.explainrooReady = (async () => {
     const sc = state.timeline.scenes[engine.sceneAt(T)];
     const lo = sc.start;
     const hi = Math.min(sc.start + sc.dur, state.timeline.duration) - 1e-4;
+    // The samples of one frame share each 3D scene's render.
+    engine.blurFrame = Math.round(T * fps);
     for (let k = 0; k < samples; k++) {
       const t = Math.min(hi, Math.max(lo, T + ((k + 0.5) / samples - 0.5) * (0.5 / fps)));
       if (engine.clips.size) await engine.prepareFrame(t, subCtx);
@@ -48,6 +50,7 @@ window.explainrooReady = (async () => {
       ctx.drawImage(sub, 0, 0);
       ctx.restore();
     }
+    engine.blurFrame = null;
   };
   // Draws a frame and says whether it caught the camera moving or something
   // drawing in: "camera moving", "drawing in", both, or null.

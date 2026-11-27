@@ -821,7 +821,7 @@ export function musicLine(r) {
   if (!r || !('music' in r)) return '';
   const { music } = r;
   if (!music) return 'music: not measured, because the narration has no pause long enough';
-  if (music.alone) return music.heard ? `music: carries the video without narration, at ${music.level} dB` : 'music: none can be heard';
+  if (music.alone) return music.heard ? `sound: no narration, and the soundtrack plays at about ${music.level} dB` : 'sound: no narration, and nothing can be heard';
   if (!music.heard) return 'music: none can be heard in the pauses of the narration';
   return `music: about ${music.under} dB under the voice, at ${music.pauses} dB in the pauses of the narration`;
 }

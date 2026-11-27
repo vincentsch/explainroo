@@ -169,7 +169,7 @@ const steps = [
     args: ['formats', '--json'],
     check: (r, { installed }) => {
       const names = r.formats.map((f) => f.name).join();
-      expect(names === 'narrated-explainer,product-ad,product-launch,vertical-short', `formats lists ${names}`);
+      expect(names === 'motion-short,narrated-explainer,product-ad,product-launch,vertical-short', `formats lists ${names}`);
       expect(r.formats.every((f) => f.dir.startsWith(path.join(installed, 'formats'))), 'the formats do not come from the installed copy');
     },
   },
@@ -185,7 +185,7 @@ const steps = [
     args: ['set', 'video', 'sizes.shorts.pace', '1.15', '--json'],
     check: (r, { temp }) => {
       const settings = JSON.parse(fs.readFileSync(path.join(temp, 'video/video.json'), 'utf8'));
-      expect(r.changed && settings.sizes.shorts.pace === 1.15 && settings.defaults === '0.6', `set says ${JSON.stringify(r)}`);
+      expect(r.changed && settings.sizes.shorts.pace === 1.15 && settings.defaults === '0.7', `set says ${JSON.stringify(r)}`);
     },
   },
   {
@@ -630,6 +630,15 @@ const steps = [
     check: (r, { temp }) => {
       expect(r.removed.some((p) => p.path === 'build/clips/') && !fs.existsSync(path.join(temp, 'tiny/build/clips')) && !r.removed.some((p) => /(^|\/)voice\//.test(p.path)), `clean says ${JSON.stringify(r)}`);
       return `freed ${(r.bytes / 1e6).toFixed(1)} MB`;
+    },
+  },
+  {
+    // A 3D scene from the installed package: three.js loads from it and draws.
+    setup: ({ temp }) => fs.writeFileSync(path.join(temp, 'tiny/scenes.js'), "export default { hello(s) { s.three({ at: 0 }, { setup({ THREE, scene, color }) { const box = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2), new THREE.MeshStandardMaterial({ color: color('accent') })); scene.add(box); return { box }; }, frame({ t, state }) { state.box.rotation.set(t, t * 1.3, 0); } }); } };\n"),
+    args: ['still', 'tiny', 'hello@end', '--json'],
+    check: (r) => {
+      expect(r.stills?.length === 1 && fs.statSync(r.stills[0].file).size > 0, `a 3D still says ${JSON.stringify(r)}`);
+      return '3D';
     },
   },
   {

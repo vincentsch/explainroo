@@ -82,6 +82,8 @@ export function parseColor(c) {
   const rgb = /^rgba?\(([^)]+)\)$/i.exec(c.trim());
   if (rgb) {
     const [r, g, b, a = 1] = rgb[1].split(/[\s,/]+/).filter(Boolean).map(Number);
+    // Percentages and other units are left to the canvas, which cssColor asks.
+    if (![r, g, b, a].every(Number.isFinite)) return null;
     return { r, g, b, a };
   }
   return null;

@@ -33,6 +33,9 @@ export function buildTimeline(project, voices) {
   const { config, script } = project;
   const grid = musicGrid(config);
   const barred = script.scenes.find((sc) => sc.attrs.bars !== undefined);
+  if (barred && config.targetSeconds) {
+    throw new ProjectError(`scene "${barred.id}" lasts {bars=${barred.attrs.bars}}, and "targetSeconds" sets the length of the video too. Bars keep the cuts on the beat, so leave out "targetSeconds" and choose the number of bars for the length`);
+  }
   if (barred && !grid) {
     throw new ProjectError(config.music?.src
       ? `scene "${barred.id}" lasts {bars=${barred.attrs.bars}}, and bars need the tempo of the music file. Add "bpm" to the "music" block in video.json, and "offset" when its first beat isn't at 0`
@@ -56,6 +59,9 @@ export function buildTimeline(project, voices) {
   const target = config.targetSeconds ? fitTarget(durs, config.targetSeconds, fps) : null;
   const scenes = [];
   const voiceSpans = [];
+  // The bar line where the last scene ends when it lasts bars: the music's
+  // closing hit goes there.
+  let closing = null;
   let t = 0;
   script.scenes.forEach((scene, index) => {
     const v = voiceOf(scene);
@@ -72,9 +78,11 @@ export function buildTimeline(project, voices) {
       const isLast = index === script.scenes.length - 1;
       const tail = isLast ? config.end / pace : 0;
       const needed = start + durs[index] - tail;
-      let line = Math.round((start - grid.start) / grid.bar) + a.bars;
+      // Never before the music's first beat, which a file's offset can put late.
+      let line = Math.max(0, Math.round((start - grid.start) / grid.bar)) + a.bars;
       while (grid.start + line * grid.bar < needed - 1e-6 && v.duration) line++;
       dur = Math.max(1 / fps, snap(grid.start + line * grid.bar + tail) - start);
+      closing = isLast ? line : null;
     }
     const transition = index === 0 ? 'none' : (a.transition || config.transition);
     scenes.push({
@@ -111,7 +119,7 @@ export function buildTimeline(project, voices) {
     scenes,
     voiceSpans,
     // The music's beats, for s.beat and s.bar.
-    ...(grid ? { music: grid } : {}),
+    ...(grid ? { music: closing === null ? grid : { ...grid, close: closing } } : {}),
     // Only a video with "targetSeconds" has this, so every other timeline stays as it was.
     ...(target ? { target: target.report } : {}),
   };

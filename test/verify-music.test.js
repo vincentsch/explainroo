@@ -82,7 +82,7 @@ test('a video without narration gets the level of its music over the whole video
   assert.deepEqual(alone, { heard: true, alone: true, level: -23 });
   assert.deepEqual(wordlessLevel(new Float32Array(rate), rate), { heard: false, alone: true });
   const r = { file: 'v.mp4', duration: 2, video: { width: 1920, height: 1080 }, loudness: { integrated: -14, truePeak: -1.2 }, music: alone, issues: [] };
-  assert.equal(musicLine(r), 'music: carries the video without narration, at -23 dB');
-  assert.equal(musicLine({ ...r, music: { heard: false, alone: true } }), 'music: none can be heard');
+  assert.equal(musicLine(r), 'sound: no narration, and the soundtrack plays at about -23 dB');
+  assert.equal(musicLine({ ...r, music: { heard: false, alone: true } }), 'sound: no narration, and nothing can be heard');
   assert.doesNotMatch(formatVerify(r), /narration understood/);
 });

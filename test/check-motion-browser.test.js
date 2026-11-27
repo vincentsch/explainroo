@@ -59,3 +59,11 @@ test('animation in s.draw counts as change, and a drawing that draws nothing get
   assert.equal(empty.length, 1, JSON.stringify(empty));
   assert.match(empty[0].message, /^the 1st s\.draw draws nothing while it is on screen/);
 });
+
+test('a pulse on every beat counts as motion, also when its beat divides half a second', { skip: !chrome && 'no browser here', timeout: 120000 }, async (t) => {
+  const pulse = project(t, '## beat {min=14}\n', `export default { beat(s) {
+  s.text('Beat', { y: 60, at: -1 });
+  s.draw({ x: s.cx, y: s.cy, at: 0 }, (ctx, life) => { const k = 1 + 0.3 * Math.abs(Math.sin(life.local * Math.PI * 2)); ctx.fillStyle = '#245cff'; ctx.beginPath(); ctx.arc(0, 0, 40 * k, 0, Math.PI * 2); ctx.fill(); });
+} };`);
+  assert.deepEqual((await issues(pulse)).filter((x) => /no new element/.test(x.message)), []);
+});

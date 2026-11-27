@@ -51,6 +51,8 @@ gives the same numbers on every frame and every render.
     draw, around 0, 0 like the drawing, makes `check` treat it as a shape
     for overlaps, text over its edge, the frame edge and the content area.
     `round: true` in it makes it an ellipse. Without `box` it sees no more.
+    A drawing behind everything, like a sky or a backdrop, needs no `box`, or
+    `overlap: true` with it, so text on top isn't an overlap.
   - `check` warns about a drawing that draws nothing while it is on screen.
     Where a drawing moves, the picture counts as changing, so a scene with
     steady motion gets no hint about a long stretch without anything new.
@@ -144,13 +146,18 @@ tilt(s) {
 - **`frame({ t, local, s, state, scene, camera, lights, THREE, color, texture })`**
   runs on every frame, in `check` and for each motion blur sample. Set every
   position, rotation and color from `t`, the scene time, or `local`, the
-  seconds since `at`. `s.keys` and `s.p` work inside it.
+  seconds since `at`. Its `s` is the scene's own, so `s.keys` and `s.p` work
+  inside it.
 - **The stage.** The camera is a perspective camera 10 units back, looking at
   the middle. `lights.sky` lights from above, `lights.key` from the upper
   right and `lights.fill` softly from the left. A soft studio light makes
   shiny and metal surfaces reflect. The background is clear, so the look's
   background shows. `scene.background = color('bg')` paints it. Colors from
-  `color(name)` are the look's, as in 2D.
+  `color(name)` are the look's, as in 2D. For light from one side only, like
+  the Sun in space, turn the stage's light off in `setup` and add your own:
+  `lights.sky.visible = lights.key.visible = lights.fill.visible = false` and
+  `scene.environment = null`. What `setup` changes stays, and `frame` can
+  change it again.
 - **`point([x, y, z])`** on what `s.three` returns gives the place of a 3D
   point in the frame, `{ x, y, behind }`, for labels in `s.text`. Put words in
   `s.text`, not in the 3D scene: they stay sharp, and `check` reads them.
@@ -173,8 +180,8 @@ tilt(s) {
 ### How long 3D takes
 
 Chrome draws 3D on the processor. On 8 cores, a second of 1080p video at 30
-frames a second takes about 4 seconds, and more render pages don't make it
-faster. A draft at half size takes about a third of that. Keep geometry lean,
+frames a second takes about 3 to 4 seconds, and more render pages don't make
+it faster. A draft at half size takes about a third of that. Keep geometry lean,
 like 64 segments for a sphere. Motion blur draws each frame several times,
 but 3D draws once a frame and is shared, so 3D motion itself has no blur.
 The camera's blur still applies.
@@ -209,9 +216,18 @@ script. Each scene then ends on a bar line, so every cut lands on the beat:
 ## end {bars=2}
 ```
 
+`{bars=n}` sets the length of a scene alone: `hold`, `min` and `lead` don't
+apply to it. `explainroo docs music` lists the tempo of each built-in style,
+so you can plan the bars before anything is made, and
+`explainroo voice <project> --estimate` prints the length of the video.
+`"transition": "cut"` in `video.json` keeps every cut hard. A fade between
+two scenes that go on with the same object shows it twice.
+
 With `"defaults": "0.7"`, music under a video without narration starts in
 its full groove on the first beat, and its closing hit lands on the bar line
-where the last scene ends. The end of the video holds after it.
+where the last scene ends. The end of the video then holds for `"end"`
+seconds, 1.4 by default, which you set in `video.json`. Wide capitals for a
+tagline come from `tracking: 0.3` on `s.text`.
 
 Sound makes a reveal land. `rise` builds up to a moment, so start it one bar
 early with `dur` set to that bar, and `impact` is the hit on the beat itself.

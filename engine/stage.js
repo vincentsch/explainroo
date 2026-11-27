@@ -932,6 +932,8 @@ export class Stage {
   }
 
   sfx(name, at, o = {}) {
+    // The exported player has no sound effects of its own: its mix has them.
+    if (!this.engine.sfxNames.length) return;
     if (!this.engine.sfxNames.includes(name)) throw new SceneError(`sfx "${name}" does not exist. Sounds: ${this.engine.sfxNames.join(', ')}`);
     const t = at === undefined ? this.t : this.time(at);
     const rec = this.engine.recorder;
@@ -1166,8 +1168,9 @@ export class Stage {
     const font = fontString(th, role, size, weight);
     const align = o.align ?? 'center';
     // Large text gets slightly tighter letter spacing in looks that set a
-    // tracking value.
-    const tracking = size >= 56 ? (th.fonts[role].tracking ?? 0) * size : 0;
+    // tracking value. `tracking` sets it in ems, like 0.3 for wide capitals.
+    if (o.tracking !== undefined && !(typeof o.tracking === 'number' && o.tracking >= -0.2 && o.tracking <= 2)) throw new SceneError(`text tracking is the space between letters in ems, from -0.2 to 2, like 0.3 for wide capitals, not ${JSON.stringify(o.tracking)}`);
+    const tracking = o.tracking !== undefined ? o.tracking * size : size >= 56 ? (th.fonts[role].tracking ?? 0) * size : 0;
     // save() and restore() put the spacing back. Reading ctx.letterSpacing
     // back is not reliable in Chrome.
     ctx.save();
@@ -1899,15 +1902,22 @@ export class Stage {
     }
     // Labels placed with point() sit on the 3D picture on purpose, and most of
     // its box is see-through, so it may overlap other things.
+    this._lastTr = null;
     const box = this._picture(o.id ?? '3D', () => (pixels ? this._threePixels(el, w, h, fail) : null), w, h, { frame: 'none', shadow: false, radius: 0, fit: 'fill', overlap: true, ...o, x, y, w, h }, null, 'three');
-    return { ...box, point: (v) => projectPoint(el, v, x, y, w, h) };
+    // Points move with the picture while it comes in, like a slide or a pop.
+    const tr = this._lastTr ?? { dx: 0, dy: 0, s: 1 };
+    const k = (o.scale ?? 1) * tr.s;
+    return { ...box, point: (v) => {
+      const p = projectPoint(el, v, x, y, w, h);
+      return { ...p, x: x + tr.dx + (p.x - x) * k, y: y + tr.dy + (p.y - y) * k };
+    } };
   }
 
   // Whether this pass makes a picture. Planning the camera, finding sounds and
   // check's look at the layout need only where things are, not 3D pixels.
   _wantsPixels() {
     const e = this.engine;
-    return !e.layoutLog && !e.recorder && !e.clipProbe && !e.collectingMath && (!e.textLog || e.thumbing);
+    return !e.layoutLog && !e.recorder && !e.clipProbe && !e.collectingMath && !e.threeSetup && (!e.textLog || e.thumbing);
   }
 
   // The 3D picture at the size it shows on screen: its box times the current
@@ -1920,7 +1930,10 @@ export class Stage {
     const cap = Math.min(1, canvas.width / (w * k), canvas.height / (h * k));
     const pw = Math.max(8, Math.ceil((w * k * cap) / 8) * 8);
     const ph = Math.max(8, Math.ceil((h * k * cap) / 8) * 8);
-    return threePicture(el, pw, ph, Math.round(this.T * this.engine.fps), fail);
+    // The motion blur samples of one frame share a render; any other draw is
+    // of its own exact time.
+    const moment = this.engine.blurFrame === null || this.engine.blurFrame === undefined ? `t${this.T}` : `f${this.engine.blurFrame}`;
+    return threePicture(el, pw, ph, moment, fail);
   }
 
   // An image from assets/ as a three.js texture, made once per engine.

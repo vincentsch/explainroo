@@ -176,6 +176,12 @@ export async function exportPlayer(project, { out, log = () => {} } = {}) {
         await upload(`${build}/player-mix.wav`, audio.encodeWav(sound.buffer));
         await upload(`${build}/player-poster.jpg`, await new Promise(resolve => engine.canvas.toBlob(resolve, 'image/jpeg', 0.9)));
         if ([...engine.mathCache.values()].some(m => m?.error)) throw new Error('a formula could not be typeset. Run check and fix it before exporting.');
+        // Textures of 3D scenes are made at boot, before the wrapper above
+        // could see them, so their images come from the texture cache.
+        for (const src of engine.threeTextures?.keys() ?? []) {
+          const key = src.replace(/^\.?\//, '');
+          assets.add(engine.images.has(key) ? key : 'assets/' + key);
+        }
         return { assets: [...assets], fonts: [...fonts], text: [...chars].join(''), math: Object.fromEntries(engine.mathCache), three: !!engine.usesThree };
       } finally {
         Object.defineProperty(proto, 'font', font);

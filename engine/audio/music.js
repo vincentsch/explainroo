@@ -522,7 +522,8 @@ function planBars(def, rng, keyRoot, nBars, start, barLen, groove = false) {
 // `groove` starts the music in its full groove instead of its quiet first
 // section, for a video without narration. `ringOut` is how long the last chord
 // may ring after the closing hit, which lands on the last bar line before it.
-export function createMusic({ style, seed = 1, bpm, key, duration, scenes = [], sampleRate = 48000, groove = false, ringOut: ring = null } = {}) {
+// `bars`, when given, is how many bars play before the closing hit.
+export function createMusic({ style, seed = 1, bpm, key, duration, scenes = [], sampleRate = 48000, groove = false, ringOut: ring = null, bars: fixed = null } = {}) {
   const plan = musicPlan({ style, seed, bpm, key });
   const def = STYLES[plan.style];
   const rng = makeRng(hashSeed('music', plan.style, plan.seed));
@@ -544,7 +545,7 @@ export function createMusic({ style, seed = 1, bpm, key, duration, scenes = [], 
   const ringOut = ring ?? clamp(duration * 0.1, 1.8, 3.0);
   // With ringOut given, a small margin lets a closing hit on a bar line that
   // whole frames moved a little still count.
-  const nBars = Math.max(0, Math.floor((duration - ringOut - start) / barLen + (ring === null ? 0 : 1e-3)));
+  const nBars = fixed ?? Math.max(0, Math.floor((duration - ringOut - start) / barLen + (ring === null ? 0 : 1e-3)));
   const endHit = start + nBars * barLen;
   const { bars, secLen, lastVoicing, lastUpper } = planBars(def, rng, plan.keyRoot, nBars, start, barLen, groove);
 

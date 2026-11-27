@@ -51,7 +51,16 @@ does not follow `pace`, because it plays at its own speed.
 
 ## Beats
 
-The built-in music knows its tempo, so a scene can put things on its beats
+| Style | Tempo | One bar |
+| --- | --- | --- |
+| `calm` | 70 beats a minute | 3.43 s |
+| `warm` | 84 | 2.86 s |
+| `tech` | 100 | 2.40 s |
+| `upbeat` | 112 | 2.14 s |
+| `playful` | 118 | 2.03 s |
+
+A faster `pace` plays the built-in music faster too, by the square root of the
+pace. The built-in music knows its tempo, so a scene can put things on its beats
 with `s.beat(n)` and `s.bar(n)`, and a scene without narration can last a
 number of bars with `{bars=4}` in the script, so cuts land on the beat.
 `explainroo docs motion` shows how. A file has a tempo when you give it:
@@ -62,7 +71,10 @@ number of bars with `{bars=4}` in the script, so cuts land on the beat.
 
 `bpm` is the tempo in beats a minute, and `offset` the second of the file where
 the first beat sounds, 0 by default. Take both from the score or the track's
-page. explainroo doesn't work out the tempo of a file itself.
+page. explainroo doesn't work out the tempo of a file itself. A file that loops
+stays on the beat only when it is a whole number of bars long, so trim it to
+whole bars or give it `"loop": false`. `{bars=4}` can't go with
+`targetSeconds`, because both set the length.
 
 In a video without narration, with `"defaults": "0.7"`, the built-in music
 starts in its full groove on its first beat instead of fading in, and its

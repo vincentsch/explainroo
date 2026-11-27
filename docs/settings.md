@@ -184,6 +184,9 @@ green, teal, blue, purple, pink, gray or ink.
 `family` and a numeric `weight`, for example
 `"body": { "family": "Inter", "weight": 500 }`. Families must be built in
 or listed in `video.json` under `fonts`. The look file does not load fonts.
+The built-in families are Inter, Plus Jakarta Sans, Space Grotesk and
+Instrument Serif (a serif for headlines), JetBrains Mono, and the hand-drawn
+Kalam, Patrick Hand, Architects Daughter and Cabin Sketch.
 
 `background` picks a texture: `paper` (paper grain), `dots` (a dot grid),
 `chalk` (board smudges), `grid` (drafting lines), `glow` (two glows),

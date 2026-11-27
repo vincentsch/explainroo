@@ -9,5 +9,5 @@
   "transition": "push",
   "targetSeconds": 20,
   "cover": "hook@0.6",
-  "defaults": "0.6"
+  "defaults": "0.7"
 }

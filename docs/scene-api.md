@@ -145,7 +145,8 @@ drawn, and `s.lang` its code.
 (`display`, `body`, `hand`, `mono`), `weight` or `bold: true`, `align`
 (`left` means x is the left edge), `valign` (`top` means y is the top),
 `maxWidth`, `lineHeight`, `color`, `mark` (color of `*starred*` words), `bg`
-(a card behind the text), `padding`, `radius`, `border`. Text can also enter
+(a card behind the text), `padding`, `radius`, `border`, `tracking` (space
+between letters in ems, like 0.3 for wide capitals). Text can also enter
 with `write`, `type` (with `cps`), `words` and `sync`. `sync` shows each word
 as the voice says it. Words in `*stars*` get the accent color. `\n` starts a
 new line.
@@ -326,7 +327,8 @@ s.pie([{ label: 'Images', value: 55 }, { label: 'Other', value: 45 }], { donut: 
   `bullet` (`dot`, `dash`, `number`, `badge`, `check`, `arrow` or an icon
   name), `card: false` (no cards in `studio`),
   `bulletColor`, `at` (a start time or a list of times), `stagger` (0.7),
-  `enter`.
+  `enter`, `font`, `weight`, `color`, and `id`, which names the items
+  `<id>.0`, `<id>.1` and so on.
 - `s.number(value, options)` counts up with ticking sounds. Options: `from`,
   `dur` (1.4), `prefix`, `suffix`, `decimals`, `separator`, `group: false`,
   `locale` (like `'de-DE'`), plus the text options. With `"defaults": "0.6"`
