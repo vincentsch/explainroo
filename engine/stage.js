@@ -2,7 +2,7 @@
 // draws the whole frame from scratch as a function of the scene time `s.t`.
 // Elements take `at` (when they appear) and optional `out` (when they leave);
 // the theme decides how they enter, and entering elements add sound effects.
-import { clamp, lerp, ease, easeFn, rand01, noise1, hashStr, mulberry32, suggest, normWord, withAlpha, contrast, mixColor, opaque, newDefaults, ordinal, LOCALES } from './util.js';
+import { clamp, lerp, ease, easeFn, rand01, noise1, hashStr, mulberry32, suggest, normWord, withAlpha, contrast, mixColor, opaque, newDefaults, ordinal, LOCALES, keyframeValue, parseColor, cssColor } from './util.js';
 import { colorOf, tintOf, fontString } from './themes.js';
 import { scalePath, quadD, polyD, pathLength, pointAt, parsePath, absolutize, samplePath } from './pathdata.js';
 import { layoutText, lineStartX } from './text.js';
@@ -290,6 +290,65 @@ export class Stage {
 
   between(a, b) {
     return this.t >= this.time(a) && this.t < this.time(b);
+  }
+
+  // The value at time t (the scene time by default) from keyframes like
+  // [{ at: 0, v: 0 }, { at: 'word', v: 1, ease: 'outBack' }]. `at` takes any
+  // time, and `ease` shapes the way into its key. Values are numbers, lists of
+  // numbers, objects of numbers like { x, y }, or colors (names of the look or
+  // CSS colors).
+  keys(frames, t = this.t) {
+    if (!Array.isArray(frames) || !frames.length) throw new SceneError('s.keys takes a list of keyframes, like s.keys([{ at: 0, v: 0 }, { at: 2, v: 300 }])');
+    const color = (v) => {
+      if (typeof v !== 'string') return v;
+      const c = colorOf(this.theme, v);
+      if (parseColor(c)) return c;
+      const css = cssColor(c);
+      if (!css) throw new SceneError(`s.keys can't mix "${v}": a string value must be a color, like 'accent' or '#ff6600'`);
+      return css;
+    };
+    const keys = frames.map((k, i) => {
+      if (!k || typeof k !== 'object' || !('v' in k)) throw new SceneError(`keyframe ${i + 1} of s.keys needs its value as v, like { at: 1.5, v: 300 }`);
+      if (k.ease !== undefined && typeof k.ease !== 'function' && !ease[k.ease]) throw new SceneError(`keyframe ${i + 1} of s.keys has the ease "${k.ease}". Use one of: ${Object.keys(ease).join(', ')}`);
+      return { at: this.time(k.at ?? 0), v: color(k.v), ease: k.ease };
+    });
+    for (let i = 1; i < keys.length; i++) {
+      if (keys[i].at < keys[i - 1].at) throw new SceneError(`the keyframes of s.keys must be in time order, and keyframe ${i + 1} (${keys[i].at.toFixed(2)} s) comes before keyframe ${i} (${keys[i - 1].at.toFixed(2)} s)`);
+    }
+    try {
+      return keyframeValue(keys, this.time(t));
+    } catch (e) {
+      throw new SceneError(e.message.replace(/^the keyframes/, 'the keyframes of s.keys'));
+    }
+  }
+
+  // The point at p (0 to 1) along SVG path data or a list of points, and the
+  // direction there in degrees, for things that travel along a path.
+  along(path, p) {
+    const q = clamp(Number(p) || 0);
+    if (typeof path === 'string') {
+      const L = pathLength(path);
+      if (!(L > 0)) throw new SceneError(`s.along needs a path with a length, and "${path.slice(0, 40)}" has none`);
+      const at = pointAt(path, q * L);
+      const a = pointAt(path, Math.max(0, q * L - 0.5));
+      const b = pointAt(path, Math.min(L, q * L + 0.5));
+      return { x: at.x, y: at.y, angle: (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI };
+    }
+    const pts = Array.isArray(path) ? path.map((v) => (Array.isArray(v) ? { x: v[0], y: v[1] } : v)) : null;
+    if (!pts || pts.length < 2 || !pts.every((v) => v && Number.isFinite(v.x) && Number.isFinite(v.y))) {
+      throw new SceneError('s.along takes SVG path data like "M 0 0 C 100 0 200 100 300 100", or two or more points like [[0, 0], [300, 100]]');
+    }
+    const lens = [0];
+    for (let i = 1; i < pts.length; i++) lens.push(lens[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
+    const total = lens[lens.length - 1];
+    if (!(total > 0)) throw new SceneError('s.along needs points that are not all in one place');
+    const d = q * total;
+    let i = 1;
+    while (i < pts.length - 1 && lens[i] < d) i++;
+    const a = pts[i - 1];
+    const b = pts[i];
+    const f = lens[i] > lens[i - 1] ? (d - lens[i - 1]) / (lens[i] - lens[i - 1]) : 0;
+    return { x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f, angle: (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI };
   }
 
   rand(i = 0, seed = 0) {
