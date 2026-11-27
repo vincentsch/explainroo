@@ -292,6 +292,36 @@ export class Stage {
     return this.t >= this.time(a) && this.t < this.time(b);
   }
 
+  // The scene time of the n-th beat of the music in this scene, counted from
+  // 1, the first beat at or after the scene starts. n may have a fraction,
+  // like 2.5 for the off-beat after beat 2.
+  beat(n = 1) {
+    return this._onGrid('beat', n);
+  }
+
+  // The scene time of the n-th bar line in this scene, counted from 1, the
+  // first one at or after the scene starts. A bar is four beats.
+  bar(n = 1) {
+    return this._onGrid('bar', n);
+  }
+
+  _onGrid(kind, n) {
+    const grid = this.engine.timeline.music;
+    if (!grid) {
+      const file = this.engine.config.music?.src;
+      throw new SceneError(file
+        ? `s.${kind} needs the tempo of the music file. Add "bpm" to the "music" block in video.json, and "offset" when its first beat isn't at 0`
+        : `s.${kind} needs music with a tempo, and this video has none. Turn on the built-in music with "music": true`);
+    }
+    if (!(typeof n === 'number' && n >= 1)) throw new SceneError(`s.${kind} counts from 1, the first ${kind} in the scene, so give it a number like s.${kind}(1) or s.${kind}(4), not ${JSON.stringify(n)}`);
+    const step = kind === 'bar' ? grid.bar : grid.beat;
+    const start = this.T - this.t;
+    // Half a frame early still counts as the scene's first beat, since scene
+    // starts are in whole frames.
+    const first = Math.max(0, Math.ceil((start - grid.start - 0.5 / this.engine.fps) / step));
+    return grid.start + (first + n - 1) * step - start;
+  }
+
   // The value at time t (the scene time by default) from keyframes like
   // [{ at: 0, v: 0 }, { at: 'word', v: 1, ease: 'outBack' }]. `at` takes any
   // time, and `ease` shapes the way into its key. Values are numbers, lists of
@@ -1065,9 +1095,31 @@ export class Stage {
     if (box) this._logShape('drawing', { x: box.x, y: box.y, w: box.w, h: box.h, round: box.round === true }, this._settled(life), o, o.id ?? '', { call });
     const saved = Math.random;
     Math.random = random;
-    try { fn(this.ctx, life); } finally {
+    // While check looks at the scene, it notes whether the drawing drew anything.
+    const log = this.engine.drawingLog;
+    let ctx = this.ctx;
+    let drew = false;
+    if (log) {
+      const real = this.ctx;
+      ctx = new Proxy(real, {
+        get(target, prop) {
+          const v = Reflect.get(target, prop, target);
+          if (typeof v !== 'function') return v;
+          if (INK.has(prop)) return (...args) => { drew = true; return v.apply(target, args); };
+          return v.bind(target);
+        },
+        set(target, prop, value) { return Reflect.set(target, prop, value, target); },
+      });
+    }
+    try { fn(ctx, life); } finally {
       Math.random = saved;
       this.ctx.restore();
+      if (log) {
+        const name = o.id !== undefined && o.id !== null ? `the drawing "${o.id}"` : `the ${call}`;
+        const entry = log.get(name) ?? { name, at: life.at, drew: false };
+        entry.drew ||= drew;
+        log.set(name, entry);
+      }
     }
   }
 
@@ -3072,6 +3124,9 @@ export { mixColor };
 // in design pixels. Each fill, stroke, text or image counts on its own, and
 // one that covers most of the frame is a background and does not count.
 // Path2D objects cannot be looked into and are skipped.
+// The canvas calls that put something on the page.
+const INK = new Set(['fill', 'stroke', 'fillRect', 'strokeRect', 'fillText', 'strokeText', 'drawImage', 'putImageData']);
+
 export function boundsRecorder(ctx, scale, frame = null) {
   let x0 = Infinity;
   let y0 = Infinity;
