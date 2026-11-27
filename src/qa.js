@@ -545,6 +545,16 @@ export async function stills(project, specs, { log = () => {}, scale = 1, transp
   return list.map((x, i) => ({ time: Math.round(x.T * 100) / 100, label: x.label, file: path.join(project.dir, x.path), ...(notes[i] ? { note: notes[i] } : {}) }));
 }
 
+// What sheet asks the agent after every project sheet. docs/pictures.md lists
+// the same questions under "Before you render".
+export const SHEET_CHECKLIST = [
+  'Hook: does the first frame show what the video is about with a picture, and do the first two seconds give a reason to keep watching?',
+  'Pictures: does each frame show what its sentence says, with a diagram, a number, a real screen or an object, and not a card that repeats the words?',
+  'Variety: do the scenes look different from each other, with a new layout when the idea changes?',
+  'Phone: can every word be read on a phone, with one clear thing to look at in each frame?',
+  'Ending: does the last frame show the main point, the answer to the opening?',
+];
+
 // `times` takes what still takes, like ["3", "intro@2"], and shows just those
 // moments, in that order, in a sheet of its own.
 const LARGE_FRAME = 640;

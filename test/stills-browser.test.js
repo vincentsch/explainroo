@@ -92,4 +92,7 @@ test('still and sheet mark a frame caught in a camera move or while something dr
   assert.deepEqual(JSON.parse(sheet.stdout).marked, [{ time: 2, label: 'pan@2', note: 'camera moving' }, { time: 6, label: 'write@2', note: 'drawing in' }]);
   const plain = await runCli(['sheet', dir, '--times', 'pan@2,pan@3.5,write@2']);
   assert.match(plain.stdout, /sheet-times\.jpg \(3 frames, 2 marked "camera moving" or "drawing in" under the frame\)$/m);
+  // Every project sheet asks the questions a viewer would, in the text and in the JSON.
+  assert.match(plain.stdout, /Fix what fails before you render:\n  1\. Hook: [^\n]+\n  2\. Pictures: /);
+  assert.equal(JSON.parse(sheet.stdout).checklist.length, 5);
 });

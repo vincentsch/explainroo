@@ -642,3 +642,13 @@ test('product-demos says how to find elements, type, share cues, pick a viewport
     'when they show none, the page\'s `theme-color` tag',
   ]) assert.ok(text.includes(words), words);
 });
+
+test('the pictures topic lists the questions that sheet asks, word for word', async () => {
+  const { SHEET_CHECKLIST } = await import('../src/qa.js');
+  const before = page('pictures').slice(page('pictures').indexOf('## Before you render'));
+  SHEET_CHECKLIST.forEach((q, i) => assert.ok(before.includes(`${i + 1}. ${q}`), q));
+  // The starter says what each picture has to do, instead of handing over cards to keep.
+  const starter = read('templates/starter/scenes.js');
+  assert.doesNotMatch(starter, /s\.box\(/);
+  assert.match(starter, /never a card that repeats the narration/);
+});
