@@ -39,6 +39,7 @@ window.explainrooReady = (async () => {
     const lo = sc.start;
     const hi = Math.min(sc.start + sc.dur, state.timeline.duration) - 1e-4;
     // The samples of one frame share each 3D scene's render.
+    const shared = engine.blurFrame;
     engine.blurFrame = Math.round(T * fps);
     for (let k = 0; k < samples; k++) {
       const t = Math.min(hi, Math.max(lo, T + ((k + 0.5) / samples - 0.5) * (0.5 / fps)));
@@ -50,7 +51,7 @@ window.explainrooReady = (async () => {
       ctx.drawImage(sub, 0, 0);
       ctx.restore();
     }
-    engine.blurFrame = null;
+    engine.blurFrame = shared;
   };
   // Draws a frame and says whether it caught the camera moving or something
   // drawing in: "camera moving", "drawing in", both, or null.
@@ -81,10 +82,14 @@ window.explainrooReady = (async () => {
         try {
           if (engine.clips.size) await engine.prepareFrame(f / fps);
           engine.moving = false;
+          // The frame and its motion blur samples share each 3D scene's render.
+          engine.blurFrame = f;
           engine.renderFrame(f / fps);
           if (samples > 1 && engine.moving && !transparent) await blurFrame(f / fps, samples);
         } catch (e) {
           throw new Error(describe(e));
+        } finally {
+          engine.blurFrame = null;
         }
         out.push(transparent ? canvas.toDataURL('image/png').slice(22) : canvas.toDataURL('image/jpeg', quality).slice(23));
       }

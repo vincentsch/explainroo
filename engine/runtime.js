@@ -1328,11 +1328,11 @@ export class Engine {
         if (m.to >= 0 && m.to <= sc.dur) playing.push(m.to);
       }
       // Animation of your own, in s.draw or s.three, changes the picture where
-      // its pixels change. The step is no simple part of a beat, so motion on
-      // every beat isn't sampled at the same point of it each time.
+      // its pixels change. Two steps take turns, so motion on every beat isn't
+      // sampled at the same point of the beat each time.
       if (drawings.length && !broke) {
         let before = null;
-        for (let x = 0; x < sc.dur; x += MOTION_STEP) {
+        for (let x = 0, k = 0; x < sc.dur; x += MOTION_STEPS[k++ % 2]) {
           const now = this.thumbAt(sc.index, x);
           if (before && now && thumbDiff(before, now) > MOTION_DIFF) playing.push(x);
           before = now;
@@ -1855,7 +1855,7 @@ const THUMB_WIDTH = 96;
 // two moments half a second apart must differ in more to count as motion.
 const ORDER_DIFF = 0.002;
 const MOTION_DIFF = 0.004;
-const MOTION_STEP = 0.43;
+const MOTION_STEPS = [0.43, 0.31];
 
 // The share of pixels where two small pictures differ by more than a trace.
 function thumbDiff(a, b) {

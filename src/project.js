@@ -692,6 +692,10 @@ export function loadProject(arg, overrides = {}, { settings: given } = {}) {
   const files = languageFiles(dir, language, main);
   if (!fs.existsSync(files.script)) fail(`${files.script} is missing`);
   const script = parseScript(fs.readFileSync(files.script, 'utf8'), { language: config.language, file: path.basename(files.script) });
+  // Bars and targetSeconds both set the length. Found here, before any
+  // narration is made or bought.
+  const barred = script.scenes.find((sc) => sc.attrs.bars !== undefined);
+  if (barred && config.targetSeconds) fail(`scene "${barred.id}" lasts {bars=${barred.attrs.bars}}, and "targetSeconds" sets the length of the video too. Bars keep the cuts on the beat, so leave out "targetSeconds" and choose the number of bars for the length`);
   // The main title is in the main language, so another language takes the title of its own script.
   if (language !== main && script.title && raw.languages?.[language]?.title === undefined) config.title = script.title;
   if (!config.title) config.title = script.title || path.basename(dir);

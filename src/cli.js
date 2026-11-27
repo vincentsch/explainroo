@@ -315,10 +315,11 @@ export async function main(argv) {
         if (flags.estimate) {
           const e = estimateLength(project);
           const wordless = !project.script.scenes.some((sc) => sc.units.some((u) => u.type === 'word'));
-          const none = project.config.voice.provider === 'recording' ? 'A recording has its own length, so there is no estimate.' : wordless ? withoutWords(project) : `${scriptName(project)} has no narration yet, so there is no estimate.`;
+          const scenesOnly = wordless && project.config.voice.provider !== 'recording' ? withoutWords(project) : null;
+          const none = project.config.voice.provider === 'recording' ? 'A recording has its own length, so there is no estimate.' : scenesOnly ? scenesOnly.text : `${scriptName(project)} has no narration yet, so there is no estimate.`;
           const hints = estimatedChapterHints(project, e);
           const lines = hints.map((h) => `\n${h.level.toUpperCase().padEnd(5)} ${h.message}`).join('');
-          print(e ? `${estimateLine(e)}${lines}\nNothing was made.` : none, { estimate: e, ...(hints.length ? { notes: hints } : {}) });
+          print(e ? `${estimateLine(e)}${lines}\nNothing was made.` : none, { estimate: e, ...(scenesOnly ? { length: scenesOnly.length, ...(scenesOnly.music ? { music: scenesOnly.music } : {}) } : {}), ...(hints.length ? { notes: hints } : {}) });
           return 0;
         }
         const paid = speechConnector(project.config);
@@ -774,7 +775,11 @@ function runOverrides(flags) {
 function withoutWords(project) {
   const tl = buildTimeline(project, {});
   const tempo = tl.music ? ` The music plays at ${+tl.music.bpm.toFixed(1)} beats a minute, so a bar lasts ${tl.music.bar.toFixed(2)} s.` : '';
-  return `${scriptName(project)} has no narration, so its scenes set the length: ${tl.duration.toFixed(1)} s, with the end of the video.${tempo}`;
+  return {
+    text: `${scriptName(project)} has no narration, so its scenes set the length: ${tl.duration.toFixed(1)} s, with the end of the video.${tempo}`,
+    length: Math.round(tl.duration * 100) / 100,
+    music: tl.music ? { bpm: tl.music.bpm, bar: Math.round(tl.music.bar * 1000) / 1000 } : null,
+  };
 }
 
 function langOverride(flags) {

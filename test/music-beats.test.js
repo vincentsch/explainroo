@@ -109,4 +109,10 @@ test('voice --estimate gives the length of a video without narration and the tem
   const r = spawnSync(process.execPath, [new URL('../bin/explainroo.js', import.meta.url).pathname, 'voice', dir, '--estimate'], { encoding: 'utf8' });
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /script\.md has no narration, so its scenes set the length: 15\.7 s, with the end of the video\. The music plays at 84 beats a minute, so a bar lasts 2\.86 s\./);
+  const json = JSON.parse(spawnSync(process.execPath, [new URL('../bin/explainroo.js', import.meta.url).pathname, 'voice', dir, '--estimate', '--json'], { encoding: 'utf8' }).stdout);
+  assert.deepEqual({ length: json.length, music: json.music }, { length: 15.73, music: { bpm: 84, bar: 2.857 } });
+  // Bars and targetSeconds are refused when the project loads, before anything is made.
+  const both = project(t, { music: true, targetSeconds: 20 }, '## a {bars=2}\n');
+  const refused = spawnSync(process.execPath, [new URL('../bin/explainroo.js', import.meta.url).pathname, 'voice', both, '--estimate'], { encoding: 'utf8' });
+  assert.match(refused.stderr, /\{bars=2\}, and "targetSeconds" sets the length of the video too/);
 });

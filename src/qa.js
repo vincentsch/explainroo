@@ -653,6 +653,8 @@ export async function verify(project, { file = null, report: reportFile = null, 
   // where the voice is hard to follow.
   let speech = null;
   let music = null;
+  // How loud the whole soundtrack is, for a video without narration.
+  let soundtrack = null;
   if (a) {
     const wav = path.join(project.paths.build, 'verify-16k.wav');
     await ffmpeg(['-loglevel', 'error', '-i', video, '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', wav]);
@@ -698,9 +700,9 @@ export async function verify(project, { file = null, report: reportFile = null, 
       // carries it alone.
       if (total) speech = { matchRate: Math.round(rate * 1000) / 1000, transcript: texts.join(' '), scenes, nearly, unconfirmed, together };
       if (project.config.music && timeline.voiceSpans?.length) music = musicLevel(samples, 16000, timeline.voiceSpans, duration);
-      else if (project.config.music && !total) music = wordlessLevel(samples, 16000);
+      else if (!total) soundtrack = wordlessLevel(samples, 16000);
     } else if (!spoken) {
-      if (project.config.music) music = wordlessLevel(samples, 16000);
+      soundtrack = wordlessLevel(samples, 16000);
     } else {
       // The whole file at once, so a word that only nearly matched has no scene.
       const heard = await transcribe(samples, { log, language: project.config.language });
@@ -724,7 +726,8 @@ export async function verify(project, { file = null, report: reportFile = null, 
     blackSegments: blacks,
     silences,
     speech,
-    ...(project.config.music ? { music } : {}),
+    ...(project.config.music && !soundtrack ? { music } : {}),
+    ...(soundtrack ? { soundtrack } : {}),
     issues,
     ...verdictOf(issues),
   };
@@ -807,21 +810,22 @@ function speechIssues(project, speech, issues) {
   if (speech.matchRate < 0.85) issues.push({ level: 'warn', message: `only ${Math.round(speech.matchRate * 100)}% of the script was understood in the final mix; ${canLower(project.config.music) ? 'lower music.volume or check pronunciation' : 'listen to it and check pronunciation'}` });
 }
 
-// How loud the music of a video without narration is, over the whole video:
-// { alone: true, level } in dB, or { heard: false } when it can't be heard.
+// How loud the soundtrack of a video without narration is, over the whole
+// video: { heard: true, level } in dB, or { heard: false } when it can't be heard.
 export function wordlessLevel(samples, rate) {
   let sum = 0;
   for (let i = 0; i < samples.length; i++) sum += samples[i] * samples[i];
   const level = 10 * Math.log10(Math.max(sum / Math.max(1, samples.length), 1e-12));
-  return level < MUSIC_UNHEARD_DB ? { heard: false, alone: true } : { heard: true, alone: true, level: Math.round(level) };
+  return level < MUSIC_UNHEARD_DB ? { heard: false } : { heard: true, level: Math.round(level) };
 }
 
 // What verify says about the music of a report, or '' for a video without music.
+// A video without narration gets a line about its whole soundtrack instead.
 export function musicLine(r) {
+  if (r?.soundtrack) return r.soundtrack.heard ? `sound: no narration, and the soundtrack plays at about ${r.soundtrack.level} dB` : 'sound: no narration, and nothing can be heard';
   if (!r || !('music' in r)) return '';
   const { music } = r;
   if (!music) return 'music: not measured, because the narration has no pause long enough';
-  if (music.alone) return music.heard ? `sound: no narration, and the soundtrack plays at about ${music.level} dB` : 'sound: no narration, and nothing can be heard';
   if (!music.heard) return 'music: none can be heard in the pauses of the narration';
   return `music: about ${music.under} dB under the voice, at ${music.pauses} dB in the pauses of the narration`;
 }

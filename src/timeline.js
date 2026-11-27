@@ -33,9 +33,6 @@ export function buildTimeline(project, voices) {
   const { config, script } = project;
   const grid = musicGrid(config);
   const barred = script.scenes.find((sc) => sc.attrs.bars !== undefined);
-  if (barred && config.targetSeconds) {
-    throw new ProjectError(`scene "${barred.id}" lasts {bars=${barred.attrs.bars}}, and "targetSeconds" sets the length of the video too. Bars keep the cuts on the beat, so leave out "targetSeconds" and choose the number of bars for the length`);
-  }
   if (barred && !grid) {
     throw new ProjectError(config.music?.src
       ? `scene "${barred.id}" lasts {bars=${barred.attrs.bars}}, and bars need the tempo of the music file. Add "bpm" to the "music" block in video.json, and "offset" when its first beat isn't at 0`
