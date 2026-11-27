@@ -657,7 +657,8 @@ export async function verify(project, { file = null, report: reportFile = null, 
     const wav = path.join(project.paths.build, 'verify-16k.wav');
     await ffmpeg(['-loglevel', 'error', '-i', video, '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', wav]);
     const { samples } = readWav(wav);
-    log('checking that the narration is understandable in the final mix');
+    const spoken = project.script.scenes.some((sc) => sc.units.some((u) => u.type === 'word'));
+    if (spoken) log('checking that the narration is understandable in the final mix');
     const tlFile = path.join(project.paths.build, 'timeline.json');
     const timeline = fs.existsSync(tlFile) ? JSON.parse(fs.readFileSync(tlFile, 'utf8')) : null;
     const spokenWords = (sc) => sc.units.filter((u) => u.type === 'word').map((u) => ({ spoken: u.spoken, display: u.display }));
@@ -693,8 +694,13 @@ export async function verify(project, { file = null, report: reportFile = null, 
         if (rate < 0.8) issues.push({ level: 'warn', message: `scene "${t.id}": only ${Math.round(rate * 100)}% of the narration was understood in the final mix; it heard "${heard.text.slice(0, 120)}"` });
       }
       const rate = total ? matched / total : 1;
-      speech = { matchRate: Math.round(rate * 1000) / 1000, transcript: texts.join(' '), scenes, nearly, unconfirmed, together };
+      // A video without narration has nothing to understand, and its music
+      // carries it alone.
+      if (total) speech = { matchRate: Math.round(rate * 1000) / 1000, transcript: texts.join(' '), scenes, nearly, unconfirmed, together };
       if (project.config.music && timeline.voiceSpans?.length) music = musicLevel(samples, 16000, timeline.voiceSpans, duration);
+      else if (project.config.music && !total) music = wordlessLevel(samples, 16000);
+    } else if (!spoken) {
+      if (project.config.music) music = wordlessLevel(samples, 16000);
     } else {
       // The whole file at once, so a word that only nearly matched has no scene.
       const heard = await transcribe(samples, { log, language: project.config.language });
@@ -704,18 +710,7 @@ export async function verify(project, { file = null, report: reportFile = null, 
       const rest = withoutPairs(aligned, pairs);
       speech = { matchRate: Math.round(aligned.matchRate * 1000) / 1000, transcript: heard.text, nearly: timedNear(script, rest, 0), unconfirmed: missedWords(script, rest, 0, null), together: pairs.map(({ at, ...p }) => p) };
     }
-    for (const p of speech.together) issues.push({ level: p.mix ? 'hint' : 'warn', message: togetherText(p) });
-    // A word the narration alone confirmed, heard in the mix as a form that
-    // sounds close, is the speech check spelling it another way: a hint. A
-    // number or an amount heard wrong changes the meaning, so it stays a warning.
-    const close = speech.unconfirmed.filter((u) => u.mix && u.heard && soundsClose(u.word, u.heard) && !amountWord(u.word, project.config.language));
-    const missed = speech.unconfirmed.filter((u) => !close.includes(u));
-    // Every form each word was heard as in the mix, then the forms of "heard".
-    const forms = heardForms(speech.nearly, speech.unconfirmed, givenForms(project.heard));
-    speech.heard = formsOf([...speech.nearly, ...speech.unconfirmed], forms);
-    if (close.length) issues.push({ level: 'hint', message: closeText(close, forms) });
-    if (missed.length) issues.push({ level: 'warn', message: unconfirmedText(missed) + mixAdvice(missed, project.config.music, project.config.language) });
-    if (speech.matchRate < 0.85) issues.push({ level: 'warn', message: `only ${Math.round(speech.matchRate * 100)}% of the script was understood in the final mix; ${canLower(project.config.music) ? 'lower music.volume or check pronunciation' : 'listen to it and check pronunciation'}` });
+    if (speech) speechIssues(project, speech, issues);
     fs.rmSync(wav, { force: true });
   }
   const sha256 = sha256File(video);
@@ -795,11 +790,38 @@ export function musicLevel(samples, rate, spans, duration) {
   return { heard: true, pauses: Math.round(music), under: Math.round(voice - music) };
 }
 
+// What the speech check of the final mix found: words heard as one, words
+// heard wrong and a low share of the script understood.
+function speechIssues(project, speech, issues) {
+  for (const p of speech.together) issues.push({ level: p.mix ? 'hint' : 'warn', message: togetherText(p) });
+  // A word the narration alone confirmed, heard in the mix as a form that
+  // sounds close, is the speech check spelling it another way: a hint. A
+  // number or an amount heard wrong changes the meaning, so it stays a warning.
+  const close = speech.unconfirmed.filter((u) => u.mix && u.heard && soundsClose(u.word, u.heard) && !amountWord(u.word, project.config.language));
+  const missed = speech.unconfirmed.filter((u) => !close.includes(u));
+  // Every form each word was heard as in the mix, then the forms of "heard".
+  const forms = heardForms(speech.nearly, speech.unconfirmed, givenForms(project.heard));
+  speech.heard = formsOf([...speech.nearly, ...speech.unconfirmed], forms);
+  if (close.length) issues.push({ level: 'hint', message: closeText(close, forms) });
+  if (missed.length) issues.push({ level: 'warn', message: unconfirmedText(missed) + mixAdvice(missed, project.config.music, project.config.language) });
+  if (speech.matchRate < 0.85) issues.push({ level: 'warn', message: `only ${Math.round(speech.matchRate * 100)}% of the script was understood in the final mix; ${canLower(project.config.music) ? 'lower music.volume or check pronunciation' : 'listen to it and check pronunciation'}` });
+}
+
+// How loud the music of a video without narration is, over the whole video:
+// { alone: true, level } in dB, or { heard: false } when it can't be heard.
+export function wordlessLevel(samples, rate) {
+  let sum = 0;
+  for (let i = 0; i < samples.length; i++) sum += samples[i] * samples[i];
+  const level = 10 * Math.log10(Math.max(sum / Math.max(1, samples.length), 1e-12));
+  return level < MUSIC_UNHEARD_DB ? { heard: false, alone: true } : { heard: true, alone: true, level: Math.round(level) };
+}
+
 // What verify says about the music of a report, or '' for a video without music.
 export function musicLine(r) {
   if (!r || !('music' in r)) return '';
   const { music } = r;
   if (!music) return 'music: not measured, because the narration has no pause long enough';
+  if (music.alone) return music.heard ? `music: carries the video without narration, at ${music.level} dB` : 'music: none can be heard';
   if (!music.heard) return 'music: none can be heard in the pauses of the narration';
   return `music: about ${music.under} dB under the voice, at ${music.pauses} dB in the pauses of the narration`;
 }

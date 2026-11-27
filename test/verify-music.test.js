@@ -73,3 +73,16 @@ test('verify prints the music line for a project with music, and none without', 
   assert.equal('music' in none, false);
   assert.doesNotMatch(formatVerify(none), /^music:/m);
 });
+
+test('a video without narration gets the level of its music over the whole video, and no line about narration', async () => {
+  const { wordlessLevel, musicLine, formatVerify } = await import('../src/qa.js');
+  const rate = 16000;
+  const tone = Float32Array.from({ length: rate * 2 }, (_, i) => 0.1 * Math.sin((i * 2 * Math.PI * 220) / rate));
+  const alone = wordlessLevel(tone, rate);
+  assert.deepEqual(alone, { heard: true, alone: true, level: -23 });
+  assert.deepEqual(wordlessLevel(new Float32Array(rate), rate), { heard: false, alone: true });
+  const r = { file: 'v.mp4', duration: 2, video: { width: 1920, height: 1080 }, loudness: { integrated: -14, truePeak: -1.2 }, music: alone, issues: [] };
+  assert.equal(musicLine(r), 'music: carries the video without narration, at -23 dB');
+  assert.equal(musicLine({ ...r, music: { heard: false, alone: true } }), 'music: none can be heard');
+  assert.doesNotMatch(formatVerify(r), /narration understood/);
+});
