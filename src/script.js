@@ -9,7 +9,7 @@
 import { periodGoesOn } from './german.js';
 
 const ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
-const ATTR_NUMBERS = new Set(['hold', 'min', 'lead', 'gap', 'max']);
+const ATTR_NUMBERS = new Set(['hold', 'min', 'lead', 'gap', 'max', 'bars']);
 
 export class ScriptError extends Error {
   constructor(message, line, file = 'script.md') {
@@ -46,6 +46,7 @@ function parseAttrs(src, line) {
     if (key === 'chapter' && (!value.trim() || value.length > 60)) throw new ScriptError('chapter title must be 1 to 60 characters', line);
     if (ATTR_NUMBERS.has(key)) {
       const n = Number(value);
+      if (key === 'bars' && !(Number.isInteger(n) && n >= 1)) throw new ScriptError(`bars is how many bars of the music the scene lasts, a whole number like {bars=4}, not "${value}"`, line);
       if (!Number.isFinite(n) || n < 0) throw new ScriptError(`attribute ${key} must be a number >= 0`, line);
       attrs[key] = n;
     } else {

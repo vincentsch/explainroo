@@ -94,7 +94,7 @@ export const DEFAULTS = {
 
 // The values "defaults" takes, oldest first. Each one has the defaults of the
 // ones before it.
-export const DEFAULTS_VERSIONS = ['0.5', '0.6'];
+export const DEFAULTS_VERSIONS = ['0.5', '0.6', '0.7'];
 
 // Settings for the UI kit (s.ui), for product demos in a brand's own look.
 export const BRAND_KEYS = ['accent', 'background', 'ink', 'font', 'headline', 'logo', 'colors'];
@@ -197,7 +197,7 @@ export function resolveSize(size) {
 // defaults go in here: the config is part of the page's version hash.
 function musicFileSetting(music) {
   if ('style' in music) fail('music takes a style or a src, not both. Remove one of them.');
-  const known = ['src', 'volume', 'credit', 'loop'];
+  const known = ['src', 'volume', 'credit', 'loop', 'bpm', 'offset'];
   const extra = Object.keys(music).filter((k) => !known.includes(k));
   if (extra.length) fail(`music has unknown setting(s) for a file: ${extra.join(', ')}. Known: ${known.join(', ')}`);
   const { src } = music;
@@ -208,6 +208,9 @@ function musicFileSetting(music) {
   if (!(typeof file.volume === 'number' && file.volume >= 0 && file.volume <= 1)) fail('music.volume must be between 0 and 1');
   if (typeof file.loop !== 'boolean') fail('music.loop must be true or false');
   if (file.credit !== undefined && !(typeof file.credit === 'string' && file.credit.trim())) fail('music.credit must be a short text that says who made the music');
+  if (file.bpm !== undefined && !(typeof file.bpm === 'number' && file.bpm >= 40 && file.bpm <= 240)) fail('music.bpm must be the tempo of the file in beats a minute, from 40 to 240, like 120');
+  if (file.offset !== undefined && !(typeof file.offset === 'number' && file.offset >= 0)) fail('music.offset must be the second of the file where its first beat sounds, 0 or more');
+  if (file.offset !== undefined && file.bpm === undefined) fail('music.offset goes with music.bpm, the tempo of the file. Add "bpm"');
   return file;
 }
 

@@ -404,28 +404,11 @@ there on the first frame and camera punch-ins. Read
   draws nothing.
 - `s.group({ x, y, scale, rotate, at, out, enter }, () => { ... })` moves a
   set of elements together. Inside the group, positions count from `x`, `y`.
-- `s.draw({ x, y, at, out, enter, dur, exit }, (ctx, life) => { ... })` gives
-  you the canvas 2D context, so you can draw anything the other methods
-  cannot. `s.ctx` is also available.
-  - `ctx` is already moved to `x`, `y`, turned by `rotate` and sized by
-    `scale`, so draw around 0, 0. Without `x` and `y`, 0, 0 is the top left
-    corner of the frame, and you draw in frame pixels.
-  - Nothing shows before `at`. The drawing is there at once, because `enter`
-    is `'none'` unless you set it. Another entrance, like `enter: 'fade'`,
-    brings the whole drawing in like any element. At `out` it leaves with
-    `exit`, which fades by default.
-  - `life.p` goes from 0 to 1 over `dur` seconds after `at`, or at once
-    without `dur`, for your own drawing progress. `life.local` counts the
-    seconds since `at`, for motion that keeps going.
-  - The automatic camera measures a drawing once, as it looks at the end of
-    the scene with `life.p` at 1, and keeps that box in the shot from `at` to
-    `out`. So a drawing that moves is measured where it ends up. Keep the
-    scene still with `s.camera([])` when that matters.
-  - `check` sees that something is drawn, for the empty start and the cover,
-    but not what. `box: { x, y, w, h }`, the center and size of what you
-    draw, around 0, 0 like the drawing, makes `check` treat it as a shape
-    for overlaps, text over its edge, the frame edge and the content area.
-    `round: true` in it makes it an ellipse. Without `box` it sees no more.
+- `s.draw({ x, y, at, out, enter, dur, exit, box }, (ctx, life) => { ... })`
+  gives you the canvas 2D context for anything the other methods cannot
+  draw. `explainroo docs motion` says where it puts 0, 0 and how the camera
+  and `check` see it, and has `s.keys`, `s.along`, `s.beat` and `s.bar` for
+  motion of your own.
 - `s.burst({ x, y, at, count, colors })` fires confetti.
 - `s.bg(color)` paints over the background.
 - `s.rand(i)`, `s.noise(x)` and `s.wiggle(amount, speed)` give random values
@@ -443,8 +426,8 @@ and the swipe of `s.ui.wipe` count as their entrance sounds too. `"sfx": "minima
 `sfx: true` there plays an element's usual sound too.
 
 `s.sfx(name, at, { gain, dur, pitch })` adds a sound: `pop`, `click`,
-`whoosh`, `swipe`, `tick`, `type`, `ding`, `chime`, `thud`, `scribble`,
-`chalk`, `rise`, `sparkle`, `blip`, `error`. `dur` sets the length of `type`,
+`whoosh`, `swipe`, `tick`, `type`, `ding`, `chime`, `thud`, `impact`,
+`scribble`, `chalk`, `rise`, `sparkle`, `blip`, `error`. `dur` sets the length of `type`,
 `scribble`, `chalk` and `rise` (`rise` ends at `at + dur`).
 
 `s.sound('assets/door.mp3', { at, out, volume })` plays your own file on a cue,

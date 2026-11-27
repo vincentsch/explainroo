@@ -231,7 +231,7 @@ test('clips and music are one topic away, with the setting, s.sound and the comm
   for (const topic of ['clips', 'music']) assert.ok(listed.includes(topic), topic);
   const clips = page('clips');
   for (const words of ['--dry-run', '--max-cost', 'assets/clips/<name>.mp4', 'never buys twice']) assert.ok(clips.includes(words), words);
-  assert.match(page('settings'), /^\| `music` .*`\{ "src", "volume", "credit", "loop" \}`.*`explainroo docs music`/m);
+  assert.match(page('settings'), /^\| `music` .*`\{ "src", "volume", "credit", "loop", "bpm", "offset" \}`.*`explainroo docs music`/m);
   assert.match(page('scene-api'), /^`s\.sound\('assets\/door\.mp3', \{ at, out, volume \}\)`/m);
   assert.match(page('commands'), /^\| `clip \[project\] "<prompt>"` \|/m);
 });
@@ -375,7 +375,7 @@ test('the sizes, settings, short-video and publishing topics explain settings pe
   for (const words of ['"sizes": { "tiktok": { "captions": "bold", "pace": 1.2, "cover": "hook@2.5" } }', 'the 16:9 version stays as it is', 'A block follows its exact size name.', 'A package looks for the block of its platform\'s size first', '`build/pace-<pace>/`', 'A paid voice buys the narration at that pace once', 'explainroo voice videos/<name> --size tiktok', 'every size takes the frame of the first scene with the most elements fully arrived, where a frame with a shape, icon, image or clip comes first', 'A project without `"defaults"` takes the end of the first scene', 'The cover leaves out the captions', '`package` keeps the finished video and writes only the new cover image', '`"captions": "auto"` means no captions on a 16:9 video', 'when `s.portrait` is true', 'with the watermark and without it']) assert.ok(sizes.includes(words), words);
   assert.match(page('settings'), /^\| `sizes` \| none \| `captions`, `cover`, `pace`, `watermark` and `targetSeconds` for one size/m);
   assert.match(page('settings'), /^\| `cover` \| `"auto"` \| .*With `"defaults": "0\.5"`, `"auto"` takes the frame of the first scene with the most elements fully arrived, a frame with a shape, icon, image or clip first\. Code still typing and a number still counting have not arrived\. Without it, `"auto"` is the end of the first scene/m);
-  assert.match(page('settings'), /^\| `defaults` \| none \| `"0\.6"` gives the project the defaults of explainroo 0\.6, which include those of 0\.5/m);
+  assert.match(page('settings'), /^\| `defaults` \| none \| `"0\.7"` gives the project the defaults of explainroo 0\.7, which include those of 0\.6 and 0\.5/m);
   assert.match(page('settings'), /^\| `motionBlur` \| .*`render --quality fast` leaves it out for one run/m);
   const short = oneLine(page('short-video'));
   for (const words of ['"tiktok": { "captions": "bold", "pace": 1.2 }', 'the frame of the first scene with the most elements fully arrived, a frame with a picture first', 'A cover has no captions.', '`"captions": "auto"` means no captions on 16:9', 'the same scene function draws it when `s.portrait` is true']) assert.ok(short.includes(words), words);
@@ -398,7 +398,8 @@ test('the scene-api, troubleshooting, product-demos and commands topics and the 
   for (const words of ['Write `\'writes#2\'` for the second time', 'Write `\'writes#1\'` when you mean the first time, and the hint goes away.', 'Move it with `labelSide: \'right\'`', 'Text with a background but no words', '`s.box({ w: 520, h: 72 })`', 'an arrow\'s label counts as text', 'a `lift` above 2 in `s.ui`', 'crossed by the line of an arrow or of a mark from `s.annotate`', 'shapes that partly overlap: boxes, cards, panels, images, icons and stickers', 'a scene that shows only its background for more than 1.5 seconds, at the start or later', 'cut at the edge of the frame by the camera while the shot holds still', 'It does not see what a drawing made with `s.draw` or straight on `s.ctx` holds. Give `s.draw` a `box`', 'a darker or lighter shade of the same color first', 'goes on with the rest of the scene as if the cue were at the scene start']) assert.ok(trouble.includes(words), words);
   // The return value of an icon with a label, and the box of a drawing.
   const sceneApi = oneLine(page('scene-api'));
-  for (const words of ['it also returns `label`, the label\'s box, and `outer`, a box with both', '`box: { x, y, w, h }`, the center and size of what you draw']) assert.ok(sceneApi.includes(words), words);
+  assert.ok(sceneApi.includes('it also returns `label`, the label\'s box, and `outer`, a box with both'));
+  assert.ok(oneLine(page('motion')).includes('`box: { x, y, w, h }`, the center and size of what you draw'));
   assert.doesNotMatch(trouble, /s\.cue\('writes', 2\)/);
   const demos = oneLine(page('product-demos'));
   for (const words of ['explainroo capture videos/<name> https://example.com/pricing --name pricing', '`assets/capture/example.com/pricing/`', 'Capturing again with the same name replaces only that folder.', 'A capture without a name replaces its own files and keeps the named folders.', 'It can\'t be `fonts`, because a capture without a name keeps its fonts there.', 'With captions on, `accent` also colors the word being spoken. A look file that sets `caption` colors decides instead.', 'a contrast below 3:1', 'make it lighter on a dark background, or darker on a light one', 'Bold captions keep their own colors.', 'It is a multiplier from 0 to 2: 0 is no shadow, 1 the normal shadow and 2 twice the normal shadow.', 'like 1.4 for a dialog', '`check` warns about a `lift` above 2.']) assert.ok(demos.includes(words), words);
@@ -546,8 +547,8 @@ test('the start page has the watermark, captions on 16:9, a choice already made,
   assert.match(page('settings'), /^\| `targetSeconds` \| none \|/m);
 });
 
-test('the scene-api topic says where s.draw puts 0, 0, how the camera measures a drawing, and what at, dur, enter and exit do', () => {
-  const api = oneLine(page('scene-api'));
+test('the motion topic says where s.draw puts 0, 0, how the camera measures a drawing, and what at, dur, enter and exit do', () => {
+  const api = oneLine(page('motion'));
   for (const words of ['`ctx` is already moved to `x`, `y`', 'Without `x` and `y`, 0, 0 is the top left corner of the frame', '`life.p` goes from 0 to 1 over `dur` seconds after `at`', 'At `out` it leaves with `exit`', 'The automatic camera measures a drawing once, as it looks at the end of the scene', 'a drawing that moves is measured where it ends up']) assert.ok(api.includes(words), words);
 });
 

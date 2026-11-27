@@ -40,7 +40,7 @@ rest of the file keeps its order.
 | `sizes` | none | `captions`, `cover`, `pace`, `watermark` and `targetSeconds` for one size, like `{ "tiktok": { "captions": "bold", "pace": 1.2 } }`; see `explainroo docs sizes` |
 | `speed` | 0.9 for Kokoro, 1 otherwise | voice speed only, 0.6 to 1.6; paid voices limit speed times pace, see `explainroo docs voices` |
 | `pace` | 1 | speed of the whole video (voice, pauses, animations), 0.7 to 1.6; see `explainroo docs sizes` |
-| `music` | `true` | `true` (the look's style), `warm`, `upbeat`, `calm`, `tech`, `playful`, `{ "style", "volume" }` where `style` defaults to the look's, `false`, or your own file as `{ "src", "volume", "credit", "loop" }`, see `explainroo docs music` |
+| `music` | `true` | `true` (the look's style), `warm`, `upbeat`, `calm`, `tech`, `playful`, `{ "style", "volume" }` where `style` defaults to the look's, `false`, or your own file as `{ "src", "volume", "credit", "loop", "bpm", "offset" }`, see `explainroo docs music` |
 | `sfx` | `true` | sound effects: `true`, `"minimal"` or `false` |
 | `captions` | `"auto"` | text of the narration at the bottom; `"auto"` turns it on for vertical, 4:5 and square videos, and leaves it off for 16:9; `"bold"` shows 2 to 4 big words at a time, with numbers, money and `*starred*` words in color |
 | `cover` | `"auto"` | full-size JPEG, without captions. With `"defaults": "0.5"`, `"auto"` takes the frame of the first scene with the most elements fully arrived, a frame with a shape, icon, image or clip first. Code still typing and a number still counting have not arrived. Without it, `"auto"` is the end of the first scene, or 1.0 second into it on Shorts, TikTok and Reels. With `"defaults": "0.6"`, `"auto"` looks in the first scene that shows a recording, a clip, an image or a drawing. Or a still spec: `12.5`, `"intro"`, `"intro@2.4"`, `"intro@end"`. A new cover needs no new render |
@@ -58,18 +58,18 @@ rest of the file keeps its order.
 | `heard` | none | forms the speech check accepts for a word, like `{ "regex101": ["reg x 101"] }`; see `explainroo docs writing` |
 | `brand` | none | colors, fonts and logo for `s.ui`; its `accent` also colors the spoken word in captions. With `"defaults": "0.6"`, `accent` also colors the `*starred*` words of `s.title` and `s.text`, made lighter or darker when it is hard to read, with a hint from `check`. With it, `background` is the background of every scene; see `explainroo docs product-demos` |
 | `fonts` | none | the video's own font files, see `explainroo docs product-demos` |
-| `defaults` | none | `"0.6"` gives the project the defaults of explainroo 0.6, which include those of 0.5, see below. `init` writes it |
+| `defaults` | none | `"0.7"` gives the project the defaults of explainroo 0.7, which include those of 0.6 and 0.5, see below. `init` writes it |
 
 ## The defaults of a version
 
 The `"defaults"` line keeps a video looking the same when you update
 explainroo. A new version may draw some things in a new way, like the size of
 arrow labels, and it does so only in a project whose line names that version
-or a later one. `init` writes `"defaults": "0.6"`, so a project made now keeps
-the look of 0.6 after later updates. A project without the line keeps the look
+or a later one. `init` writes `"defaults": "0.7"`, so a project made now keeps
+the look of 0.7 after later updates. A project without the line keeps the look
 it had before 0.5, frame for frame, also its cover, and one with `"0.5"` keeps
 the look of explainroo 0.5. To give an older project the new look, set the
-line to `"0.6"`, then look at `still` and `sheet` again, because labels may
+line to `"0.7"`, then look at `still` and `sheet` again, because labels may
 move.
 
 `"0.5"` changes these, and `"0.6"` has them too:
@@ -118,6 +118,13 @@ move.
   the fullest frame of the first scene, as with `"0.5"`.
 - Words that the kits and formats draw by default, like "STEP" in
   `s.short.step()`, come in the video's language. See `explainroo docs languages`.
+
+`"0.7"` also changes this:
+
+- In a video without narration, the built-in music starts in its full groove
+  on its first beat, without the 1.5 second fade-in, and its closing hit lands
+  on the last bar line before the end of the video. A music file starts
+  without the fade-in too. See `explainroo docs music`.
 
 `check` finds the same problems with or without the line.
 

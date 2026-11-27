@@ -108,14 +108,14 @@ function duckEnv(spans) {
   return e;
 }
 
-function levelEnv(level, duration) {
-  const fadeIn = Math.min(1.5, duration * 0.25);
+// `fadeIn` replaces the usual 1.5 second fade-in, for music that starts on its
+// first beat.
+function levelEnv(level, duration, fadeIn = Math.min(1.5, duration * 0.25)) {
   const fadeOut = Math.min(0.35, duration * 0.1);
   return new Env(0).set(0, 0).lin(level, fadeIn).set(level, Math.max(fadeIn, duration - fadeOut)).lin(0, duration);
 }
 
-function fileLevelEnv(duration) {
-  const fadeIn = Math.min(1.5, duration * 0.25);
+function fileLevelEnv(duration, fadeIn = Math.min(1.5, duration * 0.25)) {
   const fadeOut = Math.min(MUSIC_FILE_FADE_OUT, duration * 0.1);
   return new Env(0).set(0, 0).lin(1, fadeIn).set(1, Math.max(fadeIn, duration - fadeOut)).lin(0, duration);
 }
@@ -246,7 +246,7 @@ export async function renderSoundtrack(opts = {}) {
     const volume = Math.max(0, Math.min(2, music.volume == null ? 0.5 : Number(music.volume)));
     renderInto(synth, L, R, {
       compressor: new Compressor(sr, { threshold: -18, ratio: 2, knee: 10, attack: 0.02, release: 0.3 }),
-      gains: [levelEnv(dbToGain(MUSIC_BASE_DB + plan.mixDb) * (volume / 0.5), duration), duckEnv([...voiceSpans, ...clipSpans])],
+      gains: [levelEnv(dbToGain(MUSIC_BASE_DB + plan.mixDb) * (volume / 0.5), duration, music.fadeIn ?? undefined), duckEnv([...voiceSpans, ...clipSpans])],
     });
   }
 
@@ -261,7 +261,7 @@ export async function renderSoundtrack(opts = {}) {
       end: length,
       loop: musicFile.loop !== false,
       gain: (measured ? dbToGain(MUSIC_FILE_LUFS - musicFile.lufs) : 1) * (volume / 0.5),
-      gains: [fileLevelEnv(duration), duckEnv([...voiceSpans, ...clipSpans])],
+      gains: [fileLevelEnv(duration, musicFile.fadeIn ?? undefined), duckEnv([...voiceSpans, ...clipSpans])],
       sr,
     });
   }

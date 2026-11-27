@@ -178,9 +178,9 @@ publishes nothing.
 
 ## Topics
 
-Read the topic of the step you are on. A long topic has sections:
-`npx --yes explainroo docs <topic> --sections` lists them with their size, and
-`npx --yes explainroo docs <topic> <section>` prints one, like
+Read the topic of the step you are on.
+`npx --yes explainroo docs <topic> --sections` lists the sections of a long
+topic, and `npx --yes explainroo docs <topic> <section>` prints one, like
 `npx --yes explainroo docs publishing buffer`. Print only the section you need.
 
 | Topic | Read it when |
@@ -189,6 +189,7 @@ Read the topic of the step you are on. A long topic has sections:
 | `writing` | you write `script.md`: style, length and syntax |
 | `pictures` | you plan the scenes: what makes a video great, layouts and the camera |
 | `scene-api` | you write `scenes.js`: everything a scene can draw, with its options |
+| `motion` | your own animation, the music's beats, videos without words |
 | `troubleshooting` | a scene breaks, or before you write the first one |
 | `voices` | you pick a voice, a paid one or the user's own recording |
 | `languages` | the video isn't in English, or comes in several languages |

@@ -6,6 +6,8 @@
 // its scenes.
 import path from 'node:path';
 import { normWord, speechChunks, spokenWords } from './script.js';
+import { musicPlan, MUSIC_START } from '../engine/audio/music.js';
+import { ProjectError } from './errors.js';
 
 export const TRANSITION_SECONDS = 0.7;
 
@@ -14,8 +16,28 @@ export function projectUrl(project, dir) {
   return path.relative(project.dir, dir).split(path.sep).join('/');
 }
 
+// The beat grid of the video's music: when its first beat sounds and how long
+// a beat and a bar of four beats last, in seconds. The built-in music knows its
+// tempo, after pace. A music file has a grid when its "music" block gives "bpm",
+// with "offset" for its first beat. null without music or without a tempo.
+export function musicGrid(config) {
+  const m = config.music;
+  if (!m) return null;
+  if (m.src !== undefined && !m.bpm) return null;
+  const bpm = m.src !== undefined ? m.bpm : musicPlan(m).bpm;
+  const beat = 60 / bpm;
+  return { bpm: Math.round(bpm * 1000) / 1000, start: m.src !== undefined ? m.offset ?? 0 : MUSIC_START, beat, bar: beat * 4 };
+}
+
 export function buildTimeline(project, voices) {
   const { config, script } = project;
+  const grid = musicGrid(config);
+  const barred = script.scenes.find((sc) => sc.attrs.bars !== undefined);
+  if (barred && !grid) {
+    throw new ProjectError(config.music?.src
+      ? `scene "${barred.id}" lasts {bars=${barred.attrs.bars}}, and bars need the tempo of the music file. Add "bpm" to the "music" block in video.json, and "offset" when its first beat isn't at 0`
+      : `scene "${barred.id}" lasts {bars=${barred.attrs.bars}}, and bars need music. Turn on the built-in music with "music": true, or use a music file with its "bpm"`);
+  }
   const voiceDir = project.paths ? projectUrl(project, project.paths.voice) : 'build/voice';
   const fps = config.fps;
   const pace = config.pace || 1;
@@ -40,8 +62,20 @@ export function buildTimeline(project, voices) {
     const shown = scene.units.filter((u) => u.type === 'word');
     const a = scene.attrs;
     const lead = leadOf(scene);
-    const dur = target ? target.durs[index] : durs[index];
     const start = snap(t);
+    let dur = target ? target.durs[index] : durs[index];
+    // {bars=4} ends the scene on the bar line 4 bars after the one nearest its
+    // start, or on a later one when its narration needs longer. The end of the
+    // video holds after that. Each end comes from the grid itself, so cuts
+    // stay on the beat however many scenes come before.
+    if (a.bars !== undefined && grid) {
+      const isLast = index === script.scenes.length - 1;
+      const tail = isLast ? config.end / pace : 0;
+      const needed = start + durs[index] - tail;
+      let line = Math.round((start - grid.start) / grid.bar) + a.bars;
+      while (grid.start + line * grid.bar < needed - 1e-6 && v.duration) line++;
+      dur = Math.max(1 / fps, snap(grid.start + line * grid.bar + tail) - start);
+    }
     const transition = index === 0 ? 'none' : (a.transition || config.transition);
     scenes.push({
       id: scene.id,
@@ -76,6 +110,8 @@ export function buildTimeline(project, voices) {
     pace,
     scenes,
     voiceSpans,
+    // The music's beats, for s.beat and s.bar.
+    ...(grid ? { music: grid } : {}),
     // Only a video with "targetSeconds" has this, so every other timeline stays as it was.
     ...(target ? { target: target.report } : {}),
   };

@@ -186,7 +186,8 @@ test('video.json: bad music settings say what is wrong', () => {
   fails({ src: 'assets/a.mp3', volume: '0.5' }, /volume must be between 0 and 1/);
   fails({ src: 'assets/a.mp3', loop: 'no' }, /loop must be true or false/);
   fails({ src: 'assets/a.mp3', credit: 5 }, /credit/);
-  fails({ src: 'assets/a.mp3', bpm: 120 }, /unknown setting\(s\) for a file: bpm/);
+  fails({ src: 'assets/a.mp3', tempo: 120 }, /unknown setting\(s\) for a file: tempo\. Known: src, volume, credit, loop, bpm, offset/);
+  fails({ src: 'assets/a.mp3', bpm: '120' }, /music\.bpm must be the tempo of the file in beats a minute/);
 });
 
 test('a project with a music file that is missing, or outside assets through a link, does not load', (t) => {

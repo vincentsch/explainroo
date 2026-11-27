@@ -179,6 +179,16 @@ export const SFX_DEFS = {
       noiseBurst(syn, lane, t, p.amp * 0.3, 0.03, p.rng, { type: 'lowpass', freq: 400 });
     },
   },
+  impact: {
+    description: 'Deep cinematic hit for a reveal on the beat, like a logo landing (pairs with rise).',
+    trimDb: -18.7,
+    play(syn, lane, t, p) {
+      // A sub boom that drops in pitch, a dull body and a short crack on top.
+      tone(syn, lane, t, WAVES.sine, 0, p.amp, 0.003, 0.32, { freqEnv: new Env(78).set(78, t).exp(34, t + 0.6), length: 1.4 });
+      noiseBurst(syn, lane, t, p.amp * 0.5, 0.12, p.rng, { type: 'lowpass', freq: 260 });
+      noiseBurst(syn, lane, t, p.amp * 0.22, 0.012, p.rng, { type: 'highpass', freq: 3000 });
+    },
+  },
   scribble: {
     description: 'Felt marker on paper while something is drawn (dur, default 0.6 s).',
     trimDb: -15.9,

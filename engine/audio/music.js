@@ -455,6 +455,9 @@ export const STYLE_INFO = Object.fromEntries(Object.entries(STYLES).map(([k, s])
 
 // --- planning ----------------------------------------------------------------
 
+// When the first beat of the built-in music sounds, in seconds of the video.
+export const MUSIC_START = 0.05;
+
 function resolveStyle(style) {
   const name = style || 'warm';
   if (!STYLES[name]) {
@@ -481,10 +484,11 @@ function sectionLevels(n) {
   return levels;
 }
 
-function planBars(def, rng, keyRoot, nBars, start, barLen) {
+function planBars(def, rng, keyRoot, nBars, start, barLen, groove = false) {
   const secLen = nBars <= 32 ? 4 : 8;
   const nSec = Math.max(1, Math.ceil(nBars / secLen));
   const levels = sectionLevels(nSec);
+  if (groove && levels[0] === 0) levels[0] = 1;
   const progs = def.progressions;
   const main = progs[rng.int(0, 1)];
   const alt = progs[rng.int(2, progs.length - 1)];
@@ -515,13 +519,16 @@ function planBars(def, rng, keyRoot, nBars, start, barLen) {
 
 // Builds a Synth holding the whole underscore for `duration` seconds.
 // Render it with synth.renderBlock(); `plan` says what was chosen.
-export function createMusic({ style, seed = 1, bpm, key, duration, scenes = [], sampleRate = 48000 } = {}) {
+// `groove` starts the music in its full groove instead of its quiet first
+// section, for a video without narration. `ringOut` is how long the last chord
+// may ring after the closing hit, which lands on the last bar line before it.
+export function createMusic({ style, seed = 1, bpm, key, duration, scenes = [], sampleRate = 48000, groove = false, ringOut: ring = null } = {}) {
   const plan = musicPlan({ style, seed, bpm, key });
   const def = STYLES[plan.style];
   const rng = makeRng(hashSeed('music', plan.style, plan.seed));
   const beat = 60 / plan.bpm;
   const barLen = beat * 4;
-  const start = 0.05;
+  const start = MUSIC_START;
 
   const room = clamp(0.55 + (def.reverb.seconds - 1.5) * 0.14, 0.5, 0.9);
   const syn = new Synth(sampleRate, Math.max(1, Math.ceil(duration * sampleRate)), {
@@ -534,10 +541,12 @@ export function createMusic({ style, seed = 1, bpm, key, duration, scenes = [], 
   for (const [name, spec] of Object.entries(def.lanes)) lanes[name] = syn.lane(spec);
   const pumped = Object.values(lanes).filter((l) => l.pumpTimes);
 
-  const ringOut = clamp(duration * 0.1, 1.8, 3.0);
-  const nBars = Math.max(0, Math.floor((duration - ringOut - start) / barLen));
+  const ringOut = ring ?? clamp(duration * 0.1, 1.8, 3.0);
+  // With ringOut given, a small margin lets a closing hit on a bar line that
+  // whole frames moved a little still count.
+  const nBars = Math.max(0, Math.floor((duration - ringOut - start) / barLen + (ring === null ? 0 : 1e-3)));
   const endHit = start + nBars * barLen;
-  const { bars, secLen, lastVoicing, lastUpper } = planBars(def, rng, plan.keyRoot, nBars, start, barLen);
+  const { bars, secLen, lastVoicing, lastUpper } = planBars(def, rng, plan.keyRoot, nBars, start, barLen, groove);
 
   const finalChord = def.final || C(0);
   const fpcs = chordPcs(plan.keyRoot, finalChord);

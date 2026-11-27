@@ -132,7 +132,9 @@ Narration for this scene. [#marker] A marker names a moment you can animate on.
   (seconds after the voice, default 0.7), `min` (the shortest the scene can
   be, in seconds), `lead` (seconds before the voice, default 0.35) and
   `transition` (`fade`, `slide`, `push`, `wipe`, `zoom`, `brush`, `cut`).
-- A scene without narration lasts `min` seconds (default 3).
+- A scene without narration lasts `min` seconds (default 3), or with
+  `bars=4` four bars of the music, ending on a bar line.
+  `explainroo docs music` says when the music has a tempo.
 - `chapter="How the resolver finds it"` in a scene's braces starts a
   chapter at that scene. It lasts until the next chapter. Titles have 1 to
   60 characters. If the first scene names no chapter, the first chapter is
