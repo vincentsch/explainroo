@@ -1,6 +1,7 @@
 // Local HTTP server for the engine pages, the project files and uploads from
 // the page (rendered audio, stills and sheets). Binds to 127.0.0.1 only.
 import http from 'node:http';
+import { THREE_FILES } from '../engine/three.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -209,6 +210,9 @@ export async function startServer({ projectDir, getState, port = 0, log = () => 
   await ensureFonts(config?.language, { log });
   const fonts = new Map(['ja', 'zh'].flatMap(languageFonts).map(f => [`/language-fonts/${f.file}`, f.path]));
   const roughPath = resolveModule('roughjs/bundled/rough.esm.js');
+  // three.js for s.three: its module and the core it imports, by name only.
+  const threeDir = path.dirname(resolveModule('three'));
+  const threeFiles = new Map(THREE_FILES.map((f) => [`/vendor/three/${f}`, path.join(threeDir, f)]));
   const clips = new Map();
   const server = http.createServer(async (req, res) => {
     try {
@@ -333,6 +337,7 @@ export async function startServer({ projectDir, getState, port = 0, log = () => 
       else if (p === '/frame.html') file = path.join(ROOT, 'engine', 'frame.html');
       else if (fonts.has(p)) file = fonts.get(p);
       else if (p === '/vendor/rough.js') file = roughPath;
+      else if (threeFiles.has(p)) file = threeFiles.get(p);
       else if (p.startsWith('/engine/')) file = safeJoin(path.join(ROOT, 'engine'), p.slice(8));
       else if (p.startsWith('/fonts/')) file = safeJoin(path.join(ROOT, 'fonts'), p.slice(7));
       else if (p.startsWith('/project/')) file = projectFile(projectDir, p.slice(9));

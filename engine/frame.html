@@ -63,7 +63,7 @@ window.explainrooReady = (async () => {
   };
   window.explainroo = {
     info() {
-      return { duration: state.timeline.duration, frames: state.timeline.frames, fps, width: canvas.width, height: canvas.height, scenes: state.timeline.scenes.map((s) => ({ id: s.id, start: s.start, dur: s.dur })) };
+      return { duration: state.timeline.duration, frames: state.timeline.frames, fps, width: canvas.width, height: canvas.height, scenes: state.timeline.scenes.map((s) => ({ id: s.id, start: s.start, dur: s.dur })), three: !!engine.usesThree };
     },
     // The automatic camera's plan for each scene it films.
     cameras() {

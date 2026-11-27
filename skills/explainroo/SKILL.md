@@ -25,8 +25,8 @@ holds what the voice says. `scenes.js` draws what the viewer sees. Every
 drawing can appear on a word the voice says. A voice model (Kokoro) reads
 the script on this computer, or the narration comes from ElevenLabs,
 Cartesia or the user's own recording. Whisper notes when each word is spoken.
-Chrome draws the frames, and ffmpeg makes the MP4 with music and sound
-effects. All of this runs on this computer, so a video needs no account and
+Chrome draws the frames, in 2D or 3D, and ffmpeg makes the MP4 with music
+and sound effects. All of this runs on this computer, so a video needs no account and
 no key.
 
 ## The hard limits
@@ -102,8 +102,8 @@ says where keys go and how explainroo finds them.
 
 ## When to ask the user
 
-Decide the normal things yourself, like the look, the length, the voice, the
-layout and the wording. Ask only when you cannot go on without an answer.
+Decide the normal things yourself, like the look, the length, the voice and
+the wording. Ask only when you cannot go on without an answer.
 When you ask, put everything you need in one message. Typical reasons to ask:
 
 - The topic is unclear, or you need a fact you cannot check.
@@ -194,7 +194,7 @@ topic, and `npx --yes explainroo docs <topic> <section>` prints one, like
 | `writing` | you write `script.md`: style, length and syntax |
 | `pictures` | you plan the scenes: what makes a video great, layouts and the camera |
 | `scene-api` | you write `scenes.js`: everything a scene can draw, with its options |
-| `motion` | your own animation, the music's beats, videos without words |
+| `motion` | your own animation, 3D, the music's beats, videos without words |
 | `troubleshooting` | a scene breaks, or before you write the first one |
 | `voices` | you pick a voice, a paid one or the user's own recording |
 | `languages` | the video isn't in English, or comes in several languages |

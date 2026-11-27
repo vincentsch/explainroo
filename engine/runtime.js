@@ -6,6 +6,7 @@ import { getTheme, makeBackground, fontString, colorOf } from './themes.js';
 import { Pen } from './pen.js';
 import { drawTransition } from './transitions.js';
 import { buildPhrases, drawCaptions, buildChunks, drawBoldCaptions, captionHighlight } from './captions.js';
+import { loadThree } from './three.js';
 import { AUDIO_FILE, clamp, ease, hashStr, mulberry32, suggest, suggestColor, contrast, luminance, opaque, withAlpha, parseColor, mixColor, rgba, cssColor, newDefaults, accentNote, normWord } from './util.js';
 import { overlapDepth, holds, crosses, bounds, inside, toEdge, grow } from './geometry.js';
 import { layoutAreas } from './layout.js';
@@ -286,6 +287,22 @@ export class Engine {
       const res = await fetch(this.mathURL(tex, display));
       this.mathCache.set(key, this.mathResponse(res.status, await res.text()));
     }));
+  }
+
+  // Loads three.js when a scene calls s.three. Each scene is drawn once to
+  // find out, as for formulas. Elements are called on every frame, so the
+  // first frame of a scene shows its 3D elements, also those that come later.
+  async loadThree(root) {
+    this.threeCollect = new Set();
+    try {
+      for (const sc of this.timeline.scenes) {
+        try { this.drawScene(this.ctx, sc.index, 0); } catch {}
+      }
+      this.usesThree = this.threeCollect.size > 0;
+    } finally {
+      this.threeCollect = null;
+    }
+    if (this.usesThree) await loadThree(root);
   }
 
   sceneAt(T) {
@@ -647,7 +664,9 @@ export class Engine {
     const full = (this._thumbFull ??= document.createElement('canvas'));
     if (full.width !== this.canvas.width || full.height !== this.canvas.height) Object.assign(full, { width: this.canvas.width, height: this.canvas.height });
     const small = (this._thumbSmall ??= Object.assign(document.createElement('canvas'), { width: THUMB_WIDTH, height: Math.max(1, Math.round((THUMB_WIDTH * this.canvas.height) / this.canvas.width)) }));
-    const saved = { textLog: this.textLog, drawLog: this.drawLog, recorder: this.recorder, revealLog: this.revealLog, markLog: this.markLog, windowLog: this.windowLog, arrowLog: this.arrowLog, drawingLog: this.drawingLog };
+    const saved = { textLog: this.textLog, drawLog: this.drawLog, recorder: this.recorder, revealLog: this.revealLog, markLog: this.markLog, windowLog: this.windowLog, arrowLog: this.arrowLog, drawingLog: this.drawingLog, thumbing: this.thumbing };
+    // A small picture needs the pixels of 3D scenes too.
+    this.thumbing = true;
     this.textLog = [];
     this.drawLog = drawLog();
     this.recorder = null;
@@ -731,7 +750,7 @@ export class Engine {
     const coming = texts.filter((x) => !x.problem && !x.settled && x.text.trim() && inside(x)).map((x) => x.text);
     // A recording, a clip, an image or a drawing, which "cover": "auto" looks
     // for with "defaults": "0.6".
-    const media = log.shapes.some((s) => (s.kind === 'image' || s.kind === 'drawing') && s.settled && s.alpha > 0.95 && arrived(s) && (inside(s.box) || fillsFrame(s.box, this.W, this.H)));
+    const media = log.shapes.some((s) => (s.kind === 'image' || s.kind === 'drawing' || s.kind === 'three') && s.settled && s.alpha > 0.95 && arrived(s) && (inside(s.box) || fillsFrame(s.box, this.W, this.H)));
     return { count: words + pictures + lines, picture: pictures > 0, media, onlyText: words > 0 && pictures + lines === 0, partial, coming };
   }
 
@@ -1651,7 +1670,7 @@ function markupShown(tx) {
 // The shapes that are pictures. A large one may run behind the watermark. A
 // card, a sticker, a box or a code window is a panel that holds words, and the
 // watermark on its corner reads as part of it.
-const PICTURES = new Set(['icon', 'image', 'drawing']);
+const PICTURES = new Set(['icon', 'image', 'drawing', 'three']);
 
 // The watermark's box when `b` reaches more than 4 pixels under it, or null.
 // With `part`, a box counts only when the watermark covers at least a twentieth
@@ -1838,7 +1857,7 @@ function drawLog() {
   return { shapes: [], strokes: [], lives: [], partial: [], shown: 0, order: 0 };
 }
 
-const SHAPE_NAMES = { box: 'box', icon: 'icon', image: 'image', code: 'code window', terminal: 'terminal', card: 'card', sticker: 'sticker', drawing: 'drawing' };
+const SHAPE_NAMES = { box: 'box', icon: 'icon', image: 'image', code: 'code window', terminal: 'terminal', card: 'card', sticker: 'sticker', drawing: 'drawing', three: '3D scene' };
 
 // "the box "Rivers bring salt in"", with "(id "rivers")" after it when it has an
 // id, "the drawing "moon"" by its id alone, or by its call and where it is
@@ -1878,7 +1897,7 @@ function stickersOverTitles(shapes, texts) {
 // has a finding of its own.
 export function stickersOverPictures(shapes, texts, W, H) {
   const found = [];
-  const pictures = shapes.filter((sh) => ['icon', 'image', 'drawing'].includes(sh.kind) && sh.settled && sh.alpha > 0.5 && !fillsFrame(sh.box, W, H));
+  const pictures = shapes.filter((sh) => ['icon', 'image', 'drawing', 'three'].includes(sh.kind) && sh.settled && sh.alpha > 0.5 && !fillsFrame(sh.box, W, H));
   for (const sh of shapes) {
     if (sh.kind !== 'sticker' || !sh.settled || sh.alpha <= 0.95) continue;
     const name = `the sticker "${sh.name.slice(0, 30)}"`;
@@ -1908,7 +1927,7 @@ export function shapeOverlaps(shapes) {
       const B = list[j];
       if (A.group !== null && A.group === B.group) continue;
       // A sticker over a picture has a finding of its own.
-      const picture = (x) => ['icon', 'image', 'drawing'].includes(x.kind);
+      const picture = (x) => ['icon', 'image', 'drawing', 'three'].includes(x.kind);
       if ((A.kind === 'sticker' && picture(B)) || (B.kind === 'sticker' && picture(A))) continue;
       const depth = overlapDepth(A.poly, B.poly);
       if (depth <= 4 || holds(A.poly, B.poly) || holds(B.poly, A.poly)) continue;
@@ -2035,6 +2054,7 @@ export async function boot({ canvas, scale = 1, transparent = false, version = '
   engine.iconTags = iconTags;
   if (player) engine.staticMath = await (await fetch('./math.json')).json();
   else await engine.loadMath();
+  await engine.loadThree(root);
   engine.planCameras();
   return { engine, audio, state };
 }

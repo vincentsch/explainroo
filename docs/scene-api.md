@@ -409,6 +409,9 @@ there on the first frame and camera punch-ins. Read
   draw. `explainroo docs motion` says where it puts 0, 0 and how the camera
   and `check` see it, and has `s.keys`, `s.along`, `s.beat` and `s.bar` for
   motion of your own.
+- `s.three({ x, y, w, h, full, at, out }, { setup, frame })` draws a 3D scene
+  with three.js and returns its box with `point([x, y, z])` for labels
+  (`explainroo docs motion`).
 - `s.burst({ x, y, at, count, colors })` fires confetti.
 - `s.bg(color)` paints over the background.
 - `s.rand(i)`, `s.noise(x)` and `s.wiggle(amount, speed)` give random values

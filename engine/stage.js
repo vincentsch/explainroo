@@ -11,6 +11,7 @@ import { cuedSteps, smallRecording, smallPageText, talkZoomed, movingSteps, reco
 import { highlightLine, codeTokens, matchTokens, resolveCodeSteps, codeMorphState } from './code.js';
 import { ring, bounds, along, rayThrough } from './geometry.js';
 import { kitWord } from './words.js';
+import { threeLoaded, threeLib, threeElement, threePicture, projectPoint } from './three.js';
 
 // The size of body text, which s.text uses unless told otherwise, and arrow
 // labels with "defaults": "0.5".
@@ -1842,6 +1843,100 @@ export class Stage {
     return this._picture(src, () => frame === null ? null : this.engine.clipImage(clip, frame), clip.width, clip.height, this._cropped(o, 'clip', src, clip.source ?? clip, clip.width));
   }
 
+  // A 3D scene drawn with three.js. setup({ THREE, scene, camera, lights })
+  // builds it once, and frame({ t, scene, camera, state }) sets everything from
+  // the time, on every frame. It sits in a box like an image, with the same
+  // layout and timing options, and fills s.safe without w and h. It returns that
+  // box with point([x, y, z]), where a point of the 3D scene lands in the frame,
+  // for labels in s.text.
+  three(o = {}, spec = {}) {
+    const call = this._call('three');
+    const usage = 's.three takes its options and { setup, frame }: setup({ THREE, scene, camera, lights }) builds the scene once, and frame({ t, scene, camera, state }) sets everything from the time';
+    if (!spec || typeof spec !== 'object' || (spec.setup !== undefined && typeof spec.setup !== 'function') || (spec.frame !== undefined && typeof spec.frame !== 'function')) throw new SceneError(usage);
+    if (o.full) o = { ...o, x: this.W / 2, y: this.H / 2, w: this.W, h: this.H, enter: o.enter ?? 'none' };
+    // A 3D picture that fills the frame or s.safe is the shot itself, with a
+    // camera of its own, so the automatic camera keeps out.
+    if (this.engine.planning && (o.full || (o.w === undefined && o.h === undefined))) this.engine.manualCamera = true;
+    const w = o.w ?? this.safe.w;
+    const h = o.h ?? this.safe.h;
+    const x = o.x ?? this.cx;
+    const y = o.y ?? this.cy;
+    const key = `${this.scene.id}|${o.id ?? call}`;
+    // The pass at boot that finds which projects need three.js counts every
+    // call, also on a page that loaded it for an engine before.
+    if (this.engine.threeCollect) {
+      this.engine.threeCollect.add(key);
+      return { ...geom(x, y, w, h), point: () => ({ x, y, behind: false }) };
+    }
+    if (!threeLoaded()) {
+      if (this.engine.collectingMath) return { ...geom(x, y, w, h), point: () => ({ x, y, behind: false }) };
+      throw new SceneError(`${o.id === undefined ? `the ${call}` : `s.three "${o.id}"`} was not called when its scene started. Call s.three on every frame of the scene, and use at and out for its timing`);
+    }
+    const THREE = threeLib();
+    const tools = {
+      texture: (src) => this._threeTexture(THREE, src),
+      color: (name) => new THREE.Color(cssColor(colorOf(this.theme, name)) ?? colorOf(this.theme, name)),
+    };
+    const fail = (message) => new SceneError(message);
+    const el = threeElement(this.engine, key, spec, w, h, tools, fail);
+    if (el.camera.isPerspectiveCamera) el.camera.aspect = w / h;
+    const at = this.time(o.at ?? 0);
+    if (spec.frame) {
+      const saved = Math.random;
+      Math.random = mulberry32(this._seed('three', o, call));
+      try {
+        spec.frame({ s: this, t: this.t, local: Math.max(0, this.t - at), THREE, scene: el.scene, camera: el.camera, lights: el.lights, state: el.state, w, h, ...tools });
+      } finally {
+        Math.random = saved;
+      }
+    }
+    el.camera.updateProjectionMatrix?.();
+    const pixels = this._wantsPixels();
+    // check looks at its pixels for motion, as for s.draw.
+    if (this.engine.drawingLog) {
+      const name = o.id === undefined ? `the ${call}` : `the 3D scene "${o.id}"`;
+      this.engine.drawingLog.set(name, { name, at, drew: true });
+    }
+    // Labels placed with point() sit on the 3D picture on purpose, and most of
+    // its box is see-through, so it may overlap other things.
+    const box = this._picture(o.id ?? '3D', () => (pixels ? this._threePixels(el, w, h, fail) : null), w, h, { frame: 'none', shadow: false, radius: 0, fit: 'fill', overlap: true, ...o, x, y, w, h }, null, 'three');
+    return { ...box, point: (v) => projectPoint(el, v, x, y, w, h) };
+  }
+
+  // Whether this pass makes a picture. Planning the camera, finding sounds and
+  // check's look at the layout need only where things are, not 3D pixels.
+  _wantsPixels() {
+    const e = this.engine;
+    return !e.layoutLog && !e.recorder && !e.clipProbe && !e.collectingMath && (!e.textLog || e.thumbing);
+  }
+
+  // The 3D picture at the size it shows on screen: its box times the current
+  // scale, which has the render scale, the camera's zoom and the element's own
+  // scale in it, never larger than the frame, in steps of 8 pixels.
+  _threePixels(el, w, h, fail) {
+    const m = this.ctx.getTransform();
+    const k = Math.hypot(m.a, m.b) || 1;
+    const canvas = this.engine.canvas;
+    const cap = Math.min(1, canvas.width / (w * k), canvas.height / (h * k));
+    const pw = Math.max(8, Math.ceil((w * k * cap) / 8) * 8);
+    const ph = Math.max(8, Math.ceil((h * k * cap) / 8) * 8);
+    return threePicture(el, pw, ph, Math.round(this.T * this.engine.fps), fail);
+  }
+
+  // An image from assets/ as a three.js texture, made once per engine.
+  _threeTexture(THREE, src) {
+    const cache = (this.engine.threeTextures ??= new Map());
+    let tex = cache.get(src);
+    if (!tex) {
+      tex = new THREE.Texture(this.engine.image(src));
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = 4;
+      tex.needsUpdate = true;
+      cache.set(src, tex);
+    }
+    return tex;
+  }
+
   // The `to` of a clip or a recording: seconds in the file, after `from` and
   // no later than its end.
   _clipTo(kind, to, from, duration, name) {
@@ -2003,7 +2098,8 @@ export class Stage {
     return box;
   }
 
-  _picture(src, source, naturalWidth, naturalHeight, o, paint) {
+  // `kind` names the element for check: 'image', or 'three' for a 3D scene.
+  _picture(src, source, naturalWidth, naturalHeight, o, paint, kind = 'image') {
     const th = this.theme;
     // A crop is the whole picture from here on, in the pixels the page draws.
     const crop = o.crop ?? null;
@@ -2036,7 +2132,7 @@ export class Stage {
     this._push(x, y, life, o);
     // The line on the outline: a rough card's, a window's, or o.border on a bare image.
     const border = frame === 'card' && th.stroke.rough ? th.stroke.width * 0.8 : bar ? 2 : frame === 'none' && o.border ? th.stroke.width : 0;
-    this._logShape('image', { w: fw, h: fh }, this._settled(life), o, src, { border });
+    this._logShape(kind, { w: fw, h: fh }, this._settled(life), o, src, { border });
     const ctx = this.ctx;
     const r = o.radius ?? (frame === 'phone' ? 46 : th.radius);
     if (frame === 'phone') {

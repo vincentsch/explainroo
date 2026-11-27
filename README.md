@@ -77,8 +77,9 @@ explainroo does the rest:
 - **Pictures.** Chrome runs in the background and draws the frames. The lines
   can look hand drawn ([Rough.js](https://roughjs.com)), and there are 1,800
   icons from [Lucide](https://lucide.dev). A scene can also show charts, math
-  formulas, code that changes step by step, your own screenshots and video
-  clips such as screen recordings.
+  formulas, code that changes step by step, your own screenshots, video
+  clips such as screen recordings, and 3D scenes made with
+  [three.js](https://threejs.org).
 - **Camera.** A camera films each scene. It moves in on what the voice talks
   about when there is time, and pulls back at the end so the last frame shows
   the whole idea. Cards and labels are never cut in half while a shot holds.
@@ -94,6 +95,22 @@ work. It saves stills of the scenes and a sheet of small frames for the whole
 video. A layout check finds text that is cut off or overlaps, and a speech
 check finds words the voice got wrong. For a feed-sized player,
 `explainroo check videos/<name> --view-width 854` also flags small text.
+
+## Motion and 3D
+
+Coding agents are good at writing animation as code, and explainroo turns it
+into a finished video. A scene can draw anything with the canvas, or a 3D
+scene with three.js, and the agent places the labels next to it with
+`point()`. Every frame comes from the time, so the motion lands on the words
+of the narration, or on the beats of the music in a video without words.
+`s.keys` animates between keyframes, `s.along` moves things along a path, and
+`{bars=4}` in the script makes a scene last four bars, so the cuts land on the
+beat.
+
+`check` catches the mistakes such code makes: a scene that keeps values from
+one frame to the next, which would make the video jump, and a drawing that
+draws nothing. `explainroo docs motion` has the details and the rules for
+motion that looks designed.
 
 ## Check or cut any video
 

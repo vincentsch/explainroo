@@ -2,8 +2,8 @@
 
 The scene API animates its elements for you: they come in on their cue and
 leave at `out`. This topic is for motion you write yourself, like a planet on
-its orbit, a line that grows along a path, a logo that builds itself, or a
-short piece with no narration that moves to music.
+its orbit in 3D, a line that grows along a path, a logo that builds itself, or
+a short piece with no narration that moves to music.
 
 ## The one rule
 
@@ -100,6 +100,84 @@ s.icon('rocket', { x: at.x, y: at.y, rotate: at.angle + 45, size: 80, at: 0 });
 `s.p(at, dur, 'spring')` springs a little past the end and settles. To start a
 row of things one after another, give each a later time, like
 `at: s.time('list') + i * 0.12`.
+
+## 3D scenes
+
+`s.three(options, { setup, frame })` draws a 3D scene with three.js, version
+0.187. Use it where depth shows the idea: a planet on its tilted axis, the
+layers of a chip, a molecule, a product from every side. Flat diagrams read
+better with the 2D elements.
+
+```js
+tilt(s) {
+  const lean = (23.4 * Math.PI) / 180;
+  const earth = s.three({ id: 'earth', at: -1 }, {
+    setup({ THREE, scene, color }) {
+      const axis = new THREE.Group();
+      axis.rotation.z = -lean;
+      const globe = new THREE.Mesh(new THREE.SphereGeometry(2.2, 64, 48), new THREE.MeshStandardMaterial({ color: color('blue'), roughness: 0.5 }));
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 6.4), new THREE.MeshStandardMaterial({ color: color('ink') }));
+      axis.add(globe, pole);
+      scene.add(axis);
+      return { globe };
+    },
+    frame({ t, state }) {
+      state.globe.rotation.y = t * 0.6;
+    },
+  });
+  // The top of the axis, in the frame, for a label beside it.
+  const top = earth.point([3.2 * Math.sin(lean), 3.2 * Math.cos(lean), 0]);
+  s.text('The axis leans 23.4°', { x: top.x + 280, y: top.y, size: 48, at: 'leans' });
+},
+```
+
+- **The box.** `x`, `y`, `w` and `h` place it like an image, and `at`, `out`,
+  `enter`, `exit` and `id` work the same way. Without `w` and `h` it fills
+  `s.safe`, and `full: true` fills the frame. Either way it is the shot
+  itself, so the automatic camera keeps out of that scene. A smaller box is an
+  element like any other for the camera.
+- **`setup({ THREE, scene, camera, lights, texture, color, w, h })`** runs once
+  before the element first draws. Build the geometry, materials and lights
+  here, and return what `frame` needs. It can't be async.
+  `texture('assets/wood.jpg')` gives an image from `assets/` as a texture at
+  once. `Math.random()` gives the same numbers on every render page here too.
+- **`frame({ t, local, s, state, scene, camera, lights, THREE, color, texture })`**
+  runs on every frame, in `check` and for each motion blur sample. Set every
+  position, rotation and color from `t`, the scene time, or `local`, the
+  seconds since `at`. `s.keys` and `s.p` work inside it.
+- **The stage.** The camera is a perspective camera 10 units back, looking at
+  the middle. `lights.sky` lights from above, `lights.key` from the upper
+  right and `lights.fill` softly from the left. A soft studio light makes
+  shiny and metal surfaces reflect. The background is clear, so the look's
+  background shows. `scene.background = color('bg')` paints it. Colors from
+  `color(name)` are the look's, as in 2D.
+- **`point([x, y, z])`** on what `s.three` returns gives the place of a 3D
+  point in the frame, `{ x, y, behind }`, for labels in `s.text`. Put words in
+  `s.text`, not in the 3D scene: they stay sharp, and `check` reads them.
+- **What there is.** The core of three.js: geometries, materials, lights,
+  groups, curves and textures from images. No add-ons, so no model loaders,
+  no post-processing and no controls. `.glb` models come later.
+
+### 3D that looks good
+
+- One object, big and clear: about half the height of the frame, with room
+  for its labels.
+- Matte materials (`roughness` 0.4 to 0.8) look calm. Use `metalness` only
+  for metal.
+- Light from above, like the stage does. Shadows (`castShadow`) cost a lot
+  of time and rarely help.
+- Move the camera slowly along one path per idea, with `s.keys` on
+  `camera.position`, and look at the object with `camera.lookAt(0, 0, 0)`.
+  Or keep it still and turn the object.
+
+### How long 3D takes
+
+Chrome draws 3D on the processor. On 8 cores, a second of 1080p video at 30
+frames a second takes about 4 seconds, and more render pages don't make it
+faster. A draft at half size takes about a third of that. Keep geometry lean,
+like 64 segments for a sphere. Motion blur draws each frame several times,
+but 3D draws once a frame and is shared, so 3D motion itself has no blur.
+The camera's blur still applies.
 
 ## Beats and videos without words
 
