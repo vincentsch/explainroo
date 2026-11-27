@@ -90,9 +90,9 @@ test('a block takes captions, cover, pace, watermark and targetSeconds with the 
     [{ languages: { es: { clipBudget: 0.4 } } }, /^languages\.es has setting\(s\) that can't be set for one language: clipBudget\. "clipBudget" is for all clips of the project, so it goes at the top of video\.json\.$/],
     [{ languages: { es: { defaults: '0.5' } } }, /^languages\.es has setting\(s\) that can't be set for one language: defaults\. "defaults" is for the whole project, so it goes at the top of video\.json\.$/],
     [{ sizes: { tiktok: { defaults: '0.5' } } }, /^sizes\.tiktok has setting\(s\) that can't be set for one size: defaults\./],
-    [{ defaults: '0.4' }, /^defaults must be "0\.5" or "0\.6", which gives the project the defaults of that version of explainroo, or be left out for the look from before$/],
-    [{ defaults: 0.5 }, /^defaults must be "0\.5" or "0\.6"/],
-    [{ defaults: '0.7' }, /^defaults must be "0\.5" or "0\.6"/],
+    [{ defaults: '0.4' }, /^defaults must be "0\.5", "0\.6" or "0\.7", which gives the project the defaults of that version of explainroo, or be left out for the look from before$/],
+    [{ defaults: 0.5 }, /^defaults must be "0\.5", "0\.6" or "0\.7"/],
+    [{ defaults: '0.8' }, /^defaults must be "0\.5", "0\.6" or "0\.7"/],
   ]) {
     assert.throws(() => normalizeConfig(settings), (e) => e instanceof ProjectError && message.test(e.message), JSON.stringify(settings));
   }

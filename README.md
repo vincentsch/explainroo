@@ -112,6 +112,14 @@ one frame to the next, which would make the video jump, and a drawing that
 draws nothing. `explainroo docs motion` has the details and the rules for
 motion that looks designed.
 
+<p align="center">
+  <img src="docs/media/motion-3d.webp" alt="A frame of the seasons example: the Sun in the middle of Earth's orbit, a faint Earth in June leaning toward the Sun and Earth in December leaning away, with labels" width="820">
+</p>
+
+<p align="center">
+  <sub>A frame of <a href="examples/seasons-3d">examples/seasons-3d</a>, where three.js draws the orbit and the labels come from <code>point()</code>. <a href="examples/logo-reveal">examples/logo-reveal</a> is a piece without words, cut to the beat.</sub>
+</p>
+
 ## Check or cut any video
 
 `check` and `verify` also take a video file made with any tool:
@@ -255,7 +263,7 @@ unofficial demos of [Gmail, ChatGPT and Claude](https://www.explainroo.com/video
 ## Formats
 
 A format is a ready way of making one kind of video, with a short guide for
-your agent, scene helpers, settings and a whole example video. Four come with
+your agent, scene helpers, settings and a whole example video. Five come with
 explainroo:
 
 | Format | For |
@@ -264,6 +272,7 @@ explainroo:
 | `narrated-explainer` | one idea explained in about a minute |
 | `vertical-short` | a short for Shorts, TikTok and Reels, with the hook in the first second |
 | `product-ad` | an ad of 15 to 30 seconds for a feed |
+| `motion-short` | a motion piece without narration, cut to the beat of the music |
 
 `explainroo init videos/acme --format product-launch` starts from one.
 Anyone can publish a format as a Git repository, and

@@ -460,7 +460,10 @@ function settingsOf(raw, input, dir, block = null) {
   }
   if (!(cfg.loudness <= -8 && cfg.loudness >= -30)) fail('loudness must be between -30 and -8 LUFS');
   if (cfg.defaults === null || cfg.defaults === undefined) delete cfg.defaults;
-  else if (!DEFAULTS_VERSIONS.includes(cfg.defaults)) fail(`defaults must be ${DEFAULTS_VERSIONS.map((v) => `"${v}"`).join(' or ')}, which gives the project the defaults of that version of explainroo, or be left out for the look from before`);
+  else if (!DEFAULTS_VERSIONS.includes(cfg.defaults)) {
+    const versions = DEFAULTS_VERSIONS.map((v) => `"${v}"`);
+    fail(`defaults must be ${versions.slice(0, -1).join(', ')} or ${versions.at(-1)}, which gives the project the defaults of that version of explainroo, or be left out for the look from before`);
+  }
   // null in the block of a size turns off a target set at the top.
   if (cfg.targetSeconds === null || cfg.targetSeconds === undefined) delete cfg.targetSeconds;
   else if (!(typeof cfg.targetSeconds === 'number' && cfg.targetSeconds >= 1 && cfg.targetSeconds <= 3600)) {

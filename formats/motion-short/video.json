@@ -1,0 +1,11 @@
+{
+  "title": "Launch day",
+  "theme": "midnight",
+  "size": "16:9",
+  "voice": "af_heart",
+  "music": "upbeat",
+  "captions": false,
+  "cover": "reveal@1.5",
+  "defaults": "0.7",
+  "transition": "cut"
+}
