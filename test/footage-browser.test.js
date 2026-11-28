@@ -1,7 +1,10 @@
 // Footage projects keep picture and sound together across cuts. The fixture
-// has a white flash and a short beep on every whole second of the recording;
-// after cutting and reordering its spans, each flash in the finished video must
-// come with its beep, to within one frame, at 25, 30 and 60 frames a second.
+// has a white flash and a short beep at six moments of the recording, a
+// different one in each part, so playing it straight through, or with a span
+// cut or ordered wrong, puts them elsewhere. After cutting and reordering at
+// frame-aligned fractions of a second, each flash in the finished video must be
+// where its span puts it and come with its beep, within one frame, at 25, 30
+// and 60 frames a second, and at 30 with motion blur on.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -19,11 +22,19 @@ let chrome;
 try { chrome = findChrome(); } catch {}
 const skip = !chrome && 'no browser here';
 
-// A recording of `seconds`, with a flash frame and a 20 ms beep at each whole second.
-async function flashAndBeep(file, fps, seconds = 6) {
+// The moments of the fixture, on the frame grid at 25, 30 and 60.
+const EVENTS = [0.4, 1.2, 2.2, 3.4, 4.4, 5.6];
+
+// A recording of `seconds` with a flash frame and a 20 ms beep at each moment.
+// With `delay`, the picture starts that much after the sound, as when a screen
+// recording starts after the microphone, and each flash comes that much later.
+async function flashAndBeep(file, fps, delay = 0, seconds = 6) {
+  const flashes = EVENTS.map((e) => `eq(n\\,${Math.round(e * fps)})`).join('+');
+  const beeps = EVENTS.map((e) => `between(t\\,${e}\\,${e + 0.02})`).join('+');
   await ffmpeg(['-loglevel', 'error', '-y',
-    '-f', 'lavfi', '-i', `color=black:s=320x180:r=${fps}:d=${seconds},drawbox=enable='eq(mod(n\\,${fps})\\,0)':color=white:t=fill`,
-    '-f', 'lavfi', '-i', `aevalsrc='if(lt(mod(t\\,1)\\,0.02)\\,0.5*sin(2*PI*1000*t)\\,0)':s=48000:d=${seconds}`,
+    ...(delay ? ['-itsoffset', String(delay)] : []),
+    '-f', 'lavfi', '-i', `color=black:s=320x180:r=${fps}:d=${seconds},drawbox=enable='${flashes}':color=white:t=fill`,
+    '-f', 'lavfi', '-i', `aevalsrc='(${beeps})*0.5*sin(2*PI*1000*t)':s=48000:d=${seconds}`,
     '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', file]);
 }
 
@@ -66,8 +77,8 @@ async function beeps(video) {
   }
 }
 
-for (const fps of [25, 30, 60]) {
-  test(`a footage project keeps each flash with its beep across a cut and a reorder at ${fps} frames a second`, { skip, timeout: 300000 }, async (t) => {
+for (const [fps, blur, delay] of [[25, false, 0], [30, false, 0], [60, false, 0], [30, true, 0], [30, false, 0.1]]) {
+  test(`a footage project keeps each flash with its beep across a cut and a reorder at ${fps} frames a second${blur ? ', with motion blur' : ''}${delay ? `, with a picture that starts ${delay} s after the sound` : ''}`, { skip, timeout: 300000 }, async (t) => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), `explainroo-footage-${fps}-`));
     const cache = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-footage-cache-'));
     const before = process.env.EXPLAINROO_CACHE;
@@ -79,15 +90,17 @@ for (const fps of [25, 30, 60]) {
       fs.rmSync(cache, { recursive: true, force: true });
     });
     const source = path.join(dir, 'talk.mp4');
-    await flashAndBeep(source, fps);
+    await flashAndBeep(source, fps, delay);
     fs.mkdirSync(path.join(dir, 'assets'));
     const info = await footageInfo(source);
     assert.equal(info.fps, fps);
     await makeWorkingCopy(source, path.join(dir, 'assets/footage.mov'), info);
-    fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ size: '320x180', fps, footage: 'assets/footage.mov', music: false, sfx: false, captions: false, watermark: false, motionBlur: false, transition: 'cut', defaults: '0.7' }));
-    // Seconds 0 to 2, then 3 to 5 (a cut), then 1 to 2 again (a reorder).
-    fs.writeFileSync(path.join(dir, 'script.md'), '# Sync\n\n## a {from=0 to=2}\n\n## b {from=3 to=5}\n\n## c {from=1 to=2}\n');
-    fs.writeFileSync(path.join(dir, 'scenes.js'), 'export default {};\n');
+    fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ size: '320x180', fps, footage: 'assets/footage.mov', music: false, sfx: false, captions: false, watermark: false, motionBlur: blur, transition: 'cut', defaults: '0.7' }));
+    // 0.2 to 2.6, then 3.0 to 4.8 (a cut), then 1.0 to 1.6 again (a reorder).
+    fs.writeFileSync(path.join(dir, 'script.md'), '# Sync\n\n## a {from=0.2 to=2.6}\n\n## b {from=3.0 to=4.8}\n\n## c {from=1.0 to=1.6}\n');
+    // With blur, a small dot slides in over each scene, so the frames take motion blur samples.
+    const dot = "s.footage(); s.circle({ x: 300, y: 20, r: 4, color: 'muted', at: 0.1, enter: 'slide-left', dur: 1.5 });";
+    fs.writeFileSync(path.join(dir, 'scenes.js'), blur ? `export default { a(s) { ${dot} }, b(s) { ${dot} }, c(s) { ${dot} } };\n` : 'export default {};\n');
     const project = loadProject(dir);
     // No speech in the fixture, so the speech model isn't needed.
     await synthesize(project, { transcribe: async () => ({ text: '', words: [] }) });
@@ -95,10 +108,12 @@ for (const fps of [25, 30, 60]) {
     const video = r.file ?? path.join(dir, 'out/video.mp4');
     const seen = await flashes(video, fps);
     const heard = await beeps(video);
-    // Flashes and beeps at 0, 1 (scene a), 2, 3 (scene b, from 3 and 4) and 4 (scene c, from 1).
-    assert.deepEqual(seen.map((x) => Math.round(x)), [0, 1, 2, 3, 4], `flashes at ${seen}`);
-    assert.equal(heard.length, 5, `beeps at ${heard}`);
-    seen.forEach((x, i) => assert.ok(Math.abs(x - heard[i]) <= 1 / fps + 0.002, `flash ${x.toFixed(3)} s and beep ${heard[i].toFixed(3)} s are more than a frame apart`));
+    // a has the moments at 0.4, 1.2 and 2.2, b those at 3.4 and 4.4, c the one at 1.2 again.
+    const expected = [0.2, 1.0, 2.0, 2.8, 3.8, 4.4];
+    assert.equal(seen.length, expected.length, `flashes at ${seen}`);
+    seen.forEach((x, i) => assert.ok(Math.abs(x - expected[i] - delay) <= 1 / fps + 0.002, `flash ${i + 1} at ${x.toFixed(3)} s, where its span puts it at ${expected[i] + delay} s`));
+    assert.equal(heard.length, expected.length, `beeps at ${heard}`);
+    seen.forEach((x, i) => assert.ok(Math.abs(x - delay - heard[i]) <= 1 / fps + 0.002, `flash ${x.toFixed(3)} s and beep ${heard[i].toFixed(3)} s are not ${delay} s apart, within a frame`));
   });
 }
 

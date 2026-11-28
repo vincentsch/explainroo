@@ -480,6 +480,8 @@ const transcriptFile = (sha256, language) => path.join(cacheRoot(), 'cut', `${sh
 async function transcript(video, sha256, language, { log, transcribe }) {
   const file = transcriptFile(sha256, language);
   const saved = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : null;
+  // A transcript saved before notes like [BLANK_AUDIO] were left out loses them here.
+  if (saved?.words) saved.words = speechOnly(saved.words);
   if (saved?.levels) return saved;
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-cut-'));
   try {

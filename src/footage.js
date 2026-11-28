@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { ProjectError } from './errors.js';
 import { ffmpeg, ffmpegPath, probe, normalizeLoudness } from './ffmpeg.js';
 import { readWav } from './wav.js';
-import { cacheRoot, transcribeWords, speechOnly } from './models.js';
+import { transcribeWords, speechOnly } from './models.js';
 import { quietStretches } from './cut.js';
 import { THEMES, DEFAULTS_VERSIONS, resolveSize, normalizeConfig, checkLanguage } from './project.js';
 
@@ -56,6 +56,9 @@ export async function footageInfo(file) {
     width,
     height,
     hdr: ['smpte2084', 'arib-std-b67'].includes(v.color_transfer),
+    // Older and some screen recorders' video is BT.601 or full range.
+    bt601: ['smpte170m', 'bt470bg'].includes(v.color_space),
+    fullRange: v.color_range === 'pc' || /^yuvj/.test(v.pix_fmt ?? ''),
     codec: v.codec_name,
   };
 }
@@ -65,6 +68,17 @@ export async function footageInfo(file) {
 export function projectRate(source) {
   if (!(source >= 23)) return 30;
   return RATES.reduce((best, r) => (Math.abs(r - source) < Math.abs(best - source) ? r : best), RATES[0]);
+}
+
+// How long the picture of a working copy is: its frames at its rate. The
+// container's length can be the sound's, a little longer.
+export async function pictureSeconds(file) {
+  const probed = await probe(file);
+  const v = probed.streams.find((x) => x.codec_type === 'video');
+  const frames = Number(v?.nb_frames);
+  const r = rate(v?.r_frame_rate);
+  if (frames > 0 && r > 0) return frames / r;
+  return Number(v?.duration) || Number(probed.format.duration) || 0;
 }
 
 let zscaleSeen;
@@ -83,14 +97,17 @@ export async function makeWorkingCopy(src, dest, info, { log = () => {} } = {}) 
   let note = null;
   if (info.hdr && hasZscale()) filters.push('zscale=t=linear:npl=100', 'format=gbrpf32le', 'zscale=p=bt709', 'tonemap=hable:desat=0', 'zscale=t=bt709:m=bt709:r=tv');
   else if (info.hdr) note = 'the recording is HDR, and this ffmpeg has no zscale to bring it to normal brightness, so its colours may look flat';
-  filters.push(`fps=${info.fps}`, "scale='if(gte(iw,ih),min(1920,iw),-2)':'if(gte(iw,ih),-2,min(1920,ih))'", 'setsar=1', 'format=yuv420p');
+  // start_time=0 fills a picture that starts after the sound with its first
+  // frame, on the clock the sound starts on. Both sides even, for yuv420p.
+  const convert = info.hdr ? '' : `${info.bt601 ? ':in_color_matrix=bt601' : ''}${info.fullRange ? ':in_range=pc' : ''}:out_color_matrix=bt709:out_range=tv`;
+  filters.push(`fps=${info.fps}:start_time=0`, `scale='if(gte(iw,ih),trunc(min(1920,iw)/2)*2,-2)':'if(gte(iw,ih),-2,trunc(min(1920,ih)/2)*2)'${convert}`, 'setsar=1', 'format=yuv420p');
   log(`making a working copy of ${path.basename(src)} at ${info.fps} frames a second`);
   const temp = `${dest}.partial${path.extname(dest)}`;
   await ffmpeg(['-loglevel', 'error', '-y', '-i', src, '-map', '0:v:0', '-map', '0:a:0', '-vf', filters.join(','),
     '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-bf', '0', '-g', String(info.fps), '-keyint_min', String(info.fps),
     '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709',
     '-c:a', 'pcm_s16le', '-ar', String(FOOTAGE_RATE), '-ac', '2', '-af', 'aresample=async=1:first_pts=0',
-    '-avoid_negative_ts', 'make_zero', temp]);
+    '-avoid_negative_ts', 'make_zero', '-shortest', temp]);
   fs.renameSync(temp, dest);
   return note;
 }
@@ -109,13 +126,15 @@ export function fileHash(file) {
 }
 
 // Where a piece of `samples` should end: in the middle of the last quiet stretch
-// before `limit` seconds, or at the limit when there is none.
-export function pieceEnds(quiet, duration, limit = PIECE_SECONDS) {
+// before `limit` seconds. Under music there is none, and then it ends at the
+// softest moment of its last 10 seconds, which `softest` finds, so no word is
+// cut in two.
+export function pieceEnds(quiet, duration, limit = PIECE_SECONDS, softest = null) {
   const ends = [];
   let start = 0;
   while (duration - start > limit) {
     const inside = quiet.filter(([a, b]) => a > start + 3 && (a + b) / 2 < start + limit);
-    const end = inside.length ? (inside.at(-1)[0] + inside.at(-1)[1]) / 2 : start + limit;
+    const end = inside.length ? (inside.at(-1)[0] + inside.at(-1)[1]) / 2 : softest ? softest(start + limit - 10, start + limit) : start + limit;
     ends.push(end);
     start = end;
   }
@@ -127,8 +146,13 @@ export function pieceEnds(quiet, duration, limit = PIECE_SECONDS) {
 // hash and language, with its quiet stretches. Stretches of sound of 2 seconds
 // or more without words are listed, as speech the model may have missed.
 export async function footageWords(file, sha256, language, { log = () => {}, transcribe = transcribeWords } = {}) {
-  const saved = path.join(cacheRoot(), 'footage', `${sha256}-${language}.json`);
-  if (fs.existsSync(saved)) return JSON.parse(fs.readFileSync(saved, 'utf8'));
+  // Next to the working copy, so the words and their times travel with the
+  // project, and a new working copy or another language is heard again.
+  const saved = path.join(path.dirname(file), `${path.basename(file, path.extname(file))}.words-${language}.json`);
+  if (fs.existsSync(saved)) {
+    const kept = JSON.parse(fs.readFileSync(saved, 'utf8'));
+    if (kept.sha256 === sha256 && kept.language === language) return withPlausibleTimes(kept);
+  }
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-footage-'));
   try {
     const wav = path.join(dir, 'speech-16k.wav');
@@ -136,24 +160,107 @@ export async function footageWords(file, sha256, language, { log = () => {}, tra
     const { samples } = readWav(wav);
     const duration = samples.length / 16000;
     const quiet = quietStretches(samples, 16000);
-    const ends = pieceEnds(quiet, duration);
+    const ends = pieceEnds(quiet, duration, PIECE_SECONDS, (a, b) => softestMoment(samples, a, b));
     const words = [];
+    const began = Date.now();
+    // The speech model sometimes gives a run of words one time, and loses the
+    // rest of its piece; a piece like that is heard again in two halves.
+    const hear = async (a, b, depth = 0) => {
+      const heard = await transcribe(samples.subarray(Math.floor(a * 16000), Math.floor(b * 16000)), { log, language });
+      const got = speechOnly(heard.words).map((w) => ({ text: w.text.replace(/\s+/g, ' '), start: round(a + w.start), end: round(a + Math.max(w.start, w.end)) }));
+      if (depth < 2 && b - a > 8 && collapsed(got)) {
+        const mid = softestMoment(samples, a + (b - a) * 0.35, a + (b - a) * 0.65);
+        return [...await hear(a, mid, depth + 1), ...await hear(mid, b, depth + 1)];
+      }
+      return got;
+    };
     let start = 0;
     for (const [i, end] of ends.entries()) {
-      log(`listening to the recording, part ${i + 1} of ${ends.length}`);
-      const heard = await transcribe(samples.subarray(Math.floor(start * 16000), Math.floor(end * 16000)), { log, language });
-      for (const w of speechOnly(heard.words)) {
-        words.push({ text: w.text.replace(/\s+/g, ' '), start: round(start + w.start), end: round(start + Math.max(w.start, w.end)) });
-      }
+      const left = i ? ` (about ${Math.max(1, Math.round(((Date.now() - began) / i) * (ends.length - i) / 60000))} min left)` : '';
+      log(`listening to the recording, part ${i + 1} of ${ends.length}${left}`);
+      words.push(...await hear(start, end));
       start = end;
     }
-    const result = { language, duration: round(duration), words, quiet, unheard: unheardStretches(words, quiet, duration) };
-    fs.mkdirSync(path.dirname(saved), { recursive: true });
+    const result = { sha256, language, duration: round(duration), words, quiet, unheard: unheardStretches(words, quiet, duration) };
     fs.writeFileSync(saved, JSON.stringify(result));
-    return result;
+    return withPlausibleTimes(result);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+}
+
+// The softest 50 ms between `a` and `b` seconds of 16 kHz samples, in seconds.
+export function softestMoment(samples, a, b) {
+  const step = 800;
+  let best = (a + b) / 2;
+  let least = Infinity;
+  for (let i = Math.max(0, Math.floor(a * 16000)); i + step <= Math.min(samples.length, Math.floor(b * 16000)); i += step / 2) {
+    let sum = 0;
+    for (let k = i; k < i + step; k++) sum += samples[k] * samples[k];
+    if (sum < least) {
+      least = sum;
+      best = (i + step / 2) / 16000;
+    }
+  }
+  return round(best);
+}
+
+// A run of five or more words that start at the same moment: the speech model
+// lost track of the time there.
+export function collapsed(words) {
+  let run = 1;
+  for (let i = 1; i < words.length; i++) {
+    run = Math.abs(words[i].start - words[i - 1].start) < 0.05 ? run + 1 : 1;
+    if (run >= 5) return true;
+  }
+  return false;
+}
+
+// The speech model sometimes loses track of time at the edge of what it
+// heard: a few words get a time after the words that follow them, a word runs
+// over the words after it, or the first word after music or a pause starts
+// seconds early. Words out of order share the time between their neighbours
+// by their letters; a word ends where the next one starts; and a word takes at
+// most the time its letters take to say, counted back from its end. A start
+// that had to be guessed is marked estimated, so a cut is never planned on it.
+export function plausibleTimes(words) {
+  const out = words.map((w) => ({ ...w }));
+  const letters = (w) => Math.max(1, (w.text.match(/[\p{L}\p{N}]/gu) ?? []).length);
+  const bad = out.map(() => false);
+  let limit = Infinity;
+  for (let i = out.length - 1; i >= 0; i--) {
+    if (out[i].start > limit + 0.01) bad[i] = true;
+    else limit = out[i].start;
+  }
+  for (let i = 0; i < out.length; i++) {
+    if (!bad[i]) continue;
+    let j = i;
+    while (j < out.length && bad[j]) j++;
+    const to = j < out.length ? out[j].start : Math.max(...out.slice(i, j).map((w) => w.end));
+    const first = i > 0 ? i - 1 : i;
+    const from = first < i ? Math.min(out[first].start, to) : Math.max(0, to - 0.3 * (j - i));
+    const group = out.slice(first, j);
+    const total = group.reduce((n, w) => n + letters(w), 0);
+    let t = from;
+    group.forEach((w, k) => {
+      const d = ((to - from) * letters(w)) / total;
+      Object.assign(w, { start: round(t), end: round(t + d) });
+      if (first + k >= i) w.estimated = true;
+      t += d;
+    });
+    i = j - 1;
+  }
+  return out.map((w, i) => {
+    const next = out[i + 1];
+    const end = next && next.start > w.start && next.start < w.end ? next.start : w.end;
+    const most = 0.6 + 0.12 * letters(w);
+    if (end - w.start > most) return { ...w, start: round(end - most), end, estimated: true };
+    return end === w.end ? w : { ...w, end };
+  });
+}
+
+function withPlausibleTimes(heard) {
+  return { ...heard, words: plausibleTimes(heard.words) };
 }
 
 // Stretches of 2 seconds or more that are neither quiet nor covered by a word.
@@ -191,7 +298,7 @@ const SENTENCE_END = /[.!?…]["'’”)\]]*$/u;
 // script.md for a recording: scenes of whole sentences, 5 to 15 seconds each,
 // split at long pauses, whose spans follow each other on the frame grid from
 // just before the first word to just after the last. A pause of 1.5 seconds
-// or more inside a scene gets a note, so the agent can cut it.
+// or more between two scenes gets a note with the times that cut it.
 export function footageScript(words, duration, fps, title) {
   const snap = (t) => Math.round(t * fps) / fps;
   const scenes = [];
@@ -231,16 +338,12 @@ export function footageScript(words, duration, fps, title) {
     const from = i === 0 ? snap(head) : snap((scenes[i - 1].at(-1).end + group[0].start) / 2);
     const to = i === scenes.length - 1 ? snap(tail) : snap((group.at(-1).end + scenes[i + 1][0].start) / 2);
     lines.push(`## s${String(i + 1).padStart(2, '0')} {from=${from.toFixed(3)} to=${to.toFixed(3)}}`);
-    let text = [];
-    group.forEach((w, k) => {
-      const gap = k ? w.start - group[k - 1].end : 0;
-      if (gap >= 1.5) {
-        lines.push(text.join(' '), `> pause of ${gap.toFixed(1)} s from ${group[k - 1].end.toFixed(2)} s`);
-        text = [];
-      }
-      text.push(w.text);
-    });
-    lines.push(text.join(' '), '');
+    lines.push(group.map((w) => w.text).join(' '));
+    // Scenes meet in the middle of a long pause, so the note says how to cut it.
+    const next = scenes[i + 1];
+    const gap = next ? next[0].start - group.at(-1).end : 0;
+    if (gap >= 1.5) lines.push(`> pause of ${gap.toFixed(1)} s after this scene: to cut it, end this scene at ${snap(group.at(-1).end + 0.25).toFixed(3)} and start the next at ${snap(next[0].start - 0.25).toFixed(3)}`);
+    lines.push('');
   });
   return lines.join('\n');
 }
@@ -260,7 +363,12 @@ export const FRAMES_CAP = 1.5e9;
 export function footageFrames(projectDir, src, fps, { cap = FRAMES_CAP } = {}) {
   const file = path.join(projectDir, src);
   const stat = fs.statSync(file);
-  const root = path.join(projectDir, 'build', 'footage', 'frames', `${stat.size}-${Math.round(stat.mtimeMs)}-${fps}`);
+  const frames = path.join(projectDir, 'build', 'footage', 'frames');
+  const root = path.join(frames, `${stat.size}-${Math.round(stat.mtimeMs)}-${fps}`);
+  // Frames of a recording that was replaced, or of another frame rate, are of no use.
+  for (const old of fs.existsSync(frames) ? fs.readdirSync(frames) : []) {
+    if (path.join(frames, old) !== root) fs.rmSync(path.join(frames, old), { recursive: true, force: true });
+  }
   fs.mkdirSync(root, { recursive: true });
   const pieces = new Map();
   for (const name of fs.readdirSync(root)) {
@@ -307,8 +415,8 @@ export function footageFrames(projectDir, src, fps, { cap = FRAMES_CAP } = {}) {
       if (!info) {
         const probed = await probe(file);
         const v = probed.streams.find((x) => x.codec_type === 'video');
-        const duration = Number(probed.format.duration) || 0;
-        info = { src, fps, frames: Math.max(1, Math.floor(duration * fps + 1e-6)), duration, width: v.width, height: v.height };
+        const duration = await pictureSeconds(file);
+        info = { src, fps, frames: Math.max(1, Math.round(duration * fps)), duration, width: v.width, height: v.height };
       }
       return info;
     },
@@ -336,19 +444,21 @@ function size(dir) {
 // model in tests.
 export async function createFootageProject(target, input, { title, theme = 'midnight', size, language = 'en', log = () => {}, transcribe } = {}) {
   if (fs.existsSync(path.join(target, 'video.json'))) throw new ProjectError(`${target} already has a video.json`);
+  const dest = path.join(target, 'assets', 'footage.mov');
+  // The working copy never replaces a file, the recording itself least of all.
+  if (fs.existsSync(dest)) throw new ProjectError(`${dest} is already there, and init writes the working copy there. Move it out of the project folder, or start the project in a new folder.`);
   const info = await footageInfo(input);
   checkLanguage(language);
   if (!THEMES.includes(theme)) throw new ProjectError(`theme must be one of ${THEMES.join(', ')}`);
   size ||= Math.abs(info.width - info.height) < 8 ? 'square' : info.width > info.height ? '16:9' : 'vertical';
   resolveSize(size);
   title ||= path.basename(target).replace(/[-_]+/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
-  const config = { title, theme, size, fps: info.fps, footage: 'assets/footage.mov', music: true, captions: 'auto', transition: 'cut', defaults: DEFAULTS_VERSIONS.at(-1), ...(language !== 'en' ? { language } : {}) };
+  const config = { title, theme, size, fps: info.fps, footage: 'assets/footage.mov', music: true, captions: 'auto', transition: 'cut', camera: 'still', defaults: DEFAULTS_VERSIONS.at(-1), ...(language !== 'en' ? { language } : {}) };
   normalizeConfig({ ...config }, '.');
   fs.mkdirSync(path.join(target, 'assets'), { recursive: true });
-  const dest = path.join(target, 'assets', 'footage.mov');
   const note = await makeWorkingCopy(input, dest, info, { log });
   const heard = await footageWords(dest, fileHash(dest), language, { log, ...(transcribe ? { transcribe } : {}) });
-  const script = footageScript(heard.words, heard.duration, info.fps, title);
+  const script = footageScript(heard.words, Math.min(heard.duration, await pictureSeconds(dest)), info.fps, title);
   const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
   fs.writeFileSync(path.join(target, 'video.json'), JSON.stringify(config, null, 2) + '\n');
   fs.writeFileSync(path.join(target, 'script.md'), script);

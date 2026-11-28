@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { footageScript, pieceEnds, unheardStretches, projectRate, createFootageProject } from '../src/footage.js';
-import { ffmpeg } from '../src/ffmpeg.js';
+import { footageScript, pieceEnds, unheardStretches, projectRate, createFootageProject, makeWorkingCopy, footageInfo, plausibleTimes, collapsed, softestMoment } from '../src/footage.js';
+import { ffmpeg, probe } from '../src/ffmpeg.js';
 import { loadProject } from '../src/project.js';
 import { buildTimeline } from '../src/timeline.js';
 import { parseScript } from '../src/script.js';
@@ -31,6 +31,9 @@ test('a recording becomes scenes of whole sentences whose spans follow each othe
   const heard = words(30);
   const text = footageScript(heard, 20, 25, 'Talk');
   const script = parseScript(text);
+  // The long pause sits between two scenes, with the times that cut it.
+  const pauseEnd = heard[11].end;
+  assert.ok(text.includes(`> pause of 2.2 s after this scene: to cut it, end this scene at ${(Math.round((pauseEnd + 0.25) * 25) / 25).toFixed(3)} and start the next at ${(Math.round((heard[12].start - 0.25) * 25) / 25).toFixed(3)}`), text);
   assert.ok(script.scenes.length >= 2);
   const spans = script.scenes.map((s) => [s.attrs.from, s.attrs.to]);
   // From just before the first word to just after the last, with no gap between scenes.
@@ -63,6 +66,24 @@ test("the speech model's notes for sound that isn't speech are left out, and a h
   assert.deepEqual(speechOnly(heard).find((w) => w.text === '800-foot'), { text: '800-foot', start: 0.6, end: 1.2 });
 });
 
+test('a word gets no more time than its letters take, a run of words at one moment is noticed, and under music a piece ends where it is softest', () => {
+  // The first word after music, which the speech model started at the start of its piece.
+  const words = plausibleTimes([{ text: 'My', start: 25, end: 30.7 }, { text: 'brother', start: 30.7, end: 31.1 }]);
+  assert.deepEqual(words[0], { text: 'My', start: 29.86, end: 30.7, estimated: true });
+  assert.equal(words[1].estimated, undefined);
+  // Words with times after the words that follow share the time before them.
+  const lost = plausibleTimes([{ text: "it's", start: 17.28, end: 29.98 }, { text: 'really', start: 29.98, end: 29.98 }, { text: 'a', start: 29.98, end: 29.98 }, { text: 'bunch', start: 18.4, end: 18.64 }]);
+  assert.deepEqual(lost.map((w) => [w.text, w.start, w.end, !!w.estimated]), [["it's", 17.28, 17.616, false], ['really', 17.616, 18.288, true], ['a', 18.288, 18.4, true], ['bunch', 18.4, 18.64, false]]);
+  // A word that runs over the words after it ends where the next one starts.
+  assert.deepEqual(plausibleTimes([{ text: "it's", start: 17.28, end: 29.98 }, { text: 'really', start: 17.5, end: 17.8 }])[0], { text: "it's", start: 17.28, end: 17.5 });
+  assert.equal(collapsed([0, 1, 2, 3, 4].map(() => ({ text: 'and', start: 198.5, end: 198.5 }))), true);
+  assert.equal(collapsed(words), false);
+  // A minute of loud sound with one soft second, from 21 to 22 s.
+  const samples = new Float32Array(16000 * 60).map((_, i) => (Math.floor(i / 16000) === 21 ? 0.01 : 0.5) * Math.sin(i / 3));
+  const ends = pieceEnds([], 60, 25, (a, b) => softestMoment(samples, a, b));
+  assert.ok(ends[0] > 21 && ends[0] < 22, String(ends));
+});
+
 test('a long recording is heard in pieces split at pauses, and loud stretches without words are named', () => {
   assert.deepEqual(pieceEnds([[10, 11], [24, 25], [40, 41]], 60), [24.5, 40.5, 60]);
   assert.deepEqual(pieceEnds([], 60), [25, 50, 60]);
@@ -92,6 +113,31 @@ test('the scenes of a footage project are whole frames end to end, with no lead,
   assert.equal(tl.frames, 313);
   assert.deepEqual(tl.scenes.map((s) => s.transition), ['none', 'cut', 'cut']);
   assert.equal(tl.scenes[2].footage.from, 20);
+  // Captions in Japanese and Chinese join words without spaces, so the timeline says the language.
+  assert.equal(tl.language, undefined);
+  assert.equal(buildTimeline(loadProject(footageProject(t, { language: 'ja' }, '## a {from=0 to=2}\n')), {}).language, 'ja');
+  // German has no Kokoro voice, and a footage project needs none.
+  assert.equal(loadProject(footageProject(t, { language: 'de' }, '## a {from=0 to=2}\n')).config.voice.provider, 'footage');
+});
+
+test('a working copy of an odd-sized recording has even sides, and init never writes over a file', { timeout: 120000 }, async (t) => {
+  const dir = temp(t);
+  const src = path.join(dir, 'screen.mp4');
+  await ffmpeg(['-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'color=gray:s=1001x561:r=30:d=1', '-f', 'lavfi', '-i', 'sine=f=440:d=1:sample_rate=44100',
+    '-c:v', 'libx264', '-pix_fmt', 'yuv444p', '-c:a', 'aac', '-shortest', src]);
+  const copy = path.join(dir, 'copy.mov');
+  await makeWorkingCopy(src, copy, await footageInfo(src));
+  const v = (await probe(copy)).streams.find((x) => x.codec_type === 'video');
+  assert.deepEqual([v.width % 2, v.height % 2], [0, 0], `${v.width}x${v.height}`);
+  assert.equal(v.width, 1000);
+  // A recording already at assets/footage.mov stays as it is.
+  const target = path.join(dir, 'talk');
+  fs.mkdirSync(path.join(target, 'assets'), { recursive: true });
+  fs.writeFileSync(path.join(target, 'assets', 'footage.mov'), 'the original');
+  for (const input of [path.join(target, 'assets', 'footage.mov'), src]) {
+    await assert.rejects(createFootageProject(target, input, { transcribe: async () => ({ text: '', words: [] }) }), /already there/);
+  }
+  assert.equal(fs.readFileSync(path.join(target, 'assets', 'footage.mov'), 'utf8'), 'the original');
 });
 
 test('a footage project refuses what would change the speed or the length of the recording', (t) => {

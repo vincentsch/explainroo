@@ -207,6 +207,9 @@ export class Engine {
 
   clipImage(clip, frame) {
     if (this.recorder) return null;
+    // Passes that only measure the scenes don't need the recording's frames,
+    // and asking would make pieces of it all over a long recording.
+    if (clip.footage && (this.collectingMath || this.planning || this.threeCollect || this.thumbing)) return null;
     if (clip.video) {
       const video = clip.video;
       const time = Math.min(frame / clip.fps, Math.max(0, clip.duration - 0.04));
@@ -1375,7 +1378,7 @@ export class Engine {
         }
         // A recording shown at more than twice its size looks soft.
         // Without a zoom that is the recording's size, so it is said once.
-        if (e.kind === 'footage' && e.scale > 2.25) {
+        if (e.kind === 'footage' && e.scale > 2.25 && !e.blur) {
           const most = Math.floor((e.zoom * 2) / e.scale * 20) / 20;
           if (e.zoom > 1 && most >= 1) once(`footage-soft:${sc.id}:${e.key}`, () => add('hint', sc.id, e.at, `the recording is ${e.width}x${e.height} and shows at ${e.scale.toFixed(1)} times its size here with zoom ${e.zoom}, so it looks soft; zoom ${most} keeps it at twice its size`));
           else once('footage-soft', () => add('hint', sc.id, e.at, `the recording is ${e.width}x${e.height} and shows at ${e.scale.toFixed(1)} times its size${e.zoom > 1 ? ` with zoom ${e.zoom}` : ''}, so it looks soft wherever it fills the frame; a sharper recording, 1080p or more, or the recording in a box with w and h, looks better`));

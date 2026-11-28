@@ -13,7 +13,7 @@ import { phonemize, generateSpeech } from './phonemes.js';
 import { writeWav, readWav, resample, trimSilence } from './wav.js';
 import { openSpeech, speechConnector, speechKey } from './paid-speech.js';
 import { recordingFiles, decodeRecording, saveRecording, recordingCuts } from './recordings.js';
-import { footageInfo, footageWords, footageSpeech, fileHash, FOOTAGE_RATE } from './footage.js';
+import { footageInfo, footageWords, footageSpeech, fileHash, pictureSeconds, FOOTAGE_RATE } from './footage.js';
 import { ProjectError } from './errors.js';
 import { scriptName } from './project.js';
 import { estimateLength, estimateLine, roughTime } from './timeline.js';
@@ -822,7 +822,9 @@ async function footageSource(project, { log, transcribe }) {
   const sha = fileHash(file);
   const heard = await footageWords(file, sha, project.config.language, { log, transcribe });
   const speech = await footageSpeech(file, path.join(project.paths.build, 'footage', `${sha.slice(0, 16)}-speech.wav`));
-  return { file, info, sha, heard, speech };
+  // Where picture and sound both end.
+  const end = Math.min(heard.duration, await pictureSeconds(file));
+  return { file, info, sha, heard, speech, end };
 }
 
 // Where each scene's span meets the one before and after it in the recording.
@@ -855,9 +857,10 @@ async function footageScene(project, scene, hash, footage, join, key) {
   const sr = FOOTAGE_RATE;
   const f0 = Math.round(scene.attrs.from * fps);
   const f1 = Math.round(scene.attrs.to * fps);
-  const last = Math.round(footage.heard.duration * fps);
-  if (f0 >= last) throw new ProjectError(`scene "${scene.id}" starts at ${scene.attrs.from} s, after the end of the recording at ${footage.heard.duration} s`);
-  if (f1 > last + 1) throw new ProjectError(`scene "${scene.id}" ends at ${scene.attrs.to} s, after the end of the recording at ${footage.heard.duration} s`);
+  const last = Math.round(footage.end * fps);
+  const end = +footage.end.toFixed(2);
+  if (f0 >= last) throw new ProjectError(`scene "${scene.id}" starts at ${scene.attrs.from} s, after the end of the recording at ${end} s`);
+  if (f1 > last + 1) throw new ProjectError(`scene "${scene.id}" ends at ${scene.attrs.to} s, after the end of the recording at ${end} s`);
   if (f1 <= f0) throw new ProjectError(`scene "${scene.id}" is shorter than one frame of the recording`);
   const samples = new Float32Array(((f1 - f0) * sr) / fps);
   const from = (f0 * sr) / fps;
@@ -876,8 +879,9 @@ async function footageScene(project, scene, hash, footage, join, key) {
   const wordTimes = [];
   let wi = 0;
   scene.units.forEach((u, i) => { if (u.type === 'word') wordTimes[i] = aligned.words[wi++]; });
-  // Words that the span cuts in two, at either edge.
-  const edges = footage.heard.words.filter((w) => (w.start < start - 0.02 && w.end > start + 0.02) || (w.start < start + duration - 0.02 && w.end > start + duration + 0.02))
+  // Words that the span cuts in two, at either edge. A word whose start is
+  // only estimated can't say where a cut lands.
+  const edges = footage.heard.words.filter((w) => !w.estimated && ((w.start < start - 0.02 && w.end > start + 0.02) || (w.start < start + duration - 0.02 && w.end > start + duration + 0.02)))
     .map((w) => ({ word: w.text, start: w.start, end: w.end, side: w.start < start ? 'start' : 'end' }));
   const files = voicePaths(project, scene.id);
   writeWav(files.wav, samples, sr);

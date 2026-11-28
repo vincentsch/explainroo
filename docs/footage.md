@@ -30,23 +30,28 @@ speech, with the words that were said.
 - When `init` says the speech model heard no words where there is sound,
   listen there. It may be music, noise, or speech it missed.
 
-`video.json` has `"footage"`, the recording's `"fps"` and
-`"transition": "cut"`. Music plays under the voice, and captions are on for
-tall and square sizes. When the recording has music of its own, set
-`"music": false`, or the two play at once. A footage project takes no `voice`, `speed`, `pace`,
-`languages` or `targetSeconds`: the recording is the voice and sets the
-length. The web player (`export`) doesn't take footage projects yet.
+`video.json` has `"footage"`, the recording's `"fps"`, `"transition": "cut"`
+and `"camera": "still"`, so drawings stay where you put them. Music plays
+under the voice, and captions are on for tall and square sizes. When the
+recording has music of its own, set `"music": false`, or the two play at
+once. A footage project takes no `voice`, `speed`, `pace`, `languages` or
+`targetSeconds`: the recording is the voice and sets the length. The web
+player (`export`) doesn't take footage projects yet.
+
+Look at the recording before you plan: `explainroo sheet videos/<name>`
+shows a frame every few seconds. An edited recording may already have a name
+tag, titles or captions in the picture. Don't add a second name tag, and
+keep punch-ins and your graphics from cutting into what is there.
 
 ## Edit in script.md
 
 ```markdown
 ## s03 {from=24.000 to=34.233}
 My brother and I were explorers at a very young age.
+> pause of 2.1 s after this scene: to cut it, end this scene at 32.700 and start the next at 34.533
 
 ## s04 {from=34.233 to=44.533}
 Spent a lot of time outside, a lot of time at the Jersey Shore.
-> pause of 2.1 s from 37.40 s
-As we got older, I took that to the next level.
 ```
 
 Each scene is a span of the recording, and `from` and `to` are its seconds.
@@ -54,16 +59,22 @@ The video plays the scenes in the order of `script.md`, so you edit there:
 
 - Delete a scene to cut it. Move it to change the order.
 - Move `from` later to cut a slow start, and `to` earlier to cut what trails.
-- To cut a pause or a false start in the middle, split the scene in two: the
-  first ends before it, the second starts after it. A note like
-  `> pause of 2.1 s from 37.40 s` marks a long pause inside a scene.
+- To cut a false start or a sentence in the middle, split the scene in two:
+  the first ends before it, the second starts after it.
+- Scenes meet in the middle of a pause. A note like the one above says how
+  long a pause of 1.5 seconds or more is, and the times that cut it.
+- A scene's text is what its span says, and the captions show it. When you
+  trim or split a span, move its words with it, and delete the words you cut.
 - Fix a misheard word in the text, so the captions say it right. The timing
   stays the recording's. Never add words that weren't said.
 
 `explainroo words videos/<name>` lists each word with two times: seconds
 into the scene, for cues, and seconds into the recording, for `from` and
 `to`. Cut in the gap between two words. When a span starts or ends inside a
-word, `check` warns and gives the times to use.
+word, `check` warns and gives the times to use. The speech model sometimes
+starts the first word after music or a pause too early; such a word gets at
+most the time its letters take, and its time is marked `~` as estimated, so
+leave a little room before it.
 
 After a change to `script.md`, run `explainroo voice videos/<name>` again.
 Nothing is spoken, so it takes seconds, and it prints each span and the
@@ -97,6 +108,8 @@ what goes on top, each on its own cue, like any other scene.
 - `at` and `out`: when it shows and when it leaves, on a word or a time.
   `out` makes a cutaway, a drawing over the whole frame while the voice goes
   on.
+- `blur` (pixels, 0 to 100) and `opacity`: a soft copy of the recording, as
+  a background behind a sharp one (see "Tall videos").
 
 Text right on the recording is hard to read where the picture is busy or
 light, so `check` warns about it. Give it a card with `bg: true`, or a color
@@ -188,7 +201,30 @@ from a sharp one: 1080p shows at 1.8 times its size in a 1080x1920 frame,
 and 720p at 2.7, which looks soft. A scene without a function keeps the middle, so
 give a scene with the speaker off the middle a function with its `focus`.
 Captions are on, in the band at the bottom, so put graphics in the upper
-part of `s.safe`, above the face, or make a cutaway. `explainroo docs
+part of `s.safe`, above the face, or make a cutaway.
+
+When the speaker moves around the frame, or the recording isn't sharp enough
+to crop, show all of it across the width, with a soft copy behind it and a
+headline above:
+
+```js
+const wide = (headline) => (s) => {
+  const { x, w, h, top, bottom } = s.safe;
+  const u = Math.min(w, h) / 100;
+  s.footage({ blur: 40, opacity: 0.45 });
+  const tall = (s.W * 9) / 16;
+  const box = s.footage({ x: s.W / 2, y: bottom - tall / 2, w: s.W, h: tall });
+  if (headline) s.text(headline, { x: x + w / 2, y: (top + box.top) / 2, size: 6.5 * u, weight: 800, maxWidth: w, at: -1 });
+};
+
+export default {
+  s01: wide('From this kid to *astronaut*'),
+  s02: wide('A bunch of *little steps*'),
+};
+```
+
+The recording sits right above the captions, and the headline clear of the
+watermark. `explainroo docs
 short-video` has the rest of a short.
 
 ## Check and render

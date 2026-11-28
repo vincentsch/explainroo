@@ -1969,8 +1969,10 @@ export class Stage {
     const fit = o.fit ?? 'cover';
     if (!['cover', 'contain'].includes(fit)) throw new SceneError(`footage fit must be 'cover' or 'contain', not ${JSON.stringify(fit)}`);
     const whole = o.w === undefined && o.h === undefined && o.x === undefined && o.y === undefined;
-    // The recording that fills the frame is the shot, so the automatic camera keeps out.
-    if (this.engine.planning && whole) this.engine.manualCamera = true;
+    // The recording is the shot, also in a box, so the automatic camera keeps out.
+    if (this.engine.planning) this.engine.manualCamera = true;
+    const blur = o.blur ?? 0;
+    if (!(typeof blur === 'number' && blur >= 0 && blur <= 100)) throw new SceneError(`footage blur is in pixels, from 0 to 100, like 40 for a soft copy of the recording behind a sharp one, not ${JSON.stringify(o.blur)}`);
     const w = o.w ?? (whole ? this.W : this.safe.w);
     const h = o.h ?? (whole ? this.H : this.safe.h);
     const x = o.x ?? (whole ? this.W / 2 : this.cx);
@@ -1979,8 +1981,11 @@ export class Stage {
     // recording, so a moving speaker doesn't ghost.
     const fps = this.engine.fps;
     const t = this.engine.blurFrame === null || this.engine.blurFrame === undefined ? this.t : this.engine.blurFrame / fps - (this.T - this.t);
-    const span = this.scene.footage ?? { from: 0 };
-    const frame = Math.max(0, Math.min(clip.frames - 1, Math.round((span.from + Math.max(0, t)) * clip.fps)));
+    // The frame of the recording, never past the span's last one: a still at
+    // the scene's very end rounds up to the frame after it.
+    const span = this.scene.footage ?? { from: 0, frames: Infinity };
+    const local = Math.min(span.frames - 1, Math.round(Math.max(0, t) * clip.fps));
+    const frame = Math.max(0, Math.min(clip.frames - 1, Math.round(span.from * clip.fps) + local));
     // The part of the recording in view: the box's shape, `zoom` times closer,
     // around `focus`, kept inside the recording.
     let crop;
@@ -1998,9 +2003,17 @@ export class Stage {
     const out = o.out === undefined ? this.dur : Math.min(this.dur, this.time(o.out));
     // How many frame pixels a pixel of the recording takes, for the check.
     const scale = crop ? w / crop[2] : Math.min(w / clip.width, h / clip.height);
-    if (this.engine.recorder) this.engine.recorder.push({ kind: 'footage', key: `footage|${o.id ?? ''}|${at}`, at: Math.max(0, at), end: out, scale, zoom, width: clip.width, height: clip.height });
+    if (this.engine.recorder) this.engine.recorder.push({ kind: 'footage', key: `footage|${o.id ?? ''}|${at}`, at: Math.max(0, at), end: out, scale, zoom, blur, width: clip.width, height: clip.height });
+    // A blurred copy is drawn a little larger, so its soft edge stays outside the box.
+    const paint = blur ? (ctx, img, x0, y0, bw, bh) => {
+      const m = blur * 1.5;
+      ctx.filter = `blur(${blur}px)`;
+      if (crop) ctx.drawImage(img, ...crop, x0 - m, y0 - m, bw + 2 * m, bh + 2 * m);
+      else ctx.drawImage(img, x0 - m, y0 - m, bw + 2 * m, bh + 2 * m);
+      ctx.filter = 'none';
+    } : null;
     return this._picture('the recording', () => this.engine.clipImage(clip, frame), clip.width, clip.height,
-      { frame: 'none', shadow: false, radius: whole ? 0 : undefined, enter: 'none', ...o, at, x, y, w, h, fit: crop ? 'fill' : 'contain', ...(crop ? { crop } : {}) }, null, 'footage');
+      { frame: 'none', shadow: false, radius: whole ? 0 : undefined, enter: 'none', ...o, at, x, y, w, h, fit: crop ? 'fill' : 'contain', ...(crop ? { crop } : {}) }, paint, 'footage');
   }
 
   // The `to` of a clip or a recording: seconds in the file, after `from` and

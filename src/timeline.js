@@ -161,6 +161,7 @@ function footageTimeline(project, voices) {
   });
   return {
     fps,
+    ...(['ja', 'zh'].includes(config.language) ? { language: config.language } : {}),
     width: config.width,
     height: config.height,
     duration: frame / fps,

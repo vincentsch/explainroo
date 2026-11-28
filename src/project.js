@@ -401,7 +401,8 @@ function settingsOf(raw, input, dir, block = null) {
   checkLanguage(cfg.language);
   // A language without a Kokoro voice needs a voice of its own, and never falls back to Kokoro.
   const noKokoro = () => fail(noKokoroVoice(cfg.language, cfg.language === (input.language ?? DEFAULTS.language) ? 'main' : 'version'));
-  if (raw.voice === undefined) {
+  // A footage project speaks with its recording, in any language.
+  if (raw.voice === undefined && (raw.footage === undefined || raw.footage === null)) {
     if (!LANGUAGES[cfg.language]) noKokoro();
     cfg.voice = LANGUAGES[cfg.language];
   }

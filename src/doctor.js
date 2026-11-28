@@ -300,7 +300,7 @@ export async function doctor({ project = null, language = null, fetch = false, r
   };
 }
 
-const ROUTE_WORDS = { kokoro: 'a Kokoro voice', recording: 'a recording' };
+const ROUTE_WORDS = { kokoro: 'a Kokoro voice', recording: 'a recording', footage: 'the recording of the footage project' };
 
 export function formatDoctor(r, command = selfCommand()) {
   const voices = r.setup.map(({ language, voice }) => `${LANGUAGE_NAMES[language]} with ${voice === null ? 'a paid voice or a recording, because Kokoro has no voice for it' : ROUTE_WORDS[voice] ?? voiceProviders()[voice].name}`);
