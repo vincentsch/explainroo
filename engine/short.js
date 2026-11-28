@@ -107,6 +107,14 @@ export function richWords(str) {
   return out;
 }
 
+// An `area` like s.safe: { x, y, w, h } with x and y its top left corner, also
+// given without left, top, right and bottom.
+function areaBox(a) {
+  const left = a.left ?? a.x;
+  const top = a.top ?? a.y;
+  return { ...a, left, top, right: a.right ?? left + a.w, bottom: a.bottom ?? top + a.h, x: a.x ?? left, y: a.y ?? top };
+}
+
 export class Short {
   constructor(s) {
     this.s = s;
@@ -453,7 +461,7 @@ export class Short {
     const v6 = s._v6;
     const style = o.style ?? 'slab';
     // With "defaults": "0.6", the title stays in `area`, s.safe by default.
-    const area = o.area ?? s.safe;
+    const area = areaBox(o.area ?? s.safe);
     const width = o.width ?? (v6 ? area.w : s.safe.w);
     const maxLines = o.maxLines ?? 2;
     let size = o.size ?? (s.H > s.W ? 104 : 88);
@@ -658,7 +666,7 @@ export class Short {
     const rotate = o.rotate ?? -4;
     const tilted = this.tilted(w, h, rotate);
     const own = o.top !== undefined ? o.top + tilted.h / 2 : o.y ?? s.cy;
-    const y = s._v6 ? this.clearOfTitle(x, own, w, h, rotate, this.at(at), o.out === undefined ? Infinity : this.at(o.out), o.area ?? s.safe) : own;
+    const y = s._v6 ? this.clearOfTitle(x, own, w, h, rotate, this.at(at), o.out === undefined ? Infinity : this.at(o.out), areaBox(o.area ?? s.safe)) : own;
     const box = s._v6 ? geom(x, y, tilted.w, tilted.h) : geom(x, y, w, h);
     this.reg(o.id, box.left, box.top, box.w, box.h);
     if (this.at(at) >= 0) this.enter(at, 0.35, o.sfx === undefined ? 'pop' : o.sfx, { label: words.map((wd) => wd.text).join(' ').slice(0, 20), chosen: o.sfx !== undefined, usual: 'pop' });

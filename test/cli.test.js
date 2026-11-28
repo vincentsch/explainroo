@@ -551,3 +551,12 @@ test('set refuses an unknown key or a bad value with the check every command run
   assert.equal(fs.readFileSync(file, 'utf8'), text, 'nothing was written');
   assert.deepEqual(fs.readdirSync(dir).sort(), ['scenes.js', 'script.md', 'video.json']);
 });
+
+test('an on or off flag given a value is refused before anything runs, so --yes=false never reads as yes', () => {
+  const bin = new URL('../bin/explainroo.js', import.meta.url).pathname;
+  for (const args of [['publish', '--yes=false'], ['publish', '--via', 'youtube', '--new=false', '--dry-run'], ['docs', '--json=1']]) {
+    const r = spawnSync(process.execPath, [bin, ...args], { encoding: 'utf8' });
+    assert.equal(r.status, 1, args.join(' '));
+    assert.match(r.stderr, /is on or off and takes no value.*Nothing was done/, r.stderr);
+  }
+});

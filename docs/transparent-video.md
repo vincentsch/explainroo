@@ -3,7 +3,8 @@
 To put a diagram or a lower third over camera footage, render with an alpha
 channel: `render --transparent --format mov` for video editors (ProRes 4444)
 or `--format webm` for the web (VP9). The look's background texture is left
-out. Everything the scene paints stays, including `s.bg()` and
+out. Both are BT.709 with straight (not premultiplied) alpha, which is what
+editors expect for HD. Everything the scene paints stays, including `s.bg()` and
 `s.ui.backdrop()`, and cards, captions and the watermark keep their own
 backgrounds. Keep elements readable on footage: use cards or the `bg` option
 of text.

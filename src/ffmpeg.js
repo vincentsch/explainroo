@@ -45,10 +45,16 @@ export function frameEncoder({ fps, out, draft, format = 'mp4', transparent = fa
     : format === 'mov'
       ? ['-c:v', 'prores_ks', '-profile:v', '4', '-pix_fmt', transparent ? 'yuva444p10le' : 'yuv444p10le', '-r', String(fps)]
       : ['-c:v', 'libx264', '-preset', draft ? 'veryfast' : 'medium', '-crf', draft ? '24' : '17', '-tune', 'animation', '-pix_fmt', 'yuv420p', '-r', String(fps), '-g', String(fps * 2)];
+  // PNG frames carry no color matrix, and the encoder would use BT.601 without
+  // saying so; editors and browsers read untagged HD as BT.709 and shift the
+  // colors. So transparent video is converted to BT.709 and tagged. JPEG frames
+  // are tagged BT.601 on the way through, which every reader honors.
+  const tagged = transparent ? ['-vf', 'scale=out_color_matrix=bt709:out_range=tv', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-color_range', 'tv'] : [];
   const args = [
     '-hide_banner', '-y', '-loglevel', 'error',
     '-f', 'image2pipe', '-framerate', String(fps), '-c:v', transparent ? 'png' : 'mjpeg', '-i', '-',
     ...codec,
+    ...tagged,
     out,
   ];
   const p = spawn(ffmpegPath(), args, { stdio: ['pipe', 'ignore', 'pipe'] });

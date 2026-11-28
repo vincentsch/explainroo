@@ -163,3 +163,40 @@ test('a footage project shows the colours of the recording', { skip, timeout: 30
     assert.ok(seen.every((v, k) => Math.abs(v - c[k]) <= 6), `bar ${i + 1} should be ${c}, and it is ${seen}`);
   });
 });
+
+// A stretch cut from 1.0 to 5.0 s holds the moments at 1.2, 2.2, 3.4 and 4.4.
+// The variable frame rate source has no frames from 1.33 to 2.0 s, so the frame
+// at 1.3 s is on screen where its stretch, from 1.5 to 5.5 s, starts.
+for (const c of [{ delay: 0, from: 1, to: 5, expected: [0.2, 1.2, 2.4, 3.4] }, { delay: 0.1, from: 1, to: 5, expected: [0.2, 1.2, 2.4, 3.4] }, { vfr: true, delay: 0, from: 1.5, to: 5.5, expected: [0.7, 1.9, 2.9] }]) {
+  const { delay } = c;
+  test(`the working copy of a stretch keeps each flash with its beep${delay ? `, with a picture that starts ${delay} s after the sound` : ''}${c.vfr ? ', from a variable frame rate recording cut in a held frame' : ''}`, { skip, timeout: 300000 }, async (t) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-footage-stretch-'));
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+    let source = path.join(dir, 'talk.mp4');
+    await flashAndBeep(source, 30, delay);
+    if (c.vfr) {
+      const held = path.join(dir, 'held.mp4');
+      await ffmpeg(['-loglevel', 'error', '-y', '-i', source, '-vf', "select='not(between(n\\,40\\,60))'", '-fps_mode', 'vfr', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'copy', held]);
+      const v = (await probe(held)).streams.find((x) => x.codec_type === 'video');
+      assert.equal(Number(v.nb_frames), 159, 'the fixture lost its frames');
+      source = held;
+    }
+    fs.mkdirSync(path.join(dir, 'assets'));
+    await makeWorkingCopy(source, path.join(dir, 'assets/footage.mov'), await footageInfo(source), { from: c.from, to: c.to });
+    const copy = (await probe(path.join(dir, 'assets/footage.mov'))).streams.find((x) => x.codec_type === 'video');
+    assert.equal(Number(copy.nb_frames), (c.to - c.from) * 30, 'the working copy is not the stretch, frame for frame');
+    fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ size: '320x180', fps: 30, footage: 'assets/footage.mov', music: false, sfx: false, captions: false, watermark: false, motionBlur: false, transition: 'cut', defaults: '0.7' }));
+    fs.writeFileSync(path.join(dir, 'script.md'), `# Stretch\n\n## a {from=0 to=${c.to - c.from}}\n`);
+    fs.writeFileSync(path.join(dir, 'scenes.js'), 'export default {};\n');
+    const project = loadProject(dir);
+    await synthesize(project, { transcribe: async () => ({ text: '', words: [] }) });
+    const r = await render(project, { workers: 2 });
+    const video = r.file ?? path.join(dir, 'out/video.mp4');
+    const seen = await flashes(video, 30);
+    const heard = await beeps(video);
+    assert.equal(seen.length, c.expected.length, `flashes at ${seen}`);
+    seen.forEach((x, i) => assert.ok(Math.abs(x - c.expected[i] - delay) <= 1 / 30 + 0.002, `flash ${i + 1} at ${x.toFixed(3)} s, where the stretch puts it at ${c.expected[i] + delay} s`));
+    assert.equal(heard.length, c.expected.length, `beeps at ${heard}`);
+    seen.forEach((x, i) => assert.ok(Math.abs(x - delay - heard[i]) <= 1 / 30 + 0.002, `flash ${x.toFixed(3)} s and beep ${heard[i].toFixed(3)} s are not ${delay} s apart, within a frame`));
+  });
+}

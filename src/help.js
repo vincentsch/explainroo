@@ -18,7 +18,7 @@ export const COMMAND_HELP = {
   init: {
     usage: 'init <dir> [options]',
     about: 'Creates a project: video.json, a script.md and a scenes.js with the same scene names, and an assets folder.',
-    options: [['--format <format>', 'start from a format: its settings, its example script and scenes, its scene helpers in format.js and its guide in format.md. "explainroo formats" lists them'], ['--footage <video>', 'start from your own recording: a working copy goes into assets/, and script.md gets a scene for each span of speech, with the words that were said. "explainroo docs footage"'], ['--title "<title>"', 'the title of the video'], ['--theme <look>', 'studio (the default), paper, clean, chalk, blueprint, midnight or editorial'], ['--size <size>', 'like 16:9, tiktok or linkedin'], ['--pace <n>', 'speed of the whole video, 0.7 to 1.6'], ['--language <code>', 'en, es, fr, it, pt-br, hi, ja or zh'], ['--voice <id>', 'a Kokoro voice, see "explainroo voices"']],
+    options: [['--format <format>', 'start from a format: its settings, its example script and scenes, its scene helpers in format.js and its guide in format.md. "explainroo formats" lists them'], ['--footage <video>', 'start from your own recording: a working copy goes into assets/, and script.md gets a scene for each span of speech, with the words that were said. A footage project works too, and its words, language and look carry over. "explainroo docs footage"'], ['--from <s> --to <s>', 'with --footage: only that stretch of the recording, in its seconds, with long pauses cut, for a short'], ['--title "<title>"', 'the title of the video'], ['--theme <look>', 'studio (the default), paper, clean, chalk, blueprint, midnight or editorial'], ['--size <size>', 'like 16:9, tiktok or linkedin'], ['--pace <n>', 'speed of the whole video, 0.7 to 1.6'], ['--language <code>', 'en, es, fr, it, pt-br, hi, ja or zh'], ['--voice <id>', 'a Kokoro voice, see "explainroo voices"']],
     example: 'init videos/how-dns-works --theme chalk --title "How DNS works"',
   },
   set: {
@@ -36,7 +36,7 @@ export const COMMAND_HELP = {
   words: {
     usage: 'words [project] [scene…] [options]',
     about: 'Prints each spoken word of the scenes you name with its start time, in seconds into the scene, as a cue like at: \'word\' uses it. Without a scene it prints every scene.',
-    options: [['--size <size>', 'the timings of a size whose block in "sizes" sets its own pace'], LANG, JSON_OUT],
+    options: [['--size <size>', 'the timings of a size whose block in "sizes" sets its own pace'], ['--recording', 'for a footage project: the whole recording as passages with their seconds, also what script.md cut, to pick stretches for shorts'], LANG, JSON_OUT],
     example: 'words videos/how-dns-works intro resolver',
   },
   preview: {

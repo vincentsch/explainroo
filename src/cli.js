@@ -27,7 +27,7 @@ import { boughtCharacters, speechConnector } from './paid-speech.js';
 import { allOf, formatServices, findService, findStep, needsKey, SERVICES, STEPS, stepNames, stepServices } from './services.js';
 import { clipPricesToday, showsClipPrices } from './price-list.js';
 import { narrationTime, speechKeys } from './voice.js';
-import { createFootageProject } from './footage.js';
+import { createFootageProject, fileHash, footageWords, footagePassages, pictureSeconds } from './footage.js';
 import { buildTimeline, estimateLength, estimateLine, targetNotes } from './timeline.js';
 import { estimatedChapterHints } from './chapters.js';
 import { formatSet, setSetting } from './set.js';
@@ -186,7 +186,11 @@ function parseArgs(argv) {
     const a = argv[i];
     if (a.startsWith('--')) {
       const eq = a.indexOf('=');
-      if (eq !== -1) flags[a.slice(2, eq)] = a.slice(eq + 1);
+      if (eq !== -1) {
+        // A flag that is on or off takes no value: "--yes=false" must never read as yes.
+        if (BOOL.has(a.slice(2, eq))) flags[VALUED] = [...(flags[VALUED] ?? []), a];
+        else flags[a.slice(2, eq)] = a.slice(eq + 1);
+      }
       else if (i + 1 < argv.length && !argv[i + 1].startsWith('--') && !BOOL.has(a.slice(2))) flags[a.slice(2)] = argv[++i];
       else flags[a.slice(2)] = true;
     } else if (a === '-h') flags.help = true;
@@ -194,6 +198,7 @@ function parseArgs(argv) {
   }
   return { pos, flags };
 }
+const VALUED = Symbol('on or off flags given a value');
 const BOOL = new Set(['json', 'keep-profile', 'all', 'record', 'apply', 'avatars', 'draft', 'estimate', 'transparent', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'mobile', 'list', 'sections', 'new', 'key-stdin', 'audio', 'dry-run', 'no-wait', 'no-watermark', 'yes', 'media-url-unchecked', 'own-product', ...LISTS_VOICES.map((c) => c.id), 'verbose', 'large']);
 
 // What a command adds when it refuses a flag. A flag publish ignored could
@@ -253,6 +258,7 @@ export async function main(argv) {
   }
 
   try {
+    if (flags[VALUED]) throw new ProjectError(`${flags[VALUED].join(', ')}: ${flags[VALUED].length === 1 ? 'this flag is' : 'these flags are'} on or off and take${flags[VALUED].length === 1 ? 's' : ''} no value. Write --${flags[VALUED][0].slice(2).split('=')[0]} alone for yes, and leave it out for no. Nothing was done.`);
     const refused = unknownFlag(cmd, flags);
     if (refused) throw new ProjectError(refused);
     const extra = extraWords(cmd, pos);
@@ -367,6 +373,11 @@ export async function main(argv) {
       case 'words': {
         const isProject = pos[0] && fs.existsSync(path.join(pos[0], 'video.json'));
         const project = loadProject(isProject ? pos.shift() : undefined, { size: textFlag(flags, 'size'), ...langOverride(flags) });
+        if (flags.recording) {
+          const r = await recordingPassages(project, { log });
+          print(r.passages.map((p) => `${p.from.toFixed(2).padStart(8)} ${p.to.toFixed(2).padStart(8)}  ${p.text}`).join('\n') + `\n${r.passages.length} passages in ${r.duration.toFixed(1)} s of the recording. The times are seconds in the recording, for --from and --to of "init --footage" and for from and to in script.md.`, r);
+          return 0;
+        }
         const r = await spokenWords(project, pos, { log, notice });
         print(formatWords(r), r);
         return 0;
@@ -858,6 +869,18 @@ async function spokenWords(project, only = [], { log, notice }) {
   return { scenes };
 }
 
+// The whole recording of a footage project as passages with their seconds,
+// from its saved words, also where its script.md has cut them.
+async function recordingPassages(project, { log }) {
+  if (!project.config.footage) throw new ProjectError('words --recording is for a footage project, whose recording has words of its own');
+  const file = path.join(project.dir, project.config.footage.src);
+  const sha = fileHash(file, path.join(project.paths.build, 'footage', 'hash.json'));
+  const heard = await footageWords(file, sha, project.config.language, { log, saved: true });
+  const duration = Math.min(heard.duration, await pictureSeconds(file));
+  const passages = footagePassages(heard.words, duration, project.config.fps).map((p) => ({ from: p.from, to: p.to, text: p.text }));
+  return { duration, passages };
+}
+
 function formatWords(r) {
   return r.scenes.map((s) => {
     const head = s.recording
@@ -964,19 +987,22 @@ function init(dir, flags, print) {
 // script.md with one scene a span of the recording, so the project plays as it
 // is and every scene can get graphics on the speaker's words.
 async function initFootage(dir, flags, print, log) {
-  if (!dir || flags.footage === true) throw new ProjectError('usage: explainroo init <dir> --footage <video> [--size 16:9|vertical|tiktok|...] [--theme midnight] [--language en] [--title "..."]');
+  if (!dir || flags.footage === true) throw new ProjectError('usage: explainroo init <dir> --footage <video or footage project> [--from <seconds> --to <seconds>] [--size 16:9|vertical|tiktok|...] [--theme midnight] [--language en] [--title "..."]');
   for (const flag of ['format', 'voice', 'pace']) {
     if (flags[flag] !== undefined) throw new ProjectError(`--${flag} doesn't go with --footage: the recording speaks${flag === 'format' ? ', and footage projects have no format yet' : ''}.`);
   }
   const r = await createFootageProject(path.resolve(dir), path.resolve(String(flags.footage)), {
-    title: textFlag(flags, 'title'), theme: textFlag(flags, 'theme'), size: textFlag(flags, 'size'), language: textFlag(flags, 'language'), log,
+    title: textFlag(flags, 'title'), theme: textFlag(flags, 'theme'), size: textFlag(flags, 'size'), language: textFlag(flags, 'language'), from: num(flags.from, 'from'), to: num(flags.to, 'to'), log,
   });
-  const { target, info, note, heard, scenes } = r;
+  const { target, info, note, heard, scenes, stretch, parent } = r;
   const input = path.resolve(String(flags.footage));
-  const what = `${path.basename(input)}: ${info.duration.toFixed(1)} s, ${info.width}x${info.height}, ${info.sourceFps} frames a second${info.hdr ? ', HDR' : ''}`;
+  const source = parent ? `the recording of ${path.basename(parent)}` : path.basename(input);
+  const what = stretch
+    ? `${source}: ${stretch.from.toFixed(2)} to ${stretch.to.toFixed(2)} s of it (${(stretch.to - stretch.from).toFixed(1)} s), with its long pauses cut${parent ? ', and its words, language and look' : ''}`
+    : `${source}: ${info.duration.toFixed(1)} s, ${info.width}x${info.height}, ${info.sourceFps} frames a second${info.hdr ? ', HDR' : ''}`;
   const unheard = heard.unheard.length ? `\nThe speech model heard no words in ${heard.unheard.map(([a, b]) => `${a.toFixed(1)} to ${b.toFixed(1)} s`).join(', ')}, where there is sound. Listen there: it may be music, noise, or speech that was missed.` : '';
-  print(`created ${target} from ${what}\nassets/footage.mov is the working copy at ${info.fps} frames a second${note ? `; ${note}` : ''}.\nscript.md has ${scenes} scene${scenes === 1 ? '' : 's'}, each a span of the recording with the words that were said. The project plays as it is.${unheard}\nnext: run "${selfCommand()} voice ${dir}", then look at it with "${selfCommand()} sheet ${dir}". Cut what isn't needed in script.md, and put graphics on the words in scenes.js ("${selfCommand()} docs footage").`,
-    { dir: target, footage: { file: input, ...info }, scenes, unheard: heard.unheard });
+  print(`created ${target} from ${what}\nassets/footage.mov is the working copy at ${info.fps} frames a second${note ? `; ${note}` : ''}.\nscript.md has ${scenes} scene${scenes === 1 ? '' : 's'}, each a span of the recording with the words that were said.${stretch ? '' : ' The project plays as it is.'}${unheard}\nnext: run "${selfCommand()} voice ${dir}", then look at it with "${selfCommand()} sheet ${dir}". Cut what isn't needed in script.md, and put graphics on the words in scenes.js ("${selfCommand()} docs footage").`,
+    { dir: target, footage: { file: input, ...info }, scenes, unheard: heard.unheard, ...(stretch ? { stretch } : {}), ...(parent ? { parent } : {}) });
   return 0;
 }
 

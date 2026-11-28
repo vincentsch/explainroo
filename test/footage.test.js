@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { footageScript, pieceEnds, unheardStretches, projectRate, createFootageProject, makeWorkingCopy, footageInfo, plausibleTimes, collapsed, softestMoment } from '../src/footage.js';
+import { footageScript, pieceEnds, unheardStretches, projectRate, createFootageProject, makeWorkingCopy, footageInfo, plausibleTimes, collapsed, softestMoment, footagePassages } from '../src/footage.js';
 import { ffmpeg, probe } from '../src/ffmpeg.js';
 import { loadProject } from '../src/project.js';
 import { buildTimeline } from '../src/timeline.js';
@@ -60,9 +60,9 @@ test('a short sentence between two pauses joins the scene before it', () => {
 });
 
 test("the speech model's notes for sound that isn't speech are left out, and a hyphenated word stays whole", () => {
-  const heard = [['We', 0], ['had', 0.3], ['800', 0.6], ['-foot', 0.9], ['ships.', 1.2], ['[BLANK', 2], ['_AUDIO]', 2.2], ['(laughs)', 2.5], ['♪', 3], ['F', 3.5], ['-14.', 3.8]]
+  const heard = [['We', 0], ['had', 0.3], ['800', 0.6], ['-foot', 0.9], ['ships.', 1.2], ['[BLANK', 2], ['_AUDIO]', 2.2], ['(laughs)', 2.5], ['♪', 3], ['F', 3.5], ['-14.', 3.8], ['100', 4.5], [',000', 4.8], ['nasa', 5.5], ['.gov.', 5.8]]
     .map(([text, start]) => ({ text, start, end: start + 0.3 }));
-  assert.deepEqual(speechOnly(heard).map((w) => w.text), ['We', 'had', '800-foot', 'ships.', 'F-14.']);
+  assert.deepEqual(speechOnly(heard).map((w) => w.text), ['We', 'had', '800-foot', 'ships.', 'F-14.', '100,000', 'nasa.gov.']);
   assert.deepEqual(speechOnly(heard).find((w) => w.text === '800-foot'), { text: '800-foot', start: 0.6, end: 1.2 });
 });
 
@@ -83,6 +83,9 @@ test('a word gets no more time than its letters take, a run of words at one mome
   // A near tie with an outlier between keeps every word forward.
   const near = plausibleTimes([{ text: 'one', start: 3, end: 3.2 }, { text: 'two', start: 9, end: 9.2 }, { text: 'three', start: 2.998, end: 3.3 }, { text: 'four', start: 3.4, end: 3.6 }]);
   near.forEach((w) => assert.ok(w.end >= w.start, `${w.text} from ${w.start} to ${w.end}`));
+  // A tight cut leaves up to a second before a start that was only estimated.
+  const drawl = footagePassages(plausibleTimes([{ text: 'Done.', start: 1, end: 1.3 }, { text: 'So', start: 5, end: 6.4, first: true }, { text: 'today.', start: 6.5, end: 6.8 }]), 10, 30, { tight: true });
+  assert.equal(drawl[1].from, Math.round((5 - 0.25) * 30) / 30);
   // A drawn-out first word at the very start keeps its opening when it is cut back.
   const opening = parseScript(footageScript(plausibleTimes([{ text: 'So', start: 0.2, end: 1.6, first: true }, { text: 'today.', start: 1.7, end: 2 }]), 10, 30, 'Talk'));
   assert.equal(opening.scenes[0].attrs.from, 0);
@@ -163,6 +166,13 @@ test('a working copy of an odd-sized recording has even sides, and init never wr
   assert.equal(fs.readFileSync(path.join(target, 'assets', 'footage.mov'), 'utf8'), 'the original');
 });
 
+test('a footage project speaks with a real person, so it gets no AI label or AI voice credit', async (t) => {
+  const { aiFacts } = await import('../src/post.js');
+  const facts = aiFacts(loadProject(footageProject(t, { music: false }, '## a {from=0 to=2}\nHello there.\n')));
+  assert.ok(!facts.reasons.some((r) => /voice/.test(r)), JSON.stringify(facts.reasons));
+  assert.ok(!facts.credits.some((c) => /^Voice:/.test(c)), JSON.stringify(facts.credits));
+});
+
 test('a footage project refuses what would change the speed or the length of the recording', (t) => {
   for (const [settings, message] of [
     [{ voice: 'af_heart' }, /takes no "voice"/],
@@ -198,4 +208,41 @@ test('init from a recording makes a working copy, a script of spans and scenes t
   const streams = (await probe(path.join(target, 'assets/footage.mov'))).streams;
   assert.deepEqual(streams.map((s) => [s.codec_type, s.codec_name, Number(s.start_time)]), [['video', 'h264', 0], ['audio', 'pcm_s16le', 0]]);
   await assert.rejects(createFootageProject(target, source), /already has a video\.json/);
+});
+
+test('a short from a stretch of a footage project reuses its words, cuts its long pauses and keeps its settings', { timeout: 120000 }, async (t) => {
+  const dir = temp(t);
+  const src = path.join(dir, 'talk.mp4');
+  await ffmpeg(['-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'color=gray:s=320x180:r=30:d=12', '-f', 'lavfi', '-i', 'sine=f=300:d=12:sample_rate=48000',
+    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', src]);
+  // "five" has a time after the words that follow it, as the speech model gives at times;
+  // the long project shows it in its place, and so must the short.
+  const said = [['One', 1], ['two', 1.3], ['three.', 1.6], ['Four', 4.5], ['five', 9.9], ['six.', 5.1], ['Seven', 7.5], ['eight.', 7.8], ['Nine', 10], ['ten.', 10.3]];
+  let heard = 0;
+  const transcribe = async () => {
+    heard++;
+    return { text: '', words: said.map(([text, start]) => ({ text, start, end: start + 0.25 })) };
+  };
+  const parent = path.join(dir, 'talk');
+  await createFootageProject(parent, src, { transcribe });
+  assert.equal(heard, 1);
+  const settings = JSON.parse(fs.readFileSync(path.join(parent, 'video.json'), 'utf8'));
+  // The long project's own look sits outside its folder; the short gets a copy of its own.
+  fs.writeFileSync(path.join(dir, 'brand.json'), JSON.stringify({ extends: 'paper' }));
+  fs.writeFileSync(path.join(parent, 'video.json'), JSON.stringify({ ...settings, theme: '../brand.json', music: false }));
+  const r = await createFootageProject(path.join(dir, 'short'), parent, { from: 4, to: 9, size: 'tiktok', transcribe });
+  assert.equal(heard, 1, 'the short heard the recording again');
+  assert.deepEqual(r.stretch, { from: 4, to: 9 });
+  const config = JSON.parse(fs.readFileSync(path.join(dir, 'short', 'video.json'), 'utf8'));
+  assert.deepEqual([config.theme, config.music, config.size], ['brand.json', false, 'tiktok']);
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dir, 'short', 'brand.json'), 'utf8')), { extends: 'paper' });
+  assert.equal(loadProject(path.join(dir, 'short')).config.look.extends ?? 'paper', 'paper');
+  // The working copy is the stretch, five seconds.
+  const v = (await probe(path.join(dir, 'short', 'assets', 'footage.mov'))).streams.find((x) => x.codec_type === 'video');
+  assert.equal(Number(v.nb_frames), 150);
+  // Its words start at the stretch, and the pause of two seconds between them is cut.
+  const script = parseScript(fs.readFileSync(path.join(dir, 'short', 'script.md'), 'utf8'));
+  assert.deepEqual(script.scenes.map((x) => x.units.filter((u) => u.type === 'word').map((u) => u.display).join(' ')), ['Four five six.', 'Seven eight.']);
+  const [a, b] = script.scenes.map((x) => [x.attrs.from, x.attrs.to]);
+  assert.ok(Math.abs(a[1] - (5.1 + 0.25 + 0.25 - 4)) < 0.04 && Math.abs(b[0] - (7.5 - 0.25 - 4)) < 0.04, `spans ${JSON.stringify([a, b])}`);
 });

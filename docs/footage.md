@@ -19,7 +19,9 @@ working copy in `assets/footage.mov`, at 24, 25, 30, 50 or 60 frames a
 second, whichever is nearest, and at most 1920 pixels on its long side. The
 original isn't changed or needed again. Then the speech model listens to it,
 on this computer, and `init` writes `script.md` with a scene for each span of
-speech, with the words that were said.
+speech, with the words that were said. On 8 cores that takes about 40 seconds
+for each minute of 1080p recording, so a 50-minute talk takes half an hour;
+`init` says how long it has left. Tell the user before a long one.
 
 - `--size` is the size of the video, not of the recording. `--size tiktok`
   makes a tall video from a wide recording (see "Tall videos" below).
@@ -200,8 +202,17 @@ a face right of the middle. The crop shows the recording larger, so start
 from a sharp one: 1080p shows at 1.8 times its size in a 1080x1920 frame,
 and 720p at 2.7, which looks soft. A scene without a function keeps the middle, so
 give a scene with the speaker off the middle a function with its `focus`.
-Captions are on, in the band at the bottom, so put graphics in the upper
-part of `s.safe`, above the face, or make a cutaway.
+Captions are on, in the band at the bottom. In a tall crop the face fills
+the middle of the frame, so put graphics above the head, in the top fifth of
+`s.safe`, or low on the chest above the captions, never across the mouth, and
+look at a full-size still. When the recording shows its own title or name tag
+at the bottom, a tall crop cuts it in half: show those seconds across the
+width (below), as a scene of their own.
+
+For a punch-in under stickers and titles, draw a second, zoomed recording on
+the word: `s.footage({ zoom: 1.25, focus: [0.5, 0.35], at: 'word', out: 'other', exit: 'none' })`
+after the first one and before the graphics. `s.camera` would zoom the
+graphics too, into the caption band.
 
 When the speaker moves around the frame, or the recording isn't sharp enough
 to crop, show all of it across the width, with a soft copy behind it and a
@@ -226,6 +237,40 @@ export default {
 The recording sits right above the captions, and the headline clear of the
 watermark. `explainroo docs
 short-video` has the rest of a short.
+
+## Shorts from a long recording
+
+A long talk holds several shorts. Make the long project once, then a project
+for each short from it:
+
+```bash
+explainroo init videos/talk --footage talk.mp4
+explainroo words videos/talk --recording
+explainroo init videos/short-1 --footage videos/talk --from 312.4 --to 371.0 --size tiktok
+```
+
+`words --recording` prints the whole recording as passages with their
+seconds, also what `script.md` of the long project cut. Pick stretches of 30
+to 60 seconds where one idea starts and ends: a question and its answer, a
+mistake and its fix, a number that surprises. `init --footage` with a footage
+project and `--from` and `--to` makes a short of that stretch alone: its
+working copy is just the stretch, its words come from the long project, so
+nothing is heard again, and its language, look and `"music": false` carry
+over. Long pauses inside the stretch are cut already. A short takes seconds
+to make, also from a long talk.
+
+Each short is a project of its own, so it renders, checks and packages on its
+own. Make each one stand alone:
+
+- **The first two seconds.** Start on the strongest sentence of the stretch:
+  move `from` of the first scene later, or move a later scene to the front.
+  Show a headline from the first frame with `at: -1`.
+- **Captions.** They are on for tall sizes; `"captions": "bold"` shows a few
+  words at a time, large, as shorts do.
+- **The picture.** Use the tall layout above, with a punch-in or a graphic
+  every few seconds. The `s.short` kit works over the recording too, like a
+  hook title and `s.short.punch` (`explainroo docs short-video`).
+- **The ending.** End on the payoff, not on "so yeah".
 
 ## Check and render
 

@@ -135,7 +135,8 @@ export function withHashtags(words, hashtags) {
 }
 
 // What the project says about AI, from its settings and its record: a voice that
-// is not a recording, and the AI clips and images that were bought. A bought file
+// is not a recording (a footage project's voice is the person in it), and the
+// AI clips and images that were bought. A bought file
 // that no scene uses still counts, which errs on the side of saying too much.
 export function aiFacts(project) {
   const reasons = [];
@@ -144,7 +145,7 @@ export function aiFacts(project) {
   const { voice, music } = project.config;
   const provider = typeof voice === 'string' ? 'kokoro' : voice.provider;
   const narrated = project.script.scenes.some((scene) => scene.units.some((unit) => unit.type === 'word'));
-  if (narrated && provider !== 'recording') {
+  if (narrated && provider !== 'recording' && provider !== 'footage') {
     const name = findService(provider)?.name ?? provider;
     reasons.push(`voice: ${name}`);
     credits.push(`Voice: ${name}`);

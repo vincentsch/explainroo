@@ -3,7 +3,9 @@
 `s.short` is a kit for Shorts, TikTok and Reels. It draws the parts these
 videos tend to share, like a hook title that is there on the first frame and a
 payoff card at the end. It also gives camera keys for a punch-in or a slow
-drift, and a few short effects. Each part is described below.
+drift, and a few short effects. Each part is described below. To cut shorts
+from a long recording of the user, read `explainroo docs footage`, the part
+"Shorts from a long recording"; the kit works over the recording too.
 
 It works best with a platform size (`tiktok`, `shorts`, `reels` or `vertical`)
 and `"captions": "bold"`, which shows two to four big words at a time. When the
@@ -201,7 +203,8 @@ With `"defaults": "0.6"`, the kicker is 44 pixels in a tall frame. The title
 and the kicker stay inside `s.safe`, below the watermark: the title is no
 wider than `s.safe`, and when `y` would put either above it, they move down
 together. `area` sets another box to stay in, like the part of `s.safe` that
-a zoom keeps on screen.
+a zoom keeps on screen: `{ x, y, w, h }` with `x` and `y` its top left corner,
+as in `s.safe`.
 
 Keywords are yellow by default, and with `"defaults": "0.6"` they take
 `brand.accent` from `video.json`: as the box behind the white keywords of a

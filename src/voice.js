@@ -676,7 +676,7 @@ export async function synthesize(project, { force = false, fresh = false, log = 
         : `, check pronunciation (${Math.round(info.matchRate * 100)}% of words confirmed)`) : '';
       done += weight(item);
       const left = done < all ? `, about ${roughTime(((Date.now() - began) / done) * (all - done) / 1000)} left` : '';
-      log(`voice ${number}${voiceLine(scene.id, info, (Date.now() - t0) / 1000, !!recordings)}${warn}${left}`);
+      log(`voice ${number}${voiceLine(scene.id, info, (Date.now() - t0) / 1000, !!recordings || !!footage)}${warn}${left}`);
     }
   }
   return finish();
@@ -823,12 +823,14 @@ async function footageSource(project, { log, transcribe }) {
   const file = path.join(project.dir, src);
   if (!fs.existsSync(file)) throw new ProjectError(`${src} is missing. A footage project shows and plays that recording; put it back, or start again with "init --footage".`);
   const info = await footageInfo(file);
-  const sha = fileHash(file);
+  const sha = fileHash(file, path.join(project.paths.build, 'footage', 'hash.json'));
   const heard = await footageWords(file, sha, project.config.language, { log, transcribe });
-  const speech = await footageSpeech(file, path.join(project.paths.build, 'footage', `${sha.slice(0, 16)}-speech.wav`));
+  // The leveled take is read only when a scene is made, not when every scene is kept.
+  let speech = null;
+  const sound = async () => (speech ??= await footageSpeech(file, path.join(project.paths.build, 'footage', `${sha.slice(0, 16)}-speech.wav`)));
   // Where picture and sound both end.
   const end = Math.min(heard.duration, await pictureSeconds(file));
-  return { file, info, sha, heard, speech, end };
+  return { file, info, sha, heard, sound, end };
 }
 
 // Where each scene's span meets the one before and after it in the recording.
@@ -868,7 +870,8 @@ async function footageScene(project, scene, hash, footage, join, key) {
   if (f1 <= f0) throw new ProjectError(`scene "${scene.id}" is shorter than one frame of the recording`);
   const samples = new Float32Array(((f1 - f0) * sr) / fps);
   const from = (f0 * sr) / fps;
-  samples.set(footage.speech.samples.subarray(from, Math.min(footage.speech.samples.length, from + samples.length)));
+  const speech = await footage.sound();
+  samples.set(speech.samples.subarray(from, Math.min(speech.samples.length, from + samples.length)));
   const fade = Math.round(FOOTAGE_FADE * sr);
   for (let k = 0; k < fade && k < samples.length; k++) {
     if (join.fadeIn) samples[k] *= k / fade;
@@ -885,8 +888,24 @@ async function footageScene(project, scene, hash, footage, join, key) {
   scene.units.forEach((u, i) => { if (u.type === 'word') wordTimes[i] = aligned.words[wi++]; });
   // Words that the span cuts in two, at either edge. A word whose start is
   // only estimated can't say where a cut lands.
-  const edges = footage.heard.words.filter((w) => !w.estimated && ((w.start < start - 0.02 && w.end > start + 0.02) || (w.start < start + duration - 0.02 && w.end > start + duration + 0.02)))
-    .map((w) => ({ word: w.text, start: w.start, end: w.end, side: w.start < start ? 'start' : 'end' }));
+  // Each with the two times that cut it whole or keep it whole: a little before
+  // or after it, or where it meets the word next to it.
+  // Spans are whole frames, so the times are frames in the gap, or none.
+  const all = footage.heard.words;
+  const gridBefore = (w, prevEnd) => {
+    const t = Math.floor((w.start + 1e-6) * fps) / fps;
+    return t >= prevEnd - 0.02 ? round(t) : null;
+  };
+  const gridAfter = (w, nextStart) => {
+    const t = Math.ceil((w.end - 1e-6) * fps) / fps;
+    return t <= nextStart + 0.02 ? round(t) : null;
+  };
+  const edges = all.map((w, i) => ({ w, i })).filter(({ w }) => !w.estimated && ((w.start < start - 0.02 && w.end > start + 0.02) || (w.start < start + duration - 0.02 && w.end > start + duration + 0.02)))
+    .map(({ w, i }) => ({
+      word: w.text, start: w.start, end: w.end, side: w.start < start ? 'start' : 'end',
+      before: gridBefore(w, i > 0 ? all[i - 1].end : 0),
+      after: gridAfter(w, i < all.length - 1 ? all[i + 1].start : Infinity),
+    }));
   const files = voicePaths(project, scene.id);
   writeWav(files.wav, samples, sr);
   const info = {

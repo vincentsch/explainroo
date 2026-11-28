@@ -191,7 +191,8 @@ export async function transcribeWords(samples, { log, language = 'en' } = {}) {
 // The words a person said, from the speech model's words: without the notes it
 // writes for sound that isn't speech, like [BLANK_AUDIO], [Music] or (laughs),
 // even when it writes one in two pieces, and with a part it heard on its own
-// after a hyphen, like the "-foot" of "800-foot", back on its word.
+// after a hyphen, a comma or a dot, like the "-foot" of "800-foot" or the
+// ",000" of "100,000", back on its word.
 export function speechOnly(words) {
   const out = [];
   let note = 0;
@@ -204,7 +205,9 @@ export function speechOnly(words) {
     }
     if (/^[♪♫*#]+$/u.test(text)) continue;
     const last = out.at(-1);
-    if (last && /^-[\p{L}\p{N}]/u.test(text) && /[\p{L}\p{N}]$/u.test(last.text) && w.start - last.end < 0.3) {
+    // A part heard on its own after a hyphen, a comma or a dot: "800 -foot",
+    // "100 ,000", "nasa .gov".
+    if (last && /^[-,.][\p{L}\p{N}]/u.test(text) && /[\p{L}\p{N}]$/u.test(last.text) && w.start - last.end < 0.3) {
       last.text += text;
       last.end = w.end;
       continue;

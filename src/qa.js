@@ -15,6 +15,7 @@ import { estimateLength, targetNotes } from './timeline.js';
 import { buildChapters, chapterHints, youtubeFrame } from './chapters.js';
 import { coverTime } from './render.js';
 import { languageIssues, outputPath, ProjectError, scriptName } from './project.js';
+import { collapsed } from './footage.js';
 import { recordVersion, relativeFile, sha256File } from './history.js';
 import { allOf } from './services.js';
 import { decodedSound } from './server.js';
@@ -433,7 +434,7 @@ export function speechFindings(project, voices, timeline = null) {
     for (const e of v?.footage?.edges ?? []) {
       const side = e.side === 'start' ? 'starts' : 'ends';
       const key = e.side === 'start' ? 'from' : 'to';
-      issues.push({ level: 'warn', scene: sc.id, t: e.side === 'start' ? 0 : null, message: `scene "${sc.id}" ${side} inside the word "${e.word}", which the recording says from ${e.start.toFixed(2)} to ${e.end.toFixed(2)} s; set ${key} to ${(e.start - 0.04).toFixed(2)} or ${(e.end + 0.04).toFixed(2)}, so the word is cut whole or kept whole` });
+      issues.push({ level: 'warn', scene: sc.id, t: e.side === 'start' ? 0 : null, message: `scene "${sc.id}" ${side} inside the word "${e.word}", which the recording says from ${e.start.toFixed(2)} to ${e.end.toFixed(2)} s; ${[e.before, e.after].some((x) => x !== null && x !== undefined) ? `set ${key} to ${[e.before, e.after].filter((x) => x !== null && x !== undefined).map((x) => x.toFixed(3)).join(' or ')}, a frame between words, so the word is cut whole or kept whole` : `no whole frame falls between it and the words next to it, so cut a word earlier or later, where "explainroo words" shows a gap`}` });
     }
     const suspicious = v ? v.unmatched.filter((w) => w.replace(/[^\p{L}\p{M}\p{N}]/gu, '').length > 3) : [];
     // A word that already has {shown|spoken} counts at any length, like {SQL|sequel},
@@ -711,8 +712,13 @@ export async function verify(project, { file = null, report: reportFile = null, 
         const heard = await transcribe(samples.subarray(from, to), { log, language: project.config.language });
         texts.push(heard.text);
         // A word heard in the margin belongs to the neighbour, so it can't stand
-        // in for a word this scene lost.
-        const own = margin ? heard.words.filter((w) => {
+        // in for a word this scene lost. Only times that can be trusted decide:
+        // the speech model sometimes gives a run of words one time, even past
+        // the end of what it heard, and then every word stays.
+        const heardFor = (to - from) / 16000;
+        const tied = heard.words.some((w, i) => w.end - w.start < 0.01 || (i > 0 && Math.abs(w.start - heard.words[i - 1].start) < 0.01));
+        const trusted = !collapsed(heard.words) && !tied && heard.words.every((w) => w.end <= heardFor + 0.05);
+        const own = margin && trusted ? heard.words.filter((w) => {
           const mid = from / 16000 + (w.start + w.end) / 2;
           return mid >= t.start && mid < (timeline.scenes[index + 1]?.start ?? t.start + t.dur);
         }) : heard.words;
