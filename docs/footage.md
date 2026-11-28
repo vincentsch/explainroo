@@ -227,6 +227,39 @@ The recording sits right above the captions, and the headline clear of the
 watermark. `explainroo docs
 short-video` has the rest of a short.
 
+## Shorts from a long recording
+
+A long talk holds several shorts. Make the long project once, then a project
+for each short from it:
+
+```bash
+explainroo init videos/talk --footage talk.mp4
+explainroo words videos/talk --recording
+explainroo init videos/short-1 --footage videos/talk --from 312.4 --to 371.0 --size tiktok
+```
+
+`words --recording` prints the whole recording as passages with their
+seconds, also what `script.md` of the long project cut. Pick stretches of 30
+to 60 seconds where one idea starts and ends: a question and its answer, a
+mistake and its fix, a number that surprises. `init --footage` with a footage
+project and `--from` and `--to` makes a short of that stretch alone: its
+working copy is just the stretch, its words come from the long project, so
+nothing is heard again, and its language, look and `"music": false` carry
+over. Long pauses inside the stretch are cut already.
+
+Each short is a project of its own, so it renders, checks and packages on its
+own. Make each one stand alone:
+
+- **The first two seconds.** Start on the strongest sentence of the stretch:
+  move `from` of the first scene later, or move a later scene to the front.
+  Show a headline from the first frame with `at: -1`.
+- **Captions.** They are on for tall sizes; `"captions": "bold"` shows a few
+  words at a time, large, as shorts do.
+- **The picture.** Use the tall layout above, with a punch-in or a graphic
+  every few seconds. The `s.short` kit works over the recording too, like a
+  hook title and `s.short.punch` (`explainroo docs short-video`).
+- **The ending.** End on the payoff, not on "so yeah".
+
 ## Check and render
 
 `check`, `still`, `sheet`, `render` and `verify` work as in any project.

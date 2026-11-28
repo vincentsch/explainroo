@@ -3,7 +3,9 @@
 `s.short` is a kit for Shorts, TikTok and Reels. It draws the parts these
 videos tend to share, like a hook title that is there on the first frame and a
 payoff card at the end. It also gives camera keys for a punch-in or a slow
-drift, and a few short effects. Each part is described below.
+drift, and a few short effects. Each part is described below. To cut shorts
+from a long recording of the user, read `explainroo docs footage`, the part
+"Shorts from a long recording"; the kit works over the recording too.
 
 It works best with a platform size (`tiktok`, `shorts`, `reels` or `vertical`)
 and `"captions": "bold"`, which shows two to four big words at a time. When the
