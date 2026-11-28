@@ -424,6 +424,12 @@ export function speechFindings(project, voices, timeline = null) {
   const forms = heardForms(...project.script.scenes.map((sc) => sceneHeard(voices[sc.id], project.config.language)), givenForms(project.heard));
   for (const sc of project.script.scenes) {
     const v = voices[sc.id];
+    // A footage scene whose span starts or ends in the middle of a word plays half of it.
+    for (const e of v?.footage?.edges ?? []) {
+      const side = e.side === 'start' ? 'starts' : 'ends';
+      const key = e.side === 'start' ? 'from' : 'to';
+      issues.push({ level: 'warn', scene: sc.id, t: e.side === 'start' ? 0 : null, message: `scene "${sc.id}" ${side} inside the word "${e.word}", which the recording says from ${e.start.toFixed(2)} to ${e.end.toFixed(2)} s; set ${key} to ${(e.start - 0.04).toFixed(2)} or ${(e.end + 0.04).toFixed(2)}, so the word is cut whole or kept whole` });
+    }
     const suspicious = v ? v.unmatched.filter((w) => w.replace(/[^\p{L}\p{M}\p{N}]/gu, '').length > 3) : [];
     // A word that already has {shown|spoken} counts at any length, like {SQL|sequel},
     // because its override didn't help.
@@ -555,6 +561,16 @@ export const SHEET_CHECKLIST = [
   'Ending: does the last frame show the main point, the answer to the opening?',
 ];
 
+// The questions for a footage project, where the speaker is the picture and
+// the graphics add to what they say.
+export const FOOTAGE_CHECKLIST = [
+  'Opening: does the video start on a strong sentence, with the slow start and any false starts cut?',
+  'Graphics: where the speaker names a number, a name, a list or a step, does a graphic show it, and does it leave their face free?',
+  'Rhythm: does the picture change every few seconds, with a punch-in, a graphic or a cutaway, and not one long unchanged shot?',
+  'Phone: can every word on screen be read on a phone, on a card or a calm part of the picture?',
+  'Ending: does it end on the main point, with the trailing words and the outro cut?',
+];
+
 // `times` takes what still takes, like ["3", "intro@2"], and shows just those
 // moments, in that order, in a sheet of its own.
 const LARGE_FRAME = 640;
@@ -677,8 +693,11 @@ export async function verify(project, { file = null, report: reportFile = null, 
       for (const t of timeline.scenes) {
         const words = spokenWords(byId.get(t.id));
         if (!words.length) continue;
-        const from = Math.max(0, Math.floor(t.start * 16000));
-        const to = Math.min(samples.length, Math.ceil((t.start + t.dur) * 16000));
+        // Footage scenes follow each other mid-sentence, so each is heard with a
+        // little of its neighbours, and a word at its edge isn't cut in two.
+        const margin = project.config.footage ? 0.3 : 0;
+        const from = Math.max(0, Math.floor((t.start - margin) * 16000));
+        const to = Math.min(samples.length, Math.ceil((t.start + t.dur + margin) * 16000));
         const heard = await transcribe(samples.subarray(from, to), { log, language: project.config.language });
         texts.push(heard.text);
         const aligned = await alignSpeech(words, heard.words, t.dur, project.config.language, { accept: project.heard });

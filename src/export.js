@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { cacheRoot } from './models.js';
 import { languageFonts, subsetFont } from './fonts.js';
 import { prepare, makeState } from './pipeline.js';
-import { outputPath, scriptName } from './project.js';
+import { outputPath, scriptName, ProjectError } from './project.js';
 import { startServer, projectFile, ROOT } from './server.js';
 import { launch, openEngine } from './browser.js';
 import { AUDIO_CODECS, ffmpeg, finishMix } from './ffmpeg.js';
@@ -106,6 +106,8 @@ export function copyPlayer(project, timeline, used, out) {
 // The folder is out/player/, or out/player-tiktok/ for --size tiktok, so a run
 // with another size or without the watermark never replaces the normal player.
 export async function exportPlayer(project, { out, log = () => {} } = {}) {
+  // The player would carry the whole recording, also the parts the edit left out.
+  if (project.config.footage) throw new ProjectError('a video made from your own recording can\'t go in the web player yet, because the player would carry the whole recording, also the parts you cut. Render it and put the MP4 on the page instead: explainroo docs web-player says how.');
   out = outputPath(project, 'player', '', out);
   if (fs.existsSync(out) && fs.readdirSync(out).length && (!fs.existsSync(path.join(out, 'index.html')) || !fs.readFileSync(path.join(out, 'index.html'), 'utf8').includes('<meta name="generator" content="explainroo web player">'))) throw new Error('output folder is not an exported player. Choose an empty folder with --out.');
   localModules(project.dir);

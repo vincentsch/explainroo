@@ -149,7 +149,8 @@ export class Engine {
     this.extraScenes = Object.keys(scenes).filter((k) => !ids.has(k));
     // Every scene of the script without a function, each with a stub to paste
     // into scenes.js, and the names it has that no scene uses.
-    const missing = timeline.scenes.filter((sc) => typeof scenes[sc.id] !== 'function').map((sc) => sc.id);
+    // A footage project's scenes show the recording without a function of their own.
+    const missing = state.config.footage ? [] : timeline.scenes.filter((sc) => typeof scenes[sc.id] !== 'function').map((sc) => sc.id);
     if (missing.length) {
       const script = state.text?.files?.script ?? 'script.md';
       const names = missing.map((id) => `"${id}"`).join(', ');
@@ -424,7 +425,9 @@ export class Engine {
       });
     }
     try {
-      this.scenesModule[sc.id](api);
+      // A scene of a footage project without a function shows its span of the recording.
+      if (typeof this.scenesModule[sc.id] === 'function') this.scenesModule[sc.id](api);
+      else api.footage();
       // Overlays queued with s._post() go on top of the scene, without the camera.
       for (const fn of s._posts ?? []) {
         ctx.save();
@@ -761,7 +764,7 @@ export class Engine {
     const coming = texts.filter((x) => !x.problem && !x.settled && x.text.trim() && inside(x)).map((x) => x.text);
     // A recording, a clip, an image or a drawing, which "cover": "auto" looks
     // for with "defaults": "0.6".
-    const media = log.shapes.some((s) => (s.kind === 'image' || s.kind === 'drawing' || s.kind === 'three') && s.settled && s.alpha > 0.95 && arrived(s) && (inside(s.box) || fillsFrame(s.box, this.W, this.H)));
+    const media = log.shapes.some((s) => ['image', 'drawing', 'three', 'footage'].includes(s.kind) && s.settled && s.alpha > 0.95 && arrived(s) && (inside(s.box) || fillsFrame(s.box, this.W, this.H)));
     return { count: words + pictures + lines, picture: pictures > 0, media, onlyText: words > 0 && pictures + lines === 0, partial, coming };
   }
 
@@ -940,6 +943,8 @@ export class Engine {
     const spans = [];
     for (const e of entrances) {
       if (e.kind === 'recording') spans.push(...e.moving);
+      // A footage recording plays the whole time it shows.
+      if (e.kind === 'footage') spans.push({ from: e.at, to: e.end });
       if (e.kind !== 'clip') continue;
       const info = this.clips?.get(e.src);
       const still = info?.still ?? [];
@@ -1116,6 +1121,7 @@ export class Engine {
         if (shownAt === null && laid.draw.shown > 0) shownAt = t;
         filled.push({ t, shown: laid.draw.shown > 0 });
         const texts = laid.texts.filter((x) => x.alpha > 0.5);
+        const footageBoxes = laid.draw.shapes.filter((sh) => sh.kind === 'footage' && sh.alpha > 0.95).map((sh) => sh.box);
         for (const tx of texts) {
           const label = short(tx.text);
           const english = language !== 'en' ? englishKitWord(tx.text) : null;
@@ -1135,7 +1141,8 @@ export class Engine {
             // On Shorts, TikTok and Reels: outside the content area, s.safe.
             const message = framed ? contentMessage(`"${label}"`, tx, areas, { verb: 'is', band: inBand(tx, this.captionBand) }) : null;
             if (message) once(`app:${sc.id}:${tx.text}`, () => add('warn', sc.id, t, message + zoomCause(tx, this.sceneCamera, areas, inBand(tx, this.captionBand)), same('app', tx)));
-          } else if (framed && (tx.x0 < margin || tx.y0 < margin || tx.x1 > W - margin || tx.y1 > H - margin)) {
+          } else if (framed && tx.settled && (tx.x0 < margin || tx.y0 < margin || tx.x1 > W - margin || tx.y1 > H - margin)) {
+            // Only where it comes to rest: a slide entrance passes the margin on its way in.
             once(`edge:${sc.id}:${tx.text}`, () => add('warn', sc.id, t, `"${label}" sits closer than ${margin}px to the edge`, same('edge', tx)));
           }
           const b = this.captionBand;
@@ -1147,9 +1154,16 @@ export class Engine {
           const own = cssColor(tx.bg);
           const bg = opaque(own || pageColor(tx, H) || this.theme.bg, this.theme.bg);
           const fg = cssColor(tx.fg);
-          if (fg && contrast(fg, bg) < 3) once(`contrast:${sc.id}:${tx.text}`, () => {
+          // Text right on the recording of a footage project has a moving picture
+          // behind it, which no contrast number can promise.
+          const onFootage = !own && !tx.ui && !tx.block && footageBoxes.some((b) => b.x0 < tx.x1 && tx.x0 < b.x1 && b.y0 < tx.y1 && tx.y0 < b.y1);
+          if (fg && !onFootage && contrast(fg, bg) < 3) once(`contrast:${sc.id}:${tx.text}`, () => {
             add('warn', sc.id, t, `"${label}" has low contrast against its background (${contrast(fg, bg).toFixed(1)}:1); ${contrastAdvice(tx.option ?? 'color', pixelColor(fg), pixelColor(bg), tx.size, named())}`, same('contrast', tx));
           });
+          // Text still coming in over a recording that is leaving is a dissolve.
+          if (onFootage && tx.settled) {
+            once(`footage-text:${sc.id}:${tx.text}`, () => add('warn', sc.id, t, `"${label}" sits right on the recording, so it is hard to read where the picture behind it is busy or light; give it bg: true for a card behind it, or put it where the recording isn't`, same('footage-text', tx)));
+          }
           const mark = own && cssColor(tx.mark);
           if (mark && contrast(mark, bg) < 3) once(`mark:${sc.id}:${tx.text}`, () => {
             add('warn', sc.id, t, `the *starred* words in "${label}" have low contrast against its background (${contrast(mark, bg).toFixed(1)}:1); ${contrastAdvice('mark', pixelColor(mark), pixelColor(bg), tx.size, named())}`, same('mark', tx));
@@ -1305,7 +1319,7 @@ export class Engine {
       this.drawingLog = null;
       // A clip or a recording may still be loading a frame, so only scenes
       // without them are drawn twice to compare.
-      const loads = entrances.some((e) => e.kind === 'clip' || e.kind === 'recording');
+      const loads = entrances.some((e) => e.kind === 'clip' || e.kind === 'recording' || e.kind === 'footage');
       if (!broke && !loads && sc.dur > 0.5) {
         const A = Math.min(sc.dur - 0.001, sc.dur * 0.6);
         const first = this.thumbAt(sc.index, A);
@@ -1358,6 +1372,13 @@ export class Engine {
           if (frozen > FREEZE_SECONDS) once(`clip-freeze:${sc.id}:${e.key}`, () => add('warn', sc.id, e.end, `clip "${e.src}" freezes on ${held} for ${frozen.toFixed(1)}s, from ${e.end.toFixed(2)}s until ${e.out.toFixed(2)}s. ${e.fit
             ? `speed: 'fit' goes no slower than ${FIT_SPEEDS[0]} times the clip's speed, and this one needs slower. Use loop: true, ${e.to === undefined ? 'a longer clip' : 'a later to'} or an earlier out`
             : "speed: 'fit' plays it slower, so it ends with the scene, and loop: true repeats it"}`));
+        }
+        // A recording shown at more than twice its size looks soft.
+        // Without a zoom that is the recording's size, so it is said once.
+        if (e.kind === 'footage' && e.scale > 2.25) {
+          const most = Math.floor((e.zoom * 2) / e.scale * 20) / 20;
+          if (e.zoom > 1 && most >= 1) once(`footage-soft:${sc.id}:${e.key}`, () => add('hint', sc.id, e.at, `the recording is ${e.width}x${e.height} and shows at ${e.scale.toFixed(1)} times its size here with zoom ${e.zoom}, so it looks soft; zoom ${most} keeps it at twice its size`));
+          else once('footage-soft', () => add('hint', sc.id, e.at, `the recording is ${e.width}x${e.height} and shows at ${e.scale.toFixed(1)} times its size${e.zoom > 1 ? ` with zoom ${e.zoom}` : ''}, so it looks soft wherever it fills the frame; a sharper recording, 1080p or more, or the recording in a box with w and h, looks better`));
         }
         if (e.kind === 'recording') {
           if (e.changed) once(`recording-changed:${e.name}`, () => add('warn', sc.id, e.at, `recordings/${e.name}.json changed after recording "${e.name}" was made: a change to its steps other than a cue, or to its url, viewport, locale, pace or blur, needs a new recording; run "explainroo record <project> ${e.name}" again`));
@@ -1682,7 +1703,7 @@ function markupShown(tx) {
 // The shapes that are pictures. A large one may run behind the watermark. A
 // card, a sticker, a box or a code window is a panel that holds words, and the
 // watermark on its corner reads as part of it.
-const PICTURES = new Set(['icon', 'image', 'drawing', 'three']);
+const PICTURES = new Set(['icon', 'image', 'drawing', 'three', 'footage']);
 
 // The watermark's box when `b` reaches more than 4 pixels under it, or null.
 // With `part`, a box counts only when the watermark covers at least a twentieth
@@ -1870,7 +1891,7 @@ function drawLog() {
   return { shapes: [], strokes: [], lives: [], partial: [], shown: 0, order: 0 };
 }
 
-const SHAPE_NAMES = { box: 'box', icon: 'icon', image: 'image', code: 'code window', terminal: 'terminal', card: 'card', sticker: 'sticker', drawing: 'drawing', three: '3D scene' };
+const SHAPE_NAMES = { box: 'box', icon: 'icon', image: 'image', code: 'code window', terminal: 'terminal', card: 'card', sticker: 'sticker', drawing: 'drawing', three: '3D scene', footage: 'recording' };
 
 // "the box "Rivers bring salt in"", with "(id "rivers")" after it when it has an
 // id, "the drawing "moon"" by its id alone, or by its call and where it is
@@ -2058,7 +2079,7 @@ export async function boot({ canvas, scale = 1, transparent = false, version = '
     import(player ? '../project/scenes.js' : `/project/scenes.js?v=${encodeURIComponent(version || state.version)}`),
     player ? { SFX: {} } : import('./audio/soundtrack.js').catch((e) => ({ SFX: {}, loadError: e })),
     player ? {} : fetch('/engine/icons/lucide-tags.json').then((r) => r.json()),
-    loadClips(state.assets, player ? state : null),
+    loadClips(state.assets, player ? state : null, state.config.footage?.src ?? null),
     loadFonts(theme, state.config, root),
   ]);
   const scenes = scenesMod.default;

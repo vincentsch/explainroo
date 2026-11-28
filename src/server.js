@@ -2,6 +2,7 @@
 // the page (rendered audio, stills and sheets). Binds to 127.0.0.1 only.
 import http from 'node:http';
 import { THREE_FILES } from '../engine/three.js';
+import { footageFrames, FOOTAGE_FILE } from './footage.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -214,6 +215,8 @@ export async function startServer({ projectDir, getState, port = 0, log = () => 
   const threeDir = path.dirname(resolveModule('three'));
   const threeFiles = new Map(THREE_FILES.map((f) => [`/vendor/three/${f}`, path.join(threeDir, f)]));
   const clips = new Map();
+  // The frames of the project's footage, made on demand.
+  let footage = null;
   const server = http.createServer(async (req, res) => {
     try {
       // Only answer requests addressed to this machine. A web page on another
@@ -287,6 +290,22 @@ export async function startServer({ projectDir, getState, port = 0, log = () => 
       if (p === '/__state.json') {
         const state = await getState();
         return send(res, 200, JSON.stringify(state), TYPES['.json']);
+      }
+      if (p === '/__footage/info' || p === '/__footage/frame') {
+        const state = await getState();
+        const src = state.config.footage?.src;
+        if (!src || !assetFile(projectDir, src, FOOTAGE_FILE)) return send(res, 404, 'this project has no footage');
+        const key = `${src}|${state.config.fps}`;
+        if (footage?.key !== key) footage = { key, frames: footageFrames(projectDir, src, state.config.fps) };
+        if (p === '/__footage/info') return send(res, 200, JSON.stringify(await footage.frames.info()), TYPES['.json']);
+        const raw = url.searchParams.get('frame') || '0';
+        if (!/^\d+$/.test(raw) || !Number.isSafeInteger(Number(raw))) return send(res, 400, 'frame must be a non-negative integer');
+        const jpg = await footage.frames.frame(Number(raw));
+        if (!fs.existsSync(jpg)) return send(res, 404, 'footage frame not found');
+        res.writeHead(200, { 'Content-Type': TYPES['.jpg'], 'Cache-Control': 'no-store' });
+        if (req.method === 'HEAD') return res.end();
+        fs.createReadStream(jpg).pipe(res);
+        return;
       }
       if (['/__clip/info', '/__clip/frame', '/__clip/audio'].includes(p)) {
         const file = assetFile(projectDir, url.searchParams.get('path') || '', VIDEO_FILE);

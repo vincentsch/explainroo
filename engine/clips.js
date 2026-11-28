@@ -30,9 +30,17 @@ export function soundURL(kind, src) {
   return `/__sound/${kind}?path=${encodeURIComponent(src)}`;
 }
 
-export async function loadClips(assets, state = null) {
+// The clips of a project, by their path. A footage project's recording is no
+// clip: its frames come on demand from the server, never all at once, so it is
+// a clip of its own kind, with `url` for its frames.
+export async function loadClips(assets, state = null, footage = null) {
   const clips = new Map();
-  await Promise.all(assets.filter((a) => VIDEO_FILE.test(a)).map(async (src) => {
+  if (footage && !state) {
+    const res = await fetch('/__footage/info');
+    if (!res.ok) throw new Error(`the footage "${footage}" could not be read: ${await res.text()}`);
+    clips.set(footage, { ...await res.json(), footage: true, url: (frame) => `/__footage/frame?frame=${frame}` });
+  }
+  await Promise.all(assets.filter((a) => VIDEO_FILE.test(a) && a !== footage).map(async (src) => {
     if (state) {
       const video = document.createElement('video');
       video.hidden = true;
@@ -78,7 +86,7 @@ export class ClipFrames {
     if (this.frames.has(key)) return;
     if (!this.pending.has(key)) {
       const job = (async () => {
-        const res = await fetch(clipURL('frame', clip.src, frame));
+        const res = await fetch(clip.url ? clip.url(frame) : clipURL('frame', clip.src, frame));
         if (!res.ok) throw new Error(`clip "${clip.src}" frame ${frame} could not be loaded`);
         const bitmap = await createImageBitmap(await res.blob());
         if (this.closed) { bitmap.close(); return; }

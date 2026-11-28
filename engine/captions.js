@@ -55,7 +55,9 @@ export function buildPhrases(timeline, maxChars) {
     // phrases as fit, balanced in length, so no phrase is one lonely word.
     let run = [];
     const flush = () => {
-      for (const words of balancePhrases(run, maxChars, cjk ? '' : ' ', clingsToPrevious(timeline.language))) phrases.push({ words, ...(cjk ? { separator: '' } : {}), start: words[0].start, end: words[words.length - 1].end });
+      // In a footage project every scene is a cut of the recording, so its
+      // captions go with it.
+      for (const words of balancePhrases(run, maxChars, cjk ? '' : ' ', clingsToPrevious(timeline.language))) phrases.push({ words, ...(cjk ? { separator: '' } : {}), start: words[0].start, end: words[words.length - 1].end, ...(sc.footage ? { cut: sc.start + sc.dur } : {}) });
       run = [];
     };
     for (const w of sc.words) {
@@ -68,7 +70,7 @@ export function buildPhrases(timeline, maxChars) {
   }
   phrases.forEach((p, i) => {
     const next = phrases[i + 1];
-    p.until = next ? Math.min(next.start, p.end + 0.9) : p.end + 0.9;
+    p.until = Math.min(next ? Math.min(next.start, p.end + 0.9) : p.end + 0.9, p.cut ?? Infinity);
   });
   return phrases;
 }
@@ -228,7 +230,13 @@ export function boldChunks(words, { maxWords = 4, maxChars = 18, pause = 0.35, h
 // The chunks of the whole video, scene by scene. A chunk leaves when the next one comes.
 export function buildChunks(timeline) {
   const chunks = [];
-  for (const sc of timeline.scenes) chunks.push(...boldChunks(sc.words.map((w) => ({ text: w.text, key: isKeyword(w), start: sc.start + w.start, end: sc.start + w.end }))));
+  for (const sc of timeline.scenes) {
+    for (const c of boldChunks(sc.words.map((w) => ({ text: w.text, key: isKeyword(w), start: sc.start + w.start, end: sc.start + w.end })))) {
+      // A footage scene is a cut of the recording, so its captions end with it.
+      if (sc.footage) c.until = Math.min(c.until, sc.start + sc.dur);
+      chunks.push(c);
+    }
+  }
   chunks.forEach((c, i) => {
     if (chunks[i + 1]) c.until = Math.min(c.until, chunks[i + 1].start);
   });
