@@ -434,7 +434,7 @@ export function speechFindings(project, voices, timeline = null) {
     for (const e of v?.footage?.edges ?? []) {
       const side = e.side === 'start' ? 'starts' : 'ends';
       const key = e.side === 'start' ? 'from' : 'to';
-      issues.push({ level: 'warn', scene: sc.id, t: e.side === 'start' ? 0 : null, message: `scene "${sc.id}" ${side} inside the word "${e.word}", which the recording says from ${e.start.toFixed(2)} to ${e.end.toFixed(2)} s; set ${key} to ${(e.start - 0.04).toFixed(2)} or ${(e.end + 0.04).toFixed(2)}, so the word is cut whole or kept whole` });
+      issues.push({ level: 'warn', scene: sc.id, t: e.side === 'start' ? 0 : null, message: `scene "${sc.id}" ${side} inside the word "${e.word}", which the recording says from ${e.start.toFixed(2)} to ${e.end.toFixed(2)} s; set ${key} to ${(e.before ?? e.start - 0.04).toFixed(2)} or ${(e.after ?? e.end + 0.04).toFixed(2)}, so the word is cut whole or kept whole` });
     }
     const suspicious = v ? v.unmatched.filter((w) => w.replace(/[^\p{L}\p{M}\p{N}]/gu, '').length > 3) : [];
     // A word that already has {shown|spoken} counts at any length, like {SQL|sequel},

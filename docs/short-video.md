@@ -203,7 +203,8 @@ With `"defaults": "0.6"`, the kicker is 44 pixels in a tall frame. The title
 and the kicker stay inside `s.safe`, below the watermark: the title is no
 wider than `s.safe`, and when `y` would put either above it, they move down
 together. `area` sets another box to stay in, like the part of `s.safe` that
-a zoom keeps on screen.
+a zoom keeps on screen: `{ x, y, w, h }` with `x` and `y` its top left corner,
+as in `s.safe`.
 
 Keywords are yellow by default, and with `"defaults": "0.6"` they take
 `brand.accent` from `video.json`: as the box behind the white keywords of a

@@ -202,8 +202,17 @@ a face right of the middle. The crop shows the recording larger, so start
 from a sharp one: 1080p shows at 1.8 times its size in a 1080x1920 frame,
 and 720p at 2.7, which looks soft. A scene without a function keeps the middle, so
 give a scene with the speaker off the middle a function with its `focus`.
-Captions are on, in the band at the bottom, so put graphics in the upper
-part of `s.safe`, above the face, or make a cutaway.
+Captions are on, in the band at the bottom. In a tall crop the face fills
+the middle of the frame, so put graphics above the head, in the top fifth of
+`s.safe`, or low on the chest above the captions, never across the mouth, and
+look at a full-size still. When the recording shows its own title or name tag
+at the bottom, a tall crop cuts it in half: show those seconds across the
+width (below), as a scene of their own.
+
+For a punch-in under stickers and titles, draw a second, zoomed recording on
+the word: `s.footage({ zoom: 1.25, focus: [0.5, 0.35], at: 'word', out: 'other', exit: 'none' })`
+after the first one and before the graphics. `s.camera` would zoom the
+graphics too, into the caption band.
 
 When the speaker moves around the frame, or the recording isn't sharp enough
 to crop, show all of it across the width, with a soft copy behind it and a

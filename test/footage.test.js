@@ -166,6 +166,13 @@ test('a working copy of an odd-sized recording has even sides, and init never wr
   assert.equal(fs.readFileSync(path.join(target, 'assets', 'footage.mov'), 'utf8'), 'the original');
 });
 
+test('a footage project speaks with a real person, so it gets no AI label or AI voice credit', async (t) => {
+  const { aiFacts } = await import('../src/post.js');
+  const facts = aiFacts(loadProject(footageProject(t, { music: false }, '## a {from=0 to=2}\nHello there.\n')));
+  assert.ok(!facts.reasons.some((r) => /voice/.test(r)), JSON.stringify(facts.reasons));
+  assert.ok(!facts.credits.some((c) => /^Voice:/.test(c)), JSON.stringify(facts.credits));
+});
+
 test('a footage project refuses what would change the speed or the length of the recording', (t) => {
   for (const [settings, message] of [
     [{ voice: 'af_heart' }, /takes no "voice"/],

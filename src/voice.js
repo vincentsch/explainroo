@@ -888,8 +888,16 @@ async function footageScene(project, scene, hash, footage, join, key) {
   scene.units.forEach((u, i) => { if (u.type === 'word') wordTimes[i] = aligned.words[wi++]; });
   // Words that the span cuts in two, at either edge. A word whose start is
   // only estimated can't say where a cut lands.
-  const edges = footage.heard.words.filter((w) => !w.estimated && ((w.start < start - 0.02 && w.end > start + 0.02) || (w.start < start + duration - 0.02 && w.end > start + duration + 0.02)))
-    .map((w) => ({ word: w.text, start: w.start, end: w.end, side: w.start < start ? 'start' : 'end' }));
+  // Each with the two times that cut it whole or keep it whole: a little before
+  // or after it, or where it meets the word next to it.
+  const all = footage.heard.words;
+  const between = (a, b, fallback) => (b - a >= 0.08 ? fallback : (a + b) / 2);
+  const edges = all.map((w, i) => ({ w, i })).filter(({ w }) => !w.estimated && ((w.start < start - 0.02 && w.end > start + 0.02) || (w.start < start + duration - 0.02 && w.end > start + duration + 0.02)))
+    .map(({ w, i }) => ({
+      word: w.text, start: w.start, end: w.end, side: w.start < start ? 'start' : 'end',
+      before: round(i > 0 ? between(all[i - 1].end, w.start, w.start - 0.04) : Math.max(0, w.start - 0.04)),
+      after: round(i < all.length - 1 ? between(w.end, all[i + 1].start, w.end + 0.04) : w.end + 0.04),
+    }));
   const files = voicePaths(project, scene.id);
   writeWav(files.wav, samples, sr);
   const info = {
