@@ -304,7 +304,7 @@ export function plausibleTimes(words) {
 }
 
 function withPlausibleTimes(heard) {
-  return { ...heard, words: plausibleTimes(heard.words) };
+  return { ...heard, words: plausibleTimes(speechOnly(heard.words)) };
 }
 
 // Stretches of 2 seconds or more that are neither quiet nor covered by a word.

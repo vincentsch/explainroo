@@ -60,9 +60,9 @@ test('a short sentence between two pauses joins the scene before it', () => {
 });
 
 test("the speech model's notes for sound that isn't speech are left out, and a hyphenated word stays whole", () => {
-  const heard = [['We', 0], ['had', 0.3], ['800', 0.6], ['-foot', 0.9], ['ships.', 1.2], ['[BLANK', 2], ['_AUDIO]', 2.2], ['(laughs)', 2.5], ['♪', 3], ['F', 3.5], ['-14.', 3.8]]
+  const heard = [['We', 0], ['had', 0.3], ['800', 0.6], ['-foot', 0.9], ['ships.', 1.2], ['[BLANK', 2], ['_AUDIO]', 2.2], ['(laughs)', 2.5], ['♪', 3], ['F', 3.5], ['-14.', 3.8], ['100', 4.5], [',000', 4.8], ['nasa', 5.5], ['.gov.', 5.8]]
     .map(([text, start]) => ({ text, start, end: start + 0.3 }));
-  assert.deepEqual(speechOnly(heard).map((w) => w.text), ['We', 'had', '800-foot', 'ships.', 'F-14.']);
+  assert.deepEqual(speechOnly(heard).map((w) => w.text), ['We', 'had', '800-foot', 'ships.', 'F-14.', '100,000', 'nasa.gov.']);
   assert.deepEqual(speechOnly(heard).find((w) => w.text === '800-foot'), { text: '800-foot', start: 0.6, end: 1.2 });
 });
 

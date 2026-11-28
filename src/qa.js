@@ -15,6 +15,7 @@ import { estimateLength, targetNotes } from './timeline.js';
 import { buildChapters, chapterHints, youtubeFrame } from './chapters.js';
 import { coverTime } from './render.js';
 import { languageIssues, outputPath, ProjectError, scriptName } from './project.js';
+import { collapsed } from './footage.js';
 import { recordVersion, relativeFile, sha256File } from './history.js';
 import { allOf } from './services.js';
 import { decodedSound } from './server.js';
@@ -711,8 +712,12 @@ export async function verify(project, { file = null, report: reportFile = null, 
         const heard = await transcribe(samples.subarray(from, to), { log, language: project.config.language });
         texts.push(heard.text);
         // A word heard in the margin belongs to the neighbour, so it can't stand
-        // in for a word this scene lost.
-        const own = margin ? heard.words.filter((w) => {
+        // in for a word this scene lost. Only times that can be trusted decide:
+        // the speech model sometimes gives a run of words one time, even past
+        // the end of what it heard, and then every word stays.
+        const heardFor = (to - from) / 16000;
+        const trusted = !collapsed(heard.words) && heard.words.every((w) => w.end <= heardFor + 0.05);
+        const own = margin && trusted ? heard.words.filter((w) => {
           const mid = from / 16000 + (w.start + w.end) / 2;
           return mid >= t.start && mid < (timeline.scenes[index + 1]?.start ?? t.start + t.dur);
         }) : heard.words;

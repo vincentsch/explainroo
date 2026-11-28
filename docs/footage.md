@@ -19,7 +19,9 @@ working copy in `assets/footage.mov`, at 24, 25, 30, 50 or 60 frames a
 second, whichever is nearest, and at most 1920 pixels on its long side. The
 original isn't changed or needed again. Then the speech model listens to it,
 on this computer, and `init` writes `script.md` with a scene for each span of
-speech, with the words that were said.
+speech, with the words that were said. On 8 cores that takes about 40 seconds
+for each minute of 1080p recording, so a 50-minute talk takes half an hour;
+`init` says how long it has left. Tell the user before a long one.
 
 - `--size` is the size of the video, not of the recording. `--size tiktok`
   makes a tall video from a wide recording (see "Tall videos" below).
@@ -245,7 +247,8 @@ mistake and its fix, a number that surprises. `init --footage` with a footage
 project and `--from` and `--to` makes a short of that stretch alone: its
 working copy is just the stretch, its words come from the long project, so
 nothing is heard again, and its language, look and `"music": false` carry
-over. Long pauses inside the stretch are cut already.
+over. Long pauses inside the stretch are cut already. A short takes seconds
+to make, also from a long talk.
 
 Each short is a project of its own, so it renders, checks and packages on its
 own. Make each one stand alone:
