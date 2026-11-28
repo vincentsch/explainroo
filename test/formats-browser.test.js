@@ -56,10 +56,10 @@ test('a project from a format with a look file and helper modules checks without
   assert.deepEqual(issues.filter((i) => i.level === 'error'), []);
 });
 
-test('the formats start with the 0.6 defaults, and the product formats in the studio look', () => {
+test('the formats start with the newest defaults, and the product formats in the studio look', () => {
   for (const name of fs.readdirSync(BUILT_IN)) {
     const settings = JSON.parse(fs.readFileSync(path.join(BUILT_IN, name, 'video.json'), 'utf8'));
-    assert.equal(settings.defaults, '0.6', name);
+    assert.equal(settings.defaults, '0.7', name);
     if (name.startsWith('product-')) assert.equal(settings.theme, 'studio', name);
   }
 });

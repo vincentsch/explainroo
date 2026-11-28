@@ -86,9 +86,11 @@ function track(browser) {
   return browser;
 }
 
+// The pages that draw frames keep WebGL for 3D scenes where Chrome finds no
+// GPU it trusts, through its software renderer.
 export async function launch() {
   const { chromium } = await import('playwright-core');
-  return track(await chromium.launch({ executablePath: findChrome(), headless: true, args: ARGS }));
+  return track(await chromium.launch({ executablePath: findChrome(), headless: true, args: [...ARGS, '--enable-unsafe-swiftshader'] }));
 }
 
 // A browser with a profile folder of its own that keeps cookies and logins

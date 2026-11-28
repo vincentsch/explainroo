@@ -12,7 +12,7 @@ import { loadProject } from '../src/project.js';
 import { BUILT_IN, GUIDE_LIMIT, readFormat } from '../src/formats.js';
 
 const bin = fileURLToPath(new URL('../bin/explainroo.js', import.meta.url));
-const SHIPPED = ['narrated-explainer', 'product-ad', 'product-launch', 'vertical-short'];
+const SHIPPED = ['motion-short', 'narrated-explainer', 'product-ad', 'product-launch', 'vertical-short'];
 
 function temp(t, prefix = 'explainroo-formats-') {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -49,7 +49,7 @@ function formatRepo(t, { name = 'recipe-card', change } = {}) {
   return { dir, commits: [first, git(dir, 'rev-parse', 'HEAD')] };
 }
 
-test('the four built-in formats check out, each with a short guide, and use no paid service', () => {
+test('the five built-in formats check out, each with a short guide, and use no paid service', () => {
   assert.deepEqual(fs.readdirSync(BUILT_IN).sort(), SHIPPED);
   for (const name of SHIPPED) {
     const f = readFormat(path.join(BUILT_IN, name));
@@ -84,7 +84,7 @@ test('formats lists the formats, formats <name> prints the guide, and an unknown
   assert.ok(one.stdout.includes('The first second carries the hook.'));
   const wrong = cli(t, ['formats', 'nope']);
   assert.equal(wrong.status, 1);
-  assert.match(wrong.stderr, /there is no format "nope". The formats are narrated-explainer, product-ad, product-launch, vertical-short/);
+  assert.match(wrong.stderr, /there is no format "nope". The formats are motion-short, narrated-explainer, product-ad, product-launch, vertical-short/);
 });
 
 test('init --format starts from the format: its settings, example, helpers and guide, with the flags on top', (t) => {

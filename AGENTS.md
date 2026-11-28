@@ -1,14 +1,14 @@
 # explainroo for coding agents
 
-Run explainroo with `npx --yes explainroo`. `--yes` stops `npx` from waiting
-on its install question. In a source checkout, run `node bin/explainroo.js`
-instead. The command examples below shorten this to plain `explainroo`, so type
-the full form when you run them. `npx` does not install an `explainroo`
-command on `PATH`.
+Run explainroo with `npx --yes explainroo`. `--yes` skips the install
+question of `npx`. In a source checkout, run `node bin/explainroo.js`. The
+examples below shorten both to plain `explainroo`, which `npx` does not put on
+`PATH`, so type the full form.
 
 This page tells you how to make a video with explainroo.
 The user gives you a topic, maybe with a length or a style. You write the words
-and the pictures, and explainroo makes the video. A long docs topic has
+and the pictures, and explainroo makes the video. Make it look finished, as if
+someone designed it for this topic, never like a template. A long docs topic has
 sections, and `explainroo docs <topic> --sections` lists them. Print only the
 one you need. When the user wants their own recording edited instead, read
 `explainroo docs cut`.
@@ -20,9 +20,9 @@ holds what the voice says. `scenes.js` draws what the viewer sees. Every
 drawing can appear on a word the voice says. A voice model (Kokoro) reads
 the script on this computer, or the narration comes from ElevenLabs,
 Cartesia or the user's own recording. Whisper notes when each word is spoken.
-Chrome draws the frames, and ffmpeg makes the MP4 with music and sound
-effects. All of this runs on this computer, so a video needs no account and
-no key. The documentation for people is at https://www.explainroo.com/docs/.
+Chrome draws the frames, in 2D or 3D, and ffmpeg makes the MP4 with music
+and sound effects. All of this runs on this computer, so a video needs no account and
+no key.
 
 ## The hard limits
 
@@ -97,8 +97,8 @@ says where keys go and how explainroo finds them.
 
 ## When to ask the user
 
-Decide the normal things yourself, like the look, the length, the voice, the
-layout and the wording. Ask only when you cannot go on without an answer.
+Decide the normal things yourself, like the look, the length, the voice and
+the wording. Ask only when you cannot go on without an answer.
 When you ask, put everything you need in one message. Typical reasons to ask:
 
 - The topic is unclear, or you need a fact you cannot check.
@@ -153,8 +153,8 @@ publishes nothing.
 4. **Make the voice** with `explainroo voice videos/<name>`. Fix a word the
    speech check did not confirm with `{shown|spoken}`, and run it again
    (`explainroo docs writing`).
-5. **Plan the pictures.** Decide what appears on each cue, what leaves and
-   what stays in place (`explainroo docs pictures`).
+5. **Plan the pictures.** Give every sentence something to see. Decide what
+   appears on each cue, what leaves and what stays (`explainroo docs pictures`).
    `explainroo words videos/<name>` lists each scene's spoken words and
    times.
 6. **Make images**, if the video needs them and the user agrees
@@ -164,8 +164,8 @@ publishes nothing.
 8. **Check** with `explainroo check videos/<name>`, and fix every error and
    every warning (`explainroo docs troubleshooting`).
 9. **Look at the frames** with `explainroo still videos/<name>` and
-   `explainroo sheet videos/<name>`. Open the images and judge them like a
-   viewer would. For a platform's version, add `--platform tiktok` to
+   `explainroo sheet videos/<name>`. Open the images, answer the questions
+   that `sheet` prints, and fix what fails. For a platform's version, add `--platform tiktok` to
    `check`, `still`, `sheet`, `render` and `verify`.
 10. **Make the video** with `explainroo render videos/<name>`. Make a draft
     with `--draft` only when you will watch it, because `still` and `sheet`
@@ -178,28 +178,29 @@ publishes nothing.
 
 ## Topics
 
-Read the topic of the step you are on. A long topic has sections:
-`npx --yes explainroo docs <topic> --sections` lists them with their size, and
-`npx --yes explainroo docs <topic> <section>` prints one, like
+Read the topic of the step you are on.
+`npx --yes explainroo docs <topic> --sections` lists the sections of a long
+topic, and `npx --yes explainroo docs <topic> <section>` prints one, like
 `npx --yes explainroo docs publishing buffer`. Print only the section you need.
 
 | Topic | Read it when |
 | --- | --- |
 | `making-a-video` | you want each step above in full |
-| `writing` | you write `script.md`: the style, the length and the script syntax |
-| `pictures` | you plan the scenes, with four layouts to start from and how the camera moves |
+| `writing` | you write `script.md`: style, length and syntax |
+| `pictures` | you plan the scenes: what makes a video great, layouts and the camera |
 | `scene-api` | you write `scenes.js`: everything a scene can draw, with its options |
+| `motion` | your own animation, 3D, the music's beats, videos without words |
 | `troubleshooting` | a scene breaks, or before you write the first one |
-| `voices` | you pick a voice, or the user wants a paid voice or their own recording |
+| `voices` | you pick a voice, a paid one or the user's own recording |
 | `languages` | the video isn't in English, or comes in several languages |
 | `japanese-and-chinese` | the video is in Japanese or Mandarin Chinese |
 | `images` | the user wants AI images |
 | `clips` | the user wants AI video clips |
-| `music` | the user wants their own music, a sound file or original music from Soundroo |
+| `music` | the user wants own music, a sound file or music from Soundroo |
 | `sizes` | the video is for a platform: sizes, captions, pace and the watermark |
 | `formats` | you use, install or publish a format |
 | `short-video` | you make a Short, a TikTok or a Reel |
-| `product-demos` | the user wants a demo of an app or a website, also one recorded with `explainroo record` |
+| `product-demos` | the user wants a demo of an app or a website, also with `explainroo record` |
 | `presenters` | the user wants an AI presenter next to the product |
 | `settings` | you change `video.json`, make a look of your own or set up a key |
 | `commands` | you need a command or a flag that this page doesn't show |

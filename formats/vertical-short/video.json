@@ -8,5 +8,5 @@
   "captions": "bold",
   "transition": "push",
   "cover": "hook@0.6",
-  "defaults": "0.6"
+  "defaults": "0.7"
 }

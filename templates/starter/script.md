@@ -6,10 +6,10 @@
 > Replace each line below with your own narration, and rename the scenes as you like.
 
 ## intro
-Say in one or two sentences what this video explains.
+Ask the question this video answers, or show the problem, in one or two sentences.
 
 ## main
-Explain the main idea here, one small step at a time.
+Explain the main idea one small step at a time. Give each sentence something the viewer can see.
 
 ## outro {hold=1.5}
-Sum up the main point in one short sentence.
+Answer the opening question in one plain sentence.

@@ -13,6 +13,7 @@ import { coverTime } from './render.js';
 import { subtitleCues, toVtt } from './subtitles.js';
 import { projectUrl } from './timeline.js';
 import { BOLD_CAPTION_FAMILIES } from '../engine/captions.js';
+import { THREE_FILES } from '../engine/three.js';
 
 export function localModules(dir, entry = 'scenes.js') {
   const files = new Map();
@@ -67,13 +68,19 @@ export function copyPlayer(project, timeline, used, out) {
   if (languageFonts(project.config.language).length) copy(path.join(cacheRoot(), 'fonts', 'NotoSansCJK-OFL.txt'), 'fonts/licenses/NotoSansCJK-OFL.txt');
   fs.writeFileSync(path.join(out, 'fonts/fonts.json'), JSON.stringify(fonts));
   // Audio synthesis and upload code run during export, never during playback.
-  const modules = ['runtime', 'stage', 'themes', 'pen', 'transitions', 'captions', 'util', 'layout', 'clips', 'ui', 'short', 'readability', 'pathdata', 'geometry', 'text', 'code', 'director', 'recording', 'words'];
+  const modules = ['runtime', 'stage', 'themes', 'pen', 'transitions', 'captions', 'util', 'layout', 'clips', 'ui', 'short', 'readability', 'pathdata', 'geometry', 'text', 'code', 'director', 'recording', 'words', 'three'];
   for (const name of modules) copy(path.join(ROOT, 'engine', `${name}.js`), `engine/${name}.js`);
   copy(path.join(ROOT, 'engine/icons/lucide.json'), 'engine/icons/lucide.json');
   copy(path.join(ROOT, 'engine/icons/LICENSE-lucide.txt'), 'engine/icons/LICENSE-lucide.txt');
   const rough = fileURLToPath(import.meta.resolve('roughjs/bundled/rough.esm.js'));
   copy(rough, 'vendor/rough.js');
   copy(path.join(path.dirname(rough), '../LICENSE'), 'vendor/LICENSE-roughjs.txt');
+  // three.js comes along only for a video with 3D scenes.
+  if (used.three) {
+    const threeDir = path.dirname(fileURLToPath(import.meta.resolve('three')));
+    for (const f of THREE_FILES) copy(path.join(threeDir, f), `vendor/three/${f}`);
+    copy(path.join(threeDir, '../LICENSE'), 'vendor/three/LICENSE-three.txt');
+  }
   copy(path.join(ROOT, 'LICENSE'), 'LICENSE');
   copy(path.join(ROOT, 'engine/player.html'), 'index.html');
   copy(path.join(ROOT, 'engine/player.js'), 'engine/player.js');
@@ -169,7 +176,13 @@ export async function exportPlayer(project, { out, log = () => {} } = {}) {
         await upload(`${build}/player-mix.wav`, audio.encodeWav(sound.buffer));
         await upload(`${build}/player-poster.jpg`, await new Promise(resolve => engine.canvas.toBlob(resolve, 'image/jpeg', 0.9)));
         if ([...engine.mathCache.values()].some(m => m?.error)) throw new Error('a formula could not be typeset. Run check and fix it before exporting.');
-        return { assets: [...assets], fonts: [...fonts], text: [...chars].join(''), math: Object.fromEntries(engine.mathCache) };
+        // Textures of 3D scenes are made at boot, before the wrapper above
+        // could see them, so their images come from the texture cache.
+        for (const src of engine.threeTextures?.keys() ?? []) {
+          const key = src.replace(/^\.?\//, '');
+          assets.add(engine.images.has(key) ? key : 'assets/' + key);
+        }
+        return { assets: [...assets], fonts: [...fonts], text: [...chars].join(''), math: Object.fromEntries(engine.mathCache), three: !!engine.usesThree };
       } finally {
         Object.defineProperty(proto, 'font', font);
         for (const [name, original] of drawing) proto[name] = original;

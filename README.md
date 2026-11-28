@@ -28,6 +28,7 @@ https://github.com/user-attachments/assets/6dd5dc32-c975-4e0e-8cd4-2ef3ccc11e61
 
 ## News
 
+- **Nov 27, 2026**: explainroo 0.7 draws 3D scenes with three.js, animates your own drawings with keyframes and paths, and makes videos without words that cut to the beat of the music. New projects start from a starter that asks for a picture in every sentence, and `sheet` asks five questions about every video before you render it.
 - **Nov 21, 2026**: explainroo 0.6.2 installs on Linux again. ONNX Runtime's downloads on GitHub are gone since November 17, and they made every Linux install stop. What runs the free voice now installs the first time a video needs it, so `npx --yes explainroo` takes a few seconds and about 100 MB.
 - **Nov 18, 2026**: explainroo 0.6.1 posts through Blotato, its first partner for posting, and `publish --own-product` marks a TikTok video that promotes your own product.
 - **Nov 10, 2026**: [explainroo 0.6](https://www.explainroo.com/news/explainroo-0-6/) records your real app with `explainroo record`, and a scene plays that recording with a pointer and zooms that land on the narration. New projects start in the studio look, and formats give one kind of video a ready shape. `check` and `verify` work on any video file, and `cut` edits your own recording by its words. The list of sizes moved to `explainroo sizes`.
@@ -77,8 +78,9 @@ explainroo does the rest:
 - **Pictures.** Chrome runs in the background and draws the frames. The lines
   can look hand drawn ([Rough.js](https://roughjs.com)), and there are 1,800
   icons from [Lucide](https://lucide.dev). A scene can also show charts, math
-  formulas, code that changes step by step, your own screenshots and video
-  clips such as screen recordings.
+  formulas, code that changes step by step, your own screenshots, video
+  clips such as screen recordings, and 3D scenes made with
+  [three.js](https://threejs.org).
 - **Camera.** A camera films each scene. It moves in on what the voice talks
   about when there is time, and pulls back at the end so the last frame shows
   the whole idea. Cards and labels are never cut in half while a shot holds.
@@ -94,6 +96,30 @@ work. It saves stills of the scenes and a sheet of small frames for the whole
 video. A layout check finds text that is cut off or overlaps, and a speech
 check finds words the voice got wrong. For a feed-sized player,
 `explainroo check videos/<name> --view-width 854` also flags small text.
+
+## Motion and 3D
+
+Coding agents are good at writing animation as code, and explainroo turns it
+into a finished video. A scene can draw anything with the canvas, or a 3D
+scene with three.js, and the agent places the labels next to it with
+`point()`. Every frame comes from the time, so the motion lands on the words
+of the narration, or on the beats of the music in a video without words.
+`s.keys` animates between keyframes, `s.along` moves things along a path, and
+`{bars=4}` in the script makes a scene last four bars, so the cuts land on the
+beat.
+
+`check` catches the mistakes such code makes: a scene that keeps values from
+one frame to the next, which would make the video jump, and a drawing that
+draws nothing. `explainroo docs motion` has the details and the rules for
+motion that looks designed.
+
+<p align="center">
+  <img src="docs/media/motion-3d.webp" alt="A frame of the seasons example: the Sun in the middle of Earth's orbit, a faint Earth in June leaning toward the Sun and Earth in December leaning away, with labels" width="820">
+</p>
+
+<p align="center">
+  <sub>A frame of <a href="examples/seasons-3d">examples/seasons-3d</a>, where three.js draws the orbit and the labels come from <code>point()</code>. <a href="examples/logo-reveal">examples/logo-reveal</a> is a piece without words, cut to the beat.</sub>
+</p>
 
 ## Check or cut any video
 
@@ -238,7 +264,7 @@ unofficial demos of [Gmail, ChatGPT and Claude](https://www.explainroo.com/video
 ## Formats
 
 A format is a ready way of making one kind of video, with a short guide for
-your agent, scene helpers, settings and a whole example video. Four come with
+your agent, scene helpers, settings and a whole example video. Five come with
 explainroo:
 
 | Format | For |
@@ -247,6 +273,7 @@ explainroo:
 | `narrated-explainer` | one idea explained in about a minute |
 | `vertical-short` | a short for Shorts, TikTok and Reels, with the hook in the first second |
 | `product-ad` | an ad of 15 to 30 seconds for a feed |
+| `motion-short` | a motion piece without narration, cut to the beat of the music |
 
 `explainroo init videos/acme --format product-launch` starts from one.
 Anyone can publish a format as a Git repository, and

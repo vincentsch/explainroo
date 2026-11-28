@@ -94,7 +94,7 @@ export const DEFAULTS = {
 
 // The values "defaults" takes, oldest first. Each one has the defaults of the
 // ones before it.
-export const DEFAULTS_VERSIONS = ['0.5', '0.6'];
+export const DEFAULTS_VERSIONS = ['0.5', '0.6', '0.7'];
 
 // Settings for the UI kit (s.ui), for product demos in a brand's own look.
 export const BRAND_KEYS = ['accent', 'background', 'ink', 'font', 'headline', 'logo', 'colors'];
@@ -197,7 +197,7 @@ export function resolveSize(size) {
 // defaults go in here: the config is part of the page's version hash.
 function musicFileSetting(music) {
   if ('style' in music) fail('music takes a style or a src, not both. Remove one of them.');
-  const known = ['src', 'volume', 'credit', 'loop'];
+  const known = ['src', 'volume', 'credit', 'loop', 'bpm', 'offset'];
   const extra = Object.keys(music).filter((k) => !known.includes(k));
   if (extra.length) fail(`music has unknown setting(s) for a file: ${extra.join(', ')}. Known: ${known.join(', ')}`);
   const { src } = music;
@@ -208,6 +208,9 @@ function musicFileSetting(music) {
   if (!(typeof file.volume === 'number' && file.volume >= 0 && file.volume <= 1)) fail('music.volume must be between 0 and 1');
   if (typeof file.loop !== 'boolean') fail('music.loop must be true or false');
   if (file.credit !== undefined && !(typeof file.credit === 'string' && file.credit.trim())) fail('music.credit must be a short text that says who made the music');
+  if (file.bpm !== undefined && !(typeof file.bpm === 'number' && file.bpm >= 40 && file.bpm <= 240)) fail('music.bpm must be the tempo of the file in beats a minute, from 40 to 240, like 120');
+  if (file.offset !== undefined && !(typeof file.offset === 'number' && file.offset >= 0)) fail('music.offset must be the second of the file where its first beat sounds, 0 or more');
+  if (file.offset !== undefined && file.bpm === undefined) fail('music.offset goes with music.bpm, the tempo of the file. Add "bpm"');
   return file;
 }
 
@@ -457,7 +460,10 @@ function settingsOf(raw, input, dir, block = null) {
   }
   if (!(cfg.loudness <= -8 && cfg.loudness >= -30)) fail('loudness must be between -30 and -8 LUFS');
   if (cfg.defaults === null || cfg.defaults === undefined) delete cfg.defaults;
-  else if (!DEFAULTS_VERSIONS.includes(cfg.defaults)) fail(`defaults must be ${DEFAULTS_VERSIONS.map((v) => `"${v}"`).join(' or ')}, which gives the project the defaults of that version of explainroo, or be left out for the look from before`);
+  else if (!DEFAULTS_VERSIONS.includes(cfg.defaults)) {
+    const versions = DEFAULTS_VERSIONS.map((v) => `"${v}"`);
+    fail(`defaults must be ${versions.slice(0, -1).join(', ')} or ${versions.at(-1)}, which gives the project the defaults of that version of explainroo, or be left out for the look from before`);
+  }
   // null in the block of a size turns off a target set at the top.
   if (cfg.targetSeconds === null || cfg.targetSeconds === undefined) delete cfg.targetSeconds;
   else if (!(typeof cfg.targetSeconds === 'number' && cfg.targetSeconds >= 1 && cfg.targetSeconds <= 3600)) {
@@ -686,6 +692,10 @@ export function loadProject(arg, overrides = {}, { settings: given } = {}) {
   const files = languageFiles(dir, language, main);
   if (!fs.existsSync(files.script)) fail(`${files.script} is missing`);
   const script = parseScript(fs.readFileSync(files.script, 'utf8'), { language: config.language, file: path.basename(files.script) });
+  // Bars and targetSeconds both set the length. Found here, before any
+  // narration is made or bought.
+  const barred = script.scenes.find((sc) => sc.attrs.bars !== undefined);
+  if (barred && config.targetSeconds) fail(`scene "${barred.id}" lasts {bars=${barred.attrs.bars}}, and "targetSeconds" sets the length of the video too. Bars keep the cuts on the beat, so leave out "targetSeconds" and choose the number of bars for the length`);
   // The main title is in the main language, so another language takes the title of its own script.
   if (language !== main && script.title && raw.languages?.[language]?.title === undefined) config.title = script.title;
   if (!config.title) config.title = script.title || path.basename(dir);

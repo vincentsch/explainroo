@@ -1,5 +1,9 @@
 # What makes the pictures good
 
+Every video should look finished, as if someone designed it for this topic.
+Nothing should look like a template with new words in it. The rules below and
+the worked example after them are how you get there.
+
 - **Show it when it is said.** A picture appears as the voice mentions it.
   Use word cues. A cue names a word or a number, not a symbol: for "5 %" the
   cue is `'5'`. `explainroo words` prints the cue of every word. A time with
@@ -21,6 +25,89 @@
 - **Real examples.** A command you can run, a number with its source or a
   picture of the real screen is better than three boxes with general words.
 - **A clear last frame** that shows the main point.
+
+## From a card to a picture
+
+A first draft often puts the idea in words on a card. The viewer reads the
+card while the voice says the same words, and learns nothing from the
+picture. Draw what the sentence is about instead, so the viewer sees it
+happen.
+
+The narration of this scene is: "A hash function turns your password into a
+long string. Change one letter, and you get a different string."
+
+Before, a title and a card:
+
+```js
+hash(s) {
+  s.title('Passwords are hashed', { at: 0 });
+  s.box('A hash function turns your password into a long string', { y: 720, at: 'function' });
+},
+```
+
+After, the passwords, the step and the results, each on its word:
+
+```js
+hash(s) {
+  const { left, top, w, h } = s.safe;
+  const u = Math.min(w, h) / 100;
+  const [y1, y2] = [top + h * 0.34, top + h * 0.66];
+  const [x1, x2] = [left + w * 0.13, left + w * 0.82];
+  s.box('hash', { id: 'fn', x: s.cx, y: s.cy, size: u * 6, icon: 'cog', color: 'accent', at: 'function' });
+  s.text('hunter2', { id: 'pw', x: x1, y: y1, font: 'mono', size: u * 7, at: 'password' });
+  s.arrow('pw', 'fn', { at: 'password' });
+  s.text('f52fbd32…a3f6c7', { id: 'out', x: x2, y: y1, font: 'mono', size: u * 5.5, at: 'string#1' });
+  s.arrow('fn', 'out', { at: 'string#1' });
+  // One letter more, and the whole string changes with it.
+  s.text('hunter3', { id: 'pw2', x: x1, y: y2, font: 'mono', size: u * 7, at: 'letter' });
+  s.arrow('pw2', 'fn', { at: 'letter' });
+  s.text('fb8c2e2b…21cfa57a', { id: 'out2', x: x2, y: y2, font: 'mono', size: u * 5.5, color: 'red', at: 'different' });
+  s.arrow('fn', 'out2', { at: 'different' });
+},
+```
+
+The second version shows what goes in, what happens and what comes out. The
+second row proves the last sentence instead of repeating it. The strings are
+the real SHA-256 of both passwords, because a viewer may check. The box comes
+first, because the voice says "function" before "password". "String" is
+spoken twice, so the first result waits for `string#1`, and the second one
+comes on "different".
+
+## What makes a video great
+
+- **A hook in the first two seconds.** The first frame shows what the video
+  is about with a picture, not only a title. The first sentence asks the
+  question or shows the problem.
+- **Something to see in every sentence.** Before you write a scene's code,
+  decide what the viewer sees on each sentence: a diagram, a number, a real
+  screen or an object that moves. A sentence with nothing to see needs a
+  picture, or it can go.
+- **Show the mechanism.** Draw the parts and what they do to each other.
+  Something travels along an arrow, a number counts up, a value changes color.
+- **A new layout when the idea changes.** Scene after scene of a title over
+  three cards reads as a template. Switch between a big number, a comparison,
+  steps, a close-up of one thing and a picture that fills the frame.
+- **Motion with a purpose.** Things move to show cause and effect or to lead
+  the eye. One thing moves at a time, so the viewer knows where to look.
+- **Time to read.** Give a label about a second for every three words before
+  the next thing comes. Let the picture hold after the last sentence of a
+  scene, so it lands before the cut.
+- **One thing matters most.** It is the biggest and gets the accent color.
+  The rest is smaller and quieter.
+- **An ending that answers the opening.** The last scene comes back to the
+  first question and shows the answer in one picture.
+
+## Before you render
+
+`explainroo sheet` prints these questions under the path of its image. Look
+at the sheet and at a still of each scene, answer each question, and fix
+what fails before you render:
+
+1. Hook: does the first frame show what the video is about with a picture, and do the first two seconds give a reason to keep watching?
+2. Pictures: does each frame show what its sentence says, with a diagram, a number, a real screen or an object, and not a card that repeats the words?
+3. Variety: do the scenes look different from each other, with a new layout when the idea changes?
+4. Phone: can every word be read on a phone, with one clear thing to look at in each frame?
+5. Ending: does the last frame show the main point, the answer to the opening?
 
 ## Layouts that work
 

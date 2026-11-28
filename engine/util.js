@@ -82,6 +82,8 @@ export function parseColor(c) {
   const rgb = /^rgba?\(([^)]+)\)$/i.exec(c.trim());
   if (rgb) {
     const [r, g, b, a = 1] = rgb[1].split(/[\s,/]+/).filter(Boolean).map(Number);
+    // Percentages and other units are left to the canvas, which cssColor asks.
+    if (![r, g, b, a].every(Number.isFinite)) return null;
     return { r, g, b, a };
   }
   return null;
@@ -115,6 +117,45 @@ export function mixColor(c1, c2, p) {
   const b = parseColor(c2);
   if (!a || !b) return p < 0.5 ? c1 : c2;
   return rgba({ r: lerp(a.r, b.r, p), g: lerp(a.g, b.g, p), b: lerp(a.b, b.b, p), a: lerp(a.a, b.a, p) });
+}
+
+// The value between two keyframe values at progress p: numbers, arrays of
+// numbers (like a point), objects of numbers (like { x, y }) or colors, which
+// the caller turns into CSS colors first. `where` names the keyframes in errors.
+export function mixValue(a, b, p, where = 'the keyframes') {
+  if (typeof a === 'number' && typeof b === 'number') return a + (b - a) * p;
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) throw new Error(`${where} mix lists of different lengths (${a.length} and ${b.length}). Give every value the same number of parts`);
+    return a.map((v, i) => mixValue(v, b[i], p, where));
+  }
+  if (typeof a === 'string' && typeof b === 'string') {
+    if (!parseColor(a) || !parseColor(b)) throw new Error(`${where} mix "${a}" and "${b}", and only numbers, lists of numbers, { x, y } objects and colors can be mixed`);
+    return mixColor(a, b, p);
+  }
+  if (a && b && typeof a === 'object' && typeof b === 'object') {
+    const out = {};
+    for (const k of Object.keys(a)) {
+      if (!(k in b)) throw new Error(`${where} have "${k}" in one value and not in the next. Give every value the same parts`);
+      out[k] = mixValue(a[k], b[k], p, where);
+    }
+    return out;
+  }
+  throw new Error(`${where} mix ${JSON.stringify(a)} and ${JSON.stringify(b)}, and only numbers, lists of numbers, { x, y } objects and colors can be mixed`);
+}
+
+// The value at time t of keyframes [{ at, v, ease }] whose `at` are seconds in
+// order. Before the first key it is the first value, after the last the last.
+// `ease` on a key shapes the way into it.
+export function keyframeValue(keys, t) {
+  if (t <= keys[0].at) return keys[0].v;
+  const last = keys[keys.length - 1];
+  if (t >= last.at) return last.v;
+  let i = 1;
+  while (keys[i].at < t) i++;
+  const a = keys[i - 1];
+  const b = keys[i];
+  const span = b.at - a.at;
+  return span > 0 ? mixValue(a.v, b.v, easeFn(b.ease ?? 'inOut')((t - a.at) / span)) : b.v;
 }
 
 export function withAlpha(c, alpha) {

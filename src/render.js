@@ -93,8 +93,14 @@ function frameRange(project, timeline, opts) {
 const SPEED_FRAMES = 90;
 export const renderSpeedFile = () => path.join(cacheRoot(), 'render-speed.json');
 
-export function renderKind({ samples, transparent, workers }) {
-  return `${samples} sample${samples === 1 ? '' : 's'}${transparent ? ', alpha' : ''}, ${workers} worker${workers === 1 ? '' : 's'}`;
+export function renderKind({ samples, transparent, workers, three = false }) {
+  return `${samples} sample${samples === 1 ? '' : 's'}${transparent ? ', alpha' : ''}${three ? ', 3D' : ''}, ${workers} worker${workers === 1 ? '' : 's'}`;
+}
+
+// Whether the project draws 3D scenes, from the text of its scene files. 3D
+// draws at its own speed, so its renders keep a speed of their own.
+export function drawsThree(project) {
+  return fs.readdirSync(project.dir).some((f) => /\.m?js$/.test(f) && /\.three\s*\(/.test(fs.readFileSync(path.join(project.dir, f), 'utf8')));
 }
 
 function readSpeeds() {
@@ -183,7 +189,7 @@ export async function encodeVideo(project, timeline, opts) {
   // `withoutBlur` says how the caller leaves the blur out.
   if (samples > 1) log(`motion blur: a final draws ${samples} samples per frame, which makes it several times slower than a draft. ${opts.withoutBlur ?? '--quality fast'} leaves the blur out.`);
   // A final says up front how long it takes, once this computer has made one.
-  const kind = renderKind({ samples, transparent, workers });
+  const kind = renderKind({ samples, transparent, workers, three: drawsThree(project) });
   const pixels = Math.round(project.config.width * scale) * Math.round(project.config.height * scale);
   const estimate = draft ? null : renderEstimate(readSpeeds()[kind], { frames: to - from, pixels });
   if (estimate) log(`this takes ${estimateText(estimate)}`);

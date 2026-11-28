@@ -6,6 +6,7 @@ import { getTheme, makeBackground, fontString, colorOf } from './themes.js';
 import { Pen } from './pen.js';
 import { drawTransition } from './transitions.js';
 import { buildPhrases, drawCaptions, buildChunks, drawBoldCaptions, captionHighlight } from './captions.js';
+import { loadThree } from './three.js';
 import { AUDIO_FILE, clamp, ease, hashStr, mulberry32, suggest, suggestColor, contrast, luminance, opaque, withAlpha, parseColor, mixColor, rgba, cssColor, newDefaults, accentNote, normWord } from './util.js';
 import { overlapDepth, holds, crosses, bounds, inside, toEdge, grow } from './geometry.js';
 import { layoutAreas } from './layout.js';
@@ -286,6 +287,33 @@ export class Engine {
       const res = await fetch(this.mathURL(tex, display));
       this.mathCache.set(key, this.mathResponse(res.status, await res.text()));
     }));
+  }
+
+  // Loads three.js when a scene calls s.three. Each scene is drawn once to
+  // find out, as for formulas. Elements are called on every frame, so the
+  // first frame of a scene shows its 3D elements, also those that come later.
+  async loadThree(root) {
+    this.threeCollect = new Set();
+    try {
+      for (const sc of this.timeline.scenes) {
+        try { this.drawScene(this.ctx, sc.index, 0); } catch {}
+      }
+      this.usesThree = this.threeCollect.size > 0;
+    } finally {
+      this.threeCollect = null;
+    }
+    if (!this.usesThree) return;
+    await loadThree(root);
+    // Every page builds each 3D scene from the first frame of its scene, so
+    // what setup makes never depends on which frames a page draws first.
+    this.threeSetup = true;
+    try {
+      for (const sc of this.timeline.scenes) {
+        try { this.drawScene(this.ctx, sc.index, 0); } catch {}
+      }
+    } finally {
+      this.threeSetup = false;
+    }
   }
 
   sceneAt(T) {
@@ -640,6 +668,36 @@ export class Engine {
     return { cues: out, clips, sounds, errors };
   }
 
+  // A small picture of moment t of scene `index`, drawn the way check sees it,
+  // without the camera, for comparing two drawings of the same moment. null
+  // when the scene stops with an error there.
+  thumbAt(index, t) {
+    const full = (this._thumbFull ??= document.createElement('canvas'));
+    if (full.width !== this.canvas.width || full.height !== this.canvas.height) Object.assign(full, { width: this.canvas.width, height: this.canvas.height });
+    const small = (this._thumbSmall ??= Object.assign(document.createElement('canvas'), { width: THUMB_WIDTH, height: Math.max(1, Math.round((THUMB_WIDTH * this.canvas.height) / this.canvas.width)) }));
+    const saved = { textLog: this.textLog, drawLog: this.drawLog, recorder: this.recorder, revealLog: this.revealLog, markLog: this.markLog, windowLog: this.windowLog, arrowLog: this.arrowLog, drawingLog: this.drawingLog, thumbing: this.thumbing };
+    // A small picture needs the pixels of 3D scenes too.
+    this.thumbing = true;
+    this.textLog = [];
+    this.drawLog = drawLog();
+    this.recorder = null;
+    this.revealLog = null;
+    this.markLog = null;
+    this.windowLog = null;
+    this.arrowLog = null;
+    this.drawingLog = null;
+    try {
+      this.drawScene(full.getContext('2d', { alpha: false }), index, t);
+    } catch {
+      return null;
+    } finally {
+      Object.assign(this, saved);
+    }
+    const g = small.getContext('2d', { willReadFrequently: true });
+    g.drawImage(full, 0, 0, small.width, small.height);
+    return g.getImageData(0, 0, small.width, small.height).data;
+  }
+
   // Whether moment t of scene `index` shows anything besides the background, as
   // check counts it, without the camera.
   shownAt(index, t) {
@@ -703,7 +761,7 @@ export class Engine {
     const coming = texts.filter((x) => !x.problem && !x.settled && x.text.trim() && inside(x)).map((x) => x.text);
     // A recording, a clip, an image or a drawing, which "cover": "auto" looks
     // for with "defaults": "0.6".
-    const media = log.shapes.some((s) => (s.kind === 'image' || s.kind === 'drawing') && s.settled && s.alpha > 0.95 && arrived(s) && (inside(s.box) || fillsFrame(s.box, this.W, this.H)));
+    const media = log.shapes.some((s) => (s.kind === 'image' || s.kind === 'drawing' || s.kind === 'three') && s.settled && s.alpha > 0.95 && arrived(s) && (inside(s.box) || fillsFrame(s.box, this.W, this.H)));
     return { count: words + pictures + lines, picture: pictures > 0, media, onlyText: words > 0 && pictures + lines === 0, partial, coming };
   }
 
@@ -1037,6 +1095,8 @@ export class Engine {
       this.windowLog = new Map();
       // Arrows, when they start drawing and when their ends come in.
       this.arrowLog = new Map();
+      // Each s.draw of the scene, and whether it drew anything while on screen.
+      this.drawingLog = new Map();
       const n = Math.ceil(sc.dur / step);
       for (let k = 0; k <= n; k++) {
         const t = Math.min(sc.dur - 0.001, k * step);
@@ -1241,6 +1301,24 @@ export class Engine {
       }
       this.recorder = null;
       this.textLog = null;
+      const drawings = [...this.drawingLog.values()];
+      this.drawingLog = null;
+      // A clip or a recording may still be loading a frame, so only scenes
+      // without them are drawn twice to compare.
+      const loads = entrances.some((e) => e.kind === 'clip' || e.kind === 'recording');
+      if (!broke && !loads && sc.dur > 0.5) {
+        const A = Math.min(sc.dur - 0.001, sc.dur * 0.6);
+        const first = this.thumbAt(sc.index, A);
+        this.thumbAt(sc.index, sc.dur * 0.2);
+        this.thumbAt(sc.index, sc.dur - 0.001);
+        const again = this.thumbAt(sc.index, A);
+        if (first && again && thumbDiff(first, again) > ORDER_DIFF) {
+          add('warn', sc.id, A, `the frame at ${A.toFixed(1)}s comes out different when it is drawn again after other moments of the scene, so the scene keeps values from one frame to the next. Each render page draws its own part of the video, so the video would jump there. Work out everything from s.t, or from life.local in s.draw, and keep no counters or values outside the scene function`);
+        }
+      }
+      for (const d of drawings) {
+        if (!d.drew && !broke) once(`blank:${sc.id}:${d.name}`, () => add('warn', sc.id, d.at, `${d.name} draws nothing while it is on screen; draw around 0, 0 when it has x and y, and check that its code reaches the drawing calls`));
+      }
       const times = [...new Set(entrances.map((e) => Math.round(e.at * 100) / 100))].sort((a, b) => a - b);
       // While a clip or a recording plays and its picture changes, something
       // happens: as points every half second, in seconds of the scene.
@@ -1248,6 +1326,17 @@ export class Engine {
       for (const m of this.movingSpans(entrances, sc.dur)) {
         for (let x = Math.max(0, m.from); x < Math.min(sc.dur, m.to); x += 0.5) playing.push(x);
         if (m.to >= 0 && m.to <= sc.dur) playing.push(m.to);
+      }
+      // Animation of your own, in s.draw or s.three, changes the picture where
+      // its pixels change. Two steps take turns, so motion on every beat isn't
+      // sampled at the same point of the beat each time.
+      if (drawings.length && !broke) {
+        let before = null;
+        for (let x = 0, k = 0; x < sc.dur; x += MOTION_STEPS[k++ % 2]) {
+          const now = this.thumbAt(sc.index, x);
+          if (before && now && thumbDiff(before, now) > MOTION_DIFF) playing.push(x);
+          before = now;
+        }
       }
       // A new scene, an entrance and a camera move change the picture, and so
       // does a clip or a recording that plays. A scene that stopped with an
@@ -1593,7 +1682,7 @@ function markupShown(tx) {
 // The shapes that are pictures. A large one may run behind the watermark. A
 // card, a sticker, a box or a code window is a panel that holds words, and the
 // watermark on its corner reads as part of it.
-const PICTURES = new Set(['icon', 'image', 'drawing']);
+const PICTURES = new Set(['icon', 'image', 'drawing', 'three']);
 
 // The watermark's box when `b` reaches more than 4 pixels under it, or null.
 // With `part`, a box counts only when the watermark covers at least a twentieth
@@ -1760,11 +1849,28 @@ const COVER_FRAMES = 600;
 
 // What check collects while it draws one moment of a scene: the shapes and
 // lines drawn, in design pixels, and how many elements are on screen.
+// The width of the small pictures check compares, in pixels.
+const THUMB_WIDTH = 96;
+// Two drawings of one moment may differ in this share of their pixels, and
+// two moments half a second apart must differ in more to count as motion.
+const ORDER_DIFF = 0.002;
+const MOTION_DIFF = 0.004;
+const MOTION_STEPS = [0.43, 0.31];
+
+// The share of pixels where two small pictures differ by more than a trace.
+function thumbDiff(a, b) {
+  let n = 0;
+  for (let i = 0; i < a.length; i += 4) {
+    if (Math.abs(a[i] - b[i]) > 6 || Math.abs(a[i + 1] - b[i + 1]) > 6 || Math.abs(a[i + 2] - b[i + 2]) > 6) n++;
+  }
+  return n / (a.length / 4);
+}
+
 function drawLog() {
   return { shapes: [], strokes: [], lives: [], partial: [], shown: 0, order: 0 };
 }
 
-const SHAPE_NAMES = { box: 'box', icon: 'icon', image: 'image', code: 'code window', terminal: 'terminal', card: 'card', sticker: 'sticker', drawing: 'drawing' };
+const SHAPE_NAMES = { box: 'box', icon: 'icon', image: 'image', code: 'code window', terminal: 'terminal', card: 'card', sticker: 'sticker', drawing: 'drawing', three: '3D scene' };
 
 // "the box "Rivers bring salt in"", with "(id "rivers")" after it when it has an
 // id, "the drawing "moon"" by its id alone, or by its call and where it is
@@ -1804,7 +1910,7 @@ function stickersOverTitles(shapes, texts) {
 // has a finding of its own.
 export function stickersOverPictures(shapes, texts, W, H) {
   const found = [];
-  const pictures = shapes.filter((sh) => ['icon', 'image', 'drawing'].includes(sh.kind) && sh.settled && sh.alpha > 0.5 && !fillsFrame(sh.box, W, H));
+  const pictures = shapes.filter((sh) => ['icon', 'image', 'drawing', 'three'].includes(sh.kind) && sh.settled && sh.alpha > 0.5 && !fillsFrame(sh.box, W, H));
   for (const sh of shapes) {
     if (sh.kind !== 'sticker' || !sh.settled || sh.alpha <= 0.95) continue;
     const name = `the sticker "${sh.name.slice(0, 30)}"`;
@@ -1834,7 +1940,7 @@ export function shapeOverlaps(shapes) {
       const B = list[j];
       if (A.group !== null && A.group === B.group) continue;
       // A sticker over a picture has a finding of its own.
-      const picture = (x) => ['icon', 'image', 'drawing'].includes(x.kind);
+      const picture = (x) => ['icon', 'image', 'drawing', 'three'].includes(x.kind);
       if ((A.kind === 'sticker' && picture(B)) || (B.kind === 'sticker' && picture(A))) continue;
       const depth = overlapDepth(A.poly, B.poly);
       if (depth <= 4 || holds(A.poly, B.poly) || holds(B.poly, A.poly)) continue;
@@ -1961,9 +2067,15 @@ export async function boot({ canvas, scale = 1, transparent = false, version = '
   engine.iconTags = iconTags;
   if (player) engine.staticMath = await (await fetch('./math.json')).json();
   else await engine.loadMath();
+  await engine.loadThree(root);
   engine.planCameras();
   return { engine, audio, state };
 }
+
+// Music under a video without narration: a fade-in short enough to keep its
+// first beat, and how long its last chord rings after the closing hit.
+const WORDLESS_FADE_IN = 0.02;
+const WORDLESS_RING_OUT = 1;
 
 // A music file comes with its measured level, which decides how loud it plays.
 async function loadMusicFile({ src, volume, loop }) {
@@ -1978,13 +2090,19 @@ export async function renderAudio(engine, audio, { sampleRate = 48000 } = {}) {
   if (audio.loadError) throw new Error(`audio engine failed to load: ${audio.loadError.message}`);
   const { timeline, config } = engine.state;
   const { cues, clips, sounds, errors } = engine.sfxCues();
+  // With "defaults": "0.7", music under a video without narration starts in
+  // its full groove on its first beat, and its closing hit lands on the last
+  // bar line, where the end of the video holds.
+  const wordless = newDefaults(config, '0.7') && timeline.scenes.every((s) => !s.voice);
+  const fresh = wordless ? { fadeIn: WORDLESS_FADE_IN } : {};
   const buffer = await audio.renderSoundtrack({
     duration: timeline.duration,
     sampleRate,
     voice: timeline.scenes.filter((s) => s.voice).map((s) => ({ url: '/project/' + s.voice.url + '?v=' + engine.state.version, start: s.voice.start })),
     voiceSpans: timeline.voiceSpans,
-    music: config.music?.src ? null : config.music,
-    musicFile: config.music?.src ? await loadMusicFile(config.music) : null,
+    // When the last scene lasts bars, the closing hit lands on its last bar line.
+    music: config.music?.src ? null : config.music && (wordless ? { ...config.music, ...fresh, groove: true, ringOut: WORDLESS_RING_OUT, ...(timeline.music?.close ? { bars: timeline.music.close } : {}) } : config.music),
+    musicFile: config.music?.src ? { ...(await loadMusicFile(config.music)), ...fresh } : null,
     sfx: cues,
     clips,
     sounds,

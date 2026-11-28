@@ -13,6 +13,7 @@ pictures.
 | `narrated-explainer` | one idea in about a minute: a question, how it works, one number, why it matters, what to remember | 16:9, `paper` |
 | `vertical-short` | a short of 20 to 60 seconds for Shorts, TikTok and Reels, with the hook in the first second | `vertical`, `midnight`, bold captions |
 | `product-ad` | an ad of 15 to 30 seconds for a feed: a question, the product, three benefits, one offer | square, `studio`, bold captions |
+| `motion-short` | a piece of 10 to 30 seconds without narration, cut to the beat of the music: a logo reveal, a teaser or a loop | 16:9, `midnight`, hard cuts |
 
 `explainroo formats` lists them with the formats you installed, and
 `explainroo formats <format>` prints the guide of one.

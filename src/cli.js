@@ -8,7 +8,7 @@ import { normWord, ScriptError } from './script.js';
 import { prepare, makeState, outdatedLine, outdatedRenders, VERSION } from './pipeline.js';
 import { render } from './render.js';
 import { exportPlayer } from './export.js';
-import { check, formatVerify, heardEveryTime, NEARLY_LISTED, nearlyShort, nearlyText, untimed, stills, sheet, unconfirmedLine, unconfirmedWords, verify } from './qa.js';
+import { check, formatVerify, heardEveryTime, NEARLY_LISTED, nearlyShort, nearlyText, untimed, stills, sheet, SHEET_CHECKLIST, unconfirmedLine, unconfirmedWords, verify } from './qa.js';
 import { startServer, ROOT } from './server.js';
 import { VOICES, LANGUAGES, voiceLanguage, loadTTS, TTS_SAMPLE_RATE } from './models.js';
 import { phonemize, generateSpeech } from './phonemes.js';
@@ -27,7 +27,7 @@ import { boughtCharacters, speechConnector } from './paid-speech.js';
 import { allOf, formatServices, findService, findStep, needsKey, SERVICES, STEPS, stepNames, stepServices } from './services.js';
 import { clipPricesToday, showsClipPrices } from './price-list.js';
 import { narrationTime, speechKeys } from './voice.js';
-import { estimateLength, estimateLine, targetNotes } from './timeline.js';
+import { buildTimeline, estimateLength, estimateLine, targetNotes } from './timeline.js';
 import { estimatedChapterHints } from './chapters.js';
 import { formatSet, setSetting } from './set.js';
 import { findEnv } from './env.js';
@@ -314,10 +314,12 @@ export async function main(argv) {
         // The length from the script alone, before any speech is made or bought.
         if (flags.estimate) {
           const e = estimateLength(project);
-          const none = project.config.voice.provider === 'recording' ? 'A recording has its own length, so there is no estimate.' : `${scriptName(project)} has no narration yet, so there is no estimate.`;
+          const wordless = !project.script.scenes.some((sc) => sc.units.some((u) => u.type === 'word'));
+          const scenesOnly = wordless && project.config.voice.provider !== 'recording' ? withoutWords(project) : null;
+          const none = project.config.voice.provider === 'recording' ? 'A recording has its own length, so there is no estimate.' : scenesOnly ? scenesOnly.text : `${scriptName(project)} has no narration yet, so there is no estimate.`;
           const hints = estimatedChapterHints(project, e);
           const lines = hints.map((h) => `\n${h.level.toUpperCase().padEnd(5)} ${h.message}`).join('');
-          print(e ? `${estimateLine(e)}${lines}\nNothing was made.` : none, { estimate: e, ...(hints.length ? { notes: hints } : {}) });
+          print(e ? `${estimateLine(e)}${lines}\nNothing was made.` : none, { estimate: e, ...(scenesOnly ? { length: scenesOnly.length, ...(scenesOnly.music ? { music: scenesOnly.music } : {}) } : {}), ...(hints.length ? { notes: hints } : {}) });
           return 0;
         }
         const paid = speechConnector(project.config);
@@ -395,7 +397,8 @@ export async function main(argv) {
         if (pos[0] !== undefined && flagScene !== undefined && flagScene !== pos[0]) throw new ProjectError(`the scene is named twice, as "${pos[0]}" and with --scene ${flagScene}. Leave out one of them.`);
         const r = await sheet(project, { scene: pos[0] ?? flagScene, every: num(flags.every, 'every'), times: timesFlag(flags), cols: num(flags.cols, 'cols'), large: !!flags.large, log });
         const marked = r.marked.length ? `, ${r.marked.length} marked "camera moving" or "drawing in" under the frame` : '';
-        print(`${r.file} (${r.frames} frames${marked})`, r);
+        const asks = SHEET_CHECKLIST.map((q, i) => `  ${i + 1}. ${q}`).join('\n');
+        print(`${r.file} (${r.frames} frames${marked})\n\nOpen it and look at it like a viewer. Its frames are small, so judge the size of text on a full-size still. Fix what fails before you render:\n${asks}`, { ...r, checklist: SHEET_CHECKLIST });
         return 0;
       }
       case 'check': {
@@ -765,6 +768,18 @@ async function videoFileCheck(cmd, pos, flags, log, print) {
 // and the language that --lang picks.
 function runOverrides(flags) {
   return { size: textFlag(flags, 'size'), watermark: flags['no-watermark'] ? false : undefined, ...langOverride(flags) };
+}
+
+// The length of a video without narration, which its scenes set alone, and
+// the music's tempo, for planning scenes in bars.
+function withoutWords(project) {
+  const tl = buildTimeline(project, {});
+  const tempo = tl.music ? ` The music plays at ${+tl.music.bpm.toFixed(1)} beats a minute, so a bar lasts ${tl.music.bar.toFixed(2)} s.` : '';
+  return {
+    text: `${scriptName(project)} has no narration, so its scenes set the length: ${tl.duration.toFixed(1)} s, with the end of the video.${tempo}`,
+    length: Math.round(tl.duration * 100) / 100,
+    music: tl.music ? { bpm: tl.music.bpm, bar: Math.round(tl.music.bar * 1000) / 1000 } : null,
+  };
 }
 
 function langOverride(flags) {

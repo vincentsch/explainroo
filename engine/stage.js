@@ -2,7 +2,7 @@
 // draws the whole frame from scratch as a function of the scene time `s.t`.
 // Elements take `at` (when they appear) and optional `out` (when they leave);
 // the theme decides how they enter, and entering elements add sound effects.
-import { clamp, lerp, ease, easeFn, rand01, noise1, hashStr, mulberry32, suggest, normWord, withAlpha, contrast, mixColor, opaque, newDefaults, ordinal, LOCALES } from './util.js';
+import { clamp, lerp, ease, easeFn, rand01, noise1, hashStr, mulberry32, suggest, normWord, withAlpha, contrast, mixColor, opaque, newDefaults, ordinal, LOCALES, keyframeValue, parseColor, cssColor } from './util.js';
 import { colorOf, tintOf, fontString } from './themes.js';
 import { scalePath, quadD, polyD, pathLength, pointAt, parsePath, absolutize, samplePath } from './pathdata.js';
 import { layoutText, lineStartX } from './text.js';
@@ -11,6 +11,7 @@ import { cuedSteps, smallRecording, smallPageText, talkZoomed, movingSteps, reco
 import { highlightLine, codeTokens, matchTokens, resolveCodeSteps, codeMorphState } from './code.js';
 import { ring, bounds, along, rayThrough } from './geometry.js';
 import { kitWord } from './words.js';
+import { threeLoaded, threeLib, threeElement, threePicture, projectPoint } from './three.js';
 
 // The size of body text, which s.text uses unless told otherwise, and arrow
 // labels with "defaults": "0.5".
@@ -290,6 +291,95 @@ export class Stage {
 
   between(a, b) {
     return this.t >= this.time(a) && this.t < this.time(b);
+  }
+
+  // The scene time of the n-th beat of the music in this scene, counted from
+  // 1, the first beat at or after the scene starts. n may have a fraction,
+  // like 2.5 for the off-beat after beat 2.
+  beat(n = 1) {
+    return this._onGrid('beat', n);
+  }
+
+  // The scene time of the n-th bar line in this scene, counted from 1, the
+  // first one at or after the scene starts. A bar is four beats.
+  bar(n = 1) {
+    return this._onGrid('bar', n);
+  }
+
+  _onGrid(kind, n) {
+    const grid = this.engine.timeline.music;
+    if (!grid) {
+      const file = this.engine.config.music?.src;
+      throw new SceneError(file
+        ? `s.${kind} needs the tempo of the music file. Add "bpm" to the "music" block in video.json, and "offset" when its first beat isn't at 0`
+        : `s.${kind} needs music with a tempo, and this video has none. Turn on the built-in music with "music": true`);
+    }
+    if (!(typeof n === 'number' && n >= 1)) throw new SceneError(`s.${kind} counts from 1, the first ${kind} in the scene, so give it a number like s.${kind}(1) or s.${kind}(4), not ${JSON.stringify(n)}`);
+    const step = kind === 'bar' ? grid.bar : grid.beat;
+    const start = this.T - this.t;
+    // Half a frame early still counts as the scene's first beat, since scene
+    // starts are in whole frames.
+    const first = Math.max(0, Math.ceil((start - grid.start - 0.5 / this.engine.fps) / step));
+    return grid.start + (first + n - 1) * step - start;
+  }
+
+  // The value at time t (the scene time by default) from keyframes like
+  // [{ at: 0, v: 0 }, { at: 'word', v: 1, ease: 'outBack' }]. `at` takes any
+  // time, and `ease` shapes the way into its key. Values are numbers, lists of
+  // numbers, objects of numbers like { x, y }, or colors (names of the look or
+  // CSS colors).
+  keys(frames, t = this.t) {
+    if (!Array.isArray(frames) || !frames.length) throw new SceneError('s.keys takes a list of keyframes, like s.keys([{ at: 0, v: 0 }, { at: 2, v: 300 }])');
+    const color = (v) => {
+      if (typeof v !== 'string') return v;
+      const c = colorOf(this.theme, v);
+      if (parseColor(c)) return c;
+      const css = cssColor(c);
+      if (!css) throw new SceneError(`s.keys can't mix "${v}": a string value must be a color, like 'accent' or '#ff6600'`);
+      return css;
+    };
+    const keys = frames.map((k, i) => {
+      if (!k || typeof k !== 'object' || !('v' in k)) throw new SceneError(`keyframe ${i + 1} of s.keys needs its value as v, like { at: 1.5, v: 300 }`);
+      if (k.ease !== undefined && typeof k.ease !== 'function' && !ease[k.ease]) throw new SceneError(`keyframe ${i + 1} of s.keys has the ease "${k.ease}". Use one of: ${Object.keys(ease).join(', ')}`);
+      return { at: this.time(k.at ?? 0), v: color(k.v), ease: k.ease };
+    });
+    for (let i = 1; i < keys.length; i++) {
+      if (keys[i].at < keys[i - 1].at) throw new SceneError(`the keyframes of s.keys must be in time order, and keyframe ${i + 1} (${keys[i].at.toFixed(2)} s) comes before keyframe ${i} (${keys[i - 1].at.toFixed(2)} s)`);
+    }
+    try {
+      return keyframeValue(keys, this.time(t));
+    } catch (e) {
+      throw new SceneError(e.message.replace(/^the keyframes/, 'the keyframes of s.keys'));
+    }
+  }
+
+  // The point at p (0 to 1) along SVG path data or a list of points, and the
+  // direction there in degrees, for things that travel along a path.
+  along(path, p) {
+    const q = clamp(Number(p) || 0);
+    if (typeof path === 'string') {
+      const L = pathLength(path);
+      if (!(L > 0)) throw new SceneError(`s.along needs a path with a length, and "${path.slice(0, 40)}" has none`);
+      const at = pointAt(path, q * L);
+      const a = pointAt(path, Math.max(0, q * L - 0.5));
+      const b = pointAt(path, Math.min(L, q * L + 0.5));
+      return { x: at.x, y: at.y, angle: (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI };
+    }
+    const pts = Array.isArray(path) ? path.map((v) => (Array.isArray(v) ? { x: v[0], y: v[1] } : v)) : null;
+    if (!pts || pts.length < 2 || !pts.every((v) => v && Number.isFinite(v.x) && Number.isFinite(v.y))) {
+      throw new SceneError('s.along takes SVG path data like "M 0 0 C 100 0 200 100 300 100", or two or more points like [[0, 0], [300, 100]]');
+    }
+    const lens = [0];
+    for (let i = 1; i < pts.length; i++) lens.push(lens[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
+    const total = lens[lens.length - 1];
+    if (!(total > 0)) throw new SceneError('s.along needs points that are not all in one place');
+    const d = q * total;
+    let i = 1;
+    while (i < pts.length - 1 && lens[i] < d) i++;
+    const a = pts[i - 1];
+    const b = pts[i];
+    const f = lens[i] > lens[i - 1] ? (d - lens[i - 1]) / (lens[i] - lens[i - 1]) : 0;
+    return { x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f, angle: (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI };
   }
 
   rand(i = 0, seed = 0) {
@@ -842,6 +932,8 @@ export class Stage {
   }
 
   sfx(name, at, o = {}) {
+    // The exported player has no sound effects of its own: its mix has them.
+    if (!this.engine.sfxNames.length) return;
     if (!this.engine.sfxNames.includes(name)) throw new SceneError(`sfx "${name}" does not exist. Sounds: ${this.engine.sfxNames.join(', ')}`);
     const t = at === undefined ? this.t : this.time(at);
     const rec = this.engine.recorder;
@@ -1006,9 +1098,31 @@ export class Stage {
     if (box) this._logShape('drawing', { x: box.x, y: box.y, w: box.w, h: box.h, round: box.round === true }, this._settled(life), o, o.id ?? '', { call });
     const saved = Math.random;
     Math.random = random;
-    try { fn(this.ctx, life); } finally {
+    // While check looks at the scene, it notes whether the drawing drew anything.
+    const log = this.engine.drawingLog;
+    let ctx = this.ctx;
+    let drew = false;
+    if (log) {
+      const real = this.ctx;
+      ctx = new Proxy(real, {
+        get(target, prop) {
+          const v = Reflect.get(target, prop, target);
+          if (typeof v !== 'function') return v;
+          if (INK.has(prop)) return (...args) => { drew = true; return v.apply(target, args); };
+          return v.bind(target);
+        },
+        set(target, prop, value) { return Reflect.set(target, prop, value, target); },
+      });
+    }
+    try { fn(ctx, life); } finally {
       Math.random = saved;
       this.ctx.restore();
+      if (log) {
+        const name = o.id !== undefined && o.id !== null ? `the drawing "${o.id}"` : `the ${call}`;
+        const entry = log.get(name) ?? { name, at: life.at, drew: false };
+        entry.drew ||= drew;
+        log.set(name, entry);
+      }
     }
   }
 
@@ -1054,8 +1168,9 @@ export class Stage {
     const font = fontString(th, role, size, weight);
     const align = o.align ?? 'center';
     // Large text gets slightly tighter letter spacing in looks that set a
-    // tracking value.
-    const tracking = size >= 56 ? (th.fonts[role].tracking ?? 0) * size : 0;
+    // tracking value. `tracking` sets it in ems, like 0.3 for wide capitals.
+    if (o.tracking !== undefined && !(typeof o.tracking === 'number' && o.tracking >= -0.2 && o.tracking <= 2)) throw new SceneError(`text tracking is the space between letters in ems, from -0.2 to 2, like 0.3 for wide capitals, not ${JSON.stringify(o.tracking)}`);
+    const tracking = o.tracking !== undefined ? o.tracking * size : size >= 56 ? (th.fonts[role].tracking ?? 0) * size : 0;
     // save() and restore() put the spacing back. Reading ctx.letterSpacing
     // back is not reliable in Chrome.
     ctx.save();
@@ -1731,6 +1846,110 @@ export class Stage {
     return this._picture(src, () => frame === null ? null : this.engine.clipImage(clip, frame), clip.width, clip.height, this._cropped(o, 'clip', src, clip.source ?? clip, clip.width));
   }
 
+  // A 3D scene drawn with three.js. setup({ THREE, scene, camera, lights })
+  // builds it once, and frame({ t, scene, camera, state }) sets everything from
+  // the time, on every frame. It sits in a box like an image, with the same
+  // layout and timing options, and fills s.safe without w and h. It returns that
+  // box with point([x, y, z]), where a point of the 3D scene lands in the frame,
+  // for labels in s.text.
+  three(o = {}, spec = {}) {
+    const call = this._call('three');
+    const usage = 's.three takes its options and { setup, frame }: setup({ THREE, scene, camera, lights }) builds the scene once, and frame({ t, scene, camera, state }) sets everything from the time';
+    if (!spec || typeof spec !== 'object' || (spec.setup !== undefined && typeof spec.setup !== 'function') || (spec.frame !== undefined && typeof spec.frame !== 'function')) throw new SceneError(usage);
+    if (o.full) o = { ...o, x: this.W / 2, y: this.H / 2, w: this.W, h: this.H, enter: o.enter ?? 'none' };
+    // A 3D picture that fills the frame or s.safe is the shot itself, with a
+    // camera of its own, so the automatic camera keeps out.
+    if (this.engine.planning && (o.full || (o.w === undefined && o.h === undefined))) this.engine.manualCamera = true;
+    const w = o.w ?? this.safe.w;
+    const h = o.h ?? this.safe.h;
+    const x = o.x ?? this.cx;
+    const y = o.y ?? this.cy;
+    const key = `${this.scene.id}|${o.id ?? call}`;
+    // The pass at boot that finds which projects need three.js counts every
+    // call, also on a page that loaded it for an engine before.
+    if (this.engine.threeCollect) {
+      this.engine.threeCollect.add(key);
+      return { ...geom(x, y, w, h), point: () => ({ x, y, behind: false }) };
+    }
+    if (!threeLoaded()) {
+      if (this.engine.collectingMath) return { ...geom(x, y, w, h), point: () => ({ x, y, behind: false }) };
+      throw new SceneError(`${o.id === undefined ? `the ${call}` : `s.three "${o.id}"`} was not called when its scene started. Call s.three on every frame of the scene, and use at and out for its timing`);
+    }
+    const THREE = threeLib();
+    const tools = {
+      texture: (src) => this._threeTexture(THREE, src),
+      color: (name) => new THREE.Color(cssColor(colorOf(this.theme, name)) ?? colorOf(this.theme, name)),
+    };
+    const fail = (message) => new SceneError(message);
+    const el = threeElement(this.engine, key, spec, w, h, tools, fail);
+    if (el.camera.isPerspectiveCamera) el.camera.aspect = w / h;
+    const at = this.time(o.at ?? 0);
+    if (spec.frame) {
+      const saved = Math.random;
+      Math.random = mulberry32(this._seed('three', o, call));
+      try {
+        spec.frame({ s: this, t: this.t, local: Math.max(0, this.t - at), THREE, scene: el.scene, camera: el.camera, lights: el.lights, state: el.state, w, h, ...tools });
+      } finally {
+        Math.random = saved;
+      }
+    }
+    el.camera.updateProjectionMatrix?.();
+    const pixels = this._wantsPixels();
+    // check looks at its pixels for motion, as for s.draw.
+    if (this.engine.drawingLog) {
+      const name = o.id === undefined ? `the ${call}` : `the 3D scene "${o.id}"`;
+      this.engine.drawingLog.set(name, { name, at, drew: true });
+    }
+    // Labels placed with point() sit on the 3D picture on purpose, and most of
+    // its box is see-through, so it may overlap other things.
+    this._lastTr = null;
+    const box = this._picture(o.id ?? '3D', () => (pixels ? this._threePixels(el, w, h, fail) : null), w, h, { frame: 'none', shadow: false, radius: 0, fit: 'fill', overlap: true, ...o, x, y, w, h }, null, 'three');
+    // Points move with the picture while it comes in, like a slide or a pop.
+    const tr = this._lastTr ?? { dx: 0, dy: 0, s: 1 };
+    const k = (o.scale ?? 1) * tr.s;
+    return { ...box, point: (v) => {
+      const p = projectPoint(el, v, x, y, w, h);
+      return { ...p, x: x + tr.dx + (p.x - x) * k, y: y + tr.dy + (p.y - y) * k };
+    } };
+  }
+
+  // Whether this pass makes a picture. Planning the camera, finding sounds and
+  // check's look at the layout need only where things are, not 3D pixels.
+  _wantsPixels() {
+    const e = this.engine;
+    return !e.layoutLog && !e.recorder && !e.clipProbe && !e.collectingMath && !e.threeSetup && (!e.textLog || e.thumbing);
+  }
+
+  // The 3D picture at the size it shows on screen: its box times the current
+  // scale, which has the render scale, the camera's zoom and the element's own
+  // scale in it, never larger than the frame, in steps of 8 pixels.
+  _threePixels(el, w, h, fail) {
+    const m = this.ctx.getTransform();
+    const k = Math.hypot(m.a, m.b) || 1;
+    const canvas = this.engine.canvas;
+    const cap = Math.min(1, canvas.width / (w * k), canvas.height / (h * k));
+    const pw = Math.max(8, Math.ceil((w * k * cap) / 8) * 8);
+    const ph = Math.max(8, Math.ceil((h * k * cap) / 8) * 8);
+    // The motion blur samples of one frame share a render; any other draw is
+    // of its own exact time.
+    const moment = this.engine.blurFrame === null || this.engine.blurFrame === undefined ? `t${this.T}` : `f${this.engine.blurFrame}`;
+    return threePicture(el, pw, ph, moment, fail);
+  }
+
+  // An image from assets/ as a three.js texture, made once per engine.
+  _threeTexture(THREE, src) {
+    const cache = (this.engine.threeTextures ??= new Map());
+    let tex = cache.get(src);
+    if (!tex) {
+      tex = new THREE.Texture(this.engine.image(src));
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = 4;
+      tex.needsUpdate = true;
+      cache.set(src, tex);
+    }
+    return tex;
+  }
+
   // The `to` of a clip or a recording: seconds in the file, after `from` and
   // no later than its end.
   _clipTo(kind, to, from, duration, name) {
@@ -1892,7 +2111,8 @@ export class Stage {
     return box;
   }
 
-  _picture(src, source, naturalWidth, naturalHeight, o, paint) {
+  // `kind` names the element for check: 'image', or 'three' for a 3D scene.
+  _picture(src, source, naturalWidth, naturalHeight, o, paint, kind = 'image') {
     const th = this.theme;
     // A crop is the whole picture from here on, in the pixels the page draws.
     const crop = o.crop ?? null;
@@ -1925,7 +2145,7 @@ export class Stage {
     this._push(x, y, life, o);
     // The line on the outline: a rough card's, a window's, or o.border on a bare image.
     const border = frame === 'card' && th.stroke.rough ? th.stroke.width * 0.8 : bar ? 2 : frame === 'none' && o.border ? th.stroke.width : 0;
-    this._logShape('image', { w: fw, h: fh }, this._settled(life), o, src, { border });
+    this._logShape(kind, { w: fw, h: fh }, this._settled(life), o, src, { border });
     const ctx = this.ctx;
     const r = o.radius ?? (frame === 'phone' ? 46 : th.radius);
     if (frame === 'phone') {
@@ -3013,6 +3233,9 @@ export { mixColor };
 // in design pixels. Each fill, stroke, text or image counts on its own, and
 // one that covers most of the frame is a background and does not count.
 // Path2D objects cannot be looked into and are skipped.
+// The canvas calls that put something on the page.
+const INK = new Set(['fill', 'stroke', 'fillRect', 'strokeRect', 'fillText', 'strokeText', 'drawImage', 'putImageData']);
+
 export function boundsRecorder(ctx, scale, frame = null) {
   let x0 = Infinity;
   let y0 = Infinity;

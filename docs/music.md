@@ -49,6 +49,37 @@ goes from 0 to 1, and 0.5 is the default.
 Use `style` or `src`, not both. Only use music the user is allowed to use. A file
 does not follow `pace`, because it plays at its own speed.
 
+## Beats
+
+| Style | Tempo | One bar |
+| --- | --- | --- |
+| `calm` | 70 beats a minute | 3.43 s |
+| `warm` | 84 | 2.86 s |
+| `tech` | 100 | 2.40 s |
+| `upbeat` | 112 | 2.14 s |
+| `playful` | 118 | 2.03 s |
+
+A faster `pace` plays the built-in music faster too, by the square root of the
+pace. The built-in music knows its tempo, so a scene can put things on its beats
+with `s.beat(n)` and `s.bar(n)`, and a scene without narration can last a
+number of bars with `{bars=4}` in the script, so cuts land on the beat.
+`explainroo docs motion` shows how. A file has a tempo when you give it:
+
+```json
+"music": { "src": "assets/track.wav", "bpm": 120, "offset": 0.25 }
+```
+
+`bpm` is the tempo in beats a minute, and `offset` the second of the file where
+the first beat sounds, 0 by default. Take both from the score or the track's
+page. explainroo doesn't work out the tempo of a file itself. A file that loops
+stays on the beat only when it is a whole number of bars long, so trim it to
+whole bars or give it `"loop": false`. `{bars=4}` can't go with
+`targetSeconds`, because both set the length.
+
+In a video without narration, with `"defaults": "0.7"`, the built-in music
+starts in its full groove on its first beat instead of fading in, and its
+closing hit lands on the last bar line before the end of the video.
+
 ## A sound on a word
 
 `s.sound` plays a file on a cue, for a jingle or a noise that `s.sfx` doesn't have.
@@ -105,8 +136,10 @@ The report names the WAV file, which is in `library/my-music/tracks/my-track/ren
 Copy it into your video project's `assets/` folder and use it like any other file:
 
 ```json
-"music": { "src": "assets/my-track.wav", "credit": "Made with Soundroo" }
+"music": { "src": "assets/my-track.wav", "credit": "Made with Soundroo", "bpm": 112 }
 ```
+
+Copy `bpm` from the score's tempo, so `s.beat` and `{bars=4}` follow the track.
 
 Soundroo's music has no singing. You can't hear the music yourself, so ask the
 user how it sounds.
