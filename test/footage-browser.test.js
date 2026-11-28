@@ -163,3 +163,29 @@ test('a footage project shows the colours of the recording', { skip, timeout: 30
     assert.ok(seen.every((v, k) => Math.abs(v - c[k]) <= 6), `bar ${i + 1} should be ${c}, and it is ${seen}`);
   });
 });
+
+for (const delay of [0, 0.1]) {
+  test(`the working copy of a stretch keeps each flash with its beep${delay ? `, with a picture that starts ${delay} s after the sound` : ''}`, { skip, timeout: 300000 }, async (t) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-footage-stretch-'));
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+    const source = path.join(dir, 'talk.mp4');
+    await flashAndBeep(source, 30, delay);
+    fs.mkdirSync(path.join(dir, 'assets'));
+    // The stretch from 1.0 to 5.0 s has the moments at 1.2, 2.2, 3.4 and 4.4.
+    await makeWorkingCopy(source, path.join(dir, 'assets/footage.mov'), await footageInfo(source), { from: 1, to: 5 });
+    fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ size: '320x180', fps: 30, footage: 'assets/footage.mov', music: false, sfx: false, captions: false, watermark: false, motionBlur: false, transition: 'cut', defaults: '0.7' }));
+    fs.writeFileSync(path.join(dir, 'script.md'), '# Stretch\n\n## a {from=0 to=4}\n');
+    fs.writeFileSync(path.join(dir, 'scenes.js'), 'export default {};\n');
+    const project = loadProject(dir);
+    await synthesize(project, { transcribe: async () => ({ text: '', words: [] }) });
+    const r = await render(project, { workers: 2 });
+    const video = r.file ?? path.join(dir, 'out/video.mp4');
+    const seen = await flashes(video, 30);
+    const heard = await beeps(video);
+    const expected = [0.2, 1.2, 2.4, 3.4];
+    assert.equal(seen.length, expected.length, `flashes at ${seen}`);
+    seen.forEach((x, i) => assert.ok(Math.abs(x - expected[i] - delay) <= 1 / 30 + 0.002, `flash ${i + 1} at ${x.toFixed(3)} s, where the stretch puts it at ${expected[i] + delay} s`));
+    assert.equal(heard.length, expected.length, `beeps at ${heard}`);
+    seen.forEach((x, i) => assert.ok(Math.abs(x - delay - heard[i]) <= 1 / 30 + 0.002, `flash ${x.toFixed(3)} s and beep ${heard[i].toFixed(3)} s are not ${delay} s apart, within a frame`));
+  });
+}
