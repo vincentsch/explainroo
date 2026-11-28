@@ -22,11 +22,13 @@ function pixels(file, decoder = []) {
 }
 const alphaAt = (data, x, y, w = 320) => data[(y * w + x) * 4 + 3];
 
-function projectFiles(dir) {
+// `half` adds a half transparent box, for the colour and alpha checks.
+function projectFiles(dir, half = false) {
   fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ theme: 'clean', size: '320x180', fps: 24, captions: false, watermark: false, music: 'upbeat', sfx: false, end: 0 }));
   fs.writeFileSync(path.join(dir, 'script.md'), '## box {min=2 chapter="Box"}\n');
   fs.writeFileSync(path.join(dir, 'scenes.js'), `export default { box(s) {
     s.box('', { x: 160, y: 90, w: 80, h: 60, fill: '#245cff', border: false, at: 0, enter: 'none' });
+    ${half ? "s.box('', { x: 40, y: 40, w: 40, h: 40, fill: '#ff2020', border: false, opacity: 0.5, at: 0, enter: 'none', overlap: true });" : ''}
   } };`);
   return loadProject(dir);
 }
@@ -34,7 +36,7 @@ function projectFiles(dir) {
 test('transparent WebM and MOV retain alpha, audio, chapters and opaque covers', { skip }, async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-alpha-'));
   try {
-    const project = projectFiles(dir);
+    const project = projectFiles(dir, true);
     for (const format of ['webm', 'mov']) {
       const r = await render(project, { format, transparent: true, workers: 2 });
       assert.equal(r.out, path.join(dir, `out/video.${format}`));
@@ -65,6 +67,13 @@ test('transparent WebM and MOV retain alpha, audio, chapters and opaque covers',
       const data = pixels(r.out, format === 'webm' ? ['-c:v', 'libvpx-vp9'] : []);
       assert.equal(alphaAt(data, 0, 0), 0);
       assert.equal(alphaAt(data, 160, 90), 255);
+      // The colors come back as drawn, read the way the file says, and a half
+      // transparent box keeps its color with half its alpha (straight alpha).
+      const rgb = (x, y) => [...data.subarray((y * 320 + x) * 4, (y * 320 + x) * 4 + 3)];
+      const near = (a, b, d) => a.every((v, k) => Math.abs(v - b[k]) <= d);
+      assert.ok(near(rgb(160, 90), [0x24, 0x5c, 0xff], 8), `${format}: the box is ${rgb(160, 90)}`);
+      assert.ok(Math.abs(alphaAt(data, 40, 40) - 128) <= 10, `${format}: the half transparent box has alpha ${alphaAt(data, 40, 40)}`);
+      assert.ok(near(rgb(40, 40), [0xff, 0x20, 0x20], 14), `${format}: the half transparent box is ${rgb(40, 40)}`);
       assert.equal(alphaAt(pixels(r.cover), 0, 0), 255);
       // Both share the finished mix, and each encoder keeps its true peak under the ceiling.
       const sound = await loudness(r.out);

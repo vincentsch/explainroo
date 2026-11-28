@@ -716,7 +716,8 @@ export async function verify(project, { file = null, report: reportFile = null, 
         // the speech model sometimes gives a run of words one time, even past
         // the end of what it heard, and then every word stays.
         const heardFor = (to - from) / 16000;
-        const trusted = !collapsed(heard.words) && heard.words.every((w) => w.end <= heardFor + 0.05);
+        const tied = heard.words.some((w, i) => i > 0 && Math.abs(w.start - heard.words[i - 1].start) < 0.01 && w.end - w.start < 0.01);
+        const trusted = !collapsed(heard.words) && !tied && heard.words.every((w) => w.end <= heardFor + 0.05);
         const own = margin && trusted ? heard.words.filter((w) => {
           const mid = from / 16000 + (w.start + w.end) / 2;
           return mid >= t.start && mid < (timeline.scenes[index + 1]?.start ?? t.start + t.dur);

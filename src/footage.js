@@ -46,7 +46,9 @@ export async function footageInfo(file) {
   const a = info.streams.find((s) => s.codec_type === 'audio');
   if (!v) throw new ProjectError(`${path.basename(file)} has no picture.`);
   if (!a) throw new ProjectError(`${path.basename(file)} has no sound. A footage project uses the speech in the recording as its narration.`);
-  const source = [v.avg_frame_rate, v.r_frame_rate].map(rate).find((r) => r > 0 && r <= 240) ?? 30;
+  // The nominal rate, as long as it is one a video plays at: a variable frame
+  // rate recording has a lower average, and some screen recorders give 1000.
+  const source = [v.r_frame_rate, v.avg_frame_rate].map(rate).find((r) => r > 0 && r <= 61) ?? (rate(v.avg_frame_rate) || 30);
   const rotation = Math.abs(Number(v.side_data_list?.find((d) => d.rotation !== undefined)?.rotation ?? v.tags?.rotate ?? 0)) % 180 === 90;
   const [width, height] = rotation ? [v.height, v.width] : [v.width, v.height];
   return {
@@ -100,15 +102,23 @@ export async function makeWorkingCopy(src, dest, info, { log = () => {}, from = 
   // start_time=0 fills a picture that starts after the sound with its first
   // frame, on the clock the sound starts on. Both sides even, for yuv420p.
   const convert = info.hdr ? '' : `${info.bt601 ? ':in_color_matrix=bt601' : ''}${info.fullRange ? ':in_range=pc' : ''}:out_color_matrix=bt709:out_range=tv`;
-  filters.push(`fps=${info.fps}:start_time=0`, `scale='if(gte(iw,ih),trunc(min(1920,iw)/2)*2,-2)':'if(gte(iw,ih),-2,trunc(min(1920,ih)/2)*2)'${convert}`, 'setsar=1', 'format=yuv420p');
+  // A stretch of the source, for a short. The seek lands up to 2 s early, so a
+  // frame still on screen at the cut, as variable frame rate recordings hold
+  // them, is there when the frame rate is made constant; then both streams are
+  // trimmed at the same moment on that grid.
+  const pre = from !== null ? Math.min(2, from) : 0;
+  const trim = from !== null ? [`trim=start=${pre}:duration=${to - from}`, 'setpts=PTS-STARTPTS'] : [];
+  const atrim = from !== null ? `,atrim=start=${pre}:duration=${to - from},asetpts=PTS-STARTPTS` : '';
+  filters.push(`fps=${info.fps}:start_time=0`, ...trim, `scale='if(gte(iw,ih),trunc(min(1920,iw)/2)*2,-2)':'if(gte(iw,ih),-2,trunc(min(1920,ih)/2)*2)'${convert}`, 'setsar=1', 'format=yuv420p');
   log(`making a working copy of ${path.basename(src)} at ${info.fps} frames a second`);
   const temp = `${dest}.partial${path.extname(dest)}`;
-  // A stretch of the source, for a short: both streams cut at the same moment.
-  const stretch = from !== null ? ['-ss', String(from), '-t', String(to - from)] : [];
-  await ffmpeg(['-loglevel', 'error', '-y', ...stretch, '-i', src, '-map', '0:v:0', '-map', '0:a:0', '-map_metadata', '-1', '-vf', filters.join(','),
+  await ffmpeg(['-loglevel', 'error', '-y', ...(from !== null ? ['-ss', String(from - pre)] : []), '-i', src, '-map', '0:v:0', '-map', '0:a:0', '-map_metadata', '-1', '-map_chapters', '-1', '-vf', filters.join(','),
+    // The rate is said once more for the encoder: after a trim the filters no
+    // longer carry it, and ffmpeg would fall back to 25.
+    '-r', String(info.fps),
     '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-bf', '0', '-g', String(info.fps), '-keyint_min', String(info.fps),
     '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709',
-    '-c:a', 'pcm_s16le', '-ar', String(FOOTAGE_RATE), '-ac', '2', '-af', 'aresample=async=1:first_pts=0',
+    '-c:a', 'pcm_s16le', '-ar', String(FOOTAGE_RATE), '-ac', '2', '-af', `aresample=async=1:first_pts=0${atrim}`,
     '-avoid_negative_ts', 'make_zero', temp]);
   fs.renameSync(temp, dest);
   return note;
@@ -127,8 +137,11 @@ export function fileHash(file, cache = null) {
   }
   const sha256 = readHash(file);
   if (cache) {
-    fs.mkdirSync(path.dirname(cache), { recursive: true });
-    fs.writeFileSync(cache, JSON.stringify({ id, sha256 }));
+    // A project that can't be written to still gets its hash.
+    try {
+      fs.mkdirSync(path.dirname(cache), { recursive: true });
+      fs.writeFileSync(cache, JSON.stringify({ id, sha256 }));
+    } catch {}
   }
   return sha256;
 }
@@ -166,7 +179,7 @@ export function pieceEnds(quiet, duration, limit = PIECE_SECONDS, softest = null
 // The words of the working copy, heard in pieces split at pauses, kept by its
 // hash and language, with its quiet stretches. Stretches of sound of 2 seconds
 // or more without words are listed, as speech the model may have missed.
-export async function footageWords(file, sha256, language, { log = () => {}, transcribe = transcribeWords } = {}) {
+export async function footageWords(file, sha256, language, { log = () => {}, transcribe = transcribeWords, saved: only = false } = {}) {
   // Next to the working copy, so the words and their times travel with the
   // project, and a new working copy or another language is heard again.
   const saved = path.join(path.dirname(file), `${path.basename(file, path.extname(file))}.words-${language}.json`);
@@ -174,6 +187,7 @@ export async function footageWords(file, sha256, language, { log = () => {}, tra
     const kept = JSON.parse(fs.readFileSync(saved, 'utf8'));
     if (kept.sha256 === sha256 && kept.language === language) return withPlausibleTimes(kept);
   }
+  if (only) throw new ProjectError(`the words of ${path.basename(file)} in this language aren't saved for this working copy. "explainroo voice" on its project hears them once.`);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'explainroo-footage-'));
   try {
     const wav = path.join(dir, 'speech-16k.wav');
@@ -384,8 +398,11 @@ export function footagePassages(heardWords, duration, fps, { tight = false } = {
   // Scenes meet in the middle of a pause. A tight edit, for a short, cuts a
   // pause of 1.2 seconds or more instead: the scene ends 0.25 s after its last
   // word and the next starts 0.25 s before its first.
-  const long = (i) => scenes[i + 1] && scenes[i + 1][0].start - scenes[i].at(-1).end >= 1.2;
-  const begin = (i) => (i === 0 ? snap(head) : tight && long(i - 1) ? snap(scenes[i][0].start - 0.25) : snap((scenes[i - 1].at(-1).end + scenes[i][0].start) / 2));
+  // A start that was only estimated may be early or late: a tight cut leaves up
+  // to a second before it, back to where the speech model heard it.
+  const earliest = (w) => (w.heardStart !== undefined ? Math.max(w.heardStart, w.start - 1) : w.start);
+  const long = (i) => scenes[i + 1] && earliest(scenes[i + 1][0]) - scenes[i].at(-1).end >= 1.2;
+  const begin = (i) => (i === 0 ? snap(head) : tight && long(i - 1) ? snap(earliest(scenes[i][0]) - 0.25) : snap((scenes[i - 1].at(-1).end + scenes[i][0].start) / 2));
   const finish = (i) => (i === scenes.length - 1 ? tail : tight && long(i) ? snap(scenes[i].at(-1).end + 0.25) : begin(i + 1));
   // A scene that wouldn't last a frame joins the one before it.
   for (let i = 1; i < scenes.length; i++) {
@@ -517,7 +534,7 @@ export function footageParent(input) {
   const src = typeof raw.footage === 'string' ? raw.footage : raw.footage?.src;
   if (!src) throw new ProjectError(`${input} is a project without a recording. --footage takes a video file or a footage project.`);
   const language = raw.language ?? 'en';
-  return { dir: input, file: path.join(input, src), language, theme: raw.theme, music: raw.music, words: path.join(input, path.dirname(src), `${path.basename(src, path.extname(src))}.words-${language}.json`) };
+  return { dir: input, file: path.join(input, src), language, theme: raw.theme, fps: raw.fps, music: raw.music, words: path.join(input, path.dirname(src), `${path.basename(src, path.extname(src))}.words-${language}.json`) };
 }
 
 // The words of a stretch of a parent's recording, as words of the stretch:
@@ -528,10 +545,13 @@ function stretchWords(parent, parentHash, from, to) {
   const kept = JSON.parse(fs.readFileSync(parent.words, 'utf8'));
   if (kept.sha256 !== parentHash) return null;
   const shift = (t) => round(Math.min(to, Math.max(from, t)) - from);
+  // The words as the long project shows them, repaired, so the short has the
+  // words of the passage it was picked from.
+  const words = plausibleTimes(speechOnly(kept.words));
   return {
     language: kept.language,
     duration: round(to - from),
-    words: kept.words.filter((w) => w.start >= from && w.start < to).map((w) => ({ ...w, start: shift(w.start), end: shift(w.end) })),
+    words: words.filter((w) => w.start >= from && w.start < to).map((w) => ({ ...w, start: shift(w.start), end: shift(w.end), ...(w.heardStart !== undefined ? { heardStart: shift(w.heardStart) } : {}) })),
     quiet: kept.quiet.filter(([a, b]) => b > from && a < to).map(([a, b]) => [shift(a), shift(b)]),
     unheard: kept.unheard.filter(([a, b]) => b > from && a < to).map(([a, b]) => [shift(a), shift(b)]),
   };
@@ -554,7 +574,9 @@ export async function createFootageProject(target, input, { title, theme, size, 
   theme ??= parent?.theme ?? 'midnight';
   const info = await footageInfo(file);
   checkLanguage(language);
-  if (!THEMES.includes(theme)) throw new ProjectError(`theme must be one of ${THEMES.join(', ')}`);
+  // The long project's own look file comes along.
+  const ownLook = parent && theme === parent.theme && !THEMES.includes(theme) && /\.json$/.test(theme) && fs.existsSync(path.join(parent.dir, theme));
+  if (!THEMES.includes(theme) && !ownLook) throw new ProjectError(`theme must be one of ${THEMES.join(', ')}`);
   // The stretch, on the frame grid of the project.
   let stretch = null;
   if (from !== undefined || to !== undefined) {
@@ -567,9 +589,13 @@ export async function createFootageProject(target, input, { title, theme, size, 
   size ||= Math.abs(info.width - info.height) < 8 ? 'square' : info.width > info.height ? '16:9' : 'vertical';
   resolveSize(size);
   title ||= path.basename(target).replace(/[-_]+/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
-  const config = { title, theme, size, fps: info.fps, footage: 'assets/footage.mov', music: parent?.music === false ? false : true, captions: 'auto', transition: 'cut', camera: 'still', defaults: DEFAULTS_VERSIONS.at(-1), ...(language !== 'en' ? { language } : {}) };
+  const config = { title, theme, size, fps: parent?.fps ?? info.fps, footage: 'assets/footage.mov', music: parent?.music === false ? false : true, captions: 'auto', transition: 'cut', camera: 'still', defaults: DEFAULTS_VERSIONS.at(-1), ...(language !== 'en' ? { language } : {}) };
   normalizeConfig({ ...config }, '.');
   fs.mkdirSync(path.join(target, 'assets'), { recursive: true });
+  if (ownLook) {
+    fs.mkdirSync(path.dirname(path.join(target, theme)), { recursive: true });
+    fs.copyFileSync(path.join(parent.dir, theme), path.join(target, theme));
+  }
   const wordsFile = path.join(path.dirname(dest), `footage.words-${language}.json`);
   const hadWords = fs.existsSync(wordsFile);
   const note = await makeWorkingCopy(file, dest, info, { log, ...(stretch ?? {}) });
@@ -580,6 +606,7 @@ export async function createFootageProject(target, input, { title, theme, size, 
     // The parent's words, when they are of its working copy and in this language, are not heard again.
     const reused = parent && parent.language === language ? stretchWords(parent, fileHash(parent.file, path.join(parent.dir, 'build', 'footage', 'hash.json')), stretch?.from ?? 0, stretch?.to ?? info.duration) : null;
     if (reused) fs.writeFileSync(wordsFile, JSON.stringify({ sha256: hash, ...reused }));
+    else if (parent) log(`the words of ${path.basename(parent.dir)} aren't saved for its working copy${parent.language !== language ? ' in this language' : ''}, so the speech model hears the stretch`);
     heard = await footageWords(dest, hash, language, { log, ...(transcribe ? { transcribe } : {}) });
     script = footageScript(heard.words, Math.min(heard.duration, await pictureSeconds(dest)), info.fps, title, { tight: !!stretch });
   } catch (e) {

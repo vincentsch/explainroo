@@ -869,7 +869,7 @@ async function recordingPassages(project, { log }) {
   if (!project.config.footage) throw new ProjectError('words --recording is for a footage project, whose recording has words of its own');
   const file = path.join(project.dir, project.config.footage.src);
   const sha = fileHash(file, path.join(project.paths.build, 'footage', 'hash.json'));
-  const heard = await footageWords(file, sha, project.config.language, { log });
+  const heard = await footageWords(file, sha, project.config.language, { log, saved: true });
   const duration = Math.min(heard.duration, await pictureSeconds(file));
   const passages = footagePassages(heard.words, duration, project.config.fps).map((p) => ({ from: p.from, to: p.to, text: p.text }));
   return { duration, passages };

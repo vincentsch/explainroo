@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { footageScript, pieceEnds, unheardStretches, projectRate, createFootageProject, makeWorkingCopy, footageInfo, plausibleTimes, collapsed, softestMoment } from '../src/footage.js';
+import { footageScript, pieceEnds, unheardStretches, projectRate, createFootageProject, makeWorkingCopy, footageInfo, plausibleTimes, collapsed, softestMoment, footagePassages } from '../src/footage.js';
 import { ffmpeg, probe } from '../src/ffmpeg.js';
 import { loadProject } from '../src/project.js';
 import { buildTimeline } from '../src/timeline.js';
@@ -83,6 +83,9 @@ test('a word gets no more time than its letters take, a run of words at one mome
   // A near tie with an outlier between keeps every word forward.
   const near = plausibleTimes([{ text: 'one', start: 3, end: 3.2 }, { text: 'two', start: 9, end: 9.2 }, { text: 'three', start: 2.998, end: 3.3 }, { text: 'four', start: 3.4, end: 3.6 }]);
   near.forEach((w) => assert.ok(w.end >= w.start, `${w.text} from ${w.start} to ${w.end}`));
+  // A tight cut leaves up to a second before a start that was only estimated.
+  const drawl = footagePassages(plausibleTimes([{ text: 'Done.', start: 1, end: 1.3 }, { text: 'So', start: 5, end: 6.4, first: true }, { text: 'today.', start: 6.5, end: 6.8 }]), 10, 30, { tight: true });
+  assert.equal(drawl[1].from, Math.round((5 - 0.25) * 30) / 30);
   // A drawn-out first word at the very start keeps its opening when it is cut back.
   const opening = parseScript(footageScript(plausibleTimes([{ text: 'So', start: 0.2, end: 1.6, first: true }, { text: 'today.', start: 1.7, end: 2 }]), 10, 30, 'Talk'));
   assert.equal(opening.scenes[0].attrs.from, 0);
@@ -205,7 +208,9 @@ test('a short from a stretch of a footage project reuses its words, cuts its lon
   const src = path.join(dir, 'talk.mp4');
   await ffmpeg(['-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'color=gray:s=320x180:r=30:d=12', '-f', 'lavfi', '-i', 'sine=f=300:d=12:sample_rate=48000',
     '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', src]);
-  const said = [['One', 1], ['two', 1.3], ['three.', 1.6], ['Four', 4.5], ['five', 4.8], ['six.', 5.1], ['Seven', 7.5], ['eight.', 7.8], ['Nine', 10], ['ten.', 10.3]];
+  // "five" has a time after the words that follow it, as the speech model gives at times;
+  // the long project shows it in its place, and so must the short.
+  const said = [['One', 1], ['two', 1.3], ['three.', 1.6], ['Four', 4.5], ['five', 9.9], ['six.', 5.1], ['Seven', 7.5], ['eight.', 7.8], ['Nine', 10], ['ten.', 10.3]];
   let heard = 0;
   const transcribe = async () => {
     heard++;
