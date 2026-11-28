@@ -121,6 +121,24 @@ motion that looks designed.
   <sub>A frame of <a href="examples/seasons-3d">examples/seasons-3d</a>, where three.js draws the orbit and the labels come from <code>point()</code>. <a href="examples/logo-reveal">examples/logo-reveal</a> is a piece without words, cut to the beat.</sub>
 </p>
 
+## Your own footage
+
+Give your agent a recording of you talking, to the camera, in a webinar or
+over a screen recording, and it makes a finished video from it:
+
+```bash
+npx --yes explainroo init videos/talk --footage talk.mp4
+```
+
+The speech model listens to the recording on your computer, and `script.md`
+gets a scene for each span of it, with the words you said. Your agent edits
+there: it cuts slow starts and false starts, trims and reorders the spans,
+and puts graphics on your words, like your name, a number you say, a
+punch-in, or a diagram over the whole frame while you keep talking. Picture
+and sound stay in sync across every cut, and captions, music, a tall version
+for Shorts and `verify` work as in any other video. `explainroo docs footage`
+has the details.
+
 ## Check or cut any video
 
 `check` and `verify` also take a video file made with any tool:
