@@ -890,13 +890,21 @@ async function footageScene(project, scene, hash, footage, join, key) {
   // only estimated can't say where a cut lands.
   // Each with the two times that cut it whole or keep it whole: a little before
   // or after it, or where it meets the word next to it.
+  // Spans are whole frames, so the times are frames in the gap, or none.
   const all = footage.heard.words;
-  const between = (a, b, fallback) => (b - a >= 0.08 ? fallback : (a + b) / 2);
+  const gridBefore = (w, prevEnd) => {
+    const t = Math.floor((w.start + 1e-6) * fps) / fps;
+    return t >= prevEnd - 0.02 ? round(t) : null;
+  };
+  const gridAfter = (w, nextStart) => {
+    const t = Math.ceil((w.end - 1e-6) * fps) / fps;
+    return t <= nextStart + 0.02 ? round(t) : null;
+  };
   const edges = all.map((w, i) => ({ w, i })).filter(({ w }) => !w.estimated && ((w.start < start - 0.02 && w.end > start + 0.02) || (w.start < start + duration - 0.02 && w.end > start + duration + 0.02)))
     .map(({ w, i }) => ({
       word: w.text, start: w.start, end: w.end, side: w.start < start ? 'start' : 'end',
-      before: round(i > 0 ? between(all[i - 1].end, w.start, w.start - 0.04) : Math.max(0, w.start - 0.04)),
-      after: round(i < all.length - 1 ? between(w.end, all[i + 1].start, w.end + 0.04) : w.end + 0.04),
+      before: gridBefore(w, i > 0 ? all[i - 1].end : 0),
+      after: gridAfter(w, i < all.length - 1 ? all[i + 1].start : Infinity),
     }));
   const files = voicePaths(project, scene.id);
   writeWav(files.wav, samples, sr);

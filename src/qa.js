@@ -434,7 +434,7 @@ export function speechFindings(project, voices, timeline = null) {
     for (const e of v?.footage?.edges ?? []) {
       const side = e.side === 'start' ? 'starts' : 'ends';
       const key = e.side === 'start' ? 'from' : 'to';
-      issues.push({ level: 'warn', scene: sc.id, t: e.side === 'start' ? 0 : null, message: `scene "${sc.id}" ${side} inside the word "${e.word}", which the recording says from ${e.start.toFixed(2)} to ${e.end.toFixed(2)} s; set ${key} to ${(e.before ?? e.start - 0.04).toFixed(2)} or ${(e.after ?? e.end + 0.04).toFixed(2)}, so the word is cut whole or kept whole` });
+      issues.push({ level: 'warn', scene: sc.id, t: e.side === 'start' ? 0 : null, message: `scene "${sc.id}" ${side} inside the word "${e.word}", which the recording says from ${e.start.toFixed(2)} to ${e.end.toFixed(2)} s; ${[e.before, e.after].some((x) => x !== null && x !== undefined) ? `set ${key} to ${[e.before, e.after].filter((x) => x !== null && x !== undefined).map((x) => x.toFixed(3)).join(' or ')}, a frame between words, so the word is cut whole or kept whole` : `no whole frame falls between it and the words next to it, so cut a word earlier or later, where "explainroo words" shows a gap`}` });
     }
     const suspicious = v ? v.unmatched.filter((w) => w.replace(/[^\p{L}\p{M}\p{N}]/gu, '').length > 3) : [];
     // A word that already has {shown|spoken} counts at any length, like {SQL|sequel},
@@ -716,7 +716,7 @@ export async function verify(project, { file = null, report: reportFile = null, 
         // the speech model sometimes gives a run of words one time, even past
         // the end of what it heard, and then every word stays.
         const heardFor = (to - from) / 16000;
-        const tied = heard.words.some((w, i) => i > 0 && Math.abs(w.start - heard.words[i - 1].start) < 0.01 && w.end - w.start < 0.01);
+        const tied = heard.words.some((w, i) => w.end - w.start < 0.01 || (i > 0 && Math.abs(w.start - heard.words[i - 1].start) < 0.01));
         const trusted = !collapsed(heard.words) && !tied && heard.words.every((w) => w.end <= heardFor + 0.05);
         const own = margin && trusted ? heard.words.filter((w) => {
           const mid = from / 16000 + (w.start + w.end) / 2;

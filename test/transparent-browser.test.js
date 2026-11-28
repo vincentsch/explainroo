@@ -22,6 +22,14 @@ function pixels(file, decoder = []) {
 }
 const alphaAt = (data, x, y, w = 320) => data[(y * w + x) * 4 + 3];
 
+// The first frame read as BT.709 whatever the file says, as editors read HD,
+// so a file encoded with another matrix shows its wrong colors here.
+function pixels709(file, decoder = []) {
+  const r = spawnSync(ffmpegPath(), ['-v', 'error', ...decoder, '-i', file, '-frames:v', '1', '-vf', 'scale=in_color_matrix=bt709:in_range=tv,format=rgba', '-f', 'rawvideo', '-threads', '1', '-'], { maxBuffer: 1024 * 1024 });
+  assert.equal(r.status, 0, r.stderr.toString());
+  return r.stdout;
+}
+
 // `half` adds a half transparent box, for the colour and alpha checks.
 function projectFiles(dir, half = false) {
   fs.writeFileSync(path.join(dir, 'video.json'), JSON.stringify({ theme: 'clean', size: '320x180', fps: 24, captions: false, watermark: false, music: 'upbeat', sfx: false, end: 0 }));
@@ -69,7 +77,8 @@ test('transparent WebM and MOV retain alpha, audio, chapters and opaque covers',
       assert.equal(alphaAt(data, 160, 90), 255);
       // The colors come back as drawn, read the way the file says, and a half
       // transparent box keeps its color with half its alpha (straight alpha).
-      const rgb = (x, y) => [...data.subarray((y * 320 + x) * 4, (y * 320 + x) * 4 + 3)];
+      const read709 = pixels709(r.out, format === 'webm' ? ['-c:v', 'libvpx-vp9'] : []);
+      const rgb = (x, y) => [...read709.subarray((y * 320 + x) * 4, (y * 320 + x) * 4 + 3)];
       const near = (a, b, d) => a.every((v, k) => Math.abs(v - b[k]) <= d);
       assert.ok(near(rgb(160, 90), [0x24, 0x5c, 0xff], 8), `${format}: the box is ${rgb(160, 90)}`);
       assert.ok(Math.abs(alphaAt(data, 40, 40) - 128) <= 10, `${format}: the half transparent box has alpha ${alphaAt(data, 40, 40)}`);

@@ -102,11 +102,11 @@ export async function makeWorkingCopy(src, dest, info, { log = () => {}, from = 
   // start_time=0 fills a picture that starts after the sound with its first
   // frame, on the clock the sound starts on. Both sides even, for yuv420p.
   const convert = info.hdr ? '' : `${info.bt601 ? ':in_color_matrix=bt601' : ''}${info.fullRange ? ':in_range=pc' : ''}:out_color_matrix=bt709:out_range=tv`;
-  // A stretch of the source, for a short. The seek lands up to 2 s early, so a
+  // A stretch of the source, for a short. The seek lands up to 10 s early, so a
   // frame still on screen at the cut, as variable frame rate recordings hold
   // them, is there when the frame rate is made constant; then both streams are
   // trimmed at the same moment on that grid.
-  const pre = from !== null ? Math.min(2, from) : 0;
+  const pre = from !== null ? Math.min(10, from) : 0;
   const trim = from !== null ? [`trim=start=${pre}:duration=${to - from}`, 'setpts=PTS-STARTPTS'] : [];
   const atrim = from !== null ? `,atrim=start=${pre}:duration=${to - from},asetpts=PTS-STARTPTS` : '';
   filters.push(`fps=${info.fps}:start_time=0`, ...trim, `scale='if(gte(iw,ih),trunc(min(1920,iw)/2)*2,-2)':'if(gte(iw,ih),-2,trunc(min(1920,ih)/2)*2)'${convert}`, 'setsar=1', 'format=yuv420p');
@@ -534,7 +534,7 @@ export function footageParent(input) {
   const src = typeof raw.footage === 'string' ? raw.footage : raw.footage?.src;
   if (!src) throw new ProjectError(`${input} is a project without a recording. --footage takes a video file or a footage project.`);
   const language = raw.language ?? 'en';
-  return { dir: input, file: path.join(input, src), language, theme: raw.theme, fps: raw.fps, music: raw.music, words: path.join(input, path.dirname(src), `${path.basename(src, path.extname(src))}.words-${language}.json`) };
+  return { dir: input, file: path.join(input, src), language, theme: raw.theme, music: raw.music, words: path.join(input, path.dirname(src), `${path.basename(src, path.extname(src))}.words-${language}.json`) };
 }
 
 // The words of a stretch of a parent's recording, as words of the stretch:
@@ -574,9 +574,10 @@ export async function createFootageProject(target, input, { title, theme, size, 
   theme ??= parent?.theme ?? 'midnight';
   const info = await footageInfo(file);
   checkLanguage(language);
-  // The long project's own look file comes along.
-  const ownLook = parent && theme === parent.theme && !THEMES.includes(theme) && /\.json$/.test(theme) && fs.existsSync(path.join(parent.dir, theme));
+  // The long project's own look file comes along, as a file of the short's own.
+  const ownLook = parent && theme === parent.theme && !THEMES.includes(theme) && /\.json$/.test(theme) && fs.existsSync(path.join(parent.dir, theme)) ? path.join(parent.dir, theme) : null;
   if (!THEMES.includes(theme) && !ownLook) throw new ProjectError(`theme must be one of ${THEMES.join(', ')}`);
+  if (ownLook) theme = path.basename(ownLook);
   // The stretch, on the frame grid of the project.
   let stretch = null;
   if (from !== undefined || to !== undefined) {
@@ -589,12 +590,13 @@ export async function createFootageProject(target, input, { title, theme, size, 
   size ||= Math.abs(info.width - info.height) < 8 ? 'square' : info.width > info.height ? '16:9' : 'vertical';
   resolveSize(size);
   title ||= path.basename(target).replace(/[-_]+/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
-  const config = { title, theme, size, fps: parent?.fps ?? info.fps, footage: 'assets/footage.mov', music: parent?.music === false ? false : true, captions: 'auto', transition: 'cut', camera: 'still', defaults: DEFAULTS_VERSIONS.at(-1), ...(language !== 'en' ? { language } : {}) };
-  normalizeConfig({ ...config }, '.');
+  const config = { title, theme, size, fps: info.fps, footage: 'assets/footage.mov', music: parent?.music === false ? false : true, captions: 'auto', transition: 'cut', camera: 'still', defaults: DEFAULTS_VERSIONS.at(-1), ...(language !== 'en' ? { language } : {}) };
+  if (!ownLook) normalizeConfig({ ...config }, '.');
   fs.mkdirSync(path.join(target, 'assets'), { recursive: true });
   if (ownLook) {
-    fs.mkdirSync(path.dirname(path.join(target, theme)), { recursive: true });
-    fs.copyFileSync(path.join(parent.dir, theme), path.join(target, theme));
+    // Never over a file that is there already.
+    fs.copyFileSync(ownLook, path.join(target, theme), fs.constants.COPYFILE_EXCL);
+    normalizeConfig({ ...config }, target);
   }
   const wordsFile = path.join(path.dirname(dest), `footage.words-${language}.json`);
   const hadWords = fs.existsSync(wordsFile);

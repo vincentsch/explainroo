@@ -227,12 +227,16 @@ test('a short from a stretch of a footage project reuses its words, cuts its lon
   await createFootageProject(parent, src, { transcribe });
   assert.equal(heard, 1);
   const settings = JSON.parse(fs.readFileSync(path.join(parent, 'video.json'), 'utf8'));
-  fs.writeFileSync(path.join(parent, 'video.json'), JSON.stringify({ ...settings, theme: 'paper', music: false }));
+  // The long project's own look sits outside its folder; the short gets a copy of its own.
+  fs.writeFileSync(path.join(dir, 'brand.json'), JSON.stringify({ extends: 'paper' }));
+  fs.writeFileSync(path.join(parent, 'video.json'), JSON.stringify({ ...settings, theme: '../brand.json', music: false }));
   const r = await createFootageProject(path.join(dir, 'short'), parent, { from: 4, to: 9, size: 'tiktok', transcribe });
   assert.equal(heard, 1, 'the short heard the recording again');
   assert.deepEqual(r.stretch, { from: 4, to: 9 });
   const config = JSON.parse(fs.readFileSync(path.join(dir, 'short', 'video.json'), 'utf8'));
-  assert.deepEqual([config.theme, config.music, config.size], ['paper', false, 'tiktok']);
+  assert.deepEqual([config.theme, config.music, config.size], ['brand.json', false, 'tiktok']);
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dir, 'short', 'brand.json'), 'utf8')), { extends: 'paper' });
+  assert.equal(loadProject(path.join(dir, 'short')).config.look.extends ?? 'paper', 'paper');
   // The working copy is the stretch, five seconds.
   const v = (await probe(path.join(dir, 'short', 'assets', 'footage.mov'))).streams.find((x) => x.codec_type === 'video');
   assert.equal(Number(v.nb_frames), 150);
