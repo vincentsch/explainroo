@@ -188,6 +188,32 @@ export async function transcribeWords(samples, { log, language = 'en' } = {}) {
   };
 }
 
+// The words a person said, from the speech model's words: without the notes it
+// writes for sound that isn't speech, like [BLANK_AUDIO], [Music] or (laughs),
+// even when it writes one in two pieces, and with a part it heard on its own
+// after a hyphen, like the "-foot" of "800-foot", back on its word.
+export function speechOnly(words) {
+  const out = [];
+  let note = 0;
+  for (const w of words) {
+    const text = w.text.trim();
+    if (!text) continue;
+    if (note || /^[[(]/.test(text)) {
+      note = /[\])]$/.test(text) || note >= 3 ? 0 : note + 1;
+      continue;
+    }
+    if (/^[♪♫*#]+$/u.test(text)) continue;
+    const last = out.at(-1);
+    if (last && /^-[\p{L}\p{N}]/u.test(text) && /[\p{L}\p{N}]$/u.test(last.text) && w.start - last.end < 0.3) {
+      last.text += text;
+      last.end = w.end;
+      continue;
+    }
+    out.push({ ...w, text });
+  }
+  return out;
+}
+
 // Kokoro v1.0 voices for the supported languages.
 export const VOICES = {
   af_heart: 'American English, female (default)',

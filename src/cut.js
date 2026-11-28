@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { AUDIO_CODECS, dbtp, ffmpeg, finishMix, loudness, probe } from './ffmpeg.js';
-import { cacheRoot, transcribeWords } from './models.js';
+import { cacheRoot, transcribeWords, speechOnly } from './models.js';
 import { readWav } from './wav.js';
 import { sha256File } from './history.js';
 import { DEFAULTS, ProjectError, checkLanguage } from './project.js';
@@ -490,7 +490,7 @@ async function transcript(video, sha256, language, { log, transcribe }) {
     if (!words) {
       log(`listening to ${path.basename(video)}`);
       const heard = await transcribe(samples, { log, language });
-      words = heard.words.filter((w) => w.text.trim()).map((w) => ({ text: w.text.trim().replace(/\s+/g, ' '), start: Math.round(w.start * 100) / 100, end: Math.round(w.end * 100) / 100 }));
+      words = speechOnly(heard.words).map((w) => ({ text: w.text.replace(/\s+/g, ' '), start: Math.round(w.start * 100) / 100, end: Math.round(w.end * 100) / 100 }));
     }
     const levels = soundLevels(samples, 16000).levels.map((l) => Math.round(l * 10) / 10);
     const result = { language, words, quiet: quietStretches(samples, 16000), levels };
