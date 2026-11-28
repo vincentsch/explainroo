@@ -128,8 +128,8 @@ s09(s) {
   s.footage();
   const { x, bottom, w, h } = s.safe;
   const u = Math.min(w, h) / 100;
-  const name = s.text('Scott Kelly', { x, y: bottom - 20 * u, align: 'left', valign: 'top', size: 6.5 * u, weight: 700, color: '#ffffff', bg: '#14161c', radius: 0, padding: 2.2 * u, at: 'Scott', enter: 'slide-right' });
-  s.text('NASA ASTRONAUT', { x, y: name.bottom, align: 'left', valign: 'top', size: 4.2 * u, weight: 700, tracking: 0.14, color: '#0b0d12', bg: 'accent', radius: 0, padding: 1.4 * u, at: 'Scott', enter: 'slide-right', dur: 0.6 });
+  const name = s.text('Ana Ruiz', { x, y: bottom - 20 * u, align: 'left', valign: 'top', size: 6.5 * u, weight: 700, color: '#ffffff', bg: '#14161c', radius: 0, padding: 2.2 * u, at: 'Ana', enter: 'slide-right' });
+  s.text('FLIGHT ENGINEER', { x, y: name.bottom, align: 'left', valign: 'top', size: 4.2 * u, weight: 700, tracking: 0.14, color: '#0b0d12', bg: 'accent', radius: 0, padding: 1.4 * u, at: 'Ana', enter: 'slide-right', dur: 0.6 });
 },
 ```
 
