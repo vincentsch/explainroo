@@ -676,7 +676,7 @@ export async function synthesize(project, { force = false, fresh = false, log = 
         : `, check pronunciation (${Math.round(info.matchRate * 100)}% of words confirmed)`) : '';
       done += weight(item);
       const left = done < all ? `, about ${roughTime(((Date.now() - began) / done) * (all - done) / 1000)} left` : '';
-      log(`voice ${number}${voiceLine(scene.id, info, (Date.now() - t0) / 1000, !!recordings)}${warn}${left}`);
+      log(`voice ${number}${voiceLine(scene.id, info, (Date.now() - t0) / 1000, !!recordings || !!footage)}${warn}${left}`);
     }
   }
   return finish();
