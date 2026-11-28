@@ -186,7 +186,11 @@ function parseArgs(argv) {
     const a = argv[i];
     if (a.startsWith('--')) {
       const eq = a.indexOf('=');
-      if (eq !== -1) flags[a.slice(2, eq)] = a.slice(eq + 1);
+      if (eq !== -1) {
+        // A flag that is on or off takes no value: "--yes=false" must never read as yes.
+        if (BOOL.has(a.slice(2, eq))) flags[VALUED] = [...(flags[VALUED] ?? []), a];
+        else flags[a.slice(2, eq)] = a.slice(eq + 1);
+      }
       else if (i + 1 < argv.length && !argv[i + 1].startsWith('--') && !BOOL.has(a.slice(2))) flags[a.slice(2)] = argv[++i];
       else flags[a.slice(2)] = true;
     } else if (a === '-h') flags.help = true;
@@ -194,6 +198,7 @@ function parseArgs(argv) {
   }
   return { pos, flags };
 }
+const VALUED = Symbol('on or off flags given a value');
 const BOOL = new Set(['json', 'keep-profile', 'all', 'record', 'apply', 'avatars', 'draft', 'estimate', 'transparent', 'force', 'fetch', 'help', 'version', 'quiet', 'open', 'no-style', 'mobile', 'list', 'sections', 'new', 'key-stdin', 'audio', 'dry-run', 'no-wait', 'no-watermark', 'yes', 'media-url-unchecked', 'own-product', ...LISTS_VOICES.map((c) => c.id), 'verbose', 'large']);
 
 // What a command adds when it refuses a flag. A flag publish ignored could
@@ -253,6 +258,7 @@ export async function main(argv) {
   }
 
   try {
+    if (flags[VALUED]) throw new ProjectError(`${flags[VALUED].join(', ')}: ${flags[VALUED].length === 1 ? 'this flag is' : 'these flags are'} on or off and take${flags[VALUED].length === 1 ? 's' : ''} no value. Write --${flags[VALUED][0].slice(2).split('=')[0]} alone for yes, and leave it out for no. Nothing was done.`);
     const refused = unknownFlag(cmd, flags);
     if (refused) throw new ProjectError(refused);
     const extra = extraWords(cmd, pos);
