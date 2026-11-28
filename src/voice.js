@@ -13,6 +13,8 @@ import { phonemize, generateSpeech } from './phonemes.js';
 import { writeWav, readWav, resample, trimSilence } from './wav.js';
 import { openSpeech, speechConnector, speechKey } from './paid-speech.js';
 import { recordingFiles, decodeRecording, saveRecording, recordingCuts } from './recordings.js';
+import { footageInfo, footageWords, footageSpeech, fileHash, pictureSeconds, FOOTAGE_RATE } from './footage.js';
+import { ProjectError } from './errors.js';
 import { scriptName } from './project.js';
 import { estimateLength, estimateLine, roughTime } from './timeline.js';
 import { estimatedChapterHints } from './chapters.js';
@@ -573,6 +575,9 @@ export async function synthesize(project, { force = false, fresh = false, log = 
   const paid = speechConnector(config);
   const speech = paid ? openSpeech(project, paid, { force, fresh, log, notice }) : null;
   const recordings = provider === 'recording' ? recordingFiles(project) : null;
+  // A footage project: the recording, its words and its sound, read once.
+  const footage = provider === 'footage' ? await footageSource(project, { log, transcribe }) : null;
+  const joins = footage ? footageJoins(project) : null;
   const result = {};
   const todo = [];
   for (const scene of project.script.scenes) {
@@ -581,10 +586,15 @@ export async function synthesize(project, { force = false, fresh = false, log = 
     const key = recording ? {
       content: recording.hash,
       scenes: recordings.folder ? null : project.script.scenes.map((s) => s.spoken),
+    } : footage ? {
+      content: footage.sha, span: [scene.attrs.from, scene.attrs.to], joins: joins.get(scene.id), fps: project.config.fps,
+      // The recording's words there and their times, which a better transcript changes.
+      heard: footage.heard.words.filter((w) => w.end > scene.attrs.from - 0.5 && w.start < scene.attrs.to + 0.5).map((w) => [w.text, w.start, w.end, w.estimated ? 1 : 0]),
     } : null;
     const hash = sceneHash(scene, chunks, config, key);
     const cached = readVoice(project, scene.id);
-    const hasAudio = !chunks.length || fs.existsSync(voicePaths(project, scene.id).wav);
+    // A span of footage always has sound, also where nobody speaks.
+    const hasAudio = (!chunks.length && !footage) || fs.existsSync(voicePaths(project, scene.id).wav);
     if (speech && chunks.length) addFinishedScene(project, speech, scene, chunks, cached, hash, log, notice);
     const keep = !force && cached && hasAudio && !speech?.needsNew(chunks);
     if (keep && cached.hash === hash) {
@@ -611,7 +621,7 @@ export async function synthesize(project, { force = false, fresh = false, log = 
     return result;
   };
   if (!todo.length) return finish();
-  if (!recordings && todo.some((t) => t.chunks.length)) {
+  if (!recordings && !footage && todo.some((t) => t.chunks.length)) {
     const estimate = estimateLength(project);
     if (estimate) {
       log(`voice: ${estimateLine(estimate)}`);
@@ -649,7 +659,9 @@ export async function synthesize(project, { force = false, fresh = false, log = 
     const steps = progress(`${number}${scene.id}`, log, recordings ? 1 : chunks.length);
     let info;
     try {
-      info = recordings && chunks.length
+      info = footage
+        ? await footageScene(project, scene, hash, footage, joins.get(scene.id), key)
+        : recordings && chunks.length
         ? await recordingScene(project, scene, hash, recordings.files[scene.id], take, cuts.find((c) => c.scene.id === scene.id), heardTake, log, transcribe, key, steps)
         : await synthesizeScene(project, scene, chunks, hash, tts, speech, log, transcribe, steps);
     } finally {
@@ -798,6 +810,93 @@ async function recordingScene(project, scene, hash, source, take, cut, heardTake
     chunks: [{ start: 0, end: round(duration), text: scene.spoken }],
     transcript: heard.words.map((w) => w.text).join(' '),
     matchRate: round(aligned.matchRate), unmatched: units.filter((u, i) => !aligned.words[i].matched).map((u) => u.display),
+    nearly: nearList(units, aligned.words),
+  };
+  fs.writeFileSync(files.json, JSON.stringify(info, null, 2));
+  return info;
+}
+
+// The recording of a footage project: the file, what it is, its hash, its
+// words and its sound at 48 kHz, brought to the narration's level once.
+async function footageSource(project, { log, transcribe }) {
+  const src = project.config.footage.src;
+  const file = path.join(project.dir, src);
+  if (!fs.existsSync(file)) throw new ProjectError(`${src} is missing. A footage project shows and plays that recording; put it back, or start again with "init --footage".`);
+  const info = await footageInfo(file);
+  const sha = fileHash(file);
+  const heard = await footageWords(file, sha, project.config.language, { log, transcribe });
+  const speech = await footageSpeech(file, path.join(project.paths.build, 'footage', `${sha.slice(0, 16)}-speech.wav`));
+  // Where picture and sound both end.
+  const end = Math.min(heard.duration, await pictureSeconds(file));
+  return { file, info, sha, heard, speech, end };
+}
+
+// Where each scene's span meets the one before and after it in the recording.
+// A span that goes on where the last one stopped joins it sample for sample;
+// only a real edit, a span skipped or moved, gets a short fade at that side.
+function footageJoins(project) {
+  const fps = project.config.fps;
+  const frame = (t) => Math.round(t * fps);
+  const scenes = project.script.scenes;
+  return new Map(scenes.map((sc, i) => {
+    const before = scenes[i - 1];
+    const after = scenes[i + 1];
+    return [sc.id, {
+      fadeIn: !before || frame(before.attrs.to) !== frame(sc.attrs.from),
+      fadeOut: !after || frame(after.attrs.from) !== frame(sc.attrs.to),
+    }];
+  }));
+}
+
+// How long the fade at a real edit is: short enough to keep a word whole, long
+// enough that the cut doesn't click.
+const FOOTAGE_FADE = 0.008;
+
+// The narration of one footage scene: its span of the recording's sound, on the
+// frame grid, so its length is a whole number of frames and samples, and the
+// recording's words in it, matched to the scene's text.
+async function footageScene(project, scene, hash, footage, join, key) {
+  const { config } = project;
+  const fps = config.fps;
+  const sr = FOOTAGE_RATE;
+  const f0 = Math.round(scene.attrs.from * fps);
+  const f1 = Math.round(scene.attrs.to * fps);
+  const last = Math.round(footage.end * fps);
+  const end = +footage.end.toFixed(2);
+  if (f0 >= last) throw new ProjectError(`scene "${scene.id}" starts at ${scene.attrs.from} s, after the end of the recording at ${end} s`);
+  if (f1 > last) throw new ProjectError(`scene "${scene.id}" ends at ${scene.attrs.to} s, after the end of the recording at ${end} s`);
+  if (f1 <= f0) throw new ProjectError(`scene "${scene.id}" is shorter than one frame of the recording`);
+  const samples = new Float32Array(((f1 - f0) * sr) / fps);
+  const from = (f0 * sr) / fps;
+  samples.set(footage.speech.samples.subarray(from, Math.min(footage.speech.samples.length, from + samples.length)));
+  const fade = Math.round(FOOTAGE_FADE * sr);
+  for (let k = 0; k < fade && k < samples.length; k++) {
+    if (join.fadeIn) samples[k] *= k / fade;
+    if (join.fadeOut) samples[samples.length - 1 - k] *= k / fade;
+  }
+  const start = f0 / fps;
+  const duration = (f1 - f0) / fps;
+  const local = (w) => ({ ...w, start: Math.max(0, w.start - start), end: Math.min(duration, Math.max(w.start - start + 0.05, w.end - start)) });
+  const heard = footage.heard.words.filter((w) => w.start >= start - 0.02 && w.start < start + duration).map(local);
+  const units = scene.units.filter((u) => u.type === 'word');
+  const aligned = await alignSpeech(units, heard, duration, config.language, { accept: project.heard });
+  const wordTimes = [];
+  let wi = 0;
+  scene.units.forEach((u, i) => { if (u.type === 'word') wordTimes[i] = aligned.words[wi++]; });
+  // Words that the span cuts in two, at either edge. A word whose start is
+  // only estimated can't say where a cut lands.
+  const edges = footage.heard.words.filter((w) => !w.estimated && ((w.start < start - 0.02 && w.end > start + 0.02) || (w.start < start + duration - 0.02 && w.end > start + duration + 0.02)))
+    .map((w) => ({ word: w.text, start: w.start, end: w.end, side: w.start < start ? 'start' : 'end' }));
+  const files = voicePaths(project, scene.id);
+  writeWav(files.wav, samples, sr);
+  const info = {
+    hash, speech: speechHash(scene, null, config, key), check: CHECK, id: scene.id, duration: round(duration),
+    footage: { from: round(start), to: round(f1 / fps), frames: f1 - f0, ...(edges.length ? { edges } : {}) },
+    words: units.map((u, i) => ({ text: u.display, spoken: u.spoken, start: round(aligned.words[i].start), end: round(aligned.words[i].end), matched: aligned.words[i].matched, ...(aligned.words[i].estimated ? { estimated: true } : {}) })),
+    marks: Object.fromEntries(Object.entries(resolveMarks(scene.units, wordTimes)).map(([k, v]) => [k, round(v)])),
+    chunks: units.length ? [{ start: 0, end: round(duration), text: scene.spoken }] : [],
+    transcript: heard.map((w) => w.text).join(' '),
+    matchRate: units.length ? round(aligned.matchRate) : 1, unmatched: units.filter((u, i) => !aligned.words[i].matched).map((u) => u.display),
     nearly: nearList(units, aligned.words),
   };
   fs.writeFileSync(files.json, JSON.stringify(info, null, 2));

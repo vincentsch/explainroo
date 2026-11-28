@@ -113,6 +113,9 @@ function postingChanges(fake) {
 // and env(paths) adds to the environment. check gets the parsed --json output and
 // a few paths, and the raw output after that. It throws on a problem and can
 // return a short note for the report.
+// The draft of the footage project, which verify checks.
+let talkDraft = null;
+
 const steps = [
   {
     args: ['--version', '--json'],
@@ -343,6 +346,51 @@ const steps = [
       // The cut keeps its transcript in the cache, by the hash of the video.
       fs.rmSync(path.join(cacheRoot(), 'cut', `${sha256File(r.file.replace(/\.cut\.mp4$/, '.mp4'))}-en.json`), { force: true });
       return `${r.duration}s, ${r.loudness.integrated} LUFS, ${r.verdict}`;
+    },
+  },
+  {
+    // A footage project from a recording with speech: the narrated video made above.
+    args: ['init', 'talk', '--footage', path.join('video', 'out', 'video.mp4'), '--json'],
+    check: (r) => {
+      expect(r.scenes > 0 && fs.statSync(path.join(r.dir, 'assets', 'footage.mov')).size > 0, `init --footage says ${JSON.stringify({ scenes: r.scenes, dir: r.dir })}`);
+      const config = JSON.parse(fs.readFileSync(path.join(r.dir, 'video.json'), 'utf8'));
+      expect(config.footage === 'assets/footage.mov' && config.camera === 'still', `the footage project's video.json says ${JSON.stringify(config)}`);
+      return `${r.scenes} scene(s) from ${r.footage.duration.toFixed(1)}s at ${r.footage.fps} fps`;
+    },
+  },
+  {
+    args: ['voice', 'talk', '--json'],
+    check: (r) => {
+      expect(r.scenes.length > 0 && r.duration > 3, `voice of the footage project says ${JSON.stringify(r).slice(0, 200)}`);
+      return `${r.duration.toFixed(1)}s, ${Math.round(Math.min(...r.scenes.map((x) => x.confirmed)) * 100)}% confirmed in its weakest scene`;
+    },
+  },
+  {
+    args: ['words', 'talk', '--json'],
+    check: (r) => {
+      expect(r.scenes.every((x) => x.recording && x.words.every((w) => w.recording >= x.recording.from - 0.01)), 'words has no times in the recording');
+    },
+  },
+  {
+    args: ['check', 'talk', '--json'],
+    check: (r) => {
+      const errors = r.issues.filter((i) => i.level === 'error');
+      expect(!errors.length, `check of the footage project: ${errors.map((e) => e.message).join('; ')}`);
+      return `${r.issues.length} finding(s)`;
+    },
+  },
+  {
+    args: ['render', 'talk', '--draft', '--json'],
+    check: (r, { temp }) => {
+      expect(r.out.startsWith(temp) && fs.statSync(r.out).size > 0, `the footage draft went to ${r.out}`);
+      talkDraft = r.out;
+    },
+  },
+  {
+    args: () => ['verify', 'talk', '--file', talkDraft, '--json'],
+    check: (r) => {
+      expect(!r.issues.some((i) => i.level === 'error') && r.speech?.matchRate >= MIN_NARRATION_UNDERSTOOD, `verify of the footage draft: ${JSON.stringify(r.issues)}, understood ${r.speech?.matchRate}`);
+      return `${r.duration}s, ${Math.round(r.speech.matchRate * 100)}% of the recording's words understood`;
     },
   },
   {

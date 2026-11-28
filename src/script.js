@@ -9,7 +9,7 @@
 import { periodGoesOn } from './german.js';
 
 const ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
-const ATTR_NUMBERS = new Set(['hold', 'min', 'lead', 'gap', 'max', 'bars']);
+const ATTR_NUMBERS = new Set(['hold', 'min', 'lead', 'gap', 'max', 'bars', 'from', 'to']);
 
 export class ScriptError extends Error {
   constructor(message, line, file = 'script.md') {

@@ -54,6 +54,9 @@ export const DEFAULTS = {
   languages: null,
   sizes: null,
   voice: 'af_heart',
+  // The user's own recording as the narration and the picture, see "explainroo
+  // docs footage": "assets/footage.mov", or { "src": ... }.
+  footage: null,
   speed: 0.9,
   pace: 1,
   music: true,
@@ -398,14 +401,28 @@ function settingsOf(raw, input, dir, block = null) {
   checkLanguage(cfg.language);
   // A language without a Kokoro voice needs a voice of its own, and never falls back to Kokoro.
   const noKokoro = () => fail(noKokoroVoice(cfg.language, cfg.language === (input.language ?? DEFAULTS.language) ? 'main' : 'version'));
-  if (raw.voice === undefined) {
+  // A footage project speaks with its recording, in any language.
+  if (raw.voice === undefined && (raw.footage === undefined || raw.footage === null)) {
     if (!LANGUAGES[cfg.language]) noKokoro();
     cfg.voice = LANGUAGES[cfg.language];
   }
   const unknown = Object.keys(raw).filter((k) => !(k in DEFAULTS) && !k.startsWith('_'));
   if (unknown.length) fail(`video.json has unknown setting(s): ${unknown.join(', ')}. Known: ${Object.keys(DEFAULTS).join(', ')}`);
   if (!THEMES.includes(cfg.theme) && !lookPath(cfg.theme)) fail(`theme must be one of ${THEMES.join(', ')} or a relative path to a .json look file, not "${cfg.theme}"`);
-  if (typeof cfg.voice === 'object') {
+  if (raw.footage !== undefined && raw.footage !== null) {
+    // The recording speaks, so the narration settings of other voices don't apply.
+    const src = typeof raw.footage === 'string' ? raw.footage : raw.footage?.src;
+    if (typeof raw.footage === 'object' && Object.keys(raw.footage).some((k) => k !== 'src')) fail(`footage takes only src, not ${Object.keys(raw.footage).filter((k) => k !== 'src').join(', ')}`);
+    if (!(typeof src === 'string' && /^assets\/.+\.(mp4|mov|webm|m4v|mkv)$/i.test(src) && !src.split('/').includes('..') && !src.includes('\\'))) fail('footage must be a video inside assets/, like "assets/footage.mov", with no ..');
+    for (const key of ['voice', 'speed', 'languages', 'targetSeconds']) {
+      if (raw[key] !== undefined) fail(`a footage project speaks with its recording, so it takes no "${key}". Remove it from video.json`);
+    }
+    if (raw.pace !== undefined && raw.pace !== 1) fail('a footage project plays its recording at its own speed, so it takes no "pace". Remove it from video.json');
+    cfg.footage = { src };
+    cfg.voice = { provider: 'footage', src };
+    cfg.speed = 1;
+  }
+  if (typeof cfg.voice === 'object' && cfg.voice?.provider !== 'footage') {
     const v = cfg.voice;
     if (!v || Array.isArray(v)) fail('voice must be a Kokoro id or an object with provider');
     const providers = voiceProviders();
@@ -657,6 +674,19 @@ export function sizeArg(project) {
 // `lang` picks one language of a video in several languages. `settings` takes
 // the place of what video.json holds, so a change can be checked before it is
 // written.
+// The scenes of a footage project are spans of the recording: each has
+// {from=.. to=..} in seconds, from before to, and no bars, since its span sets
+// its length. Whether a span lies inside the recording is checked when the
+// recording is read.
+function footageSpans(script, fail) {
+  for (const sc of script.scenes) {
+    const { from, to } = sc.attrs;
+    if (from === undefined || to === undefined) fail(`scene "${sc.id}" needs the span of the recording it shows, like ## ${sc.id} {from=12.4 to=25.8}, in seconds of the recording`);
+    if (!(to > from)) fail(`scene "${sc.id}" ends at ${to} s of the recording, which is not after its start at ${from} s`);
+    if (sc.attrs.bars !== undefined) fail(`scene "${sc.id}" is a span of the recording, which sets its length, so it takes no bars`);
+  }
+}
+
 export function loadProject(arg, overrides = {}, { settings: given } = {}) {
   const dir = findProjectDir(arg);
   const set = Object.fromEntries(Object.entries(overrides).filter(([, value]) => value !== undefined && value !== null));
@@ -695,6 +725,7 @@ export function loadProject(arg, overrides = {}, { settings: given } = {}) {
   // Bars and targetSeconds both set the length. Found here, before any
   // narration is made or bought.
   const barred = script.scenes.find((sc) => sc.attrs.bars !== undefined);
+  if (config.footage) footageSpans(script, fail);
   if (barred && config.targetSeconds) fail(`scene "${barred.id}" lasts {bars=${barred.attrs.bars}}, and "targetSeconds" sets the length of the video too. Bars keep the cuts on the beat, so leave out "targetSeconds" and choose the number of bars for the length`);
   // The main title is in the main language, so another language takes the title of its own script.
   if (language !== main && script.title && raw.languages?.[language]?.title === undefined) config.title = script.title;

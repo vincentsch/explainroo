@@ -8,7 +8,7 @@ import { normWord, ScriptError } from './script.js';
 import { prepare, makeState, outdatedLine, outdatedRenders, VERSION } from './pipeline.js';
 import { render } from './render.js';
 import { exportPlayer } from './export.js';
-import { check, formatVerify, heardEveryTime, NEARLY_LISTED, nearlyShort, nearlyText, untimed, stills, sheet, SHEET_CHECKLIST, unconfirmedLine, unconfirmedWords, verify } from './qa.js';
+import { check, formatVerify, heardEveryTime, NEARLY_LISTED, nearlyShort, nearlyText, untimed, stills, sheet, SHEET_CHECKLIST, FOOTAGE_CHECKLIST, unconfirmedLine, unconfirmedWords, verify } from './qa.js';
 import { startServer, ROOT } from './server.js';
 import { VOICES, LANGUAGES, voiceLanguage, loadTTS, TTS_SAMPLE_RATE } from './models.js';
 import { phonemize, generateSpeech } from './phonemes.js';
@@ -27,6 +27,7 @@ import { boughtCharacters, speechConnector } from './paid-speech.js';
 import { allOf, formatServices, findService, findStep, needsKey, SERVICES, STEPS, stepNames, stepServices } from './services.js';
 import { clipPricesToday, showsClipPrices } from './price-list.js';
 import { narrationTime, speechKeys } from './voice.js';
+import { createFootageProject } from './footage.js';
 import { buildTimeline, estimateLength, estimateLine, targetNotes } from './timeline.js';
 import { estimatedChapterHints } from './chapters.js';
 import { formatSet, setSetting } from './set.js';
@@ -257,7 +258,7 @@ export async function main(argv) {
     const extra = extraWords(cmd, pos);
     if (extra) throw new ProjectError(extra);
     switch (cmd) {
-      case 'init': return init(pos[0], flags, print);
+      case 'init': return flags.footage !== undefined ? await initFootage(pos[0], flags, print, log) : init(pos[0], flags, print);
       case 'set': {
         if (pos.length !== 3) throw new ProjectError('usage: explainroo set <project> <key> <value>, like: explainroo set videos/<name> targetSeconds 40. A dotted key like sizes.shorts.pace sets a setting of one size, and null takes a key out.');
         const r = setSetting(pos[0], pos[1], pos[2]);
@@ -335,7 +336,10 @@ export async function main(argv) {
             ...(recorded && v.matchRate < 0.85 ? { message: `The recording does not match ${scriptName(project)} here. Make ${scriptName(project)} say what was actually said.` } : {}) };
         });
         // How long the voice speaks, and the narration with its pauses. A recording has its pauses in it.
-        const length = (r) => (recorded ? `${r.voice.toFixed(1).padStart(5)} s of the recording` : `${r.narration.toFixed(1).padStart(5)} s of narration (${r.voice.toFixed(1)} s with pauses)`);
+        // A scene of a footage project is a span of the recording.
+        const span = (r) => voices[r.scene].footage;
+        const length = (r) => (span(r) ? `${span(r).from.toFixed(2).padStart(7)} to ${span(r).to.toFixed(2).padStart(7)} s of the recording (${r.voice.toFixed(1)} s)`
+          : recorded ? `${r.voice.toFixed(1).padStart(5)} s of the recording` : `${r.narration.toFixed(1).padStart(5)} s of narration (${r.voice.toFixed(1)} s with pauses)`);
         const mismatch = recorded && rows.some((r) => r.confirmed < 0.85)
           ? `\nThe recording does not match ${scriptName(project)} in those scenes. Make ${scriptName(project)} say what was actually said.` : '';
         const wanted = project.config.speed * project.config.pace;
@@ -397,8 +401,9 @@ export async function main(argv) {
         if (pos[0] !== undefined && flagScene !== undefined && flagScene !== pos[0]) throw new ProjectError(`the scene is named twice, as "${pos[0]}" and with --scene ${flagScene}. Leave out one of them.`);
         const r = await sheet(project, { scene: pos[0] ?? flagScene, every: num(flags.every, 'every'), times: timesFlag(flags), cols: num(flags.cols, 'cols'), large: !!flags.large, log });
         const marked = r.marked.length ? `, ${r.marked.length} marked "camera moving" or "drawing in" under the frame` : '';
-        const asks = SHEET_CHECKLIST.map((q, i) => `  ${i + 1}. ${q}`).join('\n');
-        print(`${r.file} (${r.frames} frames${marked})\n\nOpen it and look at it like a viewer. Its frames are small, so judge the size of text on a full-size still. Fix what fails before you render:\n${asks}`, { ...r, checklist: SHEET_CHECKLIST });
+        const checklist = project.config.footage ? FOOTAGE_CHECKLIST : SHEET_CHECKLIST;
+        const asks = checklist.map((q, i) => `  ${i + 1}. ${q}`).join('\n');
+        print(`${r.file} (${r.frames} frames${marked})\n\nOpen it and look at it like a viewer. Its frames are small, so judge the size of text on a full-size still. Fix what fails before you render:\n${asks}`, { ...r, checklist });
         return 0;
       }
       case 'check': {
@@ -844,19 +849,25 @@ async function spokenWords(project, only = [], { log, notice }) {
       const near = words.slice(0, i).reverse().find(named) ?? words.slice(i + 1).find(named);
       if (near) w.cue = near.cue;
     });
-    return { scene: sc.id, start: round(sc.start), duration: round(sc.dur), words, marks: Object.fromEntries(Object.entries(sc.marks).map(([k, v]) => [k, round(v)])) };
+    // In a footage project each word also has its time in the recording, the
+    // time a span's from and to use.
+    const recording = sc.footage ? { from: round(sc.footage.from), to: round(sc.footage.from + sc.dur) } : null;
+    if (recording) for (const w of words) w.recording = round(sc.footage.from + w.start);
+    return { scene: sc.id, start: round(sc.start), duration: round(sc.dur), ...(recording ? { recording } : {}), words, marks: Object.fromEntries(Object.entries(sc.marks).map(([k, v]) => [k, round(v)])) };
   });
   return { scenes };
 }
 
 function formatWords(r) {
   return r.scenes.map((s) => {
-    const head = `${s.scene}: ${s.start.toFixed(1)} s to ${(s.start + s.duration).toFixed(1)} s of the video. The times are seconds into the scene, as at: 'word' uses them.`;
-    if (!s.words.length) return `${head}\n  no narration`;
+    const head = s.recording
+      ? `${s.scene}: ${s.recording.from.toFixed(2)} s to ${s.recording.to.toFixed(2)} s of the recording, ${s.start.toFixed(1)} s to ${(s.start + s.duration).toFixed(1)} s of the video. The first times are seconds into the scene, as at: 'word' uses them; the second ones are seconds into the recording, as from and to use them.`
+      : `${s.scene}: ${s.start.toFixed(1)} s to ${(s.start + s.duration).toFixed(1)} s of the video. The times are seconds into the scene, as at: 'word' uses them.`;
+    if (!s.words.length) return `${head}\n  ${s.recording ? 'no speech' : 'no narration'}`;
     // A marker comes before the word it starts on.
     const rows = [
       ...Object.entries(s.marks).map(([name, t]) => ({ t, line: `${t.toFixed(2).padStart(7)}  [#${name}]` })),
-      ...s.words.map((w) => ({ t: w.start, line: `${w.start.toFixed(2).padStart(7)}${w.estimated ? '~' : ' '} ${w.text}${w.cue.toLowerCase() !== w.text.toLowerCase() ? `  (cue "${w.cue}")` : ''}` })),
+      ...s.words.map((w) => ({ t: w.start, line: `${w.start.toFixed(2).padStart(7)}${w.estimated ? '~' : ' '}${w.recording !== undefined ? `${w.recording.toFixed(2).padStart(8)}  ` : ''} ${w.text}${w.cue.toLowerCase() !== w.text.toLowerCase() ? `  (cue "${w.cue}")` : ''}` })),
     ].sort((a, b) => a.t - b.t);
     // A time with ~ is estimated: Whisper wrote the word together with others, or didn't confirm it.
     const note = s.words.some((w) => w.estimated) ? ['  ~ estimated: the speech check heard no start of its own for this word, so a cue on it may land a little early or late'] : [];
@@ -945,6 +956,27 @@ function init(dir, flags, print) {
   // which belong to the runs on this computer.
   fs.writeFileSync(path.join(target, '.gitignore'), 'build/\nout/\n.env\nhistory/private/\nhistory/locks/\n');
   print(`created ${target}\n${defaults}\nnext: write the narration in script.md, then run "${selfCommand()} voice ${dir}". After that, draw each scene in scenes.js and run "${selfCommand()} check ${dir}".`, { dir: target });
+  return 0;
+}
+
+// init --footage <video>: a project whose narration and picture are the user's
+// own recording. It makes a working copy in assets/, transcribes it, and writes
+// script.md with one scene a span of the recording, so the project plays as it
+// is and every scene can get graphics on the speaker's words.
+async function initFootage(dir, flags, print, log) {
+  if (!dir || flags.footage === true) throw new ProjectError('usage: explainroo init <dir> --footage <video> [--size 16:9|vertical|tiktok|...] [--theme midnight] [--language en] [--title "..."]');
+  for (const flag of ['format', 'voice', 'pace']) {
+    if (flags[flag] !== undefined) throw new ProjectError(`--${flag} doesn't go with --footage: the recording speaks${flag === 'format' ? ', and footage projects have no format yet' : ''}.`);
+  }
+  const r = await createFootageProject(path.resolve(dir), path.resolve(String(flags.footage)), {
+    title: textFlag(flags, 'title'), theme: textFlag(flags, 'theme'), size: textFlag(flags, 'size'), language: textFlag(flags, 'language'), log,
+  });
+  const { target, info, note, heard, scenes } = r;
+  const input = path.resolve(String(flags.footage));
+  const what = `${path.basename(input)}: ${info.duration.toFixed(1)} s, ${info.width}x${info.height}, ${info.sourceFps} frames a second${info.hdr ? ', HDR' : ''}`;
+  const unheard = heard.unheard.length ? `\nThe speech model heard no words in ${heard.unheard.map(([a, b]) => `${a.toFixed(1)} to ${b.toFixed(1)} s`).join(', ')}, where there is sound. Listen there: it may be music, noise, or speech that was missed.` : '';
+  print(`created ${target} from ${what}\nassets/footage.mov is the working copy at ${info.fps} frames a second${note ? `; ${note}` : ''}.\nscript.md has ${scenes} scene${scenes === 1 ? '' : 's'}, each a span of the recording with the words that were said. The project plays as it is.${unheard}\nnext: run "${selfCommand()} voice ${dir}", then look at it with "${selfCommand()} sheet ${dir}". Cut what isn't needed in script.md, and put graphics on the words in scenes.js ("${selfCommand()} docs footage").`,
+    { dir: target, footage: { file: input, ...info }, scenes, unheard: heard.unheard });
   return 0;
 }
 

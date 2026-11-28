@@ -1950,6 +1950,77 @@ export class Stage {
     return tex;
   }
 
+  // The recording of a footage project at this moment of the scene's span: the
+  // frame of the recording at `from` plus the scene time, on the frame grid,
+  // so it stays with the sound. It fills the frame without x, y, w and h.
+  // `fit` is 'cover' (the default) or 'contain'. `focus: [x, y]`, from 0 to 1,
+  // is the point of the recording that stays in view when it is cropped or
+  // zoomed, and `zoom` (1 or more) brings it closer. `at` and `out` only show
+  // and hide it: the recording's clock never stops.
+  footage(o = {}) {
+    const src = this.engine.config.footage?.src;
+    if (!src) throw new SceneError('s.footage draws the recording of a footage project, and this project has none. Start one with "explainroo init <folder> --footage <video>"');
+    const clip = this.engine.clips.get(src);
+    if (!clip) throw new SceneError(`the footage "${src}" could not be loaded`);
+    const zoom = o.zoom ?? 1;
+    if (!(typeof zoom === 'number' && zoom >= 1 && zoom <= 8)) throw new SceneError(`footage zoom must be a number from 1 to 8, like 1.4 for a punch-in, not ${JSON.stringify(o.zoom)}`);
+    const focus = o.focus ?? [0.5, 0.5];
+    if (!(Array.isArray(focus) && focus.length === 2 && focus.every((v) => typeof v === 'number' && v >= 0 && v <= 1))) throw new SceneError(`footage focus is the point of the recording to keep in view, [x, y] from 0 to 1, like [0.5, 0.35] for a face in the upper middle, not ${JSON.stringify(o.focus)}`);
+    const fit = o.fit ?? 'cover';
+    if (!['cover', 'contain'].includes(fit)) throw new SceneError(`footage fit must be 'cover' or 'contain', not ${JSON.stringify(fit)}`);
+    const whole = o.w === undefined && o.h === undefined && o.x === undefined && o.y === undefined;
+    // The recording is the shot, also in a box, so the automatic camera keeps out.
+    if (this.engine.planning) this.engine.manualCamera = true;
+    const blur = o.blur ?? 0;
+    if (!(typeof blur === 'number' && blur >= 0 && blur <= 100)) throw new SceneError(`footage blur is in pixels, from 0 to 100, like 40 for a soft copy of the recording behind a sharp one, not ${JSON.stringify(o.blur)}`);
+    const w = o.w ?? (whole ? this.W : this.safe.w);
+    const h = o.h ?? (whole ? this.H : this.safe.h);
+    const x = o.x ?? (whole ? this.W / 2 : this.cx);
+    const y = o.y ?? (whole ? this.H / 2 : this.cy);
+    // Under motion blur, the samples of a video frame show one frame of the
+    // recording, so a moving speaker doesn't ghost.
+    const fps = this.engine.fps;
+    const t = this.engine.blurFrame === null || this.engine.blurFrame === undefined ? this.t : this.engine.blurFrame / fps - (this.T - this.t);
+    // The frame of the recording, never past the span's last one: a still at
+    // the scene's very end rounds up to the frame after it.
+    const span = this.scene.footage ?? { from: 0, frames: Infinity };
+    const local = Math.min(span.frames - 1, Math.round(Math.max(0, t) * clip.fps));
+    const frame = Math.max(0, Math.min(clip.frames - 1, Math.round(span.from * clip.fps) + local));
+    // The part of the recording in view: the box's shape, `zoom` times closer,
+    // around `focus`, kept inside the recording.
+    let crop;
+    if (fit === 'cover') {
+      const ratio = w / h;
+      let cw = clip.width / clip.height > ratio ? clip.height * ratio : clip.width;
+      let ch = cw / ratio;
+      cw /= zoom;
+      ch /= zoom;
+      const cx = Math.min(clip.width - cw / 2, Math.max(cw / 2, focus[0] * clip.width));
+      const cy = Math.min(clip.height - ch / 2, Math.max(ch / 2, focus[1] * clip.height));
+      crop = [cx - cw / 2, cy - ch / 2, cw, ch];
+    }
+    const at = this.time(o.at ?? -1);
+    const out = o.out === undefined ? this.dur : Math.min(this.dur, this.time(o.out));
+    // How many frame pixels a pixel of the recording takes, for the check.
+    const scale = crop ? w / crop[2] : Math.min(w / clip.width, h / clip.height);
+    if (this.engine.recorder) this.engine.recorder.push({ kind: 'footage', key: `footage|${o.id ?? ''}|${at}`, at: Math.max(0, at), end: out, scale, zoom, blur, width: clip.width, height: clip.height });
+    // A blurred copy is drawn a little larger, so its soft edge stays outside the box.
+    const paint = blur ? (ctx, img, x0, y0, bw, bh) => {
+      ctx.filter = `blur(${blur}px)`;
+      if (crop) {
+        const m = blur * 1.5;
+        ctx.drawImage(img, ...crop, x0 - m, y0 - m, bw + 2 * m, bh + 2 * m);
+      } else {
+        // contain: all of the recording, at its own shape, in the middle of the box.
+        const k = Math.min(bw / clip.width, bh / clip.height);
+        ctx.drawImage(img, x0 + (bw - clip.width * k) / 2, y0 + (bh - clip.height * k) / 2, clip.width * k, clip.height * k);
+      }
+      ctx.filter = 'none';
+    } : null;
+    return this._picture('the recording', () => this.engine.clipImage(clip, frame), clip.width, clip.height,
+      { frame: 'none', shadow: false, radius: whole ? 0 : undefined, enter: 'none', ...o, at, x, y, w, h, fit: crop ? 'fill' : 'contain', ...(crop ? { crop } : {}) }, paint, 'footage');
+  }
+
   // The `to` of a clip or a recording: seconds in the file, after `from` and
   // no later than its end.
   _clipTo(kind, to, from, duration, name) {

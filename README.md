@@ -28,6 +28,7 @@ https://github.com/user-attachments/assets/6dd5dc32-c975-4e0e-8cd4-2ef3ccc11e61
 
 ## News
 
+- **Nov 28, 2026**: explainroo 0.8 makes a finished video from your own recording. `init --footage talk.mp4` turns it into a project whose scenes are spans of what you said. Your agent cuts and reorders them and puts graphics on your words, and picture and sound stay in sync across every cut, also in a tall version for Shorts.
 - **Nov 27, 2026**: explainroo 0.7 draws 3D scenes with three.js, animates your own drawings with keyframes and paths, and makes videos without words that cut to the beat of the music. New projects start from a starter that asks for a picture in every sentence, and `sheet` asks five questions about every video before you render it.
 - **Nov 21, 2026**: explainroo 0.6.2 installs on Linux again. ONNX Runtime's downloads on GitHub are gone since November 17, and they made every Linux install stop. What runs the free voice now installs the first time a video needs it, so `npx --yes explainroo` takes a few seconds and about 100 MB.
 - **Nov 18, 2026**: explainroo 0.6.1 posts through Blotato, its first partner for posting, and `publish --own-product` marks a TikTok video that promotes your own product.
@@ -120,6 +121,24 @@ motion that looks designed.
 <p align="center">
   <sub>A frame of <a href="examples/seasons-3d">examples/seasons-3d</a>, where three.js draws the orbit and the labels come from <code>point()</code>. <a href="examples/logo-reveal">examples/logo-reveal</a> is a piece without words, cut to the beat.</sub>
 </p>
+
+## Your own footage
+
+Give your agent a recording of you talking, to the camera, in a webinar or
+over a screen recording, and it makes a finished video from it:
+
+```bash
+npx --yes explainroo init videos/talk --footage talk.mp4
+```
+
+The speech model listens to the recording on your computer, and `script.md`
+gets a scene for each span of it, with the words you said. Your agent edits
+there: it cuts slow starts and false starts, trims and reorders the spans,
+and puts graphics on your words, like your name, a number you say, a
+punch-in, or a diagram over the whole frame while you keep talking. Picture
+and sound stay in sync across every cut, and captions, music, a tall version
+for Shorts and `verify` work as in any other video. `explainroo docs footage`
+has the details.
 
 ## Check or cut any video
 

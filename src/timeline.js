@@ -30,6 +30,7 @@ export function musicGrid(config) {
 }
 
 export function buildTimeline(project, voices) {
+  if (project.config.footage) return footageTimeline(project, voices);
   const { config, script } = project;
   const grid = musicGrid(config);
   const barred = script.scenes.find((sc) => sc.attrs.bars !== undefined);
@@ -119,6 +120,57 @@ export function buildTimeline(project, voices) {
     ...(grid ? { music: closing === null ? grid : { ...grid, close: closing } } : {}),
     // Only a video with "targetSeconds" has this, so every other timeline stays as it was.
     ...(target ? { target: target.report } : {}),
+  };
+}
+
+// The timeline of a footage project: each scene is its span of the recording
+// in whole frames, and the next one starts on the frame where it ends, so
+// picture and sound stay together across every cut. There is no lead, hold,
+// end or minimum, and every cut is hard.
+function footageTimeline(project, voices) {
+  const { config, script } = project;
+  const voiceDir = project.paths ? projectUrl(project, project.paths.voice) : 'build/voice';
+  const fps = config.fps;
+  const grid = musicGrid(config);
+  const scenes = [];
+  const voiceSpans = [];
+  let frame = 0;
+  script.scenes.forEach((scene, index) => {
+    const v = voices[scene.id] || { duration: 0, words: [], marks: {}, chunks: [] };
+    const frames = v.footage?.frames ?? Math.max(1, Math.round(scene.attrs.to * fps) - Math.round(scene.attrs.from * fps));
+    const start = frame / fps;
+    const dur = frames / fps;
+    const shown = scene.units.filter((u) => u.type === 'word');
+    scenes.push({
+      id: scene.id,
+      index,
+      start,
+      dur,
+      lead: 0,
+      text: scene.text,
+      transition: index === 0 ? 'none' : 'cut',
+      voice: v.duration ? { url: `${voiceDir}/${scene.id}.wav`, start, dur: v.duration } : null,
+      words: v.words.map((w, k) => ({ text: w.text, start: w.start, end: w.end, ...(shown[k]?.key && shown[k].display === w.text ? { key: true } : {}), ...(w.estimated ? { estimated: true } : {}) })),
+      marks: v.marks || {},
+      attrs: scene.attrs,
+      // Which seconds of the recording the scene shows, for s.footage.
+      footage: { from: v.footage?.from ?? Math.round(scene.attrs.from * fps) / fps, frames },
+    });
+    for (const c of v.chunks || []) voiceSpans.push({ start: start + c.start, end: start + c.end });
+    frame += frames;
+  });
+  return {
+    fps,
+    ...(['ja', 'zh'].includes(config.language) ? { language: config.language } : {}),
+    width: config.width,
+    height: config.height,
+    duration: frame / fps,
+    frames: frame,
+    transitionSeconds: 0,
+    pace: 1,
+    scenes,
+    voiceSpans,
+    ...(grid ? { music: grid } : {}),
   };
 }
 

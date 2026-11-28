@@ -336,17 +336,22 @@ export function unconfirmedWords(project, v, every = new Map()) {
   if (!missed.length) return [];
   const instead = heardInstead(v, language);
   const script = scriptName(project);
+  const footage = project.config.voice.provider === 'footage';
   return missed.map(({ word, k }) => {
     const heard = instead[k] ?? null;
     const quote = heardQuote(v, language, [k]);
     let advice;
-    if (hasOverride(word)) advice = unconfirmedAdvice([{ word, heard }], false, script);
+    // A recording can't be reworded or respelled: its text follows what was said.
+    if (footage) advice = heard
+      ? `If the recording says "${bareWord(word.text)}", add "heard": {"${bareWord(word.text)}": ["${heard}"]} to video.json. If it says "${heard}", write that in ${script}.`
+      : `The speech model didn't hear it in this span. If the span cuts it off, move from or to ("explainroo words" gives the times); if it isn't said, take it out of ${script}.`;
+    else if (hasOverride(word)) advice = unconfirmedAdvice([{ word, heard }], false, script);
     else if (heard && /\p{N}/u.test(word.text) && /\p{L}/u.test(heard) && !/\p{N}/u.test(heard)) advice = `It may be the number said as a word, which the speech check can't read here. If the voice says it right, write it as {${bareWord(word.text)}|${bareWord(heard)}} in ${script}.`;
     else if (heard && !hasPhonemizer(language) && soundsAlike(normWord(heard), normWord(word.text))) advice = `"${heard}" may sound the same, and in this language the speech check can't compare sounds, so {shown|spoken} can't help. Reword the sentence.`;
     else if (shortWord(word.text)) advice = `"${bareWord(word.text)}" is a short, common word, so a spelling hint can't change how it sounds. Reword the sentence.`;
     else if (every.has(normWord(word.text))) advice = `If the voice says it wrong, write it as {${bareWord(word.text)}|spoken spelling} in ${script}. ${everyTimeAdvice(every.get(normWord(word.text)))}`;
     else advice = `If the voice says it wrong, write it as {${bareWord(word.text)}|spoken spelling} in ${script}. If it is said right and only heard wrong, reword the sentence.`;
-    const given = givenText(v, [k]);
+    const given = footage ? null : givenText(v, [k]);
     return { word: word.text, heard, quote, ...(given ? { given } : {}), advice };
   });
 }
@@ -424,6 +429,12 @@ export function speechFindings(project, voices, timeline = null) {
   const forms = heardForms(...project.script.scenes.map((sc) => sceneHeard(voices[sc.id], project.config.language)), givenForms(project.heard));
   for (const sc of project.script.scenes) {
     const v = voices[sc.id];
+    // A footage scene whose span starts or ends in the middle of a word plays half of it.
+    for (const e of v?.footage?.edges ?? []) {
+      const side = e.side === 'start' ? 'starts' : 'ends';
+      const key = e.side === 'start' ? 'from' : 'to';
+      issues.push({ level: 'warn', scene: sc.id, t: e.side === 'start' ? 0 : null, message: `scene "${sc.id}" ${side} inside the word "${e.word}", which the recording says from ${e.start.toFixed(2)} to ${e.end.toFixed(2)} s; set ${key} to ${(e.start - 0.04).toFixed(2)} or ${(e.end + 0.04).toFixed(2)}, so the word is cut whole or kept whole` });
+    }
     const suspicious = v ? v.unmatched.filter((w) => w.replace(/[^\p{L}\p{M}\p{N}]/gu, '').length > 3) : [];
     // A word that already has {shown|spoken} counts at any length, like {SQL|sequel},
     // because its override didn't help.
@@ -442,11 +453,16 @@ export function speechFindings(project, voices, timeline = null) {
       const quote = heardQuote(v, project.config.language, (named.length ? named : unconfirmed.slice(0, 3)).map(({ k }) => k)) ?? cutTranscript(v.transcript);
       // Words without an override heard as the same other spelling each time get the line for "heard".
       const same = recording ? [] : [...new Map(missed.filter(({ word }) => !hasOverride(word) && every.has(normWord(word.text))).map(({ word }) => [normWord(word.text), every.get(normWord(word.text))])).values()];
+      const footage = project.config.voice.provider === 'footage';
+      const heardAs = footage ? heardInstead(v, project.config.language) : {};
+      const pairs = footage ? unconfirmed.filter(({ k }) => heardAs[k]).slice(0, 2).map(({ word, k }) => `"${bareWord(word.text)}": ["${heardAs[k]}"]`) : [];
       const advice = recording
         ? `The recording does not match ${script} here. Make ${script} say what was actually said.`
-        : unconfirmedAdvice(shown.map(({ word, k }) => ({ word, heard: instead[k] })), missed.some(({ word }) => !hasOverride(word)), script) + same.map((e) => ` "${e.word}" ${everyTimeAdvice(e).replace(/^It /, '')}`).join('');
-      const given = recording ? null : givenText(v, (named.length ? named : unconfirmed.slice(0, 3)).map(({ k }) => k));
-      issues.push({ level: 'warn', scene: sc.id, t: null, message: `the voice check could not confirm ${names.length ? names.map((w) => `"${w}"`).join(', ') : `${Math.round((1 - v.matchRate) * 100)}% of the words`}. ${given ? `The voice was given ${given}. ` : ''}It heard: ${quote}. ${advice}` });
+        : footage
+          ? `A recording can't be reworded. Where a word is said right and only heard differently, add it to "heard" in video.json${pairs.length ? `, like "heard": {${pairs.join(', ')}}` : ''}. Where the span doesn't say it, take it out of ${script}, or move from or to so the span keeps it ("explainroo words" gives the times).`
+          : unconfirmedAdvice(shown.map(({ word, k }) => ({ word, heard: instead[k] })), missed.some(({ word }) => !hasOverride(word)), script) + same.map((e) => ` "${e.word}" ${everyTimeAdvice(e).replace(/^It /, '')}`).join('');
+      const given = recording || footage ? null : givenText(v, (named.length ? named : unconfirmed.slice(0, 3)).map(({ k }) => k));
+      issues.push({ level: 'warn', scene: sc.id, t: null, message: `the ${footage ? 'speech' : 'voice'} check could not confirm ${names.length ? names.map((w) => `"${w}"`).join(', ') : `${Math.round((1 - v.matchRate) * 100)}% of the words`}. ${given ? `The voice was given ${given}. ` : ''}It heard: ${quote}. ${advice}` });
     }
     if (v && v.duration > 40) issues.push({ level: 'hint', scene: sc.id, t: null, message: `the narration runs ${v.duration.toFixed(0)}s; long scenes are easier to follow when split` });
     if (v && v.duration) {
@@ -553,6 +569,16 @@ export const SHEET_CHECKLIST = [
   'Variety: do the scenes look different from each other, with a new layout when the idea changes?',
   'Phone: can every word be read on a phone, with one clear thing to look at in each frame?',
   'Ending: does the last frame show the main point, the answer to the opening?',
+];
+
+// The questions for a footage project, where the speaker is the picture and
+// the graphics add to what they say.
+export const FOOTAGE_CHECKLIST = [
+  'Opening: does the video start on a strong sentence, with the slow start and any false starts cut?',
+  'Graphics: where the speaker names a number, a name, a list or a step, does a graphic show it, and does it leave their face free?',
+  'Rhythm: does the picture change every few seconds, with a punch-in, a graphic or a cutaway, and not one long unchanged shot?',
+  'Phone: can every word on screen be read on a phone, on a card or a calm part of the picture?',
+  'Ending: does it end on the main point, with the trailing words and the outro cut?',
 ];
 
 // `times` takes what still takes, like ["3", "intro@2"], and shows just those
@@ -674,14 +700,23 @@ export async function verify(project, { file = null, report: reportFile = null, 
       const together = [];
       let total = 0;
       let matched = 0;
-      for (const t of timeline.scenes) {
+      for (const [index, t] of timeline.scenes.entries()) {
         const words = spokenWords(byId.get(t.id));
         if (!words.length) continue;
-        const from = Math.max(0, Math.floor(t.start * 16000));
-        const to = Math.min(samples.length, Math.ceil((t.start + t.dur) * 16000));
+        // Footage scenes follow each other mid-sentence, so each is heard with a
+        // little of its neighbours, and a word at its edge isn't cut in two.
+        const margin = project.config.footage ? 0.3 : 0;
+        const from = Math.max(0, Math.floor((t.start - margin) * 16000));
+        const to = Math.min(samples.length, Math.ceil((t.start + t.dur + margin) * 16000));
         const heard = await transcribe(samples.subarray(from, to), { log, language: project.config.language });
         texts.push(heard.text);
-        const aligned = await alignSpeech(words, heard.words, t.dur, project.config.language, { accept: project.heard });
+        // A word heard in the margin belongs to the neighbour, so it can't stand
+        // in for a word this scene lost.
+        const own = margin ? heard.words.filter((w) => {
+          const mid = from / 16000 + (w.start + w.end) / 2;
+          return mid >= t.start && mid < (timeline.scenes[index + 1]?.start ?? t.start + t.dur);
+        }) : heard.words;
+        const aligned = await alignSpeech(words, own, t.dur, project.config.language, { accept: project.heard });
         const rate = aligned.matchRate;
         const alone = confirmedAlone(project, t.id, words);
         const pairs = heardAsOne(words, aligned, from / 16000, t.id, alone);

@@ -672,6 +672,9 @@ export function alignWords(words, heard, duration, language = 'en', { sounds = n
   out.forEach((word, wi) => {
     const from = startHeard[wi];
     if (!spans[wi] || (!cjk && (shared[wi] || (from >= 0 && !heardStart[from])))) word.estimated = true;
+    // A heard word whose start was itself only estimated, like the first word
+    // after music in a footage project, passes that on.
+    if (from >= 0 && joined[H[from].source]?.estimated) word.estimated = true;
   });
   let k = 0;
   while (k < words.length) {
