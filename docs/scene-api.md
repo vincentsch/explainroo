@@ -270,6 +270,9 @@ A clip has no frame by default. `shadow: false`, `radius: 0` and
 its first frame when the scene starts. `check` can't read text in a clip, so
 look at stills.
 
+In a footage project, `s.footage({ zoom, focus, fit, x, y, w, h, at, out })`
+draws the scene's span of the user's recording (`explainroo docs footage`).
+
 ## Recordings
 
 `s.recording(name, options)` plays a recording of a real app that

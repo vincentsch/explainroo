@@ -10,8 +10,8 @@ The user gives you a topic, maybe with a length or a style. You write the words
 and the pictures, and explainroo makes the video. Make it look finished, as if
 someone designed it for this topic, never like a template. A long docs topic has
 sections, and `explainroo docs <topic> --sections` lists them. Print only the
-one you need. When the user wants their own recording edited instead, read
-`explainroo docs cut`.
+one you need. When the user wants a video made from their own recording,
+read `explainroo docs footage`.
 
 ## What explainroo does
 
@@ -85,10 +85,8 @@ project's languages and voices need, and before the project exists,
 `doctor --language es` checks one language. On Debian and Ubuntu,
 `doctor --fetch --language es` also sets up espeak-ng without root when it is
 missing. Commands that work on a video take the project folder first, and
-every command accepts `--json`.
-
-`npx --yes explainroo docs` prints this page, and
-`npx --yes explainroo docs <topic>` prints a topic listed at the end.
+every command accepts `--json`. `npx --yes explainroo docs <topic>` prints a
+topic.
 
 `explainroo connect <service>` sets up a key or a sign-in. It tests it and
 saves it in the settings folder, so every project can use it. Never print a
@@ -106,8 +104,8 @@ When you ask, put everything you need in one message. Typical reasons to ask:
   login for it. Run `explainroo connect openrouter`, `elevenlabs`,
   `cartesia`, `youtube`, `buffer` or `blotato`, and show the user what it
   prints.
-- The user wants something explainroo cannot do, like video shot with a
-  camera.
+- The user wants something explainroo cannot do, like filming something
+  new.
 
 Explainroo makes the whole video for free. When the user asks for something
 that can use an outside service, run `explainroo services <step> --json` and
@@ -207,6 +205,7 @@ topic, and `npx --yes explainroo docs <topic> <section>` prints one, like
 | `publishing` | the user wants a package for a platform, a link or a post |
 | `web-player` | the video goes on a website, in an iframe |
 | `transparent-video` | the video goes over camera footage in a video editor |
-| `cut` | the user wants to cut their own recording by its words |
+| `footage` | the user has a recording to make a video from |
+| `cut` | the user only wants words cut out of a recording |
 | `connectors` | you add an outside service to explainroo |
 | `contributing` | you change explainroo itself |

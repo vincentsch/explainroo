@@ -97,10 +97,11 @@ test('the start page stays under 12,000 bytes, and every topic under 24,000', ()
   }
 });
 
-test('near the top, the start page sends a request to edit a recording to the cut topic', () => {
+test('near the top, the start page sends a video from a recording to the footage topic', () => {
   const flat = start.replace(/\s+/g, ' ');
-  const at = flat.indexOf('When the user wants their own recording edited instead, read `explainroo docs cut`.');
-  assert.ok(at > 0 && at < flat.indexOf('## '), 'the line about cut comes before the first section');
+  const at = flat.indexOf('When the user wants a video made from their own recording, read `explainroo docs footage`.');
+  assert.ok(at > 0 && at < flat.indexOf('## '), 'the line about footage comes before the first section');
+  assert.ok(flat.includes('| `cut` | the user only wants words cut out of a recording |'));
   // words lists every scene without a scene's name.
   assert.ok(flat.includes("`explainroo words videos/<name>` lists each scene's spoken words and times."));
 });

@@ -3,7 +3,9 @@
 `explainroo cut <video>` edits a video that you recorded yourself, like a talk
 to the camera or a screen recording with your voice. You cut it by its words,
 and it needs no project. The speech model runs on this computer, so nothing
-leaves it.
+leaves it. For a finished video from the recording, with graphics on its
+words, captions and music, start a footage project instead
+(`explainroo docs footage`).
 
 ## Make the cut list
 
