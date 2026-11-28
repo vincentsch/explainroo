@@ -2006,10 +2006,15 @@ export class Stage {
     if (this.engine.recorder) this.engine.recorder.push({ kind: 'footage', key: `footage|${o.id ?? ''}|${at}`, at: Math.max(0, at), end: out, scale, zoom, blur, width: clip.width, height: clip.height });
     // A blurred copy is drawn a little larger, so its soft edge stays outside the box.
     const paint = blur ? (ctx, img, x0, y0, bw, bh) => {
-      const m = blur * 1.5;
       ctx.filter = `blur(${blur}px)`;
-      if (crop) ctx.drawImage(img, ...crop, x0 - m, y0 - m, bw + 2 * m, bh + 2 * m);
-      else ctx.drawImage(img, x0 - m, y0 - m, bw + 2 * m, bh + 2 * m);
+      if (crop) {
+        const m = blur * 1.5;
+        ctx.drawImage(img, ...crop, x0 - m, y0 - m, bw + 2 * m, bh + 2 * m);
+      } else {
+        // contain: all of the recording, at its own shape, in the middle of the box.
+        const k = Math.min(bw / clip.width, bh / clip.height);
+        ctx.drawImage(img, x0 + (bw - clip.width * k) / 2, y0 + (bh - clip.height * k) / 2, clip.width * k, clip.height * k);
+      }
       ctx.filter = 'none';
     } : null;
     return this._picture('the recording', () => this.engine.clipImage(clip, frame), clip.width, clip.height,

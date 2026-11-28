@@ -11,7 +11,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { findChrome } from '../src/browser.js';
-import { ffmpeg } from '../src/ffmpeg.js';
+import { ffmpeg, probe } from '../src/ffmpeg.js';
 import { loadProject } from '../src/project.js';
 import { synthesize } from '../src/voice.js';
 import { render } from '../src/render.js';
@@ -35,6 +35,8 @@ async function flashAndBeep(file, fps, delay = 0, seconds = 6) {
     ...(delay ? ['-itsoffset', String(delay)] : []),
     '-f', 'lavfi', '-i', `color=black:s=320x180:r=${fps}:d=${seconds},drawbox=enable='${flashes}':color=white:t=fill`,
     '-f', 'lavfi', '-i', `aevalsrc='(${beeps})*0.5*sin(2*PI*1000*t)':s=48000:d=${seconds}`,
+    // passthrough keeps the picture's late start in the file instead of padding it.
+    ...(delay ? ['-fps_mode', 'passthrough'] : []),
     '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', file]);
 }
 
@@ -91,6 +93,11 @@ for (const [fps, blur, delay] of [[25, false, 0], [30, false, 0], [60, false, 0]
     });
     const source = path.join(dir, 'talk.mp4');
     await flashAndBeep(source, fps, delay);
+    if (delay) {
+      const streams = (await probe(source)).streams;
+      const start = (type) => Number(streams.find((x) => x.codec_type === type).start_time);
+      assert.ok(Math.abs(start('video') - start('audio') - delay) < 0.02, `the fixture's picture starts ${start('video')} s and its sound ${start('audio')} s`);
+    }
     fs.mkdirSync(path.join(dir, 'assets'));
     const info = await footageInfo(source);
     assert.equal(info.fps, fps);

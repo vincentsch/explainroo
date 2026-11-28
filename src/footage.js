@@ -107,7 +107,7 @@ export async function makeWorkingCopy(src, dest, info, { log = () => {} } = {}) 
     '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-bf', '0', '-g', String(info.fps), '-keyint_min', String(info.fps),
     '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709',
     '-c:a', 'pcm_s16le', '-ar', String(FOOTAGE_RATE), '-ac', '2', '-af', 'aresample=async=1:first_pts=0',
-    '-avoid_negative_ts', 'make_zero', '-shortest', temp]);
+    '-avoid_negative_ts', 'make_zero', temp]);
   fs.renameSync(temp, dest);
   return note;
 }
@@ -167,7 +167,7 @@ export async function footageWords(file, sha256, language, { log = () => {}, tra
     // rest of its piece; a piece like that is heard again in two halves.
     const hear = async (a, b, depth = 0) => {
       const heard = await transcribe(samples.subarray(Math.floor(a * 16000), Math.floor(b * 16000)), { log, language });
-      const got = speechOnly(heard.words).map((w) => ({ text: w.text.replace(/\s+/g, ' '), start: round(a + w.start), end: round(a + Math.max(w.start, w.end)) }));
+      const got = speechOnly(heard.words).map((w, k) => ({ text: w.text.replace(/\s+/g, ' '), start: round(a + w.start), end: round(a + Math.max(w.start, w.end)), ...(k ? {} : { first: true }) }));
       if (depth < 2 && b - a > 8 && collapsed(got)) {
         const mid = softestMoment(samples, a + (b - a) * 0.35, a + (b - a) * 0.65);
         return [...await hear(a, mid, depth + 1), ...await hear(mid, b, depth + 1)];
@@ -216,29 +216,50 @@ export function collapsed(words) {
   return false;
 }
 
+// The words whose starts can stay: the longest run of them, in order, whose
+// starts never go back. Of words that start at the same moment, the first.
+function inOrder(words) {
+  const tails = [];
+  const at = [];
+  const prev = words.map(() => -1);
+  words.forEach((w, i) => {
+    let lo = 0;
+    let hi = tails.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (tails[mid] <= w.start) lo = mid + 1;
+      else hi = mid;
+    }
+    tails[lo] = w.start;
+    at[lo] = i;
+    prev[i] = lo ? at[lo - 1] : -1;
+  });
+  const keep = words.map(() => false);
+  for (let i = tails.length ? at[tails.length - 1] : -1; i >= 0; i = prev[i]) keep[i] = true;
+  return keep.map((k, i) => k && !(i > 0 && keep[i - 1] && Math.abs(words[i].start - words[i - 1].start) < 0.01));
+}
+
 // The speech model sometimes loses track of time at the edge of what it
-// heard: a few words get a time after the words that follow them, a word runs
-// over the words after it, or the first word after music or a pause starts
-// seconds early. Words out of order share the time between their neighbours
-// by their letters; a word ends where the next one starts; and a word takes at
-// most the time its letters take to say, counted back from its end. A start
-// that had to be guessed is marked estimated, so a cut is never planned on it.
+// heard: words get a time after the words that follow them or the same time
+// as the word before, a word runs over the words after it, or the first word
+// of a piece, after music or a pause, starts seconds early. Words out of order
+// share the time between the words around them by their letters; a word ends
+// where the next one starts; and a word that is too long, the first of a piece
+// or any far too long, takes the time its letters take to say, counted back
+// from its end. A start that had to be guessed is marked estimated, so a cut
+// is never planned on it.
 export function plausibleTimes(words) {
   const out = words.map((w) => ({ ...w }));
   const letters = (w) => Math.max(1, (w.text.match(/[\p{L}\p{N}]/gu) ?? []).length);
-  const bad = out.map(() => false);
-  let limit = Infinity;
-  for (let i = out.length - 1; i >= 0; i--) {
-    if (out[i].start > limit + 0.01) bad[i] = true;
-    else limit = out[i].start;
-  }
+  const keep = inOrder(out);
   for (let i = 0; i < out.length; i++) {
-    if (!bad[i]) continue;
+    if (keep[i]) continue;
     let j = i;
-    while (j < out.length && bad[j]) j++;
-    const to = j < out.length ? out[j].start : Math.max(...out.slice(i, j).map((w) => w.end));
+    while (j < out.length && !keep[j]) j++;
     const first = i > 0 ? i - 1 : i;
-    const from = first < i ? Math.min(out[first].start, to) : Math.max(0, to - 0.3 * (j - i));
+    const before = first < i ? out[first].start : null;
+    const to = j < out.length ? out[j].start : Math.max(before ?? 0, ...out.slice(i, j).map((w) => w.end)) + 0.3 * (j - i);
+    const from = before === null ? Math.max(0, to - 0.3 * (j - i)) : Math.min(before, to);
     const group = out.slice(first, j);
     const total = group.reduce((n, w) => n + letters(w), 0);
     let t = from;
@@ -254,7 +275,9 @@ export function plausibleTimes(words) {
     const next = out[i + 1];
     const end = next && next.start > w.start && next.start < w.end ? next.start : w.end;
     const most = 0.6 + 0.12 * letters(w);
-    if (end - w.start > most) return { ...w, start: round(end - most), end, estimated: true };
+    // The first word of a piece is suspect when it is long; any word when it
+    // is more than twice as long as its letters take, which no drawl explains.
+    if (end - w.start > most && (w.first || end - w.start > 2 * most)) return { ...w, start: round(end - most), end, estimated: true, heardStart: w.heardStart ?? w.start };
     return end === w.end ? w : { ...w, end };
   });
 }
@@ -299,8 +322,10 @@ const SENTENCE_END = /[.!?…]["'’”)\]]*$/u;
 // split at long pauses, whose spans follow each other on the frame grid from
 // just before the first word to just after the last. A pause of 1.5 seconds
 // or more between two scenes gets a note with the times that cut it.
-export function footageScript(words, duration, fps, title) {
+export function footageScript(heardWords, duration, fps, title) {
   const snap = (t) => Math.round(t * fps) / fps;
+  // Words the speech model heard after the end of the picture have no picture.
+  const words = heardWords.filter((w) => w.start < duration - 0.1);
   const scenes = [];
   let current = [];
   const close = () => {
@@ -331,12 +356,21 @@ export function footageScript(words, duration, fps, title) {
     }
   }
   if (!scenes.length) throw new ProjectError('the speech model heard no words in the recording, so there is nothing to make scenes from. Check that it has speech, and its language with --language.');
-  const head = Math.max(0, words[0].start - 0.25);
-  const tail = Math.min(duration, words.at(-1).end + 0.6);
+  // The opening keeps the start that was heard, so a drawn-out first word is never cut.
+  const head = Math.max(0, Math.min(words[0].start, words[0].heardStart ?? Infinity) - 0.25);
+  // The last span ends on a whole frame inside the recording.
+  const tail = Math.min(Math.round(duration * fps), Math.round((words.at(-1).end + 0.6) * fps)) / fps;
   const lines = [`# ${title}`, '', '> Each scene is a span of the recording: {from to} are its seconds. Delete a', '> scene to cut it, change from and to, or move it. Fix a misheard word in its', '> text, so the captions say it right; the timing stays the recording\'s.', ''];
+  // Where each scene starts on the frame grid; a scene that wouldn't last a
+  // frame joins the one before it.
+  const begin = (i) => (i === 0 ? snap(head) : snap((scenes[i - 1].at(-1).end + scenes[i][0].start) / 2));
+  for (let i = 1; i < scenes.length; i++) {
+    const next = i === scenes.length - 1 ? tail : begin(i + 1);
+    if (begin(i) <= begin(i - 1) || next <= begin(i)) scenes[i - 1].push(...scenes.splice(i--, 1)[0]);
+  }
   scenes.forEach((group, i) => {
-    const from = i === 0 ? snap(head) : snap((scenes[i - 1].at(-1).end + group[0].start) / 2);
-    const to = i === scenes.length - 1 ? snap(tail) : snap((group.at(-1).end + scenes[i + 1][0].start) / 2);
+    const from = begin(i);
+    const to = i === scenes.length - 1 ? tail : begin(i + 1);
     lines.push(`## s${String(i + 1).padStart(2, '0')} {from=${from.toFixed(3)} to=${to.toFixed(3)}}`);
     lines.push(group.map((w) => w.text).join(' '));
     // Scenes meet in the middle of a long pause, so the note says how to cut it.
@@ -456,9 +490,20 @@ export async function createFootageProject(target, input, { title, theme = 'midn
   const config = { title, theme, size, fps: info.fps, footage: 'assets/footage.mov', music: true, captions: 'auto', transition: 'cut', camera: 'still', defaults: DEFAULTS_VERSIONS.at(-1), ...(language !== 'en' ? { language } : {}) };
   normalizeConfig({ ...config }, '.');
   fs.mkdirSync(path.join(target, 'assets'), { recursive: true });
+  const wordsFile = path.join(path.dirname(dest), `footage.words-${language}.json`);
+  const hadWords = fs.existsSync(wordsFile);
   const note = await makeWorkingCopy(input, dest, info, { log });
-  const heard = await footageWords(dest, fileHash(dest), language, { log, ...(transcribe ? { transcribe } : {}) });
-  const script = footageScript(heard.words, Math.min(heard.duration, await pictureSeconds(dest)), info.fps, title);
+  let heard;
+  let script;
+  try {
+    heard = await footageWords(dest, fileHash(dest), language, { log, ...(transcribe ? { transcribe } : {}) });
+    script = footageScript(heard.words, Math.min(heard.duration, await pictureSeconds(dest)), info.fps, title);
+  } catch (e) {
+    // This run's working copy and words go, so init can run again in the same folder.
+    fs.rmSync(dest, { force: true });
+    if (!hadWords) fs.rmSync(wordsFile, { force: true });
+    throw e;
+  }
   const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
   fs.writeFileSync(path.join(target, 'video.json'), JSON.stringify(config, null, 2) + '\n');
   fs.writeFileSync(path.join(target, 'script.md'), script);

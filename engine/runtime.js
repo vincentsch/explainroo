@@ -209,7 +209,7 @@ export class Engine {
     if (this.recorder) return null;
     // Passes that only measure the scenes don't need the recording's frames,
     // and asking would make pieces of it all over a long recording.
-    if (clip.footage && (this.collectingMath || this.planning || this.threeCollect || this.thumbing)) return null;
+    if (clip.footage && (this.collectingMath || this.planning || this.threeCollect || this.threeSetup || this.thumbing)) return null;
     if (clip.video) {
       const video = clip.video;
       const time = Math.min(frame / clip.fps, Math.max(0, clip.duration - 0.04));

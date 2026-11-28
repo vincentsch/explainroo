@@ -586,7 +586,11 @@ export async function synthesize(project, { force = false, fresh = false, log = 
     const key = recording ? {
       content: recording.hash,
       scenes: recordings.folder ? null : project.script.scenes.map((s) => s.spoken),
-    } : footage ? { content: footage.sha, span: [scene.attrs.from, scene.attrs.to], joins: joins.get(scene.id), fps: project.config.fps } : null;
+    } : footage ? {
+      content: footage.sha, span: [scene.attrs.from, scene.attrs.to], joins: joins.get(scene.id), fps: project.config.fps,
+      // The recording's words there and their times, which a better transcript changes.
+      heard: footage.heard.words.filter((w) => w.end > scene.attrs.from - 0.5 && w.start < scene.attrs.to + 0.5).map((w) => [w.text, w.start, w.end, w.estimated ? 1 : 0]),
+    } : null;
     const hash = sceneHash(scene, chunks, config, key);
     const cached = readVoice(project, scene.id);
     // A span of footage always has sound, also where nobody speaks.
@@ -860,7 +864,7 @@ async function footageScene(project, scene, hash, footage, join, key) {
   const last = Math.round(footage.end * fps);
   const end = +footage.end.toFixed(2);
   if (f0 >= last) throw new ProjectError(`scene "${scene.id}" starts at ${scene.attrs.from} s, after the end of the recording at ${end} s`);
-  if (f1 > last + 1) throw new ProjectError(`scene "${scene.id}" ends at ${scene.attrs.to} s, after the end of the recording at ${end} s`);
+  if (f1 > last) throw new ProjectError(`scene "${scene.id}" ends at ${scene.attrs.to} s, after the end of the recording at ${end} s`);
   if (f1 <= f0) throw new ProjectError(`scene "${scene.id}" is shorter than one frame of the recording`);
   const samples = new Float32Array(((f1 - f0) * sr) / fps);
   const from = (f0 * sr) / fps;

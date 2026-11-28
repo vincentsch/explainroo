@@ -68,12 +68,30 @@ test("the speech model's notes for sound that isn't speech are left out, and a h
 
 test('a word gets no more time than its letters take, a run of words at one moment is noticed, and under music a piece ends where it is softest', () => {
   // The first word after music, which the speech model started at the start of its piece.
-  const words = plausibleTimes([{ text: 'My', start: 25, end: 30.7 }, { text: 'brother', start: 30.7, end: 31.1 }]);
-  assert.deepEqual(words[0], { text: 'My', start: 29.86, end: 30.7, estimated: true });
+  const words = plausibleTimes([{ text: 'My', start: 25, end: 30.7, first: true }, { text: 'brother', start: 30.7, end: 31.1 }]);
+  assert.deepEqual(words[0], { text: 'My', start: 29.86, end: 30.7, first: true, estimated: true, heardStart: 25 });
   assert.equal(words[1].estimated, undefined);
+  // In the middle of a piece, a word far too long is cut back too, and a drawn-out one keeps its time.
+  assert.equal(plausibleTimes([{ text: 'other.', start: 22.6, end: 22.98 }, { text: 'My', start: 23.94, end: 30.7 }])[1].start, 29.86);
+  assert.deepEqual(plausibleTimes([{ text: 'So', start: 0.2, end: 1.6 }, { text: 'today', start: 1.7, end: 2 }])[0], { text: 'So', start: 0.2, end: 1.6 });
+  // A tied start and a long first word stay in order, and the script's spans go forward.
+  const tied = plausibleTimes([{ text: 'My', start: 15, end: 20.7, first: true }, { text: 'brother', start: 15, end: 15 }, { text: 'and', start: 20.9, end: 21.1 }, { text: 'I.', start: 21.1, end: 21.3 }]);
+  tied.forEach((w, i) => assert.ok(!i || w.start >= tied[i - 1].start, `${w.text} at ${w.start} starts before ${tied[i - 1]?.text}`));
+  assert.equal(tied[1].estimated, true);
+  const spans = parseScript(footageScript(tied, 22, 30, 'Talk')).scenes.map((x) => [x.attrs.from, x.attrs.to]);
+  spans.forEach(([a, b]) => assert.ok(b > a, `a scene from ${a} to ${b}`));
+  // A near tie with an outlier between keeps every word forward.
+  const near = plausibleTimes([{ text: 'one', start: 3, end: 3.2 }, { text: 'two', start: 9, end: 9.2 }, { text: 'three', start: 2.998, end: 3.3 }, { text: 'four', start: 3.4, end: 3.6 }]);
+  near.forEach((w) => assert.ok(w.end >= w.start, `${w.text} from ${w.start} to ${w.end}`));
+  // A drawn-out first word at the very start keeps its opening when it is cut back.
+  const opening = parseScript(footageScript(plausibleTimes([{ text: 'So', start: 0.2, end: 1.6, first: true }, { text: 'today.', start: 1.7, end: 2 }]), 10, 30, 'Talk'));
+  assert.equal(opening.scenes[0].attrs.from, 0);
+  // Words heard after the end of the picture make no scene.
+  const late = parseScript(footageScript([{ text: 'Hi.', start: 1, end: 1.4 }, { text: 'Gone.', start: 8, end: 8.4 }], 3, 30, 'Talk'));
+  assert.deepEqual(late.scenes.map((x) => [x.attrs.from, x.attrs.to]), [[0.767, 2]]);
   // Words with times after the words that follow share the time before them.
-  const lost = plausibleTimes([{ text: "it's", start: 17.28, end: 29.98 }, { text: 'really', start: 29.98, end: 29.98 }, { text: 'a', start: 29.98, end: 29.98 }, { text: 'bunch', start: 18.4, end: 18.64 }]);
-  assert.deepEqual(lost.map((w) => [w.text, w.start, w.end, !!w.estimated]), [["it's", 17.28, 17.616, false], ['really', 17.616, 18.288, true], ['a', 18.288, 18.4, true], ['bunch', 18.4, 18.64, false]]);
+  const lost = plausibleTimes([{ text: "it's", start: 17.28, end: 29.98 }, { text: 'really', start: 29.98, end: 29.98 }, { text: 'a', start: 29.98, end: 29.98 }, { text: 'bunch', start: 18.4, end: 18.64 }, { text: 'of', start: 18.64, end: 18.74 }, { text: 'little', start: 18.74, end: 18.94 }]);
+  assert.deepEqual(lost.slice(0, 4).map((w) => [w.text, w.start, w.end, !!w.estimated]), [["it's", 17.28, 17.616, false], ['really', 17.616, 18.288, true], ['a', 18.288, 18.4, true], ['bunch', 18.4, 18.64, false]]);
   // A word that runs over the words after it ends where the next one starts.
   assert.deepEqual(plausibleTimes([{ text: "it's", start: 17.28, end: 29.98 }, { text: 'really', start: 17.5, end: 17.8 }])[0], { text: "it's", start: 17.28, end: 17.5 });
   assert.equal(collapsed([0, 1, 2, 3, 4].map(() => ({ text: 'and', start: 198.5, end: 198.5 }))), true);
@@ -137,6 +155,11 @@ test('a working copy of an odd-sized recording has even sides, and init never wr
   for (const input of [path.join(target, 'assets', 'footage.mov'), src]) {
     await assert.rejects(createFootageProject(target, input, { transcribe: async () => ({ text: '', words: [] }) }), /already there/);
   }
+  // An init that fails, like one that hears no words, leaves nothing that stops the next try.
+  const again = path.join(dir, 'again');
+  await assert.rejects(createFootageProject(again, src, { transcribe: async () => ({ text: '', words: [] }) }), /heard no words/);
+  assert.deepEqual(fs.readdirSync(path.join(again, 'assets')), []);
+  await assert.rejects(createFootageProject(again, src, { transcribe: async () => ({ text: '', words: [] }) }), /heard no words/);
   assert.equal(fs.readFileSync(path.join(target, 'assets', 'footage.mov'), 'utf8'), 'the original');
 });
 

@@ -700,7 +700,7 @@ export async function verify(project, { file = null, report: reportFile = null, 
       const together = [];
       let total = 0;
       let matched = 0;
-      for (const t of timeline.scenes) {
+      for (const [index, t] of timeline.scenes.entries()) {
         const words = spokenWords(byId.get(t.id));
         if (!words.length) continue;
         // Footage scenes follow each other mid-sentence, so each is heard with a
@@ -714,7 +714,7 @@ export async function verify(project, { file = null, report: reportFile = null, 
         // in for a word this scene lost.
         const own = margin ? heard.words.filter((w) => {
           const mid = from / 16000 + (w.start + w.end) / 2;
-          return mid >= t.start && mid <= t.start + t.dur;
+          return mid >= t.start && mid < (timeline.scenes[index + 1]?.start ?? t.start + t.dur);
         }) : heard.words;
         const aligned = await alignSpeech(words, own, t.dur, project.config.language, { accept: project.heard });
         const rate = aligned.matchRate;
