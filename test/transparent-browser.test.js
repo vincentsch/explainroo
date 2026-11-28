@@ -45,6 +45,8 @@ test('transparent WebM and MOV retain alpha, audio, chapters and opaque covers',
       const video = info.streams.find((s) => s.codec_type === 'video');
       const audio = info.streams.find((s) => s.codec_type === 'audio');
       assert.equal(audio.codec_name, format === 'webm' ? 'opus' : 'pcm_s16le');
+      // Editors and browsers read HD as BT.709, so the file is BT.709 and says so.
+      assert.equal(video.color_space, 'bt709', `${format} is tagged ${video.color_space}`);
       // ffprobe's native VP9 decoder hides the alpha plane. libvpx exposes it.
       if (format === 'webm') {
         assert.equal(video.codec_name, 'vp9');
