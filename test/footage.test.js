@@ -199,3 +199,34 @@ test('init from a recording makes a working copy, a script of spans and scenes t
   assert.deepEqual(streams.map((s) => [s.codec_type, s.codec_name, Number(s.start_time)]), [['video', 'h264', 0], ['audio', 'pcm_s16le', 0]]);
   await assert.rejects(createFootageProject(target, source), /already has a video\.json/);
 });
+
+test('a short from a stretch of a footage project reuses its words, cuts its long pauses and keeps its settings', { timeout: 120000 }, async (t) => {
+  const dir = temp(t);
+  const src = path.join(dir, 'talk.mp4');
+  await ffmpeg(['-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'color=gray:s=320x180:r=30:d=12', '-f', 'lavfi', '-i', 'sine=f=300:d=12:sample_rate=48000',
+    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', src]);
+  const said = [['One', 1], ['two', 1.3], ['three.', 1.6], ['Four', 4.5], ['five', 4.8], ['six.', 5.1], ['Seven', 7.5], ['eight.', 7.8], ['Nine', 10], ['ten.', 10.3]];
+  let heard = 0;
+  const transcribe = async () => {
+    heard++;
+    return { text: '', words: said.map(([text, start]) => ({ text, start, end: start + 0.25 })) };
+  };
+  const parent = path.join(dir, 'talk');
+  await createFootageProject(parent, src, { transcribe });
+  assert.equal(heard, 1);
+  const settings = JSON.parse(fs.readFileSync(path.join(parent, 'video.json'), 'utf8'));
+  fs.writeFileSync(path.join(parent, 'video.json'), JSON.stringify({ ...settings, theme: 'paper', music: false }));
+  const r = await createFootageProject(path.join(dir, 'short'), parent, { from: 4, to: 9, size: 'tiktok', transcribe });
+  assert.equal(heard, 1, 'the short heard the recording again');
+  assert.deepEqual(r.stretch, { from: 4, to: 9 });
+  const config = JSON.parse(fs.readFileSync(path.join(dir, 'short', 'video.json'), 'utf8'));
+  assert.deepEqual([config.theme, config.music, config.size], ['paper', false, 'tiktok']);
+  // The working copy is the stretch, five seconds.
+  const v = (await probe(path.join(dir, 'short', 'assets', 'footage.mov'))).streams.find((x) => x.codec_type === 'video');
+  assert.equal(Number(v.nb_frames), 150);
+  // Its words start at the stretch, and the pause of two seconds between them is cut.
+  const script = parseScript(fs.readFileSync(path.join(dir, 'short', 'script.md'), 'utf8'));
+  assert.deepEqual(script.scenes.map((x) => x.units.filter((u) => u.type === 'word').map((u) => u.display).join(' ')), ['Four five six.', 'Seven eight.']);
+  const [a, b] = script.scenes.map((x) => [x.attrs.from, x.attrs.to]);
+  assert.ok(Math.abs(a[1] - (5.1 + 0.25 + 0.25 - 4)) < 0.04 && Math.abs(b[0] - (7.5 - 0.25 - 4)) < 0.04, `spans ${JSON.stringify([a, b])}`);
+});

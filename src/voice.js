@@ -823,12 +823,14 @@ async function footageSource(project, { log, transcribe }) {
   const file = path.join(project.dir, src);
   if (!fs.existsSync(file)) throw new ProjectError(`${src} is missing. A footage project shows and plays that recording; put it back, or start again with "init --footage".`);
   const info = await footageInfo(file);
-  const sha = fileHash(file);
+  const sha = fileHash(file, path.join(project.paths.build, 'footage', 'hash.json'));
   const heard = await footageWords(file, sha, project.config.language, { log, transcribe });
-  const speech = await footageSpeech(file, path.join(project.paths.build, 'footage', `${sha.slice(0, 16)}-speech.wav`));
+  // The leveled take is read only when a scene is made, not when every scene is kept.
+  let speech = null;
+  const sound = async () => (speech ??= await footageSpeech(file, path.join(project.paths.build, 'footage', `${sha.slice(0, 16)}-speech.wav`)));
   // Where picture and sound both end.
   const end = Math.min(heard.duration, await pictureSeconds(file));
-  return { file, info, sha, heard, speech, end };
+  return { file, info, sha, heard, sound, end };
 }
 
 // Where each scene's span meets the one before and after it in the recording.
@@ -868,7 +870,8 @@ async function footageScene(project, scene, hash, footage, join, key) {
   if (f1 <= f0) throw new ProjectError(`scene "${scene.id}" is shorter than one frame of the recording`);
   const samples = new Float32Array(((f1 - f0) * sr) / fps);
   const from = (f0 * sr) / fps;
-  samples.set(footage.speech.samples.subarray(from, Math.min(footage.speech.samples.length, from + samples.length)));
+  const speech = await footage.sound();
+  samples.set(speech.samples.subarray(from, Math.min(speech.samples.length, from + samples.length)));
   const fade = Math.round(FOOTAGE_FADE * sr);
   for (let k = 0; k < fade && k < samples.length; k++) {
     if (join.fadeIn) samples[k] *= k / fade;

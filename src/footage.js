@@ -92,7 +92,7 @@ function hasZscale() {
 // stereo sound as PCM. No B-frames and no AAC, because both delay their stream
 // in the file, and then frame n of the picture is no longer at n / fps next to
 // the sound. Returns a note when an HDR recording couldn't be tone mapped.
-export async function makeWorkingCopy(src, dest, info, { log = () => {} } = {}) {
+export async function makeWorkingCopy(src, dest, info, { log = () => {}, from = null, to = null } = {}) {
   const filters = [];
   let note = null;
   if (info.hdr && hasZscale()) filters.push('zscale=t=linear:npl=100', 'format=gbrpf32le', 'zscale=p=bt709', 'tonemap=hable:desat=0', 'zscale=t=bt709:m=bt709:r=tv');
@@ -103,7 +103,9 @@ export async function makeWorkingCopy(src, dest, info, { log = () => {} } = {}) 
   filters.push(`fps=${info.fps}:start_time=0`, `scale='if(gte(iw,ih),trunc(min(1920,iw)/2)*2,-2)':'if(gte(iw,ih),-2,trunc(min(1920,ih)/2)*2)'${convert}`, 'setsar=1', 'format=yuv420p');
   log(`making a working copy of ${path.basename(src)} at ${info.fps} frames a second`);
   const temp = `${dest}.partial${path.extname(dest)}`;
-  await ffmpeg(['-loglevel', 'error', '-y', '-i', src, '-map', '0:v:0', '-map', '0:a:0', '-vf', filters.join(','),
+  // A stretch of the source, for a short: both streams cut at the same moment.
+  const stretch = from !== null ? ['-ss', String(from), '-t', String(to - from)] : [];
+  await ffmpeg(['-loglevel', 'error', '-y', ...stretch, '-i', src, '-map', '0:v:0', '-map', '0:a:0', '-map_metadata', '-1', '-vf', filters.join(','),
     '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-bf', '0', '-g', String(info.fps), '-keyint_min', String(info.fps),
     '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709',
     '-c:a', 'pcm_s16le', '-ar', String(FOOTAGE_RATE), '-ac', '2', '-af', 'aresample=async=1:first_pts=0',
@@ -112,7 +114,26 @@ export async function makeWorkingCopy(src, dest, info, { log = () => {} } = {}) 
   return note;
 }
 
-export function fileHash(file) {
+// The SHA-256 of a file. With `cache`, a small JSON file that keeps it by the
+// file's size and time, so a long recording isn't read again for every command.
+export function fileHash(file, cache = null) {
+  const stat = fs.statSync(file);
+  const id = `${stat.size}-${Math.round(stat.mtimeMs)}`;
+  if (cache && fs.existsSync(cache)) {
+    try {
+      const kept = JSON.parse(fs.readFileSync(cache, 'utf8'));
+      if (kept.id === id && kept.sha256) return kept.sha256;
+    } catch {}
+  }
+  const sha256 = readHash(file);
+  if (cache) {
+    fs.mkdirSync(path.dirname(cache), { recursive: true });
+    fs.writeFileSync(cache, JSON.stringify({ id, sha256 }));
+  }
+  return sha256;
+}
+
+function readHash(file) {
   const hash = crypto.createHash('sha256');
   const fd = fs.openSync(file, 'r');
   try {
@@ -322,7 +343,7 @@ const SENTENCE_END = /[.!?…]["'’”)\]]*$/u;
 // split at long pauses, whose spans follow each other on the frame grid from
 // just before the first word to just after the last. A pause of 1.5 seconds
 // or more between two scenes gets a note with the times that cut it.
-export function footageScript(heardWords, duration, fps, title) {
+export function footagePassages(heardWords, duration, fps, { tight = false } = {}) {
   const snap = (t) => Math.round(t * fps) / fps;
   // Words the speech model heard after the end of the picture have no picture.
   const words = heardWords.filter((w) => w.start < duration - 0.1);
@@ -360,23 +381,33 @@ export function footageScript(heardWords, duration, fps, title) {
   const head = Math.max(0, Math.min(words[0].start, words[0].heardStart ?? Infinity) - 0.25);
   // The last span ends on a whole frame inside the recording.
   const tail = Math.min(Math.round(duration * fps), Math.round((words.at(-1).end + 0.6) * fps)) / fps;
-  const lines = [`# ${title}`, '', '> Each scene is a span of the recording: {from to} are its seconds. Delete a', '> scene to cut it, change from and to, or move it. Fix a misheard word in its', '> text, so the captions say it right; the timing stays the recording\'s.', ''];
-  // Where each scene starts on the frame grid; a scene that wouldn't last a
-  // frame joins the one before it.
-  const begin = (i) => (i === 0 ? snap(head) : snap((scenes[i - 1].at(-1).end + scenes[i][0].start) / 2));
+  // Scenes meet in the middle of a pause. A tight edit, for a short, cuts a
+  // pause of 1.2 seconds or more instead: the scene ends 0.25 s after its last
+  // word and the next starts 0.25 s before its first.
+  const long = (i) => scenes[i + 1] && scenes[i + 1][0].start - scenes[i].at(-1).end >= 1.2;
+  const begin = (i) => (i === 0 ? snap(head) : tight && long(i - 1) ? snap(scenes[i][0].start - 0.25) : snap((scenes[i - 1].at(-1).end + scenes[i][0].start) / 2));
+  const finish = (i) => (i === scenes.length - 1 ? tail : tight && long(i) ? snap(scenes[i].at(-1).end + 0.25) : begin(i + 1));
+  // A scene that wouldn't last a frame joins the one before it.
   for (let i = 1; i < scenes.length; i++) {
-    const next = i === scenes.length - 1 ? tail : begin(i + 1);
-    if (begin(i) <= begin(i - 1) || next <= begin(i)) scenes[i - 1].push(...scenes.splice(i--, 1)[0]);
+    if (begin(i) <= begin(i - 1) || finish(i) <= begin(i)) scenes[i - 1].push(...scenes.splice(i--, 1)[0]);
   }
-  scenes.forEach((group, i) => {
-    const from = begin(i);
-    const to = i === scenes.length - 1 ? tail : begin(i + 1);
-    lines.push(`## s${String(i + 1).padStart(2, '0')} {from=${from.toFixed(3)} to=${to.toFixed(3)}}`);
-    lines.push(group.map((w) => w.text).join(' '));
-    // Scenes meet in the middle of a long pause, so the note says how to cut it.
+  return scenes.map((group, i) => {
     const next = scenes[i + 1];
     const gap = next ? next[0].start - group.at(-1).end : 0;
-    if (gap >= 1.5) lines.push(`> pause of ${gap.toFixed(1)} s after this scene: to cut it, end this scene at ${snap(group.at(-1).end + 0.25).toFixed(3)} and start the next at ${snap(next[0].start - 0.25).toFixed(3)}`);
+    return {
+      from: begin(i), to: finish(i), words: group, text: group.map((w) => w.text).join(' '),
+      // A long pause after it that the spans keep, with the times that cut it.
+      ...(!tight && gap >= 1.5 ? { pause: { seconds: round(gap), to: snap(group.at(-1).end + 0.25), next: snap(next[0].start - 0.25) } } : {}),
+    };
+  });
+}
+
+// script.md for a recording, from its passages.
+export function footageScript(heardWords, duration, fps, title, options = {}) {
+  const lines = [`# ${title}`, '', '> Each scene is a span of the recording: {from to} are its seconds. Delete a', '> scene to cut it, change from and to, or move it. Fix a misheard word in its', '> text, so the captions say it right; the timing stays the recording\'s.', ''];
+  footagePassages(heardWords, duration, fps, options).forEach((p, i) => {
+    lines.push(`## s${String(i + 1).padStart(2, '0')} {from=${p.from.toFixed(3)} to=${p.to.toFixed(3)}}`, p.text);
+    if (p.pause) lines.push(`> pause of ${p.pause.seconds.toFixed(1)} s after this scene: to cut it, end this scene at ${p.pause.to.toFixed(3)} and start the next at ${p.pause.next.toFixed(3)}`);
     lines.push('');
   });
   return lines.join('\n');
@@ -472,32 +503,85 @@ function size(dir) {
   return fs.readdirSync(dir).reduce((n, f) => n + fs.statSync(path.join(dir, f)).size, 0);
 }
 
-// A footage project in `target` from the recording `input`: the working copy in
-// assets/, video.json, script.md with a scene for each span of speech, and a
-// scenes.js where every scene shows its span. `transcribe` replaces the speech
-// model in tests.
-export async function createFootageProject(target, input, { title, theme = 'midnight', size, language = 'en', log = () => {}, transcribe } = {}) {
+// The footage project `dir`, when `input` is one: its working copy, its words
+// in its language, its look and whether it has music.
+export function footageParent(input) {
+  const file = path.join(input, 'video.json');
+  if (!fs.existsSync(file)) return null;
+  let raw;
+  try {
+    raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    throw new ProjectError(`${file} is not valid JSON`);
+  }
+  const src = typeof raw.footage === 'string' ? raw.footage : raw.footage?.src;
+  if (!src) throw new ProjectError(`${input} is a project without a recording. --footage takes a video file or a footage project.`);
+  const language = raw.language ?? 'en';
+  return { dir: input, file: path.join(input, src), language, theme: raw.theme, music: raw.music, words: path.join(input, path.dirname(src), `${path.basename(src, path.extname(src))}.words-${language}.json`) };
+}
+
+// The words of a stretch of a parent's recording, as words of the stretch:
+// those that start inside it, from its start. Null when the parent's words are
+// not those of its working copy.
+function stretchWords(parent, parentHash, from, to) {
+  if (!fs.existsSync(parent.words)) return null;
+  const kept = JSON.parse(fs.readFileSync(parent.words, 'utf8'));
+  if (kept.sha256 !== parentHash) return null;
+  const shift = (t) => round(Math.min(to, Math.max(from, t)) - from);
+  return {
+    language: kept.language,
+    duration: round(to - from),
+    words: kept.words.filter((w) => w.start >= from && w.start < to).map((w) => ({ ...w, start: shift(w.start), end: shift(w.end) })),
+    quiet: kept.quiet.filter(([a, b]) => b > from && a < to).map(([a, b]) => [shift(a), shift(b)]),
+    unheard: kept.unheard.filter(([a, b]) => b > from && a < to).map(([a, b]) => [shift(a), shift(b)]),
+  };
+}
+
+// A footage project in `target` from the recording `input`, a video file or a
+// footage project: the working copy in assets/, video.json, script.md with a
+// scene for each span of speech, and a scenes.js where every scene shows its
+// span. With `from` and `to`, only that stretch, cut tight, for a short; from a
+// project, its words are reused and its language, look and music carry over.
+// `transcribe` replaces the speech model in tests.
+export async function createFootageProject(target, input, { title, theme, size, language, from, to, log = () => {}, transcribe } = {}) {
   if (fs.existsSync(path.join(target, 'video.json'))) throw new ProjectError(`${target} already has a video.json`);
   const dest = path.join(target, 'assets', 'footage.mov');
   // The working copy never replaces a file, the recording itself least of all.
   if (fs.existsSync(dest)) throw new ProjectError(`${dest} is already there, and init writes the working copy there. Move it out of the project folder, or start the project in a new folder.`);
-  const info = await footageInfo(input);
+  const parent = fs.existsSync(input) && fs.statSync(input).isDirectory() ? footageParent(input) : null;
+  const file = parent ? parent.file : input;
+  language ??= parent?.language ?? 'en';
+  theme ??= parent?.theme ?? 'midnight';
+  const info = await footageInfo(file);
   checkLanguage(language);
   if (!THEMES.includes(theme)) throw new ProjectError(`theme must be one of ${THEMES.join(', ')}`);
+  // The stretch, on the frame grid of the project.
+  let stretch = null;
+  if (from !== undefined || to !== undefined) {
+    const snap = (t) => Math.round(t * info.fps) / info.fps;
+    const a = snap(from ?? 0);
+    const b = snap(Math.min(to ?? info.duration, info.duration));
+    if (!(a >= 0 && b - a >= 1)) throw new ProjectError(`--from and --to must be a stretch of at least a second inside the recording, which is ${info.duration.toFixed(1)} s long`);
+    stretch = { from: a, to: b };
+  }
   size ||= Math.abs(info.width - info.height) < 8 ? 'square' : info.width > info.height ? '16:9' : 'vertical';
   resolveSize(size);
   title ||= path.basename(target).replace(/[-_]+/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
-  const config = { title, theme, size, fps: info.fps, footage: 'assets/footage.mov', music: true, captions: 'auto', transition: 'cut', camera: 'still', defaults: DEFAULTS_VERSIONS.at(-1), ...(language !== 'en' ? { language } : {}) };
+  const config = { title, theme, size, fps: info.fps, footage: 'assets/footage.mov', music: parent?.music === false ? false : true, captions: 'auto', transition: 'cut', camera: 'still', defaults: DEFAULTS_VERSIONS.at(-1), ...(language !== 'en' ? { language } : {}) };
   normalizeConfig({ ...config }, '.');
   fs.mkdirSync(path.join(target, 'assets'), { recursive: true });
   const wordsFile = path.join(path.dirname(dest), `footage.words-${language}.json`);
   const hadWords = fs.existsSync(wordsFile);
-  const note = await makeWorkingCopy(input, dest, info, { log });
+  const note = await makeWorkingCopy(file, dest, info, { log, ...(stretch ?? {}) });
   let heard;
   let script;
   try {
-    heard = await footageWords(dest, fileHash(dest), language, { log, ...(transcribe ? { transcribe } : {}) });
-    script = footageScript(heard.words, Math.min(heard.duration, await pictureSeconds(dest)), info.fps, title);
+    const hash = fileHash(dest);
+    // The parent's words, when they are of its working copy and in this language, are not heard again.
+    const reused = parent && parent.language === language ? stretchWords(parent, fileHash(parent.file, path.join(parent.dir, 'build', 'footage', 'hash.json')), stretch?.from ?? 0, stretch?.to ?? info.duration) : null;
+    if (reused) fs.writeFileSync(wordsFile, JSON.stringify({ sha256: hash, ...reused }));
+    heard = await footageWords(dest, hash, language, { log, ...(transcribe ? { transcribe } : {}) });
+    script = footageScript(heard.words, Math.min(heard.duration, await pictureSeconds(dest)), info.fps, title, { tight: !!stretch });
   } catch (e) {
     // This run's working copy and words go, so init can run again in the same folder.
     fs.rmSync(dest, { force: true });
@@ -509,5 +593,5 @@ export async function createFootageProject(target, input, { title, theme = 'midn
   fs.writeFileSync(path.join(target, 'script.md'), script);
   fs.writeFileSync(path.join(target, 'scenes.js'), fs.readFileSync(path.join(root, 'templates', 'footage', 'scenes.js'), 'utf8'));
   fs.writeFileSync(path.join(target, '.gitignore'), 'build/\nout/\n.env\nhistory/private/\nhistory/locks/\n');
-  return { target, config, info, note, heard, scenes: (script.match(/^## /gm) || []).length };
+  return { target, config, info, note, heard, stretch, parent: parent?.dir ?? null, scenes: (script.match(/^## /gm) || []).length };
 }
